@@ -5,6 +5,8 @@ import { ENEMY_STATS } from '../sim/enemies';
 import { idx } from '../sim/grid';
 import type { Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
+import { forestGeometry, forestMaterial } from './forest';
+import type { ForestModelName } from './forest';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { PALETTE } from './palette';
@@ -14,6 +16,20 @@ import { PALETTE } from './palette';
  * Симуляция об этом модуле не знает — она не импортирует three (DESIGN §6).
  */
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/** Камни стены. Деревьев здесь нет: локация — соляные копи (§12.1). */
+const RAID_ROCKS: readonly ForestModelName[] = [
+  'Rock_1_D_Color1',
+  'Rock_1_E_Color1',
+  'Rock_1_G_Color1',
+  'Rock_2_D_Color1',
+  'Rock_3_G_Color1',
+  'Rock_3_H_Color1',
+];
+
+/** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка. */
+const hash = (a: number, b: number, mod: number): number =>
+  Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
 
 interface EnemyView {
   readonly mesh: THREE.Mesh;
@@ -113,32 +129,44 @@ export class RaidView {
     return this.grass?.blades ?? 0;
   }
 
+  /**
+   * Стены — камни из набора (§6.1). Раньше здесь стоял додекаэдр: одна форма
+   * на всю локацию, и стена читалась как ряд одинаковых шариков. Вариантов
+   * шесть, выбор — от координаты клетки, поэтому камень на месте не прыгает
+   * между заходами и локация остаётся выводимой из сида.
+   */
   private buildRocks(): void {
     const { size, blocked } = this.loc;
-    let count = 0;
-    for (let i = 0; i < blocked.length; i++) if (blocked[i]) count++;
-
-    const geo = this.track(new THREE.DodecahedronGeometry(0.62, 0));
-    const mat = this.track(new THREE.MeshLambertMaterial({ color: PALETTE.rock, flatShading: true }));
-    const mesh = new THREE.InstancedMesh(geo, mat, count);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-
-    const dummy = new THREE.Object3D();
-    let i = 0;
+    const cells: number[][] = RAID_ROCKS.map(() => []);
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
         if (!blocked[idx(size, x, z)]) continue;
-        const v = ((Math.sin(x * 3.1 + z * 7.7) * 1000) % 1 + 1) % 1;
-        const s = 0.75 + v * 0.6;
-        dummy.position.set(x + (v - 0.5) * 0.2, s * 0.35 - 0.1, z + (v - 0.5) * 0.15);
-        dummy.rotation.set(v * 3, v * 6.28, v * 2);
-        dummy.scale.setScalar(s);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i++, dummy.matrix);
+        cells[hash(x * 5.1, z * 9.3, RAID_ROCKS.length)]!.push(x, z);
       }
     }
-    this.group.add(mesh);
+
+    const mat = this.track(forestMaterial());
+    const dummy = new THREE.Object3D();
+    for (let v = 0; v < RAID_ROCKS.length; v++) {
+      const list = cells[v]!;
+      if (list.length === 0) continue;
+      // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
+      const mesh = new THREE.InstancedMesh(forestGeometry(RAID_ROCKS[v]!, 1), mat, list.length / 2);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i += 2) {
+        const x = list[i]!;
+        const z = list[i + 1]!;
+        const t = ((Math.sin(x * 3.1 + z * 7.7) * 1000) % 1 + 1) % 1;
+        const s = 0.85 + t * 0.55;
+        dummy.position.set(x + (t - 0.5) * 0.22, -0.12, z + (t - 0.5) * 0.18);
+        dummy.rotation.set(0, t * 6.28, 0);
+        dummy.scale.set(s, s * (0.8 + t * 0.5), s);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i / 2, dummy.matrix);
+      }
+      this.group.add(mesh);
+    }
   }
 
   private buildEvac(): void {

@@ -13,6 +13,7 @@
     "verify": "tsx scripts/baseline.ts",
     "baseline": "tsx scripts/baseline.ts --write",
     "measure": "tsx scripts/measure.ts",
+    "models": "tsx scripts/models.ts",
     "play": "tsx scripts/play.ts"
   },
   "dependencies": {

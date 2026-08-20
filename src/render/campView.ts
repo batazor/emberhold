@@ -5,6 +5,8 @@ import { BUILDING_ORDER, builtBuildings, campArea, villagerCount } from '../sim/
 import type { BuildingId, CampState } from '../sim/camp';
 import { HERO_SPEED } from '../sim/config';
 import { FluffyGrass } from './fluffyGrass';
+import { forestGeometry, forestMaterial } from './forest';
+import type { ForestModelName } from './forest';
 
 /**
  * Сцена лагеря по camp.html: жители ходят и работают, стройка видна по
@@ -30,6 +32,32 @@ interface Villager {
 const BUILDING_SCALE = 0.55;
 /** Житель ростом с клетку читается рядом со зданием, а не как игрушка. */
 const VILLAGER_SCALE = 0.62;
+
+/**
+ * Лес вокруг поляны (§6.1, набор KayKit Forest). Лагерь стоит на поляне
+ * с нулевого кадра онбординга — деревья не добавляют миру ничего нового,
+ * они делают видимым то, что уже сказано. Растут они только за площадью
+ * лагеря, поэтому рост Штаба читается ещё и как отступающий лес.
+ */
+const CAMP_TREES: readonly ForestModelName[] = [
+  'Tree_1_A_Color1',
+  'Tree_2_B_Color1',
+  'Tree_4_A_Color1',
+  'Tree_Bare_2_B_Color1',
+];
+const CAMP_ROCKS: readonly ForestModelName[] = ['Rock_1_G_Color1', 'Rock_3_H_Color1'];
+
+/** Уровень земли вокруг площадки: луг из buildMeadow, на нём же стоит лес. */
+const MEADOW_Y = -0.02;
+
+/** Насколько далеко за поляну уходит лес, в клетках. */
+const FOREST_DEPTH = 5;
+/** Полоса между поляной и первым деревом: иначе лес закрывает крайние здания. */
+const FOREST_GAP = 2;
+
+/** Детерминированный шум по координате — тот же приём, что у земли. */
+const noise = (x: number, z: number): number =>
+  (((Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1) + 1) % 1;
 
 export class CampView {
   readonly group = new THREE.Group();
@@ -80,9 +108,66 @@ export class CampView {
     if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;
     this.groundMesh = mesh;
     this.group.add(mesh);
+    // Своей подстилки у леса нет: земля под ним — луг из buildMeadow,
+    // и деревья стоят на его уровне (MEADOW_Y).
+    this.group.add(this.forest);
   }
 
   private groundMesh!: THREE.InstancedMesh;
+  private readonly forest = new THREE.Group();
+  private forestMat: THREE.MeshLambertMaterial | null = null;
+
+  /**
+   * Лес за поляной. Пересобирается вместе с площадью: деревья стоят там, где
+   * лагеря ещё нет, и отступают на клетку с каждым уровнем Штаба.
+   */
+  private buildForest(area: number): void {
+    for (const child of [...this.forest.children]) child.removeFromParent();
+    this.forestMat ??= this.track(forestMaterial());
+
+    const models = [...CAMP_TREES, ...CAMP_ROCKS];
+    const spots: number[][] = models.map(() => []);
+
+    for (let z = -FOREST_DEPTH; z < 10 + FOREST_DEPTH; z++) {
+      for (let x = -FOREST_DEPTH; x < 10 + FOREST_DEPTH; x++) {
+        const clear =
+          x >= -FOREST_GAP && z >= -FOREST_GAP && x < area + FOREST_GAP && z < area + FOREST_GAP;
+        if (clear) continue;
+        const n = noise(x, z);
+        if (n > 0.5) continue; // просветы: сплошная стена читается как забор
+        // Камни редки — это лес, а не осыпь.
+        const model = n < 0.05 ? CAMP_TREES.length + (z & 1) : Math.floor(n * 40) % CAMP_TREES.length;
+        spots[model]!.push(x, z);
+      }
+    }
+
+    const dummy = new THREE.Object3D();
+    for (let m = 0; m < models.length; m++) {
+      const list = spots[m]!;
+      if (list.length === 0) continue;
+      const tree = m < CAMP_TREES.length;
+      const mesh = new THREE.InstancedMesh(
+        forestGeometry(models[m]!, 1),
+        this.forestMat,
+        list.length / 2,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i += 2) {
+        const x = list[i]!;
+        const z = list[i + 1]!;
+        const n = noise(z, x);
+        const size = tree ? 1.9 + n * 1.1 : 0.5 + n * 0.5;
+        dummy.position.set(x + (n - 0.5) * 0.8, MEADOW_Y, z + (noise(x + 7, z) - 0.5) * 0.8);
+        dummy.rotation.set(0, n * 6.28, 0);
+        dummy.scale.set(size * (0.9 + n * 0.2), size, size * (0.9 + n * 0.2));
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i / 2, dummy.matrix);
+      }
+      this.forest.add(mesh);
+    }
+  }
+
   private meadow: FluffyGrass | null = null;
 
   /**
@@ -104,7 +189,7 @@ export class CampView {
     const SEGMENTS = 72;
     const cx = 5;
     const cz = 5;
-    const y = -0.02;
+    const y = MEADOW_Y;
 
     const position: number[] = [];
     const index: number[] = [];
@@ -227,7 +312,8 @@ export class CampView {
       }
     }
     this.groundMesh.instanceMatrix.needsUpdate = true;
-    // Площадь изменилась — трава отступает с новых клеток.
+    // Площадь изменилась — лес и трава отступают с новых клеток вместе.
+    this.buildForest(area);
     this.meadow?.replant();
     this.syncVillagers();
   }
@@ -358,6 +444,11 @@ export class CampView {
     this.meadow?.dispose();
     this.meadow = null;
     this.groundMesh.dispose();
+    // Геометрия леса общая на страницу (кэш forest.ts) — освобождаются только
+    // буферы экземпляров.
+    for (const mesh of this.forest.children) {
+      if (mesh instanceof THREE.InstancedMesh) mesh.dispose();
+    }
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
     this.buildings.clear();

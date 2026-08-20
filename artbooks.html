@@ -83,6 +83,8 @@
   .ghost:focus-visible{outline:2px solid var(--brass);outline-offset:2px;}
   .ghost[disabled]{opacity:.4;cursor:default;}
   .ghost[disabled]:hover{border-color:var(--line);color:var(--dim);}
+  .ghost.play{color:var(--brass);border-color:color-mix(in srgb,var(--brass) 45%,var(--line));}
+  .ghost.lead{font-size:13.5px;padding:9px 16px;}
 
   .prog{flex:none;height:2px;background:var(--surface-2);}
   .prog i{display:block;height:100%;width:0;background:var(--brass);transition:width .12s linear;}
@@ -97,6 +99,7 @@
     margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
   .cover h1 em{font-style:italic;color:var(--brass);}
   .cover .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .cover .cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:22px 0 0;}
   .shelf{display:flex;flex-direction:column;gap:18px;}
   .shelf h2{font-family:var(--ff-display);font-weight:400;font-size:24px;margin:0;letter-spacing:-.01em;}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:16px;}
@@ -154,6 +157,8 @@
       <button class="ghost" id="prev" title="Предыдущая книга — [">←</button>
       <button class="ghost" id="next" title="Следующая книга — ]">→</button>
       <a class="ghost wide" id="solo" target="_blank" rel="noopener" hidden>Отдельно ↗</a>
+      <a class="ghost play" href="./index.html" target="_blank" rel="noopener"
+         title="Играбельное демо: то, что из этих книг уже собрано">Демо ↗</a>
     </div>
     <div class="prog"><i id="progi"></i></div>
 
@@ -166,6 +171,8 @@
             раскадровки, арт-байбл, живые прототипы механик.
             Каждый открывается здесь же, с оглавлением слева — и остаётся обычной страницей,
             которую можно открыть отдельно.</p>
+          <p class="cta"><a class="ghost play lead" href="./index.html" target="_blank" rel="noopener">Открыть демо игры ↗</a>
+            <span class="note">то, что из этих книг уже собрано</span></p>
         </header>
         <div id="shelves"></div>
       </div>
@@ -194,6 +201,7 @@
     { file:'building.html', title:'Стройка в лагере', shelf:'Лагерь' },
     { file:'buildart.html', title:'Стройка: раскадровка и арт', shelf:'Лагерь' },
     { file:'artbook.html', title:'Артбук Emberhold', shelf:'Арт и звук' },
+    { file:'forest.html', title:'Набор моделей: лес', shelf:'Арт и звук' },
     { file:'animation.html', title:'Скелетные клипы', shelf:'Арт и звук' },
     { file:'sound.html', title:'Звук Emberhold', shelf:'Арт и звук' },
   ];
