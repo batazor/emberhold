@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "tsx scripts/check.ts",
-    "measure": "tsx scripts/measure.ts"
+    "measure": "tsx scripts/measure.ts",
+    "play": "tsx scripts/play.ts"
   },
   "dependencies": {
     "three": "^0.180.0"
