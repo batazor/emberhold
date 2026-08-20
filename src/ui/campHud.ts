@@ -4,7 +4,6 @@ import {
   BUILDING_ORDER,
   BUILD_COST,
   BUILD_SECONDS,
-  MAX_LEVEL,
   gearBlock,
   itemCap,
   speedupCost,
@@ -288,6 +287,20 @@ export class CampHud {
     this.bannerTimer = 4;
   }
 
+  /**
+   * Цена и срок одной строкой. Первый уровень Кузницы бесплатен и мгновенен
+   * (§20.3), и «· 0 с» читалось бы как поломка таймера, а не как подарок:
+   * ноль в интерфейсе всегда выглядит ошибкой, поэтому он называется словом.
+   */
+  private priceLine(level: number): string {
+    const cost = this.costLine(level);
+    const seconds = BUILD_SECONDS[level] ?? 0;
+    if (cost === '' && seconds === 0) return 'бесплатно · сразу';
+    return `${cost === '' ? 'бесплатно' : cost} · ${
+      seconds === 0 ? 'сразу' : formatDuration(seconds)
+    }`;
+  }
+
   private costLine(level: number): string {
     const cost = BUILD_COST[level];
     if (cost === undefined) return '';
@@ -378,9 +391,7 @@ export class CampHud {
       row.button.disabled = block !== 'ok';
       row.status.textContent =
         block === 'ok' || block === 'resources'
-          ? `${this.costLine(level + 1)} · ${
-              level < MAX_LEVEL ? formatDuration(BUILD_SECONDS[level + 1] ?? 0) : ''
-            }`
+          ? this.priceLine(level + 1)
           : (BLOCK_TEXT[block] ?? '');
     }
 
