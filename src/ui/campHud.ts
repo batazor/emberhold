@@ -25,7 +25,9 @@ import { ONB_HINT } from '../sim/onboarding';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
-import type { Tier } from '../sim/types';
+import { RAID_NODES } from '../sim/world';
+import type { WorldNode } from '../sim/world';
+import { WorldMap } from './worldMap';
 
 /**
  * Лагерь: сцена первая, карточка по тапу.
@@ -47,7 +49,8 @@ export interface CampCallbacks {
   onBuyConsumable(id: ConsumableId): void;
   onRefundConsumable(at: number): void;
   onSpeedup(): void;
-  onRaid(tier: Tier): void;
+  /** §4 — идут в место на карте, а не в «ярус»: ярус у места один из трёх чисел. */
+  onRaid(node: number): void;
   /** §14 — ковка и улучшение это одно действие: слот один, предмет один. */
   onCraft(slot: GearSlot): void;
   /** §20.4 — перестановка: карточка вооружает режим, дальше тап по клетке. */
@@ -70,7 +73,24 @@ const GEAR_BLOCK_TEXT: Record<string, string> = {
 
 const RESOURCE_ORDER: readonly ResourceKind[] = ['salt', 'wood', 'iron', 'crystal'];
 
-const TIERS: readonly Tier[] = [0, 1, 2, 3];
+/**
+ * Карта открывается после второй вылазки (`onboarding.html`, `world.html`):
+ * она отвечает на скуку, и показанная раньше читается как ещё один экран
+ * меню. До этого вылазка идёт в назначенное место — ровно одно решение
+ * на экране, как и требует раскадровка.
+ */
+const mapOpen = (camp: CampState, onb: OnbStep): boolean => onb === 'done' && camp.raids >= 2;
+
+/**
+ * Назначенное место: самое дальнее из тех, куда пускает Кухня. Кадр 10
+ * онбординга — «выросшая Кухня зовёт дальше», и звать она обязана туда,
+ * что этой Кухней и открылось.
+ */
+function assignedNode(camp: CampState): WorldNode {
+  const open = RAID_NODES.filter((n) => tierBlock(camp, n.tier) === 'ok');
+  const pool = open.length > 0 ? open : RAID_NODES;
+  return [...pool].sort((a, b) => b.tier - a.tier)[0]!;
+}
 
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь. */
 type SheetKind = BuildingId | 'tiers' | 'shop' | 'roster' | null;
@@ -107,7 +127,10 @@ export class CampHud {
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
   private readonly gearRows = new Map<GearSlot, Row>();
-  private readonly tierButtons = new Map<Tier, HTMLButtonElement>();
+  /** Карта региона (§4). Живёт в том же листе, где раньше был список ярусов. */
+  private readonly map: WorldMap;
+  /** Вход в назначенное место — пока карта не открылась. */
+  private readonly firstRaid: HTMLButtonElement;
   private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
   private readonly banner: HTMLElement;
 
@@ -225,13 +248,15 @@ export class CampHud {
     // §11.6 — ставка объявляется до входа, а не выясняется после провала.
     this.tierCard = document.createElement('div');
     this.tierCard.className = 'tier-card';
-    tiers.appendChild(this.tierCard);
-    for (const tier of TIERS) {
-      const b = document.createElement('button');
-      b.addEventListener('click', () => this.cb.onRaid(tier));
-      this.tierButtons.set(tier, b);
-      tiers.appendChild(b);
-    }
+    // До карты вылазка идёт в одно назначенное место. Карта в первые минуты
+    // была бы экраном меню раньше, чем появилась скука, которой она отвечает
+    // (`world.html`, часть I; `onboarding.html` — карта после второй вылазки).
+    this.firstRaid = document.createElement('button');
+    this.firstRaid.addEventListener('click', () => {
+      if (this.last !== null) this.cb.onRaid(assignedNode(this.last.camp).id);
+    });
+    this.map = new WorldMap({ onRaid: (node) => this.cb.onRaid(node) });
+    tiers.append(this.tierCard, this.firstRaid, this.map.root);
     this.sections.set('tiers', tiers);
     this.sheet.appendChild(tiers);
 
@@ -342,6 +367,9 @@ export class CampHud {
     this.sheet.style.display = kind === null ? 'none' : '';
     for (const [key, el] of this.sections) el.style.display = key === kind ? '' : 'none';
     this.sheetTitle.textContent = this.titleFor(kind);
+    if (kind === 'tiers' && this.last !== null && mapOpen(this.last.camp, this.onb)) {
+      this.map.open(this.last.camp, this.last.now);
+    }
     this.paintOpen();
     // Кнопка перестановки принадлежит карточке здания и переезжает в неё:
     // здание всегда одно, а разделов много.
@@ -368,7 +396,9 @@ export class CampHud {
 
   private titleFor(kind: SheetKind): string {
     if (kind === null) return '';
-    if (kind === 'tiers') return 'Вылазка';
+    if (kind === 'tiers') {
+      return this.last !== null && mapOpen(this.last.camp, this.onb) ? 'Карта региона' : 'Вылазка';
+    }
     if (kind === 'shop') return 'В вылазку';
     if (kind === 'roster') return 'Отряд';
     return BUILDINGS[kind].name;
@@ -389,7 +419,7 @@ export class CampHud {
 
     this.last = { camp, now };
     this.paintOpen();
-    this.applyOnboarding(camp);
+    this.applyOnboarding();
   }
 
   /**
@@ -399,7 +429,7 @@ export class CampHud {
   private paintOpen(): void {
     if (this.last === null) return;
     const { camp, now } = this.last;
-    if (this.open === 'tiers') this.syncTiers(camp);
+    if (this.open === 'tiers') this.syncTiers(camp, now);
     else if (this.open === 'shop') this.syncShop(camp);
     else if (isBuilding(this.open)) {
       this.syncBuilding(camp, this.open, now);
@@ -407,18 +437,26 @@ export class CampHud {
     }
   }
 
-  private syncTiers(camp: CampState): void {
-    // Закрытый ярус говорит, чем он закрыт: молчащая серая кнопка читается
-    // как поломка, а не как условие.
-    for (const tier of TIERS) {
-      const b = this.tierButtons.get(tier);
-      if (b === undefined) continue;
-      const blocked = tierBlock(camp, tier) !== 'ok';
-      b.disabled = blocked;
-      b.textContent = blocked
-        ? `${TIER_NAME[tier]} · нужна Кухня ${TIER_KITCHEN_GATE[tier]}`
-        : `${TIER_NAME[tier]} · ставка ${Math.round(TIER_RISK[tier] * 100)}%`;
+  private syncTiers(camp: CampState, now: number): void {
+    const map = mapOpen(camp, this.onb);
+    this.map.root.style.display = map ? '' : 'none';
+    this.tierCard.style.display = map ? 'none' : '';
+    this.firstRaid.style.display = map ? 'none' : '';
+    if (map) {
+      this.map.sync(camp, now);
+      return;
     }
+    // Назначенное место: та же карточка, что раньше называла ярус. Ставка
+    // и здесь объявлена до входа — молчащая кнопка читается как поломка.
+    const node = assignedNode(camp);
+    const blocked = tierBlock(camp, node.tier) !== 'ok';
+    this.tierCard.innerHTML =
+      `<div class="t"><b>${node.name}</b><span class="dim">${TIER_NAME[node.tier]}</span></div>` +
+      `<p class="dim">При провале теряется ${Math.round(TIER_RISK[node.tier] * 100)}% добычи</p>`;
+    this.firstRaid.textContent = blocked
+      ? `Нужна Кухня ур. ${TIER_KITCHEN_GATE[node.tier]}`
+      : 'В вылазку';
+    this.firstRaid.disabled = blocked;
   }
 
   private syncShop(camp: CampState): void {
@@ -527,7 +565,7 @@ export class CampHud {
    * потом выросшая Кухня зовёт на следующий ярус. Ни нижней строки, ни
    * кнопки «Закрыть»: закрывать нечего, действие ровно одно.
    */
-  private applyOnboarding(camp: CampState): void {
+  private applyOnboarding(): void {
     const building = this.onb === 'build';
     const leaving = this.onb === 'tier';
     const quiet = building || leaving;
@@ -553,21 +591,8 @@ export class CampHud {
       kitchen.barWrap.style.display = 'none';
     }
 
-    this.tierCard.style.display = leaving ? '' : 'none';
-    for (const tier of TIERS) {
-      const b = this.tierButtons.get(tier);
-      if (b === undefined) continue;
-      b.style.display = leaving && tier !== 1 ? 'none' : '';
-      if (leaving && tier === 1) {
-        b.textContent = `В вылазку · ${TIER_NAME[1]}`;
-        b.disabled = tierBlock(camp, 1) !== 'ok';
-      }
-    }
-    if (leaving) {
-      this.tierCard.innerHTML =
-        `<div class="t"><b>${TIER_NAME[1]}</b><span class="dim">ярус 1</span></div>` +
-        `<p class="dim">При провале теряется ${Math.round(TIER_RISK[1] * 100)}% добычи</p>`;
-    }
+    // Карточка и кнопка вылазки живут в syncTiers: и в кадре 10, и после
+    // него это одно и то же — назначенное место, названное до входа.
   }
 
   /* ---------- мелочи ---------- */

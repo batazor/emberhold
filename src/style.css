@@ -171,8 +171,35 @@ button:active { background: rgba(255, 255, 255, 0.12); }
 #camp .sec { display: flex; flex-direction: column; gap: 10px; }
 #camp .gear { display: flex; flex-direction: column; gap: 10px; margin-top: 4px;
   padding-top: 10px; border-top: 1px solid var(--line); }
-#camp .tiers { gap: 6px; }
-#camp .tiers button { text-align: left; }
+#camp .tiers { gap: 8px; }
+#camp .tiers > button { text-align: center; padding: 11px; }
+/* ---------- карта региона (§4) ---------- */
+/* Весь регион виден сразу: ни скролла, ни тумана войны. Пропорция задана
+   здесь, а не в разметке, — карта обязана влезать в лист вместе с карточкой
+   на 360×780, иначе решение принимается вслепую. */
+#camp .map { gap: 8px; }
+.map-cv { width: 100%; aspect-ratio: 3 / 2; max-height: 30vh; display: block; }
+.map-card {
+  display: flex; flex-direction: column; gap: 4px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+}
+.map-card .t { display: flex; justify-content: space-between; align-items: baseline; }
+.map-card .t b { font-size: 14px; }
+.map-card .t i { font-style: normal; font-size: 11px; color: var(--dim); }
+.map-card .line {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: var(--dim);
+}
+.map-card .line b { font-size: 12px; color: var(--ink); font-weight: 600; }
+.map-card .line b.good { color: var(--good); }
+.map-card .line b.bad { color: var(--bad); }
+/* Богатство — три засечки, а не число: «сколько ещё заходов» читается
+   взглядом, а число заставляет считать. */
+.map-card .pips { display: flex; gap: 4px; }
+.map-card .pips s { width: 22px; height: 4px; background: var(--good); border-radius: 2px; }
+.map-card .pips s.off { background: rgba(232, 226, 212, 0.16); }
+.map-note { font-size: 11px; color: var(--dim); min-height: 14px; }
+#camp .map > button { padding: 11px; }
 /* Перестановка — второе действие карточки, поэтому тише главного. */
 #camp .b .move { align-self: flex-start; font-size: 11px; padding: 5px 9px; }
 /* Нижняя строка: три входа и ничего больше. Главный — вылазка.

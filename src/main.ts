@@ -48,13 +48,21 @@ import {
 import type { HeroState, Roster } from './sim/heroes';
 import { ONB_HINT, firstTapCell, grantFirstBuilding, reveal } from './sim/onboarding';
 import type { OnbStep } from './sim/onboarding';
-import { firstGladeCell, generateGlade, gladeFood, siteBlock } from './sim/prologue';
+import {
+  firstGladeCell,
+  generateGlade,
+  gladeCapacity,
+  gladeFood,
+  TENT_WOOD,
+  siteBlock,
+} from './sim/prologue';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { addResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
+import { RAID_NODES, lootMul, nodeOf, nodeSeed, shiftAt, worldAt } from './sim/world';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
@@ -109,6 +117,9 @@ let raid: RaidState | null = null;
 let titleView: TitleView | null = null;
 /** Герой, который сейчас в локации: раны и опыт зачисляются ему. */
 let raidHero: HeroState | null = null;
+/** Место на карте, в котором идёт вылазка (§4). Экран возврата зовёт обратно
+ *  в него же — пока в нём есть что брать. */
+let raidNode = 0;
 let raidView: RaidView | null = null;
 /**
  * Идёт пролог. Отдельного режима у него нет: поляна ходится теми же
@@ -135,6 +146,10 @@ const PITCH_HINT: Partial<Record<BuildingId, string>> = {
 };
 /** Клетки, уже занятые зданиями лагеря. */
 const pitched: Cell[] = [];
+/** Сколько брусков собрано на поляне. Хранится затем, чтобы кольцо
+ *  подсказки переезжало на следующий брусок в момент подбора, а не
+ *  пересчитывалось каждый кадр. */
+let gladeTaken = -1;
 let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
@@ -231,10 +246,10 @@ const campHud = new CampHud(app, {
     track({ t: 'speedup', at: now, building: c.building, cost, leftSec: left });
     persist();
   },
-  onRaid: (tier) => {
+  onRaid: (node) => {
     // Вторая вылазка — конец раскадровки: дальше игра работает как обычно.
     if (onboarding.step === 'tier') onboarding.set('done');
-    toRaid(tier);
+    toRaid(node);
   },
   onCraft: (slot) => forge(slot),
   // §20.4 — карточка вооружает перестановку, дальше игрок бьёт по клетке.
@@ -373,9 +388,10 @@ function showOnb(step: OnbStep): void {
   hud.setHint(ONB_HINT[step] ?? '');
   campHud.setOnboarding(step);
   // Точка тапа нужна ровно в первом кадре: дальше игрок уже знает жест.
-  if (step === 'glade' && raid !== null) {
+  if ((step === 'glade' || step === 'gather') && raid !== null) {
     const cell = firstGladeCell(raid.loc, raid.hero);
     if (cell !== null) raidView?.showHint(cell.x, cell.z);
+    else raidView?.hideHint();
   } else if (step === 'move' && raid !== null) {
     const cell = firstTapCell(raid.loc, raid.hero);
     if (cell !== null) raidView?.showHint(cell.x, cell.z);
@@ -425,9 +441,9 @@ const returnScreen = new ReturnScreen(app, {
     returnScreen.hide();
     toCamp();
   },
-  onRaid: (tier) => {
+  onRaid: (node) => {
     returnScreen.hide();
-    toRaid(tier);
+    toRaid(node);
   },
   onCamp: () => {
     returnScreen.hide();
@@ -523,7 +539,22 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   mode = scene;
 }
 
-function toRaid(tier: Tier): boolean {
+/**
+ * Место, куда пускает нынешняя Кухня. Нужно там, где место не выбирают:
+ * перезапуск посреди кадра вылазки и отладочный вход.
+ */
+function firstOpenNode(): number {
+  const open = RAID_NODES.filter((n) => tierBlock(camp, n.tier) === 'ok');
+  return (open.length > 0 ? open : RAID_NODES)[0]!.id;
+}
+
+/**
+ * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
+ * карточкой карты — сюда приходит уже принятое решение.
+ */
+function toRaid(node: number): boolean {
+  const place = nodeOf(node);
+  const tier = place.tier;
   leaveTitle();
   inGlade = false;
   campPrompt.setVisible(false);
@@ -531,7 +562,7 @@ function toRaid(tier: Tier): boolean {
   // открываться в обход Кухни ни через отладку, ни через сохранение
   // от прежней сборки.
   if (tierBlock(camp, tier) !== 'ok') {
-    campHud.notify(`Ярус ${tier}: нужна Кухня ур. ${TIER_KITCHEN_GATE[tier]}`);
+    campHud.notify(`${place.name}: нужна Кухня ур. ${TIER_KITCHEN_GATE[tier]}`);
     return false;
   }
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
@@ -540,16 +571,27 @@ function toRaid(tier: Tier): boolean {
     campHud.notify('Все герои заняты — ждём лечения или тренировки');
     return false;
   }
+  raidNode = node;
   const rotated = hero !== activeHero(roster);
   if (rotated) selectHero(roster, roster.heroes.indexOf(hero));
   hero.status = 'raid';
   raidHero = hero;
 
+  // Богатство места на момент входа. Считается здесь, а не в панели: панель
+  // могла быть открыта полчаса назад, а смена мира — сорок минут.
+  const now = clock.now();
+  const rich = worldAt(now, camp.visits)[node]?.rich ?? 0;
+  const mul = lootMul(rich);
+
   raidView?.dispose();
   raid = createRaid({
-    // ?seed=N повторяет ту же локацию: §6 — воспроизводимость багов и замеров.
-    seed: debugSeed ?? ((Math.random() * 1e9) | 0),
+    // Сид у места свой и не меняется: пещера — свойство места, а не захода.
+    // ?seed=N по-прежнему перебивает его: §6 — воспроизводимость багов.
+    seed: debugSeed ?? nodeSeed(node),
     tier,
+    // §4 — истощение множит добычу, а не запирает вход: плохая сделка
+    // оставляет решение игроку, запрет отправляет его ждать вне игры.
+    lootMul: mul,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
@@ -564,6 +606,9 @@ function toRaid(tier: Tier): boolean {
   // §21 — купленное уходит в вылазку и не возвращается: сгорает независимо
   // от того, пригодилось или нет. Копить нечего.
   camp.loadout = [];
+  // Заход тратит богатство места — и чужой, и свой. Это единственная дельта,
+  // которую мир хранит (§4): кланы и восстановление считаются функцией.
+  camp.visits.push({ node, shift: shiftAt(now) });
   persist();
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile);
   hud.setGrass(grassPerTile);
@@ -578,7 +623,7 @@ function toRaid(tier: Tier): boolean {
   // Счётчики первой вылазки обнуляются вместе с ней: перезапуск возвращает
   // игрока к первому кадру, а не к середине раскадровки.
   onboarding.enterRaid(raid);
-  track({ t: 'raid_start', at: clock.now(), tier, food: raid.foodMax, capacity: raid.capacity });
+  track({ t: 'raid_start', at: now, tier, food: raid.foodMax, capacity: raid.capacity });
   // §11.8 — ротация меряется здесь: сменил героя или дождался лечения.
   track({ t: 'hero_pick', at: clock.now(), cls: hero.cls, level: hero.level, rotated });
   return true;
@@ -652,10 +697,26 @@ function tryPlace(cell: Cell): void {
   raidView?.place(placing, cell.x, cell.z);
   play('build');
   pitched.push(cell);
+  // Палатка встаёт из принесённого: бруски уходят из сумки на глазах,
+  // на той же полосе, в которую их только что клали. Ради этой секунды
+  // сбор в прологе и заведён — «здание стоит принесённого» показывается
+  // до лагеря, а не объясняется в нём.
+  //
+  // Тратится не больше, чем собрано: пролог показывает цену, а не запирает
+  // за ней. Запирать умеет лагерная экономика (§20.3), и там цена настоящая.
+  if (placing === 'hq') {
+    const paid = Math.min(TENT_WOOD, raid.bag.wood);
+    raid.bag.wood -= paid;
+    raid.bagTotal -= paid;
+  }
   const next = PITCH_ORDER[PITCH_ORDER.indexOf(placing) + 1];
   if (next === undefined) {
     placing = null;
     raidView?.hideSite();
+    // Что осталось в сумке, герой унёс с собой: лагерь стоит на этой поляне,
+    // и терять принесённое по дороге в него было бы неоткуда.
+    addResources(camp.resources, raid.bag);
+    persist();
     // Лагерь встал — единственное настоящее созвучие игры (§18.3).
     play('levelup');
     hud.setHint('Лагерь разбит');
@@ -687,6 +748,8 @@ function toGlade(): void {
     loadout: loadout(hero),
     loc: generateGlade(seed),
     food: gladeFood(),
+    // Сумка пролога — своя, как и провиант: Склада ещё нет (`prologue.ts`).
+    capacity: gladeCapacity(),
     // Выхода с поляны нет, и кольцо эвакуации не рисуется: уйти можно
     // только тем, что провиант кончился.
     evacOpen: false,
@@ -702,6 +765,7 @@ function toGlade(): void {
   rig.night = 0.12;
   resultShown = false;
   inGlade = true;
+  gladeTaken = -1;
   ear.reset(raid);
   placing = null;
   pitched.length = 0;
@@ -965,18 +1029,25 @@ let lastRender = performance.now();
 // переживают, и заставка посреди раскадровки уводила бы игрока из неё.
 if (onboarding.step === 'glade' || onboarding.step === 'done') {
   toTitle();
-} else if (!onboarding.inRaid || !toRaid(0)) {
+} else if (!onboarding.inRaid || !toRaid(firstOpenNode())) {
   // Вход мог не открыться (сейв от прежних правил) — тогда честно в лагерь,
   // а не в пустой экран.
   toCamp();
 }
 
-// Отладочный вход: ?tier=N открывает игру сразу в вылазке нужного яруса.
-// Нужен, чтобы проверять вылазку и экран возврата, не проходя лагерь заново.
+// Отладочный вход: ?tier=N открывает игру сразу в вылазке нужного яруса,
+// ?node=N — в конкретное место карты. Нужен, чтобы проверять вылазку и экран
+// возврата, не проходя лагерь заново.
 const debugTier = debugParams.get('tier');
 if (debugTier !== null) {
   const t = Number(debugTier);
-  if (t >= 0 && t <= 3) toRaid(t as Tier);
+  const place = RAID_NODES.find((n) => n.tier === t);
+  if (place !== undefined) toRaid(place.id);
+}
+const debugNode = debugParams.get('node');
+if (debugNode !== null) {
+  const n = Number(debugNode);
+  if (RAID_NODES.some((place) => place.id === n)) toRaid(n);
 }
 
 if (debugParams.has('bench')) {
@@ -1020,14 +1091,25 @@ startLoop({
       ear.hear(raid);
       if (inGlade) {
         hud.sync(raid, dt);
-        // Кадр кончается ровно на нуле провианта. Голод, который в вылазке
-        // отнимает рану через шесть секунд, сюда не успевает и не должен:
-        // терять ещё нечего, и учить потерям в прологе не на чем.
-        if (raid.food <= 0 && !resultShown) {
+        const taken = raid.loc.containers.filter((c) => c.opened).length;
+        if (taken !== gladeTaken) {
+          gladeTaken = taken;
+          // Первый брусок зажигает полосу рюкзака: ей есть что показать.
+          if (taken > 0) onboarding.set('gather');
+          // Кольцо переезжает на следующий брусок — и гаснет, когда их нет.
+          showOnb(onboarding.step);
+        }
+        // Кадр кончается собранным деревом — или провиантом, если игрок
+        // ушёл бродить мимо брусков. Голод, который в вылазке отнимает рану
+        // через шесть секунд, сюда не успевает и не должен: терять ещё
+        // нечего, и учить потерям в прологе не на чем.
+        const gathered = raid.loc.containers.every((c) => c.opened);
+        if ((gathered || raid.food <= 0) && !resultShown) {
           resultShown = true;
           raid.path = [];
           raid.status = 'evacuated';
           raidView?.hideHint();
+          campPrompt.setReason(gathered ? 'Дерево собрано' : 'Провиант кончился');
           campPrompt.setVisible(true);
           // Пульс отработал своё: он вёл к этой секунде и молчит после неё.
           stopPulse();
@@ -1071,6 +1153,8 @@ startLoop({
             track({ t: 'return_screen', at: clock.now(), canBuy, chose });
           },
           firstReturn,
+          raidNode,
+          clock.now(),
         );
       }
       return;

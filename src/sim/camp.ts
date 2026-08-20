@@ -5,6 +5,7 @@ import { modelKitchenFood, TIER_KITCHEN_GATE as GATE } from './balance';
 import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, emptyGear } from './gear';
 import type { GearSlot, GearState } from './gear';
 import type { Tier } from './types';
+import type { Visit } from './world';
 
 /**
  * Прототип v0 (§7): три здания плюс Кузница. Лазарет и Плац ждут — они
@@ -158,6 +159,11 @@ export interface CampState {
    *  между вылазками не переносятся, поэтому копить нечего. */
   loadout: ConsumableId[];
   raids: number;
+  /**
+   * Куда и когда ходил игрок (§4). Единственное, что мир хранит: всё
+   * остальное — кланы, богатство, раскладка — выводится из сида и часов.
+   */
+  visits: Visit[];
 }
 
 export function createCamp(): CampState {
@@ -177,6 +183,7 @@ export function createCamp(): CampState {
     gear: emptyGear(),
     loadout: [],
     raids: 0,
+    visits: [],
   };
 }
 

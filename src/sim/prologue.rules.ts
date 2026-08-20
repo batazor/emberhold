@@ -8,7 +8,17 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { FOOD_COST } from './config';
 import { distanceField, idx } from './grid';
-import { GLADE_FOOD, GLADE_SIZE, gladeFood, generateGlade, siteBlock } from './prologue';
+import {
+  GLADE_BAG,
+  GLADE_FOOD,
+  GLADE_SIZE,
+  TENT_WOOD,
+  firstGladeCell,
+  gladeCapacity,
+  gladeFood,
+  generateGlade,
+  siteBlock,
+} from './prologue';
 import { restartStep } from './onboarding';
 import { commandMove, createRaid, stepRaid } from './raid';
 
@@ -21,12 +31,49 @@ const freeCells = (loc: ReturnType<typeof generateGlade>): number => {
 };
 
 describe('Пролог: поляна', () => {
-  test('на поляне не с кем драться и нечего вскрывать', () => {
+  test('на поляне не с кем драться', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      assert.equal(glade(seed).enemies.length, 0, `сид ${seed}: противник в прологе`);
+    }
+  });
+
+  test('на поляне лежит ровно столько дерева, сколько стоит палатка', () => {
     for (let seed = 0; seed < 40; seed++) {
       const loc = glade(seed);
-      assert.equal(loc.enemies.length, 0, `сид ${seed}: противник в прологе`);
-      assert.equal(loc.containers.length, 0, `сид ${seed}: добыча в прологе`);
+      assert.equal(loc.containers.length, TENT_WOOD, `сид ${seed}: брусков не по цене палатки`);
+      let wood = 0;
+      for (const c of loc.containers) {
+        assert.equal(c.kind, 'wood', `сид ${seed}: на поляне не дерево`);
+        wood += c.amount;
+      }
+      // Лишний брусок учил бы собирать про запас, недостающий — запирал бы
+      // палатку. Подсвечено ровно то, что понадобится.
+      assert.equal(wood, TENT_WOOD, `сид ${seed}: дерева ${wood}, палатка стоит ${TENT_WOOD}`);
     }
+  });
+
+  test('бруски лежат врозь и не под ногами: до каждого надо дойти', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const loc = glade(seed);
+      const dist = distanceField(loc.size, loc.blocked, loc.evac);
+      for (const c of loc.containers) {
+        const d = dist[idx(loc.size, c.x, c.z)]!;
+        assert.ok(d >= 4, `сид ${seed}: брусок в ${d} шагах — на него наступают`);
+        assert.ok(d <= 7, `сид ${seed}: брусок в ${d} шагах — это уже поход`);
+      }
+      const [a, b] = loc.containers;
+      if (a !== undefined && b !== undefined) {
+        assert.ok(
+          Math.hypot(a.x - b.x, a.z - b.z) >= 4,
+          `сид ${seed}: бруски рядом — читаются как одна находка`,
+        );
+      }
+    }
+  });
+
+  test('сумка пролога — своя: Склада ещё нет', () => {
+    assert.equal(gladeCapacity(), GLADE_BAG);
+    assert.ok(GLADE_BAG > TENT_WOOD, 'сумка обязана вмещать палатку целиком');
   });
 
   test('уйти с поляны нельзя: кромка — сплошной лес', () => {
@@ -79,15 +126,16 @@ describe('Пролог: поляна', () => {
   });
 });
 
-describe('Пролог: кадр кончается провиантом', () => {
-  const prologue = (): ReturnType<typeof createRaid> =>
+describe('Пролог: кадр кончается собранным деревом', () => {
+  const prologue = (seed = 3): ReturnType<typeof createRaid> =>
     createRaid({
-      seed: 3,
+      seed,
       tier: 0,
       kitchenLevel: 1,
       storageLevel: 1,
-      loc: glade(3),
+      loc: glade(seed),
       food: gladeFood(),
+      capacity: gladeCapacity(),
       evacOpen: false,
     });
 
@@ -100,39 +148,64 @@ describe('Пролог: кадр кончается провиантом', () =>
   /**
    * Длина кадра меряется прогулкой, а не делением провианта на скорость:
    * герой тормозит на поворотах, и расчёт расходился с замером в полтора раза.
-   * Замер на 60 сидах даёт 11,6–15,0 с; границы взяты с запасом, чтобы
+   *
+   * Меряется теперь не «сколько бродить до нуля», а «сколько идти за деревом»:
+   * кадр кончается собранными брусками, и это его настоящая длина. Замер
+   * на 60 сидах — 7,8–13,7 с, в среднем 10,7; границы взяты с запасом, чтобы
    * падение означало смену механики, а не дрожание генератора.
    */
-  test('прогулка кончается провиантом за десяток секунд, а не за минуту', () => {
+  test('за деревом ходят десяток секунд, а не минуту', () => {
     const dt = 1 / 60;
     for (const seed of [0, 7, 23, 41]) {
-      const loc = glade(seed);
-      const state = createRaid({
-        seed, tier: 0, kitchenLevel: 1, storageLevel: 1,
-        loc, food: gladeFood(), evacOpen: false,
-      });
+      const state = prologue(seed);
+      const loc = state.loc;
       let t = 0;
-      while (state.food > 0 && t < 120) {
+      while (t < 120 && state.food > 0 && !loc.containers.every((c) => c.opened)) {
         if (state.path.length === 0) {
-          const d = distanceField(loc.size, loc.blocked, {
-            x: Math.round(state.hero.x),
-            z: Math.round(state.hero.z),
-          });
-          let best = -1;
-          let target = loc.evac;
-          for (let z = 0; z < loc.size; z++) {
-            for (let x = 0; x < loc.size; x++) {
-              const v = d[idx(loc.size, x, z)]!;
-              if (v > best) { best = v; target = { x, z }; }
-            }
-          }
-          commandMove(state, target);
+          const cell = firstGladeCell(loc, state.hero);
+          if (cell === null) break;
+          commandMove(state, cell);
+          if (state.path.length === 0) break;
         }
         stepRaid(state, dt, false, 0);
         t += dt;
       }
-      assert.ok(t > 8 && t < 20, `сид ${seed}: прогулка ${t.toFixed(1)} с`);
+      assert.ok(t > 5 && t < 18, `сид ${seed}: за деревом ходили ${t.toFixed(1)} с`);
     }
+  });
+
+  /**
+   * Тупика в первые пятнадцать секунд быть не может: палатка стоит два бруска,
+   * и провианта обязано хватать на оба с запасом на то, чтобы побродить.
+   * Запас — это и есть разница между старыми 20 и нынешними 40 (`prologue.ts`).
+   */
+  test('провианта хватает на оба бруска, и ещё остаётся', () => {
+    const dt = 1 / 60;
+    for (let seed = 0; seed < 60; seed++) {
+      const state = prologue(seed);
+      const loc = state.loc;
+      let t = 0;
+      while (t < 120 && state.food > 0 && !loc.containers.every((c) => c.opened)) {
+        if (state.path.length === 0) {
+          const cell = firstGladeCell(loc, state.hero);
+          if (cell === null) break;
+          commandMove(state, cell);
+          if (state.path.length === 0) break;
+        }
+        stepRaid(state, dt, false, 0);
+        t += dt;
+      }
+      assert.ok(
+        loc.containers.every((c) => c.opened),
+        `сид ${seed}: дерево не собрано за провиант — палатку не из чего ставить`,
+      );
+      assert.equal(state.bagTotal, TENT_WOOD, `сид ${seed}: в сумке не палатка`);
+      assert.ok(state.food >= 5, `сид ${seed}: осталось ${state.food} — побродить нечем`);
+    }
+  });
+
+  test('сумка не переполняется: собирать нечего сверх палатки', () => {
+    assert.ok(TENT_WOOD <= GLADE_BAG, 'палатка не влезает в сумку пролога');
   });
 
   test('выход закрыт: с поляны не эвакуируются', () => {
@@ -145,6 +218,9 @@ describe('Пролог: кадр кончается провиантом', () =>
 
   test('перезапуск возвращает в пролог, а не в вылазку', () => {
     assert.equal(restartStep('glade'), 'glade', 'сохранённый пролог открывался вылазкой');
+    // Собранный брусок перезапуск не переживает вместе с поляной: кадр
+    // начинается с себя самого, иначе палатка встала бы из ничего.
+    assert.equal(restartStep('gather'), 'glade', 'сбор возвращал в вылазку');
     assert.equal(restartStep('bait'), 'move', 'вылазка по-прежнему перематывается к началу');
     assert.equal(restartStep('build'), 'build', 'лагерные кадры перезапуск переживают');
   });

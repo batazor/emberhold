@@ -30,7 +30,11 @@ describe('Онбординг: порядок кадров', () => {
   test('игра начинается ходьбой по локации, а не в лагере', () => {
     assert.equal(ONB_ORDER[0], 'glade', 'первый кадр — прогулка по поляне');
     assert.ok(
-      stepIndex('move') === stepIndex('glade') + 1,
+      stepIndex('gather') === stepIndex('glade') + 1,
+      'сбор дерева — часть пролога, а не отдельная сцена после него',
+    );
+    assert.ok(
+      stepIndex('move') === stepIndex('gather') + 1,
       'вылазка идёт сразу за прологом: между ними нет ни экрана, ни меню',
     );
     assert.ok(
@@ -41,6 +45,7 @@ describe('Онбординг: порядок кадров', () => {
 
   test('кадры вылазки переживают перезапуск сбросом, лагерные — нет', () => {
     assert.ok(isRaidStep('glade'), 'поляна тоже не переживает перезапуск');
+    assert.ok(isRaidStep('gather'), 'собранное на поляне перезапуск не переживает');
     assert.ok(isRaidStep('move') && isRaidStep('evac'));
     assert.ok(!isRaidStep('return') && !isRaidStep('build') && !isRaidStep('done'));
   });
