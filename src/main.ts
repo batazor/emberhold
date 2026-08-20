@@ -6,8 +6,10 @@ import {
   play,
   setFoodShare,
   startAmbient,
+  startCampTune,
   startPulse,
   stopAmbient,
+  stopCampTune,
   stopPulse,
 } from './core/audio';
 import {
@@ -599,6 +601,7 @@ function toRaid(tier: Tier): boolean {
   rig.setZoom(18, true);
   rig.night = 1;
   resultShown = false;
+  stopCampTune();
   startAmbient(tier);
   listenFrom(raid);
   startPulse();
@@ -639,6 +642,7 @@ function toTitle(): void {
   mode = 'title';
   stopPulse();
   stopAmbient();
+  stopCampTune();
   inGlade = false;
   campPrompt.setVisible(false);
   hud.setVisible(false);
@@ -751,6 +755,7 @@ function toGlade(): void {
   resultShown = false;
   inGlade = true;
   // Поляна на поверхности — подложка «Подступы», светлая (§18.4).
+  stopCampTune();
   startAmbient(0);
   listenFrom(raid);
   startPulse();
@@ -771,9 +776,11 @@ function toGlade(): void {
 function toCamp(): void {
   leaveTitle();
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
-  // в лагере провиант ничего не отсчитывает.
+  // в лагере провиант ничего не отсчитывает. Взамен — единственная
+  // мелодия игры, и звучит она только здесь.
   stopPulse();
   stopAmbient();
+  startCampTune();
   inGlade = false;
   campPrompt.setVisible(false);
   raidView?.dispose();

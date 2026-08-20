@@ -380,6 +380,105 @@ export function startAmbient(tier: number): void {
   };
 }
 
+/* ---------- мелодия лагеря (§18.4) ---------- */
+
+/**
+ * Единственная мелодия в игре. Вылазке она не положена: сессия там две
+ * минуты, и музыка надоедает за день.
+ *
+ * Нота задаётся номером MIDI, а не герцами, ровно затем, чтобы строй можно
+ * было проверить правилом: вся петля лежит в ля-миноре — том же строе, что
+ * арпеджио роста здания (523·659·784·1046 — до-мажор, §18.3). Здание,
+ * достроившееся под музыку, попадает внутрь неё, а не поверх.
+ */
+export interface Note {
+  /** Номер MIDI: 69 — ля первой октавы, 440 Гц. */
+  readonly midi: number;
+  /** Секунды от начала фразы. */
+  readonly at: number;
+  readonly dur: number;
+}
+
+export interface Phrase {
+  readonly notes: readonly Note[];
+  /** Тишина после фразы, в секундах. */
+  readonly restSec: number;
+}
+
+/**
+ * Две фразы вперемешку, а не одна: повторяемая буквально петля превращается
+ * в метроном на третьем круге — та же причина, по которой у шага два
+ * варианта (§18.3).
+ */
+export const CAMP_PHRASES: readonly Phrase[] = [
+  {
+    notes: [
+      { midi: 69, at: 0, dur: 0.9 },
+      { midi: 72, at: 0.55, dur: 0.7 },
+      { midi: 76, at: 1.1, dur: 1.1 },
+      { midi: 74, at: 2.0, dur: 0.8 },
+      { midi: 69, at: 2.7, dur: 1.4 },
+    ],
+    restSec: 6,
+  },
+  {
+    notes: [
+      { midi: 64, at: 0, dur: 1.0 },
+      { midi: 67, at: 0.6, dur: 0.8 },
+      { midi: 69, at: 1.2, dur: 1.2 },
+      { midi: 67, at: 2.2, dur: 0.7 },
+      { midi: 64, at: 2.8, dur: 1.6 },
+    ],
+    restSec: 9,
+  },
+];
+
+/** Гудящая нота под фразой: ля большой октавы, почти неслышно. */
+const CAMP_DRONE = 45;
+
+export const midiHz = (midi: number): number => 440 * Math.pow(2, (midi - 69) / 12);
+
+/** Длина фразы — до конца последней ноты, а не до её начала. */
+export const phraseSec = (p: Phrase): number =>
+  p.notes.reduce((end, n) => Math.max(end, n.at + n.dur), 0);
+
+let tuneTimer: ReturnType<typeof setTimeout> | null = null;
+let tuneOn = false;
+let tuneAt = 0;
+
+function playPhrase(): void {
+  if (tuneTimer !== null) clearTimeout(tuneTimer);
+  tuneTimer = null;
+  if (!tuneOn || ac === null) return;
+
+  const phrase = CAMP_PHRASES[tuneAt % CAMP_PHRASES.length]!;
+  const len = phraseSec(phrase);
+  tn({ type: 'sine', f0: midiHz(CAMP_DRONE), dur: len, gain: 0.05, bus: 'amb' });
+  for (const n of phrase.notes) {
+    tn({ type: 'triangle', f0: midiHz(n.midi), dur: n.dur, gain: 0.11, at: n.at, bus: 'amb' });
+  }
+
+  tuneAt++;
+  tuneTimer = setTimeout(playPhrase, (len + phrase.restSec) * 1000);
+}
+
+/**
+ * Мелодия лагеря. Начинается с тишины, а не с ноты: вход в лагерь
+ * и так звучит — экраном возврата или ростом здания, — и музыка,
+ * стартующая одновременно с ними, слышится как каша.
+ */
+export function startCampTune(): void {
+  if (tuneOn) return;
+  tuneOn = true;
+  tuneTimer = setTimeout(playPhrase, 1200);
+}
+
+export function stopCampTune(): void {
+  tuneOn = false;
+  if (tuneTimer !== null) clearTimeout(tuneTimer);
+  tuneTimer = null;
+}
+
 export function stopAmbient(): void {
   ambient?.();
   ambient = null;
@@ -400,6 +499,7 @@ export function bindPageAudio(): void {
     if (document.hidden) {
       stopPulse();
       stopAmbient();
+      stopCampTune();
       if (ac !== null && ac.state === 'running') void ac.suspend();
     } else if (ac !== null && ac.state === 'suspended') {
       void ac.resume();
