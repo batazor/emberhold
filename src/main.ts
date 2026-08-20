@@ -44,15 +44,18 @@ import {
   trainBlock,
 } from './sim/heroes';
 import type { HeroState, Roster } from './sim/heroes';
-import { ONB_HINT, firstTapCell, grantFirstBuilding, reveal } from './sim/onboarding';
+import { ONB_HINT, firstTapCell, grantLevelOffBooks, reveal } from './sim/onboarding';
 import type { OnbStep } from './sim/onboarding';
 import {
+  adoptGladeLayout,
   firstGladeCell,
   generateGlade,
   gladeCapacity,
   gladeFood,
   nearCamp,
   restTick,
+  CAMP_WOOD,
+  KITCHEN_WOOD,
   TENT_WOOD,
   UPGRADE_WOOD,
   siteBlock,
@@ -241,20 +244,17 @@ const hud = new Hud(app, {
 
 const campHud = new CampHud(app, {
   onUpgrade: (id) => {
-    // Кадр 9: первое здание вырастает на глазах — бесплатно и без таймера
-    // (§20.2, §20.3). Ожиданию и ценнику учит уже вторая постройка.
-    if (onboarding.step === 'build' && id === 'kitchen') {
-      if (grantFirstBuilding(camp, 'kitchen')) {
-        track({
-          t: 'build_done',
-          at: clock.now(),
-          building: 'kitchen',
-          level: camp.levels.kitchen,
-        });
-        onboarding.set('tier');
-        play('levelup');
-        campHud.notify(`${BUILDINGS.kitchen.name} ур. ${camp.levels.kitchen}`);
-      }
+    // Кадр «поставьте Мастерскую» идёт обычной стройкой, без подарка.
+    // Дарить и нечего: жильё, Кухня и Склад стоят с ур. 1 из `createCamp`,
+    // а палатку и костёр игрок уже оплатил деревом на поляне. Мастерская —
+    // четвёртое здание и первое, у которого есть ценник; платит он камнем,
+    // за которым и ходил, и цена уходит со счётчика у него на глазах.
+    //
+    // Мгновенность при этом осталась: у первого уровня нет таймера (§20.2),
+    // и ждать игрока на этом кадре ещё никто не учил.
+    if (onboarding.step === 'build' && id === 'forge') {
+      if (!beginUpgrade(id)) return;
+      onboarding.set('craft');
       return;
     }
     // Отказ обязан быть слышен: молчащая кнопка читается как поломка.
@@ -275,8 +275,11 @@ const campHud = new CampHud(app, {
     persist();
   },
   onRaid: (node) => {
+    // Первая вылазка: место игрок выбрал на карте сам, и кадр трогается
+    // отсюда, а не из локации — в локацию он уже приезжает начатым.
+    if (onboarding.step === 'world') onboarding.set('move');
     // Вторая вылазка — конец раскадровки: дальше игра работает как обычно.
-    if (onboarding.step === 'tier') onboarding.set('done');
+    else if (onboarding.step === 'craft') onboarding.set('done');
     toRaid(node);
   },
   onCraft: (slot) => forge(slot),
@@ -435,7 +438,7 @@ const TRAIN_REASON: Record<string, string> = {
 
 const BLOCK_REASON: Record<string, string> = {
   max: 'максимальный уровень',
-  'hq-cap': 'выше Штаба нельзя',
+  'hq-cap': 'выше Жилья нельзя',
   'slot-busy': 'слот занят другой стройкой',
   resources: 'не хватает ресурсов',
   ok: 'не вышло',
@@ -446,9 +449,9 @@ function upgradeReason(state: CampState, id: BuildingId): string {
 }
 
 const GEAR_REASON: Record<string, string> = {
-  'no-forge': 'нужна Кузница',
+  'no-forge': 'нужна Мастерская',
   max: 'лучше не бывает',
-  'forge-cap': 'Кузница не тянет выше',
+  'forge-cap': 'Мастерская не тянет выше',
   resources: 'не хватает железа',
   ok: 'не вышло',
 };
@@ -535,8 +538,9 @@ function showOnb(step: OnbStep): void {
     // назовёт её заново — отдых и улучшение говорят по обстановке, а не по кадру.
     gladeHint = '';
     const home = pitched[0];
-    if (upgraded) raidView?.hideHint();
-    else if (raid.bag.wood >= UPGRADE_WOOD && home !== undefined) {
+    // Ветки «уже улучшено» здесь нет: улучшение кончает кадр вместе
+    // с прологом, и показывать этому кадру больше нечего.
+    if (raid.bag.wood >= UPGRADE_WOOD && home !== undefined) {
       raidView?.showHint(home.x, home.z);
     } else {
       const cell = firstGladeCell(raid.loc, raid.hero);
@@ -683,7 +687,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
     campView.hideWallGhost();
   }
   // Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
-  const quiet = onboarding.step === 'build' || onboarding.step === 'tier';
+  const quiet = onboarding.step === 'build' || onboarding.step === 'craft';
   const panels = panelsFor(scene, quiet);
   hud.setVisible(panels.hud);
   campHud.setVisible(panels.campHud);
@@ -915,11 +919,13 @@ function tryPlace(cell: Cell): void {
   //
   // Тратится не больше, чем собрано: пролог показывает цену, а не запирает
   // за ней. Запирать умеет лагерная экономика (§20.3), и там цена настоящая.
-  if (placing === 'hq') {
-    const paid = Math.min(TENT_WOOD, raid.bag.wood);
-    raid.bag.wood -= paid;
-    raid.bagTotal -= paid;
-  }
+  // Оба здания лагеря стоят дерева, и оба берут не больше, чем собрано:
+  // пролог показывает цену, но за неё не запирает (§16.1). Запирает лагерная
+  // экономика (§20.3), и там цена настоящая.
+  const price = placing === 'hq' ? TENT_WOOD : KITCHEN_WOOD;
+  const paid = Math.min(price, raid.bag.wood);
+  raid.bag.wood -= paid;
+  raid.bagTotal -= paid;
   const next = PITCH_ORDER[PITCH_ORDER.indexOf(placing) + 1];
   if (next === undefined) {
     placing = null;
@@ -962,7 +968,7 @@ function stepGladeCamp(dt: number): void {
     // Бесплатно и мгновенно, как первая постройка (§20.2): ждать таймер
     // игрок ещё не научился, а «здание стоит принесённого» показывается
     // деревом, которое уходит из сумки на глазах.
-    grantFirstBuilding(camp, 'hq');
+    grantLevelOffBooks(camp, 'hq');
     raidView?.setLevel('hq', camp.levels.hq);
     play('levelup');
     upgraded = true;
@@ -971,8 +977,8 @@ function stepGladeCamp(dt: number): void {
     addResources(camp.resources, raid.bag);
     raid.bag = emptyResources();
     raid.bagTotal = 0;
-    persist();
-    showOnb(onboarding.step);
+    endGlade();
+    return;
   }
 
   if (near && raid.food < raid.foodMax) restAcc = restTick(restAcc, dt, raid);
@@ -987,9 +993,9 @@ function stepGladeCamp(dt: number): void {
   if (raid.food <= 0) resting = true;
   else if (raid.food >= raid.foodMax || !near) resting = false;
 
-  const hint = upgraded
-    ? 'Палатка ур. 2'
-    : resting
+  // Ветки `upgraded` здесь нет: как только палатка выросла, кадр кончается
+  // лагерем (`endGlade`), и строке пролога уже некому показываться.
+  const hint = resting
       ? near
         ? 'Отдых · провиант растёт'
         : 'Провиант кончился — отдохните у палатки'
@@ -998,6 +1004,25 @@ function stepGladeCamp(dt: number): void {
     gladeHint = hint;
     hud.setHint(hint);
   }
+}
+
+/**
+ * Конец пролога. Жильё выросло до второго уровня — и поляна становится тем,
+ * чем была всё это время: лагерем.
+ *
+ * Уводит игрока не выход с поляны, а нижняя строка лагеря: выхода у поляны
+ * нет и не заводилось (`prologue.ts` — кромка сплошной лес), а кнопка «В мир»
+ * стоит там же, где стояли кнопки всю игру.
+ *
+ * Раскладка едет с поляны: палатка и костёр остаются на тех клетках, которые
+ * выбрал игрок. Иначе выбор места в прологе не значил бы ничего за его
+ * пределами — лагерь показал бы раскладку по умолчанию, и игрок не узнал бы
+ * места, которое сам и разбил.
+ */
+function endGlade(): void {
+  if (raid !== null) adoptGladeLayout(camp, raid.loc.size, PITCH_ORDER, pitched);
+  onboarding.set('world');
+  toCamp();
 }
 
 /**
@@ -1025,13 +1050,16 @@ function toGlade(): void {
     food: gladeFood(),
     // Сумка пролога — своя, как и провиант: Склада ещё нет (`prologue.ts`).
     capacity: gladeCapacity(),
-    // Выхода с поляны нет, и кольцо эвакуации не рисуется: уйти можно
-    // только тем, что провиант кончился.
+    // Выхода с поляны нет, и кольцо эвакуации не рисуется: пролог кончается
+    // не эвакуацией, а вторым уровнем жилья — и открывшимся лагерем.
     evacOpen: false,
     // Подбор бесплатен, голод раны не грызёт: провиант здесь — шаги, а нуль
     // провианта — повод отдохнуть у лагеря, а не проиграть (`prologue.ts`).
     containerFood: 0,
     hunger: false,
+    // Ставку событие подбора не называет: полоса риска на поляне скрыта
+    // до кадра `bait`, и слово «под угрозой» шло впереди механики.
+    risk: false,
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade');
   hud.setGrass(grassPerTile);
@@ -1079,7 +1107,7 @@ function toCamp(): void {
   campInput.reset();
   rig.lookAt(c.x, c.z, true);
   // Кадр растёт вместе с площадью (§20.4): фиксированный зум либо резал
-  // лагерь на Штабе ур. 5, либо оставлял пустое поле на первом.
+  // лагерь на Жилье ур. 5, либо оставлял пустое поле на первом.
   rig.setZoom(campArea(camp.levels.hq) * 2.8, true);
   // Лагерь — вечер, а не полдень: тёплый свет и длинные тени читаются лучше
   // на плоском затенении, чем прямое солнце.
@@ -1311,7 +1339,7 @@ function tickHeroes(now: number): boolean {
     );
     changed = true;
   }
-  // §11.8 — второй герой на Штабе ур. 2, третий на ур. 4.
+  // §11.8 — второй герой на Жилье ур. 2, третий на ур. 4.
   let unlocked = syncRoster(roster, camp.levels.hq);
   while (unlocked !== null) {
     campHud.notify(`${HERO_CLASSES[unlocked].name} принят в отряд`);
@@ -1413,7 +1441,10 @@ startLoop({
         //
         // Симуляция при этом не замирает: приглашение висит, а игрок волен
         // собирать дальше и нажать, когда решит остаться.
-        const enough = raid.bag.wood >= TENT_WOOD;
+        // Зовут, когда собран весь лагерь, а не одна палатка: костёр теперь
+        // тоже стоит дерева, и приглашение с двумя брусками в сумке обещало бы
+        // то, на что не хватит. Ровно сумка — полный рюкзак и есть лагерь.
+        const enough = raid.bag.wood >= CAMP_WOOD;
         if (pitched.length === 0 && (enough || raid.food <= 0) && !resultShown) {
           resultShown = true;
           campPrompt.setReason(enough ? 'Дерево собрано' : 'Провиант кончился');

@@ -121,6 +121,10 @@ interface TierStat {
   byFood: number;
   byCombat: number;
   byKind: Record<string, number>;
+  /** Сколько камня принёс каждый заход, включая провальные. Нужно затем, что
+   *  цену первого здания решает не средний игрок, а тот, кому её не хватило:
+   *  среднее по 300 вылазкам такого игрока не показывает вовсе. */
+  stoneRuns: number[];
 }
 
 function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierStat {
@@ -137,6 +141,7 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     byFood: 0,
     byCombat: 0,
     byKind: {},
+    stoneRuns: [],
   };
 
   for (let seed = 1; seed <= RUNS; seed++) {
@@ -166,6 +171,9 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
         stat.byKind[kind] = (stat.byKind[kind] ?? 0) + 1;
       } else stat.byFood += 1;
     }
+    // Провальный заход тоже считается: ставка §11.4 отнимает не всё, и вопрос
+    // «хватит ли на Мастерскую» задаётся о любом возвращении, а не об удачном.
+    stat.stoneRuns.push(r.carried.stone);
     if (r.status === 'evacuated') {
       stat.success += 1;
       stat.carriedTotal += r.carriedTotal;
@@ -238,4 +246,47 @@ for (const s of stats) {
     `  ярус ${s.tier}: добыча ${per.toFixed(1)} → цена ${(per / 0.7).toFixed(1)} ` +
       `(${(1 / 0.7).toFixed(2)} вылазки)`,
   );
+}
+
+/*
+ * Цена Мастерской (§16.1, третий акт пролога). Вопрос у неё свой, и ни §11.5,
+ * ни бот на него не отвечают.
+ *
+ * §11.5 («добыча ≈ 70% цены») задаёт темп середины игры, а речь о первом
+ * возвращении, которое обязано кончиться постройкой почти у всех.
+ *
+ * Бот же меряет не тот заход: он осторожен и уходит рано, а первую вылазку
+ * ведёт раскадровка — кадр `bait` держит игрока, пока не вскрыты два
+ * контейнера. Поэтому меряется то, что даёт вскрытая пара, а не средний
+ * заход осторожного игрока: два ближних контейнера яруса 0.
+ */
+console.log('\nЦена Мастерской: что даёт первая вылазка (два ближних контейнера)');
+console.log('─'.repeat(74));
+{
+  const hauls: number[] = [];
+  for (let i = 0; i < RUNS; i++) {
+    const state = createRaid({ seed: 20260820 + i, tier: 0, kitchenLevel: 1, storageLevel: 1 });
+    const { loc } = state;
+    const from = { x: Math.round(state.hero.x), z: Math.round(state.hero.z) };
+    const near = [...loc.containers]
+      .map((c) => ({ c, d: findPath(loc.size, loc.blocked, from, { x: c.x, z: c.z }).length }))
+      .filter((e) => e.d > 0)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 2);
+    hauls.push(near.reduce((sum, e) => sum + (e.c.kind === 'stone' ? e.c.amount : 0), 0));
+  }
+  const sorted = [...hauls].sort((a, b) => a - b);
+  const at = (q: number): number => sorted[Math.floor(q * (sorted.length - 1))] ?? 0;
+  console.log(
+    `  камня в паре: медиана ${at(0.5)} · нижняя десятая ${at(0.1)} · ` +
+      `нижняя четверть ${at(0.25)} · максимум ${at(1)}`,
+  );
+  console.log(`  ни камня вовсе: ${((hauls.filter((n) => n === 0).length / hauls.length) * 100).toFixed(0)}% ` +
+    '— оба контейнера выпали деревом, и никакая цена этого не чинит');
+  for (let price = 1; price <= 8; price += 1) {
+    const share = hauls.filter((n) => n >= price).length / hauls.length;
+    const mark = share >= 0.8 ? ' ←' : '';
+    console.log(`  цена ${price}: хватило ${(share * 100).toFixed(0)}%${mark}`);
+  }
+  console.log('  (← — цены, которые покрывает четыре первых вылазки из пяти)');
 }

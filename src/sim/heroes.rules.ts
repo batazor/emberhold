@@ -33,13 +33,13 @@ import { createRaid, stepRaid, useSkill } from './raid';
 import { load, save, wipe } from './save';
 
 describe('Отряд', () => {
-  test('§11.8 — второй герой на Штабе ур. 2, третий на ур. 4', () => {
+  test('§11.8 — второй герой на Жилье ур. 2, третий на ур. 4', () => {
     const roster = createRoster();
     assert.equal(roster.heroes.length, 1, 'на старте герой один');
-    assert.equal(syncRoster(roster, 1), null, 'Штаб ур. 1 никого не открывает');
+    assert.equal(syncRoster(roster, 1), null, 'Жильё ур. 1 никого не открывает');
     assert.equal(syncRoster(roster, 2), 'warrior', 'ур. 2 — Ратник');
     assert.equal(syncRoster(roster, 3), null, 'ур. 3 не открывает третьего');
-    assert.equal(syncRoster(roster, 4), 'salter', 'ур. 4 — Солевар');
+    assert.equal(syncRoster(roster, 4), 'porter', 'ур. 4 — Носильщик');
     assert.equal(syncRoster(roster, 6), null, 'больше трёх героев не бывает');
   });
 
@@ -88,15 +88,15 @@ describe('Отряд', () => {
   test('§11.7 — классы различаются рюкзаком, ранами и обзором', () => {
     const ranger = loadout(createHero('ranger', 0));
     const warrior = loadout(createHero('warrior', 1));
-    const salter = loadout(createHero('salter', 2));
+    const porter = loadout(createHero('porter', 2));
 
     assert.equal(ranger.bagMul, 0.75, 'Следопыт: рюкзак −25%');
-    assert.equal(salter.bagMul, 1.3, 'Солевар: рюкзак +30%');
+    assert.equal(porter.bagMul, 1.3, 'Носильщик: рюкзак +30%');
     assert.equal(warrior.wounds, 4, 'Ратник: четыре раны');
 
     // §11.4 — обзор = 3 + Знание/5. Ратник видит на тайл меньше базового.
     assert.equal(visionRadius(ranger.knowledge, false, false), 5);
-    assert.equal(visionRadius(salter.knowledge, false, false), 4);
+    assert.equal(visionRadius(porter.knowledge, false, false), 4);
     assert.equal(visionRadius(warrior.knowledge, false, false), 3);
   });
 
@@ -104,9 +104,9 @@ describe('Отряд', () => {
     const opts = { seed: 4242, tier: 1 as const, kitchenLevel: 3, storageLevel: 3 };
     const base = createRaid(opts).capacity;
     const light = createRaid({ ...opts, loadout: loadout(createHero('ranger', 0)) }).capacity;
-    const heavy = createRaid({ ...opts, loadout: loadout(createHero('salter', 1)) }).capacity;
+    const heavy = createRaid({ ...opts, loadout: loadout(createHero('porter', 1)) }).capacity;
     assert.ok(light < base, 'Следопыт несёт меньше');
-    assert.ok(heavy > base, 'Солевар несёт больше');
+    assert.ok(heavy > base, 'Носильщик несёт больше');
   });
 
   test('§11.7 — умение применяется один раз за вылазку, отката нет', () => {
@@ -115,7 +115,7 @@ describe('Отряд', () => {
       tier: 1,
       kitchenLevel: 3,
       storageLevel: 3,
-      loadout: loadout(createHero('salter', 0)),
+      loadout: loadout(createHero('porter', 0)),
     });
     const before = state.food;
     assert.equal(useSkill(state), true);

@@ -20,7 +20,7 @@ import { createRaid, stepRaid } from './raid';
 describe('Расходники', () => {
   test('§21.1 — не больше двух за вылазку', () => {
     const camp = createCamp();
-    camp.resources = { salt: 999, wood: 0, iron: 999, crystal: 0 };
+    camp.resources = { stone: 999, wood: 0, iron: 999, crystal: 0 };
     assert.equal(buyConsumable(camp, 'ration'), true);
     assert.equal(buyConsumable(camp, 'bandage'), true);
     assert.equal(buyConsumable(camp, 'smoke'), false, 'третий слот не продаётся');
@@ -29,27 +29,27 @@ describe('Расходники', () => {
 
   test('§21.1 — до входа деньги возвращаются целиком', () => {
     const camp = createCamp();
-    camp.resources = { salt: 20, wood: 0, iron: 0, crystal: 0 };
-    const price = CONSUMABLES.ration.price.salt ?? 0;
+    camp.resources = { stone: 20, wood: 0, iron: 0, crystal: 0 };
+    const price = CONSUMABLES.ration.price.stone ?? 0;
     buyConsumable(camp, 'ration');
-    assert.equal(camp.resources.salt, 20 - price, 'списано ровно по прайсу');
+    assert.equal(camp.resources.stone, 20 - price, 'списано ровно по прайсу');
     assert.equal(refundConsumable(camp, 0), true);
-    assert.equal(camp.resources.salt, 20);
+    assert.equal(camp.resources.stone, 20);
     assert.equal(refundConsumable(camp, 0), false, 'возвращать нечего');
   });
 
   test('§21.3 — предлагается самый дешёвый по карману', () => {
     const camp = createCamp();
-    const cheapest = CONSUMABLES.ration.price.salt ?? 0;
-    camp.resources = { salt: cheapest, wood: 0, iron: 0, crystal: 0 };
+    const cheapest = CONSUMABLES.ration.price.stone ?? 0;
+    camp.resources = { stone: cheapest, wood: 0, iron: 0, crystal: 0 };
     assert.equal(cheapestAffordable(camp.resources, camp.loadout), 'ration');
-    camp.resources.salt = cheapest - 1;
+    camp.resources.stone = cheapest - 1;
     assert.equal(cheapestAffordable(camp.resources, camp.loadout), null);
   });
 
   test('§20.1 — предлагается, когда слот стройки занят', () => {
     const camp = createCamp();
-    camp.resources = { salt: 30, wood: 30, iron: 0, crystal: 0 };
+    camp.resources = { stone: 30, wood: 30, iron: 0, crystal: 0 };
     startUpgrade(camp, 'hq', 0);
     assert.equal(suggestUpgrade(camp), null, 'стройку предложить нельзя');
     assert.notEqual(

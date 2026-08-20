@@ -14,7 +14,7 @@ import {
   BAIT_TIMEOUT,
   ONB_ORDER,
   REVEAL_PAUSE,
-  grantFirstBuilding,
+  grantLevelOffBooks,
   isRaidStep,
   nextRaidStep,
   openEvacWhenEarned,
@@ -37,10 +37,24 @@ describe('Онбординг: порядок кадров', () => {
       stepIndex('upgrade') === stepIndex('gather') + 1,
       'второй уровень палатки — часть пролога, а не первое дело в лагере',
     );
+    /*
+     * Раньше здесь стояло обратное: «вылазка идёт сразу за прологом, между
+     * ними нет ни экрана, ни меню». Правило отменено сознательно.
+     *
+     * Держалось оно на том, что игрок к этому моменту не видел ни одного меню
+     * и первое место ему назначали. Пролог это уже сломал: он кончается тем,
+     * что палатка и костёр стоят, — то есть лагерем, — и прятать от игрока
+     * лагерь, в котором он стоит, ради чистоты правила значило бы уводить его
+     * с поляны неизвестно куда. Место первой вылазки игрок выбирает сам,
+     * на карте, и уходит туда кнопкой «В мир» из той же нижней строки,
+     * где кнопки стояли всё время.
+     */
     assert.ok(
-      stepIndex('move') === stepIndex('upgrade') + 1,
-      'вылазка идёт сразу за прологом: между ними нет ни экрана, ни меню',
+      stepIndex('world') === stepIndex('upgrade') + 1 &&
+        stepIndex('move') === stepIndex('world') + 1,
+      'между прологом и вылазкой ровно один кадр — лагерь с картой',
     );
+    assert.ok(!isRaidStep('world'), 'лагерь после пролога переживает перезапуск');
     assert.ok(
       stepIndex('build') > stepIndex('evac'),
       'лагерь идёт после эвакуации: он награда за вылазку, а не стартовая комната',
@@ -52,6 +66,7 @@ describe('Онбординг: порядок кадров', () => {
     assert.ok(isRaidStep('gather'), 'собранное на поляне перезапуск не переживает');
     assert.ok(isRaidStep('move') && isRaidStep('evac'));
     assert.ok(!isRaidStep('return') && !isRaidStep('build') && !isRaidStep('done'));
+    assert.ok(!isRaidStep('world'), 'лагерь есть лагерь, где бы он ни стоял в порядке');
   });
 });
 
@@ -172,7 +187,7 @@ describe('Онбординг: первая постройка', () => {
   test('первое здание бесплатно и мгновенно (§20.2, §20.3)', () => {
     const camp = createCamp();
     const before = { ...camp.resources };
-    assert.ok(grantFirstBuilding(camp, 'kitchen'));
+    assert.ok(grantLevelOffBooks(camp, 'kitchen'));
     assert.equal(camp.levels.kitchen, 2);
     assert.equal(camp.construction, null, 'таймера нет: здание выросло на глазах');
     assert.deepEqual(camp.resources, before, 'ценника нет');
@@ -182,7 +197,7 @@ describe('Онбординг: первая постройка', () => {
     const camp = createCamp();
     assert.equal(tierBlock(camp, 1), 'kitchen', 'до постройки ярус 1 закрыт');
     const foodBefore = kitchenFood(camp.levels.kitchen);
-    grantFirstBuilding(camp, 'kitchen');
+    grantLevelOffBooks(camp, 'kitchen');
     assert.ok(kitchenFood(camp.levels.kitchen) > foodBefore, 'провиант вырос');
     assert.equal(camp.levels.kitchen, TIER_KITCHEN_GATE[1]);
     assert.equal(tierBlock(camp, 1), 'ok');
@@ -193,7 +208,7 @@ describe('Онбординг: первая постройка', () => {
   test('подарок не выдаётся поверх занятого слота стройки', () => {
     const camp = createCamp();
     camp.construction = { building: 'hq', toLevel: 2, startedAt: 0, endsAt: 999 };
-    assert.equal(grantFirstBuilding(camp, 'kitchen'), false);
+    assert.equal(grantLevelOffBooks(camp, 'kitchen'), false);
     assert.equal(camp.levels.kitchen, 1);
   });
 });
