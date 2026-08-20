@@ -133,8 +133,13 @@ function skillActive(state: RaidState, id: RaidState['loadout']['skill']): boole
  * маршрута: срезать нечего, локация уже сгенерирована, а телепорт к выходу
  * обесценил бы эвакуацию. Проверяется телеметрией: если умение не меняет
  * глубину эвакуации, читается оно неправильно.
+ *
+ * Функция открыта наружу затем, что планировать дорогу назад обязан тот же
+ * ценник, по которому она списывается: бот, считающий шаг по полной цене
+ * при действующей Тропе, показывает нулевой эффект умения — не потому,
+ * что его нет, а потому, что он в его план не попал.
  */
-function stepFoodCost(state: RaidState): number {
+export function stepFoodCost(state: RaidState): number {
   return FOOD_COST.step * (skillActive(state, 'trail') ? 1 - TRAIL_STEP_DISCOUNT : 1);
 }
 

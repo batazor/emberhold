@@ -50,6 +50,12 @@ interface Row {
  */
 export class CampHud {
   private readonly root: HTMLElement;
+  /**
+   * Место для панелей, которые живут в лагере, но не принадлежат зданиям, —
+   * сейчас там отряд (§11.8). Слот, а не прямой доступ к корню: порядок
+   * элементов в лагере — решение этой панели, а не того, кто в неё встраивается.
+   */
+  readonly slot: HTMLElement;
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
   private readonly tierButtons = new Map<Tier, HTMLButtonElement>();
@@ -98,7 +104,10 @@ export class CampHud {
       raid.appendChild(b);
     }
 
-    this.root.append(res, this.banner, list, raid);
+    this.slot = document.createElement('div');
+    this.slot.className = 'camp-slot';
+
+    this.root.append(res, this.banner, list, this.slot, raid);
     parent.appendChild(this.root);
   }
 

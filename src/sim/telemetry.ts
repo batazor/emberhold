@@ -9,6 +9,7 @@
  * Формат сразу такой, чтобы его можно было отправлять как есть.
  */
 import type { BuildingId } from './camp';
+import type { HeroClassId, SkillId } from './heroes';
 import type { Tier } from './types';
 
 export type ExitPoint = 'raid' | 'camp' | 'return';
@@ -36,6 +37,15 @@ export type TelemetryEvent =
   | { t: 'build_start'; at: number; building: BuildingId; toLevel: number; seconds: number }
   | { t: 'build_done'; at: number; building: BuildingId; level: number }
   | { t: 'speedup'; at: number; building: BuildingId; cost: number; leftSec: number }
+  /**
+   * §11.7 — доля вылазок, где умение применено. Ниже половины означает, что
+   * умение непонятно или бесполезно; это и есть его единственная проверка.
+   */
+  | { t: 'skill'; at: number; skill: SkillId; tier: Tier }
+  /** §11.8 — работает ли ротация: сменил героя или подождал лечения. */
+  | { t: 'hero_pick'; at: number; cls: HeroClassId; level: number; rotated: boolean }
+  | { t: 'heal_start'; at: number; cls: HeroClassId; wounds: number; seconds: number }
+  | { t: 'train_start'; at: number; cls: HeroClassId; level: number }
   | { t: 'exit'; at: number; where: ExitPoint };
 
 const KEY = 'new-world/telemetry';

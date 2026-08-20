@@ -300,6 +300,47 @@ export function refreshHeroes(roster: Roster, now: number): HeroTick[] {
   return done;
 }
 
+/* ---------- итог вылазки ---------- */
+
+export interface RaidOutcome {
+  /** Сколько ран получено в этой вылазке. */
+  readonly wounds: number;
+  /** Сколько уровней взято прямо сейчас. */
+  readonly levels: number;
+  /** Сколько секунд герой будет лечиться. 0 — вернулся целым. */
+  readonly healSec: number;
+}
+
+/**
+ * Вернувшийся герой ранен и занят лечением (§3) — на этом держится ротация.
+ * Функция живёт здесь, а не в связке экранов: правило «раны переносятся из
+ * вылазки в расписание» — это правило отряда, и проверяться оно должно
+ * без браузера.
+ *
+ * `woundsLeft` — сколько ран у героя осталось в конце вылазки (в локации они
+ * считаются вниз от максимума класса).
+ */
+export function applyRaidOutcome(
+  hero: HeroState,
+  woundsLeft: number,
+  carried: number,
+  tier: number,
+  evacuated: boolean,
+  now: number,
+): RaidOutcome {
+  const max = HERO_CLASSES[hero.cls].wounds;
+  hero.wounds = Math.min(max, Math.max(0, max - Math.max(0, woundsLeft)));
+  hero.status = 'ready';
+  hero.busyUntil = null;
+  const levels = addXp(hero, raidXp(carried, tier, evacuated));
+  const healing = startHealing(hero, now);
+  return {
+    wounds: hero.wounds,
+    levels,
+    healSec: healing ? healSeconds(hero.wounds) : 0,
+  };
+}
+
 /* ---------- выход в вылазку ---------- */
 
 export type RaidBlock = 'ok' | 'healing' | 'training' | 'raid';

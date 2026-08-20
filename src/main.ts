@@ -14,8 +14,22 @@ import {
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { HERO_KNOWLEDGE, visionRadius } from './sim/config';
-import { commandMove, createRaid, raidResult, stepRaid } from './sim/raid';
+import { visionRadius } from './sim/config';
+import {
+  HERO_CLASSES,
+  activeHero,
+  applyRaidOutcome,
+  firstReady,
+  loadout,
+  raidBlock,
+  refreshHeroes,
+  selectHero,
+  startTraining,
+  syncRoster,
+  trainBlock,
+} from './sim/heroes';
+import type { HeroState, Roster } from './sim/heroes';
+import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { addResources } from './sim/resources';
 import { load, save } from './sim/save';
@@ -25,6 +39,7 @@ import { CampView } from './render/campView';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { CampHud } from './ui/campHud';
+import { RosterPanel } from './ui/rosterPanel';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
 import { Hud } from './ui/hud';
@@ -36,6 +51,7 @@ if (app === null) throw new Error('нет #app');
 const loaded = load();
 const clock = new Clock(loaded.watermark);
 let camp: CampState = loaded.camp;
+const roster: Roster = loaded.roster;
 
 loadTelemetry();
 // §9 — время до возвращения в игру после установки таймера. Меряется только
@@ -56,12 +72,25 @@ if (finishedOffline !== null) {
 
 let mode: 'camp' | 'raid' = 'camp';
 let raid: RaidState | null = null;
+/** Герой, который сейчас в локации: раны и опыт зачисляются ему. */
+let raidHero: HeroState | null = null;
 let raidView: RaidView | null = null;
 let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
 let lastCampFrame = 0;
 let selected: BuildingId | null = null;
+
+/**
+ * Кем идём в вылазку. Выбранный герой может быть занят (ушёл лечиться,
+ * пока игрок был в лагере) — тогда берём первого готового, а не блокируем
+ * кнопку: §11.8 вводил ротацию затем, чтобы простой не останавливал игру.
+ */
+function heroForRaid(): HeroState | null {
+  const chosen = activeHero(roster);
+  if (raidBlock(chosen) === 'ok') return chosen;
+  return firstReady(roster);
+}
 
 const rig = new SceneRig(app);
 const campView = new CampView(camp);
@@ -79,6 +108,10 @@ const hud = new Hud(app, {
   },
   onNight: (value) => {
     rig.night = value;
+  },
+  onSkill: () => {
+    if (raid === null) return;
+    if (useSkill(raid)) track({ t: 'skill', at: clock.now(), skill: raid.loadout.skill, tier: raid.loc.tier });
   },
 });
 
@@ -100,6 +133,38 @@ const campHud = new CampHud(app, {
   onRaid: (tier) => toRaid(tier),
 });
 
+const rosterPanel = new RosterPanel(campHud.slot, {
+  onSelect: (index) => {
+    const hero = roster.heroes[index];
+    if (hero === undefined) return;
+    if (raidBlock(hero) !== 'ok') {
+      campHud.notify(`${HERO_CLASSES[hero.cls].name} занят`);
+      return;
+    }
+    selectHero(roster, index);
+    persist();
+  },
+  onTrain: (index) => {
+    const hero = roster.heroes[index];
+    if (hero === undefined) return;
+    const block = trainBlock(roster, hero);
+    if (block !== 'ok') {
+      campHud.notify(`${HERO_CLASSES[hero.cls].name}: ${TRAIN_REASON[block] ?? 'нельзя тренировать'}`);
+      return;
+    }
+    startTraining(roster, hero, clock.now());
+    track({ t: 'train_start', at: clock.now(), cls: hero.cls, level: hero.level });
+    persist();
+  },
+});
+
+const TRAIN_REASON: Record<string, string> = {
+  cap: 'потолок — на два уровня ниже лучшего',
+  busy: 'занят',
+  'slot-busy': 'тренировочный слот занят',
+  max: 'максимальный уровень',
+};
+
 const BLOCK_REASON: Record<string, string> = {
   max: 'максимальный уровень',
   'hq-cap': 'выше Штаба нельзя',
@@ -115,7 +180,7 @@ function upgradeReason(state: CampState, id: BuildingId): string {
 const statsPanel = new StatsPanel(app);
 
 function persist(): void {
-  save(camp, clock.watermark);
+  save(camp, roster, clock.watermark);
 }
 
 const returnScreen = new ReturnScreen(app, {
@@ -147,6 +212,37 @@ function beginUpgrade(id: BuildingId): boolean {
   return true;
 }
 
+/**
+ * Вернувшийся герой ранен и занят лечением (§3) — на этом и держится
+ * потребность в ротации. Опыт начисляется от вынесенного, а не от времени
+ * в локации: иначе выгодно бродить, а не решать.
+ */
+function finishRaidForHero(
+  state: RaidState,
+  carried: number,
+  evacuated: boolean,
+  now: number,
+): void {
+  const hero = raidHero;
+  raidHero = null;
+  if (hero === null) return;
+
+  const name = HERO_CLASSES[hero.cls].name;
+  const outcome = applyRaidOutcome(
+    hero,
+    state.hero.wounds,
+    carried,
+    state.loc.tier,
+    evacuated,
+    now,
+  );
+  if (outcome.levels > 0) campHud.notify(`${name}: уровень ${hero.level}`);
+  if (outcome.healSec > 0) {
+    track({ t: 'heal_start', at: now, cls: hero.cls, wounds: outcome.wounds, seconds: outcome.healSec });
+    campHud.notify(`${name} ранен — Лазарет ${RosterPanel.healText(outcome.wounds)}`);
+  }
+}
+
 /* ---------- переходы между сценами ---------- */
 function toRaid(tier: Tier): void {
   // Кнопка уже заблокирована, но вход закрыт и здесь: ярус не должен
@@ -156,12 +252,24 @@ function toRaid(tier: Tier): void {
     campHud.notify(`Ярус ${tier}: нужна Кухня ур. ${TIER_KITCHEN_GATE[tier]}`);
     return;
   }
+  // §3 — в вылазку идёт один герой, и он обязан быть свободен.
+  const hero = heroForRaid();
+  if (hero === null) {
+    campHud.notify('Все герои заняты — ждём лечения или тренировки');
+    return;
+  }
+  const rotated = hero !== activeHero(roster);
+  if (rotated) selectHero(roster, roster.heroes.indexOf(hero));
+  hero.status = 'raid';
+  raidHero = hero;
+
   raidView?.dispose();
   raid = createRaid({
     seed: (Math.random() * 1e9) | 0,
     tier,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
   });
   raidView = new RaidView(raid.loc);
   rig.world.add(raidView.group);
@@ -173,9 +281,12 @@ function toRaid(tier: Tier): void {
   mode = 'raid';
   hud.setVisible(true);
   campHud.setVisible(false);
+  rosterPanel.setVisible(false);
   statsPanel.setVisible(false);
   returnScreen.hide();
   track({ t: 'raid_start', at: clock.now(), tier, food: raid.foodMax, capacity: raid.capacity });
+  // §11.8 — ротация меряется здесь: сменил героя или дождался лечения.
+  track({ t: 'hero_pick', at: clock.now(), cls: hero.cls, level: hero.level, rotated });
 }
 
 function toCamp(): void {
@@ -196,6 +307,7 @@ function toCamp(): void {
   idleSeconds = 0;
   hud.setVisible(false);
   campHud.setVisible(true);
+  rosterPanel.setVisible(true);
   statsPanel.setVisible(true);
   persist();
 }
@@ -251,6 +363,30 @@ addEventListener('visibilitychange', () => {
   persist();
 });
 
+/**
+ * Таймеры отряда и состав. Считается по монотонному времени, поэтому лечение
+ * и тренировка идут, пока игра закрыта, — это тот же оффлайн-прогресс, что
+ * у стройки (§2). Возвращает true, если что-то изменилось и надо сохранять.
+ */
+function tickHeroes(now: number): boolean {
+  let changed = false;
+  for (const done of refreshHeroes(roster, now)) {
+    const name = HERO_CLASSES[done.hero.cls].name;
+    campHud.notify(
+      done.what === 'healed' ? `${name} вылечен` : `${name}: уровень ${done.hero.level}`,
+    );
+    changed = true;
+  }
+  // §11.8 — второй герой на Штабе ур. 2, третий на ур. 4.
+  let unlocked = syncRoster(roster, camp.levels.hq);
+  while (unlocked !== null) {
+    campHud.notify(`${HERO_CLASSES[unlocked].name} принят в отряд`);
+    changed = true;
+    unlocked = syncRoster(roster, camp.levels.hq);
+  }
+  return changed;
+}
+
 /* ---------- цикл ---------- */
 let fpsAcc = 0;
 let fpsFrames = 0;
@@ -270,13 +406,14 @@ startLoop({
   update: (dt) => {
     const now = clock.now();
     if (mode === 'raid' && raid !== null) {
-      stepRaid(raid, dt, rig.night > 0.5, HERO_KNOWLEDGE);
+      stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
       hud.sync(raid, dt);
       if (raid.status !== 'running' && !resultShown) {
         resultShown = true;
         const result = raidResult(raid);
         addResources(camp.resources, result.carried);
         camp.raids += 1;
+        finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);
         persist();
         track({
           t: 'raid_end',
@@ -306,7 +443,9 @@ startLoop({
       campHud.notify(`${BUILDINGS[finished].name} готов`);
       persist();
     }
+    if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
+    rosterPanel.sync(roster, now);
   },
 
   render: (alpha) => {
@@ -319,7 +458,12 @@ startLoop({
     if (mode === 'raid' && raid !== null && raidView !== null) {
       raidView.sync(raid, alpha, dt, now);
       rig.lookAt(raid.hero.x, raid.hero.z);
-      rig.update(dt, raid.hero.x, raid.hero.z, visionRadius(HERO_KNOWLEDGE, rig.night > 0.5, true));
+      rig.update(
+        dt,
+        raid.hero.x,
+        raid.hero.z,
+        visionRadius(raid.loadout.knowledge, rig.night > 0.5, true),
+      );
       rig.render();
     } else {
       // camp.html §3: лагерь идёт на 30 кадрах и замирает через 20 секунд
