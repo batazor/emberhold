@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { HERO_WOUNDS, WOUND_COST } from './balance';
+import { HERO_WOUNDS, ENCOUNTER_WOUND } from './balance';
 import { HERO_REACH } from './config';
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { generateLocation } from './generate';
@@ -21,15 +21,16 @@ describe('Бой', () => {
   });
 
   test('§22 — бюджет ран, а не голов', () => {
-    // Считать противников поштучно означает мерить не то: падальщик стоит
-    // 0 ран (герой убивает его раньше первого удара), копейщик 1, голем 2.
-    // Замер детерминирован — 150 из 150 забегов дали одно и то же значение.
+    // Считать противников поштучно означает мерить не то. Но и дуэльная цена
+    // (падальщик 0, копейщик 1, голем 2) не годится: обход врага — часть игры.
+    // Замер в настоящей вылазке даёт цену присутствия — 0,06 / 0,73 / 0,85.
+    // Голем стоит не два копейщика, а 1,15: его обходят чаще всех.
     for (const [tier, roster] of Object.entries(TIER_ROSTER)) {
-      const wounds = roster.reduce((sum, kind) => sum + WOUND_COST[kind], 0);
+      const wounds = roster.reduce((sum, kind) => sum + ENCOUNTER_WOUND[kind], 0);
       assert.ok(
-        wounds < HERO_WOUNDS,
-        `ярус ${tier}: состав стоит ${wounds} ран при ${HERO_WOUNDS} у героя — ` +
-          'драка со всеми означает гарантированную смерть, а не риск',
+        wounds < HERO_WOUNDS - 0.5,
+        `ярус ${tier}: ожидаемые ${wounds.toFixed(2)} ран при ${HERO_WOUNDS} у героя — ` +
+          'провал становится расписанием, а не риском',
       );
       // Верхняя граница по головам остаётся, но она про отрисовку:
       // скиннованные меши не инстансятся (§21).

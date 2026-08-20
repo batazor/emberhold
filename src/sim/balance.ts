@@ -35,12 +35,11 @@ export const HOP_PER_N = 0.58;
 export const DETOUR = 1.15;
 
 /**
- * Раны, которые стоит одна доведённая до конца стычка. Значения измерены и
- * оказались целыми: герой убивает падальщика раньше, чем тот бьёт, копейщик
- * успевает ударить один раз за счёт длины копья, голем — дважды.
+ * Цена доведённой до конца дуэли: герой убивает падальщика раньше первого
+ * удара, копейщик успевает ударить раз за счёт длины копья, голем — дважды.
+ * Значения детерминированы, 150 замеров из 150 совпали.
  *
- * Отсюда разделение, на котором держится вся модель:
- * **падальщик — налог на провиант, копейщик и голем — налог на раны.**
+ * Для модели эти числа не годятся, и это важный урок: дуэль не равна вылазке.
  */
 export const WOUND_COST: Record<EnemyKind, number> = {
   scavenger: 0,
@@ -48,8 +47,23 @@ export const WOUND_COST: Record<EnemyKind, number> = {
   golem: 2,
 };
 
-/** Доля врагов, с которыми игрок всё же дерётся, несмотря на обходы. */
-export const ENGAGE_RATE = 0.55;
+/**
+ * Цена присутствия врага в настоящей вылазке — с обходами, отступлениями
+ * и тем, что до дальних просто не доходят. Измерено ботом: по три врага
+ * одного вида на локацию, 60 забегов на точку.
+ *
+ * Расхождение с дуэлью принципиальное: **голем стоит не два копейщика,
+ * а 1,15.** Он не преследует, поэтому его обходят чаще всех (доля встреч 0,6
+ * против 0,7 у копейщика). Модель, считавшая по дуэли, делала третий ярус
+ * легче второго — ошибку нашёл бот, из формул она не видна.
+ *
+ * Падальщик в дуэли стоит ноль, но в стае добивает раненого: 0,06.
+ */
+export const ENCOUNTER_WOUND: Record<EnemyKind, number> = {
+  scavenger: 0.06,
+  spearman: 0.73,
+  golem: 0.85,
+};
 
 /* ---------- вход ---------- */
 
@@ -114,23 +128,27 @@ export function deriveTier(spec: TierSpec): TierNumbers {
 
   // Состав врагов. Раны и провиант набираются раздельно: копейщики и големы
   // до бюджета ран, падальщики — сколько нужно давления на провиант.
+  // Бюджет считается ценой присутствия, а не дуэли: иначе непреследующий
+  // голем съедает вдвое больше бюджета, чем стоит на деле.
   const woundPoints = spec.woundBudget * HERO_WOUNDS;
   const roster: EnemyKind[] = [];
   let spent = 0;
-  while (spent + WOUND_COST.golem <= woundPoints && spec.size >= 18) {
+  while (spent + ENCOUNTER_WOUND.golem <= woundPoints && spec.size >= 18) {
     roster.push('golem');
-    spent += WOUND_COST.golem;
+    spent += ENCOUNTER_WOUND.golem;
   }
-  while (spent + WOUND_COST.spearman <= woundPoints) {
+  while (spent + ENCOUNTER_WOUND.spearman <= woundPoints) {
     roster.push('spearman');
-    spent += WOUND_COST.spearman;
+    spent += ENCOUNTER_WOUND.spearman;
   }
   // Падальщики: по одному на каждые полтора перегона — столько стычек,
-  // сколько маршрут естественно пересекает.
+  // сколько маршрут естественно пересекает. Ран почти не стоят, но едят
+  // провиант по 3 за стычку, и это их роль.
   const scavengers = Math.max(1, Math.round(reachable * 0.8));
   for (let i = 0; i < scavengers; i++) roster.push('scavenger');
+  spent += scavengers * ENCOUNTER_WOUND.scavenger;
 
-  const woundsTaken = spent * ENGAGE_RATE;
+  const woundsTaken = spent;
 
   return {
     food,
@@ -193,9 +211,9 @@ export function indifferenceBag(gain: number, failChance: number, risk: number):
  */
 export const TIER_SPEC: Record<Tier, TierSpec> = {
   0: { size: 8, containers: 3, generosity: 0.9, capacityRatio: 1.5, woundBudget: 0, depthValue: 1.4, risk: 0, base: 2 },
-  1: { size: 12, containers: 5, generosity: 0.5, capacityRatio: 1.7, woundBudget: 0.35, depthValue: 1.8, risk: 0.3, base: 2 },
-  2: { size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.7, depthValue: 2.6, risk: 0.6, base: 3 },
-  3: { size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.75, depthValue: 3.5, risk: 1, base: 3 },
+  1: { size: 12, containers: 5, generosity: 0.5, capacityRatio: 1.7, woundBudget: 0.25, depthValue: 1.8, risk: 0.3, base: 2 },
+  2: { size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.5, depthValue: 2.6, risk: 0.6, base: 3 },
+  3: { size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.6, depthValue: 3.5, risk: 1, base: 3 },
 };
 
 /**
