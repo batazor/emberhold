@@ -101,6 +101,12 @@ interface Pack {
    */
   readonly pose?: { readonly file: string; readonly clip: string; readonly at: number };
   /**
+   * Набор стоит на общем риге (`RIG`): в бандл едут кости и веса, а позу
+   * накладывает игра. Без этого запекается один кадр — модель, которая стоит,
+   * но не двигается.
+   */
+  readonly rigged?: boolean;
+  /**
    * Узлы скелета, мировая матрица которых сохраняется вместе с моделью.
    * Набор держит оружие в отдельном узле `handslot.r`; сохранив его,
    * рендер вкладывает предмет в руку по матрице набора, а не по подобранному
@@ -237,6 +243,30 @@ const DUNGEON: Pack = {
 };
 
 /**
+ * Риг KayKit `Rig_Medium` — общий на все наборы: и скелеты, и герои стоят
+ * на нём, с теми же двадцатью тремя костями и той же позой привязки.
+ * Поэтому и скелет, и клипы пишутся один раз в свой файл, а наборы только
+ * приводят к нему свои индексы костей: две копии одних и тех же дорожек
+ * стоили бы сорок килобайт у каждого игрока за то же самое.
+ *
+ * Клипов пять и ни одним больше — состояния §17.1. На этом риге их 126,
+ * и «ещё пару на будущее» стоило бы килобайтов за механику, которой нет.
+ */
+const RIG = {
+  /** Откуда читается сам скелет: у любой модели на этом риге он одинаков. */
+  from: 'assets/kaykit-skeletons/gltf/Skeleton_Minion.glb',
+  file: 'src/render/rig.data.ts',
+  prefix: 'RIG',
+  clips: [
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', as: 'покой' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_MovementBasic.glb', clip: 'Walking_A', as: 'ходьба' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatMelee.glb', clip: 'Melee_1H_Attack_Chop', as: 'удар' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Hit_A', as: 'урон' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Death_A', as: 'падение' },
+  ],
+} as const;
+
+/**
  * Третий набор — противники. Разница с первыми двумя не в содержимом,
  * а в устройстве файла: скелеты приходят одним `.glb` со скином, скелетом
  * и встроенным атласом, а клипы лежат отдельно. Отсюда всё, что этот набор
@@ -311,6 +341,7 @@ const SKELETONS: Pack = {
    */
   pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
   attach: ['handslot.r'],
+  rigged: true,
   categoryOf: (name) => SKELETON_CATEGORIES[name.split('_')[1]!] ?? 'Прочее',
   /**
    * Трое из четырёх и два предмета — по одному противнику §15 на скелет.
@@ -397,13 +428,21 @@ const ADVENTURERS: Pack = {
    */
   pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
   attach: ['handslot.r'],
+  rigged: true,
   categoryOf: (name) => ADVENTURER_CATEGORIES[name.split('_')[0]!.toLowerCase()] ?? 'Прочее',
   /**
-   * Взят один — тот, которым играют с первой вылазки. Остальные пять измерены
-   * и ждут строки в HERO_MODELS: персонаж тяжелее камня в тридцать раз,
-   * и «весь набор на всякий случай» тут дороже, чем в лесу.
+   * Герой, которым играют с первой вылазки, и то, что у него в руке.
+   *
+   * Оружие §14 зовётся «Кайло», и кирки в наборе нет — `axe_1handed` взят
+   * как ближайшее по чтению: одноручное, с рукоятью в начале координат,
+   * 274 треугольника. Это замена палке примитива, а не выбор оружия героя:
+   * уровень предмета из Кузницы моделью пока не читается.
+   *
+   * Остальные пять персонажей и тридцать предметов измерены и ждут: персонаж
+   * тяжелее камня в тридцать раз, и «весь набор на всякий случай» тут дороже,
+   * чем в лесу.
    */
-  adopted: ['Barbarian'],
+  adopted: ['Barbarian', 'axe_1handed'],
   data: { file: 'src/render/adventurers.data.ts', prefix: 'ADVENTURERS', type: 'Adventurer' },
 };
 
@@ -716,8 +755,190 @@ function loadPose(file: string, clipName: string, at: number): Pose {
   return out;
 }
 
+/**
+ * Сырая геометрия для запекания: вершины как они лежат в файле, до позы.
+ * Игра теперь позирует модель сама (§17), поэтому в бандл едет поза привязки,
+ * а клип накладывается поверх. Обмеру, наоборот, нужна поза — иначе габарит
+ * снимается с разведённых рук, — и он читает `positions`/`uvs` выше.
+ */
+interface Raw {
+  /** 3 числа на вершину, пространство привязки. */
+  readonly positions: Float64Array;
+  /** 2 числа на вершину. */
+  readonly uvs: Float64Array;
+  /** 3 индекса на треугольник. */
+  readonly indices: Uint32Array;
+  /** До трёх костей на вершину; четвёртой в наборе нет ни у одной. */
+  readonly bones: Uint8Array;
+  /** Веса тех же трёх костей. */
+  readonly weights: Float32Array;
+}
+
+/* ---------- скелет и клипы ---------- */
+
+/**
+ * Скелет набора: имена костей, дерево и поза привязки. Один на весь набор,
+ * а не на модель — кости у всех четверых скелетов одни и стоят одинаково.
+ * Расходится только порядок внутри `skins[].joints`, поэтому запекание
+ * приводит каждую модель к этому, каноническому: иначе рука воина двигалась бы
+ * по дорожке ноги.
+ *
+ * Обратных матриц привязки здесь нет намеренно: three выводит их из позы
+ * костей сам, а в файле они заняли бы 1,4 КБ ради того, что и так известно.
+ * Что вывод совпадает с тем, что записано в наборе, проверяет само запекание.
+ */
+interface Rig {
+  readonly names: readonly string[];
+  /** Родитель в терминах этого же списка; −1 у корня. */
+  readonly parent: readonly number[];
+  /** 10 чисел на кость: сдвиг, поворот, масштаб. */
+  readonly bind: Float32Array;
+}
+
+/** Канонический порядок костей — обход дерева, а не порядок в файле. */
+function loadRig(file: string): Rig {
+  const { gltf, bin } = loadDoc(file);
+  const skin = gltf.skins?.[0];
+  if (skin === undefined) throw new Error(`${basename(file)}: скина нет`);
+
+  const isJoint = new Set(skin.joints);
+  const order: number[] = [];
+  const walk = (at: number): void => {
+    if (isJoint.has(at)) order.push(at);
+    for (const child of gltf.nodes?.[at]?.children ?? []) walk(child);
+  };
+  for (const root of gltf.scenes?.[gltf.scene ?? 0]?.nodes ?? []) walk(root);
+
+  const place = new Map(order.map((node, at) => [node, at]));
+  const parentOf = new Int32Array(gltf.nodes?.length ?? 0).fill(-1);
+  (gltf.nodes ?? []).forEach((node, at) => {
+    for (const child of node.children ?? []) parentOf[child] = at;
+  });
+
+  const bind = new Float32Array(order.length * 10);
+  order.forEach((node, at) => {
+    const n = gltf.nodes![node]!;
+    const t = n.translation ?? [0, 0, 0];
+    const r = n.rotation ?? [0, 0, 0, 1];
+    const sc = n.scale ?? [1, 1, 1];
+    bind.set([...t, ...r, ...sc], at * 10);
+  });
+
+  // Сверка с тем, что записано в наборе: если обратные матрицы разойдутся
+  // с выведенными, модель порвёт на первом же кадре, и молча.
+  const inverse = skin.inverseBindMatrices === undefined
+    ? null
+    : readAccessor(gltf, bin, skin.inverseBindMatrices);
+  if (inverse !== null) {
+    const world = new Array<Mat4>(gltf.nodes?.length ?? 0).fill(IDENTITY);
+    const walkWorld = (at: number, parent: Mat4): void => {
+      world[at] = multiply(parent, localOf(gltf.nodes![at]!));
+      for (const child of gltf.nodes![at]!.children ?? []) walkWorld(child, world[at]!);
+    };
+    for (const root of gltf.scenes?.[gltf.scene ?? 0]?.nodes ?? []) walkWorld(root, IDENTITY);
+    let worst = 0;
+    skin.joints.forEach((node, k) => {
+      const m = world[node]!;
+      // Обратная к матрице кости: транспонированный поворот и снесённый сдвиг.
+      const inv = [
+        m[0]!, m[4]!, m[8]!, 0,
+        m[1]!, m[5]!, m[9]!, 0,
+        m[2]!, m[6]!, m[10]!, 0,
+        -(m[0]! * m[12]! + m[1]! * m[13]! + m[2]! * m[14]!),
+        -(m[4]! * m[12]! + m[5]! * m[13]! + m[6]! * m[14]!),
+        -(m[8]! * m[12]! + m[9]! * m[13]! + m[10]! * m[14]!),
+        1,
+      ];
+      for (let c = 0; c < 16; c++) worst = Math.max(worst, Math.abs(inv[c]! - inverse[k * 16 + c]!));
+    });
+    if (worst > 0.01) {
+      throw new Error(`${basename(file)}: обратные матрицы расходятся с позой на ${worst.toFixed(3)}`);
+    }
+  }
+
+  return {
+    names: order.map((node) => gltf.nodes![node]!.name ?? `кость ${node}`),
+    parent: order.map((node) => place.get(parentOf[node]!) ?? -1),
+    bind,
+  };
+}
+
+/**
+ * Клип, разложенный по каналам и приведённый к каноническому порядку костей.
+ * Дорожка масштаба отброшена: в наборе она всюду единичная. Постоянная
+ * дорожка схлопывается в один ключ — держать тридцать три одинаковых
+ * кватерниона незачем.
+ */
+interface BakedClip {
+  readonly as: string;
+  readonly duration: number;
+  readonly bone: Uint8Array;
+  /** 0 — сдвиг, 1 — поворот. */
+  readonly path: Uint8Array;
+  readonly count: Uint16Array;
+  /** Время в миллисекундах. */
+  readonly time: Uint16Array;
+  /** Повороты — доля единицы; сдвиги — доля `move`. */
+  readonly value: Int16Array;
+  readonly move: number;
+}
+
+function loadClip(file: string, name: string, as: string, rig: Rig): BakedClip {
+  const { gltf, bin } = loadDoc(file);
+  const clip = gltf.animations?.find((a) => a.name === name);
+  if (clip === undefined) throw new Error(`${basename(file)}: клипа «${name}» нет`);
+  const place = new Map(rig.names.map((n, at) => [n, at]));
+
+  const channels: { bone: number; path: number; times: number[]; values: number[][] }[] = [];
+  let duration = 0;
+  let move = 0;
+
+  for (const channel of clip.channels) {
+    const bone = place.get(gltf.nodes?.[channel.target.node ?? -1]?.name ?? '');
+    const path = channel.target.path === 'translation' ? 0 : channel.target.path === 'rotation' ? 1 : -1;
+    if (bone === undefined || path < 0) continue;
+    const sampler = clip.samplers[channel.sampler]!;
+    const times = Array.from(readAccessor(gltf, bin, sampler.input));
+    const raw = readAccessor(gltf, bin, sampler.output);
+    const size = raw.length / times.length;
+    const values = times.map((_, i) => Array.from(raw.slice(i * size, i * size + size)));
+    duration = Math.max(duration, times[times.length - 1]!);
+
+    const same = values.every((v) => v.every((x, c) => Math.abs(x - values[0]![c]!) < 1e-6));
+    const keep = same ? [0] : values.map((_, i) => i);
+    for (const v of values) if (path === 0) for (const x of v) move = Math.max(move, Math.abs(x));
+    channels.push({
+      bone,
+      path,
+      times: keep.map((i) => times[i]!),
+      values: keep.map((i) => values[i]!),
+    });
+  }
+
+  const time: number[] = [];
+  const value: number[] = [];
+  const scale = move > 0 ? 32767 / move : 0;
+  for (const channel of channels) {
+    for (const t of channel.times) time.push(Math.round(t * 1000));
+    for (const v of channel.values) {
+      for (const x of v) value.push(Math.round(channel.path === 1 ? x * 32767 : x * scale));
+    }
+  }
+
+  return {
+    as,
+    duration,
+    bone: Uint8Array.from(channels.map((c) => c.bone)),
+    path: Uint8Array.from(channels.map((c) => c.path)),
+    count: Uint16Array.from(channels.map((c) => c.times.length)),
+    time: Uint16Array.from(time),
+    value: Int16Array.from(value),
+    move,
+  };
+}
+
 interface Mesh {
-  /** Треугольники подряд: 9 чисел (три вершины) на треугольник. */
+  /** Треугольники подряд: 9 чисел (три вершины) на треугольник, в позе. */
   readonly positions: Float64Array;
   /** UV центра треугольника: 2 числа на треугольник. */
   readonly uvs: Float64Array;
@@ -729,6 +950,10 @@ interface Mesh {
   readonly skinned: number;
   /** Мировые матрицы затребованных узлов — из них рендер берёт руку. */
   readonly attach: Record<string, Mat4>;
+  readonly raw: Raw;
+  /** Имена костей в порядке самой модели: по ним запекание приводит её
+   *  индексы к каноническому порядку скелета набора. */
+  readonly joints: readonly string[];
   /** Атлас, который модель назвала своим. */
   readonly atlas: string;
   readonly atlasImage: Image;
@@ -799,8 +1024,33 @@ function loadMesh(
     for (const child of node.children ?? []) walk(child, world[index]!);
   };
 
+  const parentOf = new Int32Array(gltf.nodes?.length ?? 0).fill(-1);
+  (gltf.nodes ?? []).forEach((node, at) => {
+    for (const child of node.children ?? []) parentOf[child] = at;
+  });
+
+  /** Те же матрицы, но без клипа: в них лежит поза привязки, и запекание
+   *  ставит нескинованные части (шлем, шляпа) именно по ним. */
+  const bind = new Array<Mat4>(gltf.nodes?.length ?? 0).fill(IDENTITY);
+  const walkBind = (index: number, parent: Mat4): void => {
+    const node = gltf.nodes?.[index];
+    if (node === undefined) return;
+    bind[index] = multiply(parent, localOf(node));
+    for (const child of node.children ?? []) walkBind(child, bind[index]!);
+  };
+
   const scene = gltf.scenes?.[gltf.scene ?? 0];
-  if (scene !== undefined) for (const root of scene.nodes) walk(root, IDENTITY);
+  if (scene !== undefined) {
+    for (const root of scene.nodes) walk(root, IDENTITY);
+    for (const root of scene.nodes) walkBind(root, IDENTITY);
+  }
+
+  /* Сырьё для запекания копится параллельно обмеру: файл читается один раз. */
+  const rawPos: number[] = [];
+  const rawUv: number[] = [];
+  const rawIdx: number[] = [];
+  const rawBone: number[] = [];
+  const rawWeight: number[] = [];
 
   const put = (m: Mat4, p: readonly number[]): void => {
     for (let c = 0; c < 3; c++) {
@@ -808,7 +1058,22 @@ function loadMesh(
     }
   };
 
-  const takeMesh = (index: number, model: Mat4, skin: number | undefined): void => {
+  const takeMesh = (index: number, model: Mat4, skin: number | undefined, at: number): void => {
+    /**
+     * Кость, к которой жёстко привязана нескинованная часть: ближайшая
+     * вверх по дереву. Шлем воина и шляпа мага сделаны так — они не скинованы,
+     * а висят на кости головы обычным узлом, и одна модель требует обоих
+     * способов сразу.
+     */
+    const rigidBone = (): number => {
+      const joints = skin === undefined ? [] : gltf.skins![skin]!.joints;
+      for (let up = at; up >= 0; up = parentOf[up]!) {
+        const found = joints.indexOf(up);
+        if (found >= 0) return found;
+      }
+      return 0;
+    };
+
     for (const prim of gltf.meshes[index]!.primitives) {
       const posIndex = prim.attributes['POSITION'];
       const uvIndex = prim.attributes['TEXCOORD_0'];
@@ -830,13 +1095,13 @@ function loadMesh(
         skinned++;
         const joints = readAccessor(gltf, bin, jointsIndex);
         const weights = readAccessor(gltf, bin, weightsIndex);
-        const bones = gltf.skins![skin]!;
-        const inverse = bones.inverseBindMatrices === undefined
+        const rig = gltf.skins![skin]!;
+        const inverse = rig.inverseBindMatrices === undefined
           ? null
-          : readAccessor(gltf, bin, bones.inverseBindMatrices);
-        const boneMatrix = bones.joints.map((node, k) => {
-          const bind = inverse === null ? IDENTITY : Array.from(inverse.slice(k * 16, k * 16 + 16));
-          return multiply(world[node] ?? IDENTITY, bind);
+          : readAccessor(gltf, bin, rig.inverseBindMatrices);
+        const boneMatrix = rig.joints.map((node, k) => {
+          const bound = inverse === null ? IDENTITY : Array.from(inverse.slice(k * 16, k * 16 + 16));
+          return multiply(world[node] ?? IDENTITY, bound);
         });
         vertexMatrix = (v: number): Mat4 => {
           const out = new Array<number>(16).fill(0);
@@ -862,6 +1127,27 @@ function loadMesh(
         }
         uvs.push(cu / 3, cv / 3);
       }
+
+      /* Сырьё: вершины как в файле, скин — как в файле, всё остальное —
+         через матрицу привязки узла. */
+      const base = rawPos.length / 3;
+      const count = gltf.accessors[posIndex]!.count;
+      const joints = jointsIndex === undefined ? null : readAccessor(gltf, bin, jointsIndex);
+      const weights = weightsIndex === undefined ? null : readAccessor(gltf, bin, weightsIndex);
+      const rigid = joints === null ? rigidBone() : 0;
+      for (let v = 0; v < count; v++) {
+        const p = [pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!];
+        const m = joints === null ? bind[at]! : IDENTITY;
+        for (let c = 0; c < 3; c++) {
+          rawPos.push(m[c]! * p[0]! + m[4 + c]! * p[1]! + m[8 + c]! * p[2]! + m[12 + c]!);
+        }
+        rawUv.push(uv[v * 2]!, uv[v * 2 + 1]!);
+        for (let k = 0; k < 3; k++) {
+          rawBone.push(joints === null ? rigid : joints[v * 4 + k]!);
+          rawWeight.push(weights === null ? (k === 0 ? 1 : 0) : weights[v * 4 + k]!);
+        }
+      }
+      for (const i of idx) rawIdx.push(base + i);
     }
   };
 
@@ -871,13 +1157,13 @@ function loadMesh(
   const collect = (index: number): void => {
     const node = gltf.nodes?.[index];
     if (node === undefined) return;
-    if (node.mesh !== undefined) takeMesh(node.mesh, world[index]!, node.skin);
+    if (node.mesh !== undefined) takeMesh(node.mesh, world[index]!, node.skin, index);
     for (const child of node.children ?? []) collect(child);
   };
 
   if (scene === undefined) {
     // Сцены нет — набор отдал голые меши; берём их как есть, без трансформа.
-    for (let i = 0; i < gltf.meshes.length; i++) takeMesh(i, IDENTITY, undefined);
+    for (let i = 0; i < gltf.meshes.length; i++) takeMesh(i, IDENTITY, undefined, 0);
   } else {
     for (const root of scene.nodes) collect(root);
   }
@@ -897,6 +1183,14 @@ function loadMesh(
     moved,
     skinned,
     attach: held,
+    joints: (gltf.skins?.[0]?.joints ?? []).map((at) => gltf.nodes?.[at]?.name ?? ''),
+    raw: {
+      positions: Float64Array.from(rawPos),
+      uvs: Float64Array.from(rawUv),
+      indices: Uint32Array.from(rawIdx),
+      bones: Uint8Array.from(rawBone),
+      weights: Float32Array.from(rawWeight),
+    },
     atlas,
     atlasImage,
   };
@@ -1056,9 +1350,39 @@ interface Baked {
   readonly skinned: number;
   /** Мировые матрицы затребованных узлов, в единицах набора. */
   readonly attach: Record<string, Mat4>;
+  /**
+   * Индексированная запись: вершина хранится один раз и переиспользуется
+   * соседними треугольниками. Ломается она только на границе слота — три
+   * вершины треугольника обязаны быть одного цвета, иначе плоского затенения
+   * не выйдет. Выигрыш измерен: у скелетов 24 272 вершины на 17 863
+   * треугольника вместо 53 589 несклеенных.
+   */
+  readonly index: {
+    /** Габарит позы привязки — в нём же квантуются позиции. */
+    readonly min: [number, number, number];
+    readonly max: [number, number, number];
+    readonly verts: number;
+    /** 3 числа на вершину. */
+    readonly pos: Int16Array;
+    /** 3 индекса на треугольник. */
+    readonly idx: Uint16Array;
+    /** Слот на треугольник; у вершины он тот же — она и ломается по нему. */
+    readonly slot: Uint8Array;
+    /** До трёх костей на вершину. */
+    readonly bone: Uint8Array;
+    /** Два веса из трёх: третий выводится, потому что сумма равна единице. */
+    readonly weight: Uint8Array;
+  };
 }
 
-function bake(pack: Pack, name: string, file: string, mesh: Mesh, sampler: Sampler): Baked {
+function bake(
+  pack: Pack,
+  name: string,
+  file: string,
+  mesh: Mesh,
+  sampler: Sampler,
+  rig: Rig | null,
+): Baked {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -1089,6 +1413,63 @@ function bake(pack: Pack, name: string, file: string, mesh: Mesh, sampler: Sampl
     if (hueSat(c[0], c[1], c[2]).sat < greyOf(pack)) grey++;
   }
 
+  /* ---------- индексированная запись ---------- */
+
+  const raw = mesh.raw;
+  const bindMin: [number, number, number] = [Infinity, Infinity, Infinity];
+  const bindMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < raw.positions.length; i += 3) {
+    for (let c = 0; c < 3; c++) {
+      const value = raw.positions[i + c]!;
+      if (value < bindMin[c]!) bindMin[c] = value;
+      if (value > bindMax[c]!) bindMax[c] = value;
+    }
+  }
+  const bindSpan = [bindMax[0] - bindMin[0], bindMax[1] - bindMin[1], bindMax[2] - bindMin[2]];
+
+  /** Порядок костей у каждой модели свой; в бандл едет один, канонический. */
+  const toRig = rig === null
+    ? null
+    : mesh.joints.map((n) => {
+        const at = rig.names.indexOf(n);
+        if (at < 0) throw new Error(`${name}: кости «${n}» нет в скелете набора`);
+        return at;
+      });
+
+  const seen = new Map<string, number>();
+  const outPos: number[] = [];
+  const outBone: number[] = [];
+  const outWeight: number[] = [];
+  const outIdx: number[] = [];
+
+  for (let t = 0; t < mesh.tris; t++) {
+    const at = slot[t]!;
+    for (let k = 0; k < 3; k++) {
+      const v = raw.indices[t * 3 + k]!;
+      const key = `${v}|${at}`;
+      let found = seen.get(key);
+      if (found === undefined) {
+        found = outPos.length / 3;
+        seen.set(key, found);
+        for (let c = 0; c < 3; c++) {
+          const unit = bindSpan[c]! > 0 ? (raw.positions[v * 3 + c]! - bindMin[c]!) / bindSpan[c]! : 0;
+          outPos.push(Math.round(unit * 65534) - 32767);
+        }
+        // Вес приходит долей единицы; в байте он и остаётся долей единицы.
+        const sum = raw.weights[v * 3]! + raw.weights[v * 3 + 1]! + raw.weights[v * 3 + 2]!;
+        for (let k2 = 0; k2 < 3; k2++) {
+          const local = raw.bones[v * 3 + k2]!;
+          outBone.push(toRig === null ? local : toRig[local] ?? 0);
+        }
+        for (let k2 = 0; k2 < 2; k2++) {
+          outWeight.push(Math.round((sum > 0 ? raw.weights[v * 3 + k2]! / sum : k2 === 0 ? 1 : 0) * 255));
+        }
+      }
+      outIdx.push(found);
+    }
+  }
+  if (outPos.length / 3 > 65535) throw new Error(`${name}: вершин больше 65535, индекс не влезает в 16 бит`);
+
   return {
     name,
     file,
@@ -1097,6 +1478,16 @@ function bake(pack: Pack, name: string, file: string, mesh: Mesh, sampler: Sampl
     verts: mesh.verts,
     min,
     max,
+    index: {
+      min: bindMin,
+      max: bindMax,
+      verts: outPos.length / 3,
+      pos: Int16Array.from(outPos),
+      idx: Uint16Array.from(outIdx),
+      slot,
+      bone: Uint8Array.from(outBone),
+      weight: Uint8Array.from(outWeight),
+    },
     pos,
     slot,
     grey,
@@ -1106,10 +1497,64 @@ function bake(pack: Pack, name: string, file: string, mesh: Mesh, sampler: Sampl
   };
 }
 
-const b64 = (data: Int16Array | Uint8Array): string =>
+const b64 = (data: Int16Array | Uint16Array | Uint8Array | Float32Array): string =>
   Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64');
 
-function writeData(pack: Pack, models: Baked[]): string {
+/**
+ * Скелет и клипы — свой файл, потому что они общие: и скелеты, и герои стоят
+ * на одном риге, и вторая копия дорожек стоила бы сорок килобайт у каждого
+ * игрока за то же самое.
+ */
+function writeRig(rig: Rig, clips: readonly BakedClip[]): string {
+  return `/* СГЕНЕРИРОВАНО \`npm run models -- --write\`. Руками не править. */
+
+/**
+ * Риг KayKit \`Rig_Medium\` и состояния §17.1 на нём. Обратных матриц привязки
+ * здесь нет: three выводит их из позы костей сам, а совпадение вывода с тем,
+ * что записано в наборе, проверяет запекание.
+ */
+export const ${RIG.prefix}_BONES = [
+${rig.names.map((n) => `  '${n}',`).join('\n')}
+] as const;
+
+/** Родитель в терминах того же списка; −1 у корня. */
+export const ${RIG.prefix}_PARENT = [${rig.parent.join(', ')}] as const;
+
+/** base64 Float32Array: 10 чисел на кость — сдвиг, поворот, масштаб. */
+export const ${RIG.prefix}_BIND = '${b64(rig.bind)}';
+
+export interface RigClip {
+  readonly duration: number;
+  /** base64 Uint8Array: кость канала. */
+  readonly bone: string;
+  /** base64 Uint8Array: 0 — сдвиг, 1 — поворот. */
+  readonly path: string;
+  /** base64 Uint16Array: ключей в канале. */
+  readonly count: string;
+  /** base64 Uint16Array: время ключей, миллисекунды. */
+  readonly time: string;
+  /** base64 Int16Array: повороты долями единицы, сдвиги долями move. */
+  readonly value: string;
+  readonly move: number;
+}
+
+export const ${RIG.prefix}_CLIPS = {
+${clips.map((c) => `  '${c.as}': {
+    duration: ${Math.round(c.duration * 1000) / 1000},
+    bone: '${b64(c.bone)}',
+    path: '${b64(c.path)}',
+    count: '${b64(c.count)}',
+    time: '${b64(c.time)}',
+    value: '${b64(c.value)}',
+    move: ${Math.round(c.move * 10000) / 10000},
+  },`).join('\n')}
+} satisfies Record<string, RigClip>;
+
+export type RigClipName = keyof typeof ${RIG.prefix}_CLIPS;
+`;
+}
+
+function writeData(pack: Pack, models: Baked[], rig: Rig | null): string {
   const data = pack.data!;
   const chosen = pack.adopted.map((name) => {
     const m = models.find((x) => x.name === name);
@@ -1123,11 +1568,17 @@ function writeData(pack: Pack, models: Baked[]): string {
     .map((m) => {
       const fields = [
         `    tris: ${m.tris},`,
-        `    min: [${m.min.map(round).join(', ')}],`,
-        `    max: [${m.max.map(round).join(', ')}],`,
-        `    pos: '${b64(m.pos)}',`,
-        `    slot: '${b64(m.slot)}',`,
+        `    verts: ${m.index.verts},`,
+        `    min: [${m.index.min.map(round).join(', ')}],`,
+        `    max: [${m.index.max.map(round).join(', ')}],`,
+        `    pos: '${b64(m.index.pos)}',`,
+        `    idx: '${b64(m.index.idx)}',`,
+        `    slot: '${b64(m.index.slot)}',`,
       ];
+      if (rig !== null) {
+        fields.push(`    bone: '${b64(m.index.bone)}',`);
+        fields.push(`    weight: '${b64(m.index.weight)}',`);
+      }
       for (const name of held) {
         const matrix = m.attach[name];
         if (matrix !== undefined) fields.push(`    hand: [${matrix.map(round).join(', ')}],`);
@@ -1156,13 +1607,22 @@ function writeData(pack: Pack, models: Baked[]): string {
  */
 export interface ${data.type}Model {
   readonly tris: number;
+  readonly verts: number;
+  /** Габарит позы привязки: в нём квантованы позиции. */
   readonly min: readonly [number, number, number];
   readonly max: readonly [number, number, number];
-  /** base64 Int16Array: 9 чисел на треугольник, три несклеенные вершины. */
+  /** base64 Int16Array: 3 числа на вершину. */
   readonly pos: string;
-  /** base64 Uint8Array: индекс в ${data.prefix}_SLOTS, один на треугольник. */
+  /** base64 Uint16Array: 3 индекса на треугольник. */
+  readonly idx: string;
+  /** base64 Uint8Array: индекс в ${data.prefix}_SLOTS, один на треугольник.
+   *  Вершина ломается по слоту, поэтому цвет вершины — цвет её треугольника. */
   readonly slot: string;
-${hand}}
+${rig === null ? '' : `  /** base64 Uint8Array: до трёх костей на вершину, в порядке ${data.prefix}_RIG. */
+  readonly bone?: string;
+  /** base64 Uint8Array: два веса из трёх, долями единицы; третий выводится. */
+  readonly weight?: string;
+`}${hand}}
 
 /** Порядок слотов — контракт с render/palette.ts. */
 export const ${data.prefix}_SLOTS = [
@@ -1338,7 +1798,15 @@ function report(pack: Pack, write: boolean): void {
   const images = atlases.map((a) => a.image);
   const usage = pack.range === 'used' ? usageOf(meshes.map((m) => m.mesh)) : undefined;
   const sampler = makeSampler(pack, images, usage);
-  const models = meshes.map((m) => bake(pack, m.name, m.rel, m.mesh, sampler));
+
+  // Скелет и клипы общие на все наборы, поэтому читаются из одного места,
+  // а не у каждого набора своего.
+  const rig = pack.rigged === true ? loadRig(join(ROOT, RIG.from)) : null;
+  const clips = rig === null
+    ? []
+    : RIG.clips.map((c) => loadClip(join(ROOT, c.file), c.clip, c.as, rig));
+
+  const models = meshes.map((m) => bake(pack, m.name, m.rel, m.mesh, sampler, rig));
   const slots = pack.slots;
 
 
@@ -1411,18 +1879,52 @@ function report(pack: Pack, write: boolean): void {
   } else {
     const adopted = models.filter((m) => pack.adopted.includes(m.name));
     const adoptedTris = adopted.reduce((s, m) => s + m.tris, 0);
-    const bytes = adopted.reduce((s, m) => s + m.pos.byteLength + m.slot.byteLength, 0);
+    const b64 = (n: number): number => Math.ceil(n / 3) * 4;
+    const part = {
+      'позиции': adopted.reduce((s, m) => s + b64(m.index.pos.byteLength), 0),
+      'индексы': adopted.reduce((s, m) => s + b64(m.index.idx.byteLength), 0),
+      'слоты': adopted.reduce((s, m) => s + b64(m.index.slot.byteLength), 0),
+      'кости': adopted.reduce((s, m) => s + b64(m.index.bone.byteLength), 0),
+      'веса': adopted.reduce((s, m) => s + b64(m.index.weight.byteLength), 0),
+    };
+    const verts = adopted.reduce((s, m) => s + m.index.verts, 0);
+    const flat = adopted.reduce((s, m) => s + b64(m.pos.byteLength) + b64(m.slot.byteLength), 0);
     console.log(
       `\nберёт игра: ${adopted.length} моделей, ${adoptedTris} треугольников, ` +
-        `${Math.round((bytes / 1024) * 10) / 10} КБ в бандле (base64 ≈ ${Math.round((bytes * 1.34) / 1024)} КБ)`,
+        `${verts} вершин (несклеенными было бы ${adoptedTris * 3})`,
     );
+    const kb = (n: number): string => `${Math.round((n / 1024) * 10) / 10} КБ`;
+    console.log(`  в бандле, base64: ${Object.entries(part).map(([k, v]) => `${k} ${kb(v)}`).join(' · ')}`);
+    const clipBytes = clips.reduce(
+      (sum, c) => sum + b64(c.bone.byteLength) + b64(c.path.byteLength) + b64(c.count.byteLength)
+        + b64(c.time.byteLength) + b64(c.value.byteLength),
+      0,
+    );
+    console.log(
+      `  итого ${kb(Object.values(part).reduce((a, b) => a + b, 0))}` +
+        ` (несклеенной записью было бы ${kb(flat)})`,
+    );
+    if (rig !== null) {
+      console.log(
+        `  скелет: ${rig.names.length} костей, ${kb(b64(rig.bind.byteLength))}` +
+          ` · клипы: ${clips.length} на ${kb(clipBytes)}` +
+          ` (${clips.map((c) => `${c.as} ${c.duration.toFixed(2)} с`).join(', ')})`,
+      );
+      console.log(
+        `  всё вместе: ${kb(Object.values(part).reduce((a, b) => a + b, 0) + clipBytes + b64(rig.bind.byteLength))}`,
+      );
+    }
   }
 
   if (!write) return;
 
   const written: string[] = [];
+  if (rig !== null) {
+    writeFileSync(join(ROOT, RIG.file), writeRig(rig, clips), 'utf8');
+    written.push(RIG.file);
+  }
   if (pack.data !== undefined && pack.adopted.length > 0) {
-    writeFileSync(join(ROOT, pack.data.file), writeData(pack, models), 'utf8');
+    writeFileSync(join(ROOT, pack.data.file), writeData(pack, models, rig), 'utf8');
     written.push(pack.data.file);
   }
   const catalog = join(pack.dir, 'catalog.json');

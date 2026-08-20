@@ -10,15 +10,18 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { describe, test } from 'node:test';
 import { BUILDING_ORDER } from '../sim/camp';
 import { CLASS_ORDER } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
 import { C, triangles } from './blocking';
-import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
+import { ADVENTURERS_MODELS } from './adventurers.data';
+import { adventurerGeometry } from './adventurers';
+import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf } from './models';
 import { FOREST_SLOTS } from './forest.data';
 import { FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
-import { SKELETON_MODELS, SKELETON_SLOTS } from './skeleton.data';
+import { SKELETON_SLOTS } from './skeleton.data';
 
 /**
  * Артбук, раздел 03: здание ≤ 1500, герой ≤ 900.
@@ -35,15 +38,23 @@ const BUDGET = { building: 1500, hero: 900 } as const;
 /**
  * Потолок принятого набора: сколько он весит в бандле, а не в кадре.
  *
- * Число не выбрано, а посчитано: это **весь набор скелетов, который вообще
- * может понадобиться врагам** — четыре скелета и всё их оружие, 24 182
- * треугольника, 598 КБ. Округлено вверх. Смысл потолка в том, что упереться
- * в него можно ровно один раз: за ним не «ещё один противник», а второй набор,
- * и это уже отдельное решение, а не добавление строки в список.
+ * **Мерка — gzip, а не base64.** Первая версия этого правила считала символы
+ * base64, и это оказалось не тем: при переходе на индексированную запись
+ * со скином они выросли на 8%, а то, что скачивает игрок, — на 51%. Индексы
+ * и байты костей жмутся заметно хуже квантованных позиций, и потолок
+ * в base64 такого прироста просто не видит.
  *
- * Сейчас занято 442 КБ из 600 — трое противников §15 с топором и посохом.
+ * Число не выбрано, а посчитано: это **весь состав, который вообще может
+ * понадобиться врагам** — четыре скелета и всё их оружие, 252 КБ gzip.
+ * Округлено вверх. Смысл потолка в том, что упереться в него можно ровно
+ * один раз: за ним не «ещё один противник», а второй набор, и это отдельное
+ * решение, а не строка в списке.
+ *
+ * Сейчас занято 190 КБ из 260 — трое противников §15, топор, посох, скелет
+ * и пять состояний §17.1.
  */
-const PACK_KB = 600;
+const PACK_KB = 260;
+
 
 /** По одному уровню на каждую стадию роста. */
 const LEVEL_OF_STAGE = [1, 3, 5] as const;
@@ -66,10 +77,10 @@ describe('Артбук: бюджет треугольников', () => {
    * Девятьсот считались, когда героев в кадре предполагалось много. Их один —
    * и в лагере, и в вылазке, — поэтому классу с моделью набора (§6.1.4) этот
    * потолок не подходит и не должен: его цена не в кадре, а в бандле, и её
-   * меряет потолок принятого набора выше. Примитивам девятьсот остаются:
-   * жителей в лагере до десяти, и они по-прежнему свои.
+   * меряет потолок принятого набора выше. Классам без модели девятьсот
+   * остаются: их силуэт по-прежнему свой.
    */
-  test('герой-примитив укладывается в 900, житель тоже', () => {
+  test('герой-примитив укладывается в 900', () => {
     for (const cls of CLASS_ORDER) {
       if (HERO_MODELS[cls] !== undefined) continue;
       const geo = heroGeometry(cls);
@@ -77,10 +88,6 @@ describe('Артбук: бюджет треугольников', () => {
       geo.dispose();
       assert.ok(t <= BUDGET.hero, `${cls}: ${t} > ${BUDGET.hero}`);
     }
-    const v = villagerGeometry();
-    const t = triangles(v);
-    v.dispose();
-    assert.ok(t <= BUDGET.hero, `житель: ${t} > ${BUDGET.hero}`);
   });
 
   /**
@@ -98,14 +105,29 @@ describe('Артбук: бюджет треугольников', () => {
   });
 
   test('готовый набор противников укладывается в свой потолок — килобайты', () => {
-    // База64 в исходнике и есть то, что уедет в бандл: минификация её
-    // не жмёт, а gzip жмёт одинаково независимо от того, что мы здесь считаем.
-    const bytes = Object.values(SKELETON_MODELS).reduce(
-      (sum, m) => sum + m.pos.length + m.slot.length,
-      0,
+    /**
+     * Считается по самому файлу и в gzip: перечислять поля руками — способ
+     * не заметить новое. Когда к позициям добавились индексы, кости и веса,
+     * прежний счёт по двум полям молча остался прежним, а бандл вырос.
+     */
+    const source = readFileSync(new URL('./skeleton.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    assert.ok(kb <= PACK_KB, `набор скелетов: ${kb} КБ gzip > ${PACK_KB} КБ`);
+  });
+
+  test('у героя в руке есть предмет, и он стоит на узле набора', () => {
+    // Не «геометрия непустая», а именно то, ради чего узел запекается:
+    // модель героя знает матрицу руки, и с предметом она тяжелее, чем без.
+    const bare = adventurerGeometry('Barbarian', 1);
+    const armed = heroGeometry('ranger');
+    assert.ok(ADVENTURERS_MODELS.Barbarian.hand !== undefined, 'у варвара нет узла руки');
+    assert.ok(
+      triangles(armed) > triangles(bare),
+      `герой с предметом ${triangles(armed)} не тяжелее безоружного ${triangles(bare)}`,
     );
-    const kb = Math.round(bytes / 1024);
-    assert.ok(kb <= PACK_KB, `набор скелетов: ${kb} КБ > ${PACK_KB} КБ`);
+    bare.dispose();
+    armed.dispose();
   });
 
   test('шесть уровней укладываются в три стадии', () => {
