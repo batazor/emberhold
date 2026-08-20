@@ -4,6 +4,7 @@ import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
+import { skeletonGeometry } from './skeleton';
 
 /**
  * Модели из артбука. Формы взяты из `artbook.html` (раздел 03 — здания,
@@ -14,9 +15,12 @@ import type { Piece } from './blocking';
  * по цифре.** Первая стадия — временная конструкция, вторая — дерево,
  * третья — камень. Стадия это замена модели, а не отдельный рисунок.
  *
- * Чего в артбуке нет — Кузницы и Копейщика пепла — собрано здесь из того же
- * словаря форм и тех же 28 цветов. Это дополнение, а не перенос, и его
- * следует утверждать отдельно.
+ * Чего в артбуке нет — Кузницы — собрано здесь из того же словаря форм
+ * и тех же 28 цветов. Это дополнение, а не перенос, и его следует
+ * утверждать отдельно.
+ *
+ * Противники отсюда ушли все трое: их силуэт утверждён на примитивах,
+ * как §6.1 и предписывает, а рисует их теперь готовый набор (§6.1.3).
  */
 
 /** §6.1 — три стадии роста на шесть уровней здания. */
@@ -292,52 +296,6 @@ function salter(): Piece[] {
   ];
 }
 
-/** Соляной падальщик: ярус 0–1, мелкий и быстрый (артбук, 04). */
-function scavenger(): Piece[] {
-  const m: Piece[] = [
-    box(0, 0.16, 0, 0.44, 0.34, 0.3, C.solT),
-    box(0, 0.44, 0.06, 0.26, 0.2, 0.24, C.sol),
-    box(-0.07, 0.5, 0.19, 0.05, 0.05, 0.02, '#8E3838'),
-    box(0.07, 0.5, 0.19, 0.05, 0.05, 0.02, '#8E3838'),
-  ];
-  for (const [x, z, h] of [[-0.2, -0.08, 0.18], [0.2, -0.08, 0.18], [-0.16, 0.12, 0.16], [0.16, 0.12, 0.16]] as [number, number, number][]) {
-    m.push(cyl(x, 0, z, 0.04, h, 4, C.solT));
-  }
-  return m;
-}
-
-/**
- * Копейщик пепла. В артбуке его нет; собран из того же словаря по правилу
- * «различаются силуэтом раньше, чем цветом»: длинное древко выносит силуэт
- * за габарит тела, и на расстоянии он не путается ни с падальщиком, ни
- * с големом ещё до того, как виден цвет.
- */
-function spearman(): Piece[] {
-  return [
-    cyl(-0.1, 0, 0, 0.06, 0.44, 5, C.kamT),
-    cyl(0.1, 0, 0, 0.06, 0.44, 5, C.kamT),
-    box(0, 0.44, 0, 0.36, 0.48, 0.26, C.zemT),
-    box(0, 0.62, 0, 0.4, 0.06, 0.3, C.ugol),
-    box(0, 0.92, 0, 0.26, 0.24, 0.24, C.skol),
-    box(0, 0.98, 0.12, 0.16, 0.05, 0.02, C.zhar),
-    rod([0.28, -0.05, 0.1], [0.34, 1.55, -0.1], 0.032, 5, C.derT),
-    cone(0.34, 1.5, -0.1, 0.07, 0.28, 5, C.stal),
-  ];
-}
-
-/** Обвальный голем: ярус 3, медленный, много ран (артбук, 04). */
-function golem(): Piece[] {
-  return [
-    box(0, 0, 0, 0.9, 0.9, 0.7, C.kam),
-    box(0, 0.9, 0, 0.66, 0.36, 0.56, C.kamS),
-    box(-0.13, 1.06, 0.29, 0.08, 0.08, 0.03, C.plam),
-    box(0.13, 1.06, 0.29, 0.08, 0.08, 0.03, C.plam),
-    box(-0.62, 0.25, 0, 0.32, 0.72, 0.34, C.kamT),
-    box(0.62, 0.25, 0, 0.32, 0.72, 0.34, C.kam),
-    box(0.24, 0.62, 0.2, 0.2, 0.18, 0.16, C.skol),
-  ];
-}
-
 /** Житель лагеря (`buildart.html`). Тот же силуэт, что у героя, но проще. */
 function villager(): Piece[] {
   return [
@@ -364,10 +322,20 @@ const HERO_SHAPES: Record<HeroClassId, () => Piece[]> = {
   salter,
 };
 
-const ENEMY_SHAPES: Record<EnemyKind, () => Piece[]> = {
-  scavenger,
-  spearman,
-  golem,
+/**
+ * Противники (§6.1.3, каталог — `enemyart.html`) — три скелета набора KayKit,
+ * и различает их снаряжение, а не порода. §15 требует читать тип силуэтом
+ * раньше, чем цветом, и здесь силуэт делают ровно три вещи: голые кости,
+ * рогатый шлем с топором и посох.
+ *
+ * Рост задаётся по скелету, а не по тому, что у него в руках. Простой
+ * скелет — 0,72 клетки против 1,3 у героя: мелкий он и на вид; воин 0,95,
+ * маг 1,0, и за габарит тела его выносит посох, а не рост.
+ */
+const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
+  minion: () => skeletonGeometry('Skeleton_Minion', 0.72),
+  warrior: () => skeletonGeometry('Skeleton_Warrior', 0.95, 'Skeleton_Axe'),
+  mage: () => skeletonGeometry('Skeleton_Mage', 1, 'Skeleton_Staff'),
 };
 
 export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry =>
@@ -375,7 +343,6 @@ export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeo
 
 export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => merge(HERO_SHAPES[cls]());
 
-export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry =>
-  merge(ENEMY_SHAPES[kind]());
+export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
 
 export const villagerGeometry = (): THREE.BufferGeometry => merge(villager());

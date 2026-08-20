@@ -35,16 +35,16 @@ export const HOP_PER_N = 0.58;
 export const DETOUR = 1.15;
 
 /**
- * Цена доведённой до конца дуэли: герой убивает падальщика раньше первого
- * удара, копейщик успевает ударить раз за счёт длины копья, голем — дважды.
+ * Цена доведённой до конца дуэли: герой убивает простого скелета раньше первого
+ * удара, воин успевает ударить раз за счёт длины топора, маг — дважды.
  * Значения детерминированы, 150 замеров из 150 совпали.
  *
  * Для модели эти числа не годятся, и это важный урок: дуэль не равна вылазке.
  */
 export const WOUND_COST: Record<EnemyKind, number> = {
-  scavenger: 0,
-  spearman: 1,
-  golem: 2,
+  minion: 0,
+  warrior: 1,
+  mage: 2,
 };
 
 /**
@@ -52,17 +52,17 @@ export const WOUND_COST: Record<EnemyKind, number> = {
  * и тем, что до дальних просто не доходят. Измерено ботом: по три врага
  * одного вида на локацию, 60 забегов на точку.
  *
- * Расхождение с дуэлью принципиальное: **голем стоит не два копейщика,
+ * Расхождение с дуэлью принципиальное: **маг стоит не два воина,
  * а 1,15.** Он не преследует, поэтому его обходят чаще всех (доля встреч 0,6
- * против 0,7 у копейщика). Модель, считавшая по дуэли, делала третий ярус
+ * против 0,7 у воина). Модель, считавшая по дуэли, делала третий ярус
  * легче второго — ошибку нашёл бот, из формул она не видна.
  *
- * Падальщик в дуэли стоит ноль, но в стае добивает раненого: 0,06.
+ * Простой скелет в дуэли стоит ноль, но в стае добивает раненого: 0,06.
  */
 export const ENCOUNTER_WOUND: Record<EnemyKind, number> = {
-  scavenger: 0.06,
-  spearman: 0.73,
-  golem: 0.85,
+  minion: 0.06,
+  warrior: 0.73,
+  mage: 0.85,
 };
 
 /* ---------- вход ---------- */
@@ -126,27 +126,27 @@ export function deriveTier(spec: TierSpec): TierNumbers {
   // что позволяет унести провиант. Это и есть «оба ограничения живые».
   const capacity = Math.max(4, Math.round(haul * spec.capacityRatio));
 
-  // Состав врагов. Раны и провиант набираются раздельно: копейщики и големы
-  // до бюджета ран, падальщики — сколько нужно давления на провиант.
+  // Состав врагов. Раны и провиант набираются раздельно: воины и маги
+  // до бюджета ран, простые скелеты — сколько нужно давления на провиант.
   // Бюджет считается ценой присутствия, а не дуэли: иначе непреследующий
-  // голем съедает вдвое больше бюджета, чем стоит на деле.
+  // маг съедает вдвое больше бюджета, чем стоит на деле.
   const woundPoints = spec.woundBudget * HERO_WOUNDS;
   const roster: EnemyKind[] = [];
   let spent = 0;
-  while (spent + ENCOUNTER_WOUND.golem <= woundPoints && spec.size >= 18) {
-    roster.push('golem');
-    spent += ENCOUNTER_WOUND.golem;
+  while (spent + ENCOUNTER_WOUND.mage <= woundPoints && spec.size >= 18) {
+    roster.push('mage');
+    spent += ENCOUNTER_WOUND.mage;
   }
-  while (spent + ENCOUNTER_WOUND.spearman <= woundPoints) {
-    roster.push('spearman');
-    spent += ENCOUNTER_WOUND.spearman;
+  while (spent + ENCOUNTER_WOUND.warrior <= woundPoints) {
+    roster.push('warrior');
+    spent += ENCOUNTER_WOUND.warrior;
   }
-  // Падальщики: по одному на каждые полтора перегона — столько стычек,
+  // Простые скелеты: по одному на каждые полтора перегона — столько стычек,
   // сколько маршрут естественно пересекает. Ран почти не стоят, но едят
   // провиант по 3 за стычку, и это их роль.
-  const scavengers = Math.max(1, Math.round(reachable * 0.8));
-  for (let i = 0; i < scavengers; i++) roster.push('scavenger');
-  spent += scavengers * ENCOUNTER_WOUND.scavenger;
+  const minions = Math.max(1, Math.round(reachable * 0.8));
+  for (let i = 0; i < minions; i++) roster.push('minion');
+  spent += minions * ENCOUNTER_WOUND.minion;
 
   const woundsTaken = spent;
 

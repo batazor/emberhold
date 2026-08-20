@@ -22,9 +22,9 @@ describe('Бой', () => {
 
   test('§22 — бюджет ран, а не голов', () => {
     // Считать противников поштучно означает мерить не то. Но и дуэльная цена
-    // (падальщик 0, копейщик 1, голем 2) не годится: обход врага — часть игры.
+    // (скелет 0, воин 1, маг 2) не годится: обход врага — часть игры.
     // Замер в настоящей вылазке даёт цену присутствия — 0,06 / 0,73 / 0,85.
-    // Голем стоит не два копейщика, а 1,15: его обходят чаще всех.
+    // Маг стоит не два воина, а 1,15: его обходят чаще всех.
     for (const [tier, roster] of Object.entries(TIER_ROSTER)) {
       const wounds = roster.reduce((sum, kind) => sum + ENCOUNTER_WOUND[kind], 0);
       assert.ok(
@@ -38,14 +38,14 @@ describe('Бой', () => {
     }
   });
 
-  test('§15 — голем не встаёт в единственный проход', () => {
+  test('§15 — маг не встаёт в единственный проход', () => {
     // Проверяем на десяти сидах: от эвакуации до каждого контейнера должен
-    // существовать путь, даже если зону голема считать непроходимой.
+    // существовать путь, даже если зону мага считать непроходимой.
     for (let seed = 1; seed <= 10; seed++) {
       const loc = generateLocation(seed, 3);
       const walled = Uint8Array.from(loc.blocked);
       for (const e of loc.enemies) {
-        if (e.kind !== 'golem') continue;
+        if (e.kind !== 'mage') continue;
         for (let z = Math.round(e.z) - 1; z <= Math.round(e.z) + 1; z++) {
           for (let x = Math.round(e.x) - 1; x <= Math.round(e.x) + 1; x++) {
             if (x >= 0 && z >= 0 && x < loc.size && z < loc.size) walled[idx(loc.size, x, z)] = 1;
@@ -54,7 +54,7 @@ describe('Бой', () => {
       }
       const reach = distanceField(loc.size, walled, loc.evac);
       for (const c of loc.containers) {
-        assert.ok(reach[idx(loc.size, c.x, c.z)]! >= 0, `сид ${seed}: контейнер отрезан големом`);
+        assert.ok(reach[idx(loc.size, c.x, c.z)]! >= 0, `сид ${seed}: контейнер отрезан магом`);
       }
     }
   });

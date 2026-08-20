@@ -61,6 +61,9 @@ interface EnemyView {
   readonly mesh: THREE.Mesh;
   readonly base: THREE.MeshLambertMaterial;
   readonly hot: THREE.MeshLambertMaterial;
+  /** Куда смотрит модель. Хранится отдельно, потому что поворот сглаживается,
+   *  а симуляция направления противника не держит: ей оно не нужно. */
+  facing: number;
 }
 
 export class RaidView {
@@ -317,11 +320,14 @@ export class RaidView {
   }
 
   /**
-   * Противники — модели артбука (раздел 04). Различаются силуэтом раньше,
-   * чем цветом: за пределами фонаря цвет пропадает первым.
+   * Противники — три скелета набора KayKit Skeletons (§6.1.3, каталог —
+   * `enemyart.html`). Различаются силуэтом раньше, чем цветом: за пределами
+   * фонаря цвет пропадает первым, и разводят их снаряжение и рост,
+   * а не оттенок кости.
    *
    * Геометрия и материалы общие на вид, а не на особь: на ярусе 3 их девять,
-   * и девять одинаковых материалов — это девять лишних состояний GPU.
+   * и девять одинаковых материалов — это девять лишних состояний GPU. Для
+   * набора это уже не мелочь: одна модель — пять тысяч треугольников.
    */
   private buildEnemies(): void {
     const shapes = new Map<EnemyKind, THREE.BufferGeometry>();
@@ -355,7 +361,7 @@ export class RaidView {
       mesh.castShadow = true;
       mesh.position.set(e.x, 0, e.z);
       this.group.add(mesh);
-      this.enemyViews.set(e.id, { mesh, base: this.blocking, hot: hotOf(e.kind) });
+      this.enemyViews.set(e.id, { mesh, base: this.blocking, hot: hotOf(e.kind), facing: 0 });
     }
   }
 
@@ -443,13 +449,24 @@ export class RaidView {
         view.mesh.visible = false;
         continue;
       }
-      view.mesh.position.set(
-        lerp(e.prevX, e.x, alpha),
-        0.45 + Math.sin(time / 420 + e.id) * 0.04,
-        lerp(e.prevZ, e.z, alpha),
-      );
+      const ex = lerp(e.prevX, e.x, alpha);
+      const ez = lerp(e.prevZ, e.z, alpha);
+      // Шаг вместо парения: модель стоит на полу, а покачивание остаётся
+      // только пока противник идёт. Клипов ходьбы у игры пока нет (§17.1),
+      // и это всё, чем ход отличается от стойки.
+      const walking = e.x !== e.prevX || e.z !== e.prevZ;
+      view.mesh.position.set(ex, walking ? Math.abs(Math.sin(time / 110 + e.id)) * 0.03 : 0, ez);
       view.mesh.material = e.telegraph > 0 ? view.hot : view.base;
-      view.mesh.rotation.y += dt * (e.awake ? 2.5 : 0.5);
+      // Спящий смотрит, куда стоял; проснувшийся — на героя. Разворот тот же,
+      // что у героя (§17.2): за кадр, а не мгновенно.
+      const look = walking
+        ? Math.atan2(e.x - e.prevX, e.z - e.prevZ)
+        : e.awake ? Math.atan2(hx - ex, hz - ez) : view.facing;
+      let spin = look - view.facing;
+      while (spin > Math.PI) spin -= Math.PI * 2;
+      while (spin < -Math.PI) spin += Math.PI * 2;
+      view.facing += spin * Math.min(1, dt * 8);
+      view.mesh.rotation.y = view.facing;
       this.scaleByWounds(view.mesh, e);
     }
 
@@ -495,7 +512,7 @@ export class RaidView {
       const dx = e.x - hx;
       const dz = e.z - hz;
       if (dx * dx + dz * dz > 64) continue;
-      slots.push({ x: e.x, z: e.z, strength: e.kind === 'golem' ? 1.4 : 0.9 });
+      slots.push({ x: e.x, z: e.z, strength: e.kind === 'mage' ? 1.4 : 0.9 });
     }
     this.grass.update(time / 1000, slots as readonly Pusher[]);
   }

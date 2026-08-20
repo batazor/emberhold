@@ -27,10 +27,11 @@ const ROOT = resolve(import.meta.dirname, '..');
 /* ---------- наборы: чем набор описывается ---------- */
 
 /**
- * Насыщенность, ниже которой цвет считается серым. Серое не участвует
- * в замере диапазонов яркости: у леса это пустое поле атласа под платные
- * варианты, у подземелья — белая ткань и чёрные решётки. И то и другое
- * растянуло бы шкалу градиента на весь диапазон.
+ * Насыщенность, ниже которой цвет считается серым, — значение по умолчанию.
+ * Серое не участвует в замере диапазонов яркости: у леса это пустое поле
+ * атласа под платные варианты, у подземелья — белая ткань и чёрные решётки.
+ * И то и другое растянуло бы шкалу градиента на весь диапазон. Набор,
+ * у которого серое — материал, а не пустота, задаёт свой порог (`Pack.grey`).
  */
 const GREY = 0.08;
 
@@ -43,6 +44,12 @@ interface Ramp {
   readonly hue: readonly [number, number];
   /** Окно насыщенности, [от, до] включительно. */
   readonly sat: readonly [number, number];
+  /**
+   * Окно яркости, [от, до). Нужно там, где оттенка мало: у скелетов кость
+   * и кожа сидят в одном тёплом углу атласа и различаются только светлотой.
+   * Без окна они делили бы один градиент, и кость уезжала бы в дерево.
+   */
+  readonly lum?: readonly [number, number];
 }
 
 interface Pack {
@@ -70,6 +77,26 @@ interface Pack {
   readonly adopted: readonly string[];
   /** Файл запечённой геометрии; без него набор остаётся каталогом. */
   readonly data?: { readonly file: string; readonly prefix: string; readonly type: string };
+  /**
+   * Ниже какой насыщенности цвет считается серым и не участвует в замере шкалы.
+   * У леса и подземелья серое — пустое поле атласа и белая ткань, и оно шкалу
+   * растягивает. У скелетов серое — сталь, полноценный материал набора,
+   * поэтому порог там опущен почти до нуля.
+   */
+  readonly grey?: number;
+  /**
+   * Поза, в которой обмеряется и запекается скинованная модель. Без неё
+   * скелет остаётся в позе привязки — то есть в T-позе, руки в стороны:
+   * так набор нарисован, но так он не стоит ни в одном кадре игры.
+   */
+  readonly pose?: { readonly file: string; readonly clip: string; readonly at: number };
+  /**
+   * Узлы скелета, мировая матрица которых сохраняется вместе с моделью.
+   * Набор держит оружие в отдельном узле `handslot.r`; сохранив его,
+   * рендер вкладывает предмет в руку по матрице набора, а не по подобранному
+   * на глаз смещению.
+   */
+  readonly attach?: readonly string[];
 }
 
 /**
@@ -199,7 +226,102 @@ const DUNGEON: Pack = {
   adopted: [],
 };
 
-const PACKS: readonly Pack[] = [FOREST, DUNGEON];
+/**
+ * Третий набор — противники. Разница с первыми двумя не в содержимом,
+ * а в устройстве файла: скелеты приходят одним `.glb` со скином, скелетом
+ * и встроенным атласом, а клипы лежат отдельно. Отсюда всё, что этот набор
+ * добавил инструменту: контейнер GLB, скиннинг, поза из клипа и окно яркости
+ * у градиента.
+ */
+const SKELETON_CATEGORIES: Record<string, string> = {
+  Mage: 'Скелеты',
+  Minion: 'Скелеты',
+  Rogue: 'Скелеты',
+  Warrior: 'Скелеты',
+  Axe: 'Оружие',
+  Blade: 'Оружие',
+  Crossbow: 'Оружие',
+  Staff: 'Оружие',
+  Shield: 'Щиты',
+  Arrow: 'Снаряды',
+  Quiver: 'Снаряды',
+};
+
+/**
+ * Атлас скелетов — картинка с запечённой светотенью: 998 цветов под
+ * треугольниками там, где у леса было четыре градиента по четыре ступени.
+ * Градиентов пять, и один из них заведён не оттенком, а яркостью.
+ *
+ * Окна, как и у первых двух наборов, не пересекаются. Свечение глаз попадает
+ * в то же тёплое окно оттенка, что и кость, и разводит их насыщенность:
+ * 0,86 у свечения против 0,42 у самой яркой кости.
+ */
+const SKELETONS: Pack = {
+  id: 'skeletons',
+  title: 'KayKit Character Pack: Skeletons 1.1 FREE',
+  dir: 'assets/kaykit-skeletons',
+  atlas: 'skeleton_texture.png',
+  ramps: [
+    { id: 'glow', title: 'свечение', slots: ['латунь'], hue: [40, 60], sat: [0.62, 1] },
+    /**
+     * Нижняя граница насыщенности у кости и дерева — порог серого набора,
+     * а не круглое число. Пока она стояла выше, два треугольника цвета
+     * `#fbf7f2` (насыщенность 3,6%) не попадали ни в одно окно, падали
+     * в запасную сталь и растягивали её шкалу с 0,71 до 0,97 — на шесть
+     * тысяч треугольников доспеха оставался один оттенок из трёх.
+     */
+    {
+      id: 'bone', title: 'кость', slots: ['соль-тень', 'соль', 'соль-свет', 'иней'],
+      hue: [15, 45], sat: [0.02, 0.6], lum: [0.55, 1.01],
+    },
+    {
+      id: 'wood', title: 'дерево и кожа', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'],
+      hue: [15, 45], sat: [0.02, 0.6], lum: [0, 0.55],
+    },
+    { id: 'cloth', title: 'сукно', slots: ['уголь', 'жар', 'пламя'], hue: [300, 15], sat: [0.25, 1] },
+    { id: 'steel', title: 'сталь', slots: ['металл-тень', 'металл', 'сталь'], hue: [60, 300], sat: [0, 1] },
+  ],
+  slots: [
+    'уголь', 'жар', 'пламя',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'металл-тень', 'металл', 'сталь',
+    'соль-тень', 'соль', 'соль-свет', 'иней',
+    'латунь',
+  ],
+  range: 'used',
+  fallback: 'steel',
+  /** Серого поля у этого атласа нет: сталь набора и есть почти серое. */
+  grey: 0.02,
+  /**
+   * Клип берётся из соседнего набора анимаций, а не из своего: скелеты
+   * приехали с двумя файлами клипов, и оба побайтно совпадают с файлами
+   * `kaykit-animations` — тот же риг, те же дорожки. Хранить их дважды значит
+   * держать полтора мегабайта одного и того же и две строки в реестре
+   * лицензий на один и тот же файл.
+   */
+  pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
+  attach: ['handslot.r'],
+  categoryOf: (name) => SKELETON_CATEGORIES[name.split('_')[1]!] ?? 'Прочее',
+  /**
+   * Трое из четырёх и два предмета — по одному противнику §15 на скелет.
+   * Список короткий по той же причине, что у леса, но цена здесь другого
+   * порядка: модель набора — пять тысяч треугольников, а не двести.
+   * Что взято и чем оплачено — `enemyart.html`.
+   *
+   * Разбойника не берём: от Воина он отличается капюшоном вместо шлема,
+   * а стоит столько же. Четвёртого противника §15 не предусматривает,
+   * и брать модель «про запас» — это килобайты у всех игроков за то,
+   * чего в игре нет.
+   */
+  adopted: [
+    'Skeleton_Minion',
+    'Skeleton_Warrior', 'Skeleton_Axe',
+    'Skeleton_Mage', 'Skeleton_Staff',
+  ],
+  data: { file: 'src/render/skeleton.data.ts', prefix: 'SKELETON', type: 'Skeleton' },
+};
+
+const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS];
 
 /* ---------- png ---------- */
 
@@ -291,17 +413,28 @@ interface Accessor {
   byteOffset?: number;
   componentType: number;
   count: number;
-  type: 'SCALAR' | 'VEC2' | 'VEC3';
+  type: 'SCALAR' | 'VEC2' | 'VEC3' | 'VEC4' | 'MAT4';
   min?: number[];
   max?: number[];
 }
 interface Node {
+  name?: string;
   mesh?: number;
+  skin?: number;
   children?: number[];
   translation?: number[];
   rotation?: number[];
   scale?: number[];
   matrix?: number[];
+}
+interface Skin {
+  joints: number[];
+  inverseBindMatrices?: number;
+}
+interface Animation {
+  name?: string;
+  channels: { sampler: number; target: { node?: number; path: string } }[];
+  samplers: { input: number; output: number; interpolation?: string }[];
 }
 interface Gltf {
   accessors: Accessor[];
@@ -309,12 +442,50 @@ interface Gltf {
   buffers: { uri?: string; byteLength: number }[];
   meshes: { primitives: { attributes: Record<string, number>; indices?: number }[] }[];
   nodes?: Node[];
+  skins?: Skin[];
+  animations?: Animation[];
   scenes?: { nodes: number[] }[];
   scene?: number;
 }
 
 const COMPONENT_SIZE: Record<number, number> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
-const TYPE_SIZE: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3 };
+const TYPE_SIZE: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
+
+/** Файл набора вместе с его буфером: `.gltf` рядом с `.bin` или один `.glb`. */
+interface Doc {
+  readonly gltf: Gltf;
+  readonly bin: Buffer;
+}
+
+/**
+ * Чтение файла модели. Два контейнера одного формата: лес и подземелье
+ * отдали `.gltf` с буфером рядом, скелеты — `.glb`, где JSON и буфер лежат
+ * кусками в одном файле. Дальше по коду разницы нет.
+ */
+function loadDoc(file: string): Doc {
+  if (!file.endsWith('.glb')) {
+    const gltf = JSON.parse(readFileSync(file, 'utf8')) as Gltf;
+    const uri = gltf.buffers[0]?.uri;
+    if (uri === undefined) throw new Error(`${basename(file)}: буфер без uri`);
+    return { gltf, bin: readFileSync(join(file, '..', decodeURIComponent(uri))) };
+  }
+
+  const buf = readFileSync(file);
+  if (buf.toString('ascii', 0, 4) !== 'glTF') throw new Error(`${basename(file)}: не GLB`);
+  let at = 12;
+  let gltf: Gltf | undefined;
+  let bin: Buffer | undefined;
+  while (at + 8 <= buf.length) {
+    const length = buf.readUInt32LE(at);
+    const type = buf.toString('ascii', at + 4, at + 8);
+    const data = buf.subarray(at + 8, at + 8 + length);
+    if (type === 'JSON') gltf = JSON.parse(data.toString('utf8')) as Gltf;
+    else if (type.startsWith('BIN')) bin = Buffer.from(data);
+    at += 8 + length;
+  }
+  if (gltf === undefined || bin === undefined) throw new Error(`${basename(file)}: GLB без чанка`);
+  return { gltf, bin };
+}
 
 function readAccessor(gltf: Gltf, bin: Buffer, index: number): Float64Array {
   const acc = gltf.accessors[index]!;
@@ -364,12 +535,15 @@ function multiply(a: Mat4, b: Mat4): Mat4 {
  * есть у четырёх — крышка сундука и створка двери вынесены отдельными узлами,
  * чтобы их можно было анимировать. Игнорировать трансформ значит собрать
  * сундук с крышкой внутри ящика, поэтому обмер ходит по сцене, а не по мешам.
+ *
+ * Кадр клипа, если он задан, заменяет собственный TRS узла: это и есть поза.
  */
-function localOf(node: Node): Mat4 {
-  if (node.matrix !== undefined) return node.matrix;
-  const [x, y, z, w] = node.rotation ?? [0, 0, 0, 1];
-  const [sx, sy, sz] = node.scale ?? [1, 1, 1];
-  const [tx, ty, tz] = node.translation ?? [0, 0, 0];
+function localOf(node: Node, pose?: Pose): Mat4 {
+  const frame = node.name === undefined ? undefined : pose?.get(node.name);
+  if (node.matrix !== undefined && frame === undefined) return node.matrix;
+  const [x, y, z, w] = frame?.r ?? node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = frame?.s ?? node.scale ?? [1, 1, 1];
+  const [tx, ty, tz] = frame?.t ?? node.translation ?? [0, 0, 0];
   const rot = [
     1 - 2 * (y! * y! + z! * z!), 2 * (x! * y! + z! * w!), 2 * (x! * z! - y! * w!),
     2 * (x! * y! - z! * w!), 1 - 2 * (x! * x! + z! * z!), 2 * (y! * z! + x! * w!),
@@ -383,6 +557,72 @@ function localOf(node: Node): Mat4 {
   ];
 }
 
+/* ---------- поза: клип из отдельного файла ---------- */
+
+/** Переопределение TRS узла по имени — ровно то, чем является кадр клипа. */
+type Pose = ReadonlyMap<string, { t?: number[]; r?: number[]; s?: number[] }>;
+
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/** Кратчайшая дуга между кватернионами. Линейная смесь на резких кадрах
+ *  укорачивает кости, и на клипе смерти это видно. */
+function slerp(a: number[], b: number[], t: number): number[] {
+  let dot = a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]! + a[3]! * b[3]!;
+  const to = dot < 0 ? b.map((v) => -v) : b.slice();
+  dot = Math.abs(dot);
+  if (dot > 0.9995) return a.map((v, i) => lerp(v, to[i]!, t));
+  const theta = Math.acos(dot);
+  const sin = Math.sin(theta);
+  const wa = Math.sin((1 - t) * theta) / sin;
+  const wb = Math.sin(t * theta) / sin;
+  return a.map((v, i) => v * wa + to[i]! * wb);
+}
+
+/**
+ * Кадр клипа как таблица «имя узла → TRS». Клипы лежат отдельным файлом
+ * с манекеном, а не в самой модели: у набора один скелет `Rig_Medium` на всех
+ * четверых, и клипы записаны один раз для него. Связывает их имя узла —
+ * индексы у манекена и у скелета свои.
+ */
+function loadPose(file: string, clipName: string, at: number): Pose {
+  const { gltf, bin } = loadDoc(file);
+  const clip = gltf.animations?.find((a) => a.name === clipName);
+  if (clip === undefined) {
+    const have = (gltf.animations ?? []).map((a) => a.name).join(', ');
+    throw new Error(`${basename(file)}: клипа «${clipName}» нет. Есть: ${have}`);
+  }
+
+  const out = new Map<string, { t?: number[]; r?: number[]; s?: number[] }>();
+  for (const channel of clip.channels) {
+    const node = channel.target.node === undefined ? undefined : gltf.nodes?.[channel.target.node];
+    const name = node?.name;
+    if (name === undefined) continue;
+    const sampler = clip.samplers[channel.sampler]!;
+    if (sampler.interpolation === 'CUBICSPLINE') {
+      throw new Error(`${basename(file)}: клип ${clipName} в CUBICSPLINE, а он не разобран`);
+    }
+    const times = readAccessor(gltf, bin, sampler.input);
+    const values = readAccessor(gltf, bin, sampler.output);
+    const size = values.length / times.length;
+
+    // Кадр слева от времени; за концом клипа берётся последний.
+    let i = 0;
+    while (i + 1 < times.length && times[i + 1]! <= at) i++;
+    const j = Math.min(i + 1, times.length - 1);
+    const span = times[j]! - times[i]!;
+    const t = span > 0 ? Math.min(1, Math.max(0, (at - times[i]!) / span)) : 0;
+    const from = Array.from(values.slice(i * size, i * size + size));
+    const to = Array.from(values.slice(j * size, j * size + size));
+
+    const entry = out.get(name) ?? {};
+    if (channel.target.path === 'rotation') entry.r = slerp(from, to, t);
+    else if (channel.target.path === 'translation') entry.t = from.map((v, k) => lerp(v, to[k]!, t));
+    else if (channel.target.path === 'scale') entry.s = from.map((v, k) => lerp(v, to[k]!, t));
+    out.set(name, entry);
+  }
+  return out;
+}
+
 interface Mesh {
   /** Треугольники подряд: 9 чисел (три вершины) на треугольник. */
   readonly positions: Float64Array;
@@ -392,20 +632,44 @@ interface Mesh {
   readonly verts: number;
   /** Узлов с собственным трансформом — их и ради них ходим по сцене. */
   readonly moved: number;
+  /** Скинованных примитивов: у первых двух наборов их нет ни одного. */
+  readonly skinned: number;
+  /** Мировые матрицы затребованных узлов — из них рендер берёт руку. */
+  readonly attach: Record<string, Mat4>;
 }
 
-function loadMesh(file: string): Mesh {
-  const gltf = JSON.parse(readFileSync(file, 'utf8')) as Gltf;
-  const uri = gltf.buffers[0]?.uri;
-  if (uri === undefined) throw new Error(`${basename(file)}: буфер без uri`);
-  const bin = readFileSync(join(file, '..', decodeURIComponent(uri)));
+function loadMesh(file: string, pose?: Pose, attach: readonly string[] = []): Mesh {
+  const { gltf, bin } = loadDoc(file);
 
   const positions: number[] = [];
   const uvs: number[] = [];
   let verts = 0;
   let moved = 0;
+  let skinned = 0;
 
-  const takeMesh = (index: number, world: Mat4): void => {
+  /** Мировая матрица каждого узла: скиннингу нужны все, а не только те,
+   *  под которыми висит меш. */
+  const world = new Array<Mat4>(gltf.nodes?.length ?? 0).fill(IDENTITY);
+
+  const walk = (index: number, parent: Mat4): void => {
+    const node = gltf.nodes?.[index];
+    if (node === undefined) return;
+    const local = localOf(node, pose);
+    if (JSON.stringify(local) !== JSON.stringify(IDENTITY)) moved++;
+    world[index] = multiply(parent, local);
+    for (const child of node.children ?? []) walk(child, world[index]!);
+  };
+
+  const scene = gltf.scenes?.[gltf.scene ?? 0];
+  if (scene !== undefined) for (const root of scene.nodes) walk(root, IDENTITY);
+
+  const put = (m: Mat4, p: readonly number[]): void => {
+    for (let c = 0; c < 3; c++) {
+      positions.push(m[c]! * p[0]! + m[4 + c]! * p[1]! + m[8 + c]! * p[2]! + m[12 + c]!);
+    }
+  };
+
+  const takeMesh = (index: number, model: Mat4, skin: number | undefined): void => {
     for (const prim of gltf.meshes[index]!.primitives) {
       const posIndex = prim.attributes['POSITION'];
       const uvIndex = prim.attributes['TEXCOORD_0'];
@@ -414,15 +678,46 @@ function loadMesh(file: string): Mesh {
       const uv = readAccessor(gltf, bin, uvIndex);
       const idx = readAccessor(gltf, bin, prim.indices);
       verts += gltf.accessors[posIndex]!.count;
+
+      /**
+       * Скиннинг. Позиции скинованного примитива записаны в пространстве
+       * скелета, и собственный трансформ узла с мешем glTF велит
+       * игнорировать: положение вершины целиком задают кости.
+       */
+      const jointsIndex = prim.attributes['JOINTS_0'];
+      const weightsIndex = prim.attributes['WEIGHTS_0'];
+      let vertexMatrix: ((v: number) => Mat4) | null = null;
+      if (skin !== undefined && jointsIndex !== undefined && weightsIndex !== undefined) {
+        skinned++;
+        const joints = readAccessor(gltf, bin, jointsIndex);
+        const weights = readAccessor(gltf, bin, weightsIndex);
+        const bones = gltf.skins![skin]!;
+        const inverse = bones.inverseBindMatrices === undefined
+          ? null
+          : readAccessor(gltf, bin, bones.inverseBindMatrices);
+        const boneMatrix = bones.joints.map((node, k) => {
+          const bind = inverse === null ? IDENTITY : Array.from(inverse.slice(k * 16, k * 16 + 16));
+          return multiply(world[node] ?? IDENTITY, bind);
+        });
+        vertexMatrix = (v: number): Mat4 => {
+          const out = new Array<number>(16).fill(0);
+          for (let k = 0; k < 4; k++) {
+            const w = weights[v * 4 + k]!;
+            if (w === 0) continue;
+            const m = boneMatrix[joints[v * 4 + k]!] ?? IDENTITY;
+            for (let c = 0; c < 16; c++) out[c] = out[c]! + m[c]! * w;
+          }
+          return out;
+        };
+      }
+
       for (let i = 0; i < idx.length; i += 3) {
         let cu = 0;
         let cv = 0;
         for (let k = 0; k < 3; k++) {
           const v = idx[i + k]!;
           const p = [pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!];
-          for (let c = 0; c < 3; c++) {
-            positions.push(world[c]! * p[0]! + world[4 + c]! * p[1]! + world[8 + c]! * p[2]! + world[12 + c]!);
-          }
+          put(vertexMatrix === null ? model : vertexMatrix(v), p);
           cu += uv[v * 2]!;
           cv += uv[v * 2 + 1]!;
         }
@@ -431,22 +726,28 @@ function loadMesh(file: string): Mesh {
     }
   };
 
-  const walk = (index: number, parent: Mat4): void => {
+  // Второй проход, в порядке сцены. Порядок треугольников — контракт
+  // с каталогом: страница артбука раскрашивает их по списку слотов и обязана
+  // получить тот же порядок, что получило запекание.
+  const collect = (index: number): void => {
     const node = gltf.nodes?.[index];
     if (node === undefined) return;
-    const local = localOf(node);
-    if (local !== IDENTITY && JSON.stringify(local) !== JSON.stringify(IDENTITY)) moved++;
-    const world = multiply(parent, local);
-    if (node.mesh !== undefined) takeMesh(node.mesh, world);
-    for (const child of node.children ?? []) walk(child, world);
+    if (node.mesh !== undefined) takeMesh(node.mesh, world[index]!, node.skin);
+    for (const child of node.children ?? []) collect(child);
   };
 
-  const scene = gltf.scenes?.[gltf.scene ?? 0];
   if (scene === undefined) {
     // Сцены нет — набор отдал голые меши; берём их как есть, без трансформа.
-    for (let i = 0; i < gltf.meshes.length; i++) takeMesh(i, IDENTITY);
+    for (let i = 0; i < gltf.meshes.length; i++) takeMesh(i, IDENTITY, undefined);
   } else {
-    for (const root of scene.nodes) walk(root, IDENTITY);
+    for (const root of scene.nodes) collect(root);
+  }
+
+  // Узла может не быть, и это нормально: рука есть у скелета, а не у топора.
+  const held: Record<string, Mat4> = {};
+  for (const name of attach) {
+    const index = (gltf.nodes ?? []).findIndex((n) => n.name === name);
+    if (index >= 0) held[name] = world[index]!;
   }
 
   return {
@@ -455,6 +756,8 @@ function loadMesh(file: string): Mesh {
     tris: uvs.length / 2,
     verts,
     moved,
+    skinned,
+    attach: held,
   };
 }
 
@@ -477,14 +780,19 @@ function hueSat(r: number, g: number, b: number): { hue: number; sat: number } {
   return { hue: hue * 60, sat: d / max };
 }
 
+/** Ниже какой насыщенности цвет набора считается серым и в шкале не участвует. */
+const greyOf = (pack: Pack): number => pack.grey ?? GREY;
+
 /**
  * Какой градиент задет. Окна не пересекаются, поэтому порядок объявления
  * ничего не решает; всё, что мимо окон, — включая серое — идёт в запасной.
  */
 function rampOf(pack: Pack, r: number, g: number, b: number): string {
   const { hue, sat } = hueSat(r, g, b);
+  const lum = luminance(r, g, b);
   for (const ramp of pack.ramps) {
     if (sat < ramp.sat[0] || sat > ramp.sat[1]) continue;
+    if (ramp.lum !== undefined && (lum < ramp.lum[0] || lum >= ramp.lum[1])) continue;
     const [lo, hi] = ramp.hue;
     const inside = lo < hi ? hue >= lo && hue < hi : hue >= lo || hue < hi;
     if (inside) return ramp.id;
@@ -530,7 +838,7 @@ function rampRanges(
   const out: Record<string, { min: number; max: number }> = {};
   for (const r of pack.ramps) out[r.id] = { min: 1, max: 0 };
   const take = (r: number, g: number, b: number): void => {
-    if (hueSat(r, g, b).sat < GREY) return;
+    if (hueSat(r, g, b).sat < greyOf(pack)) return;
     const band = out[rampOf(pack, r, g, b)]!;
     const l = luminance(r, g, b);
     if (l < band.min) band.min = l;
@@ -594,6 +902,10 @@ interface Baked {
   readonly grey: number;
   /** Узлов с собственным трансформом. */
   readonly moved: number;
+  /** Скинованных примитивов — то есть модель пришла со скелетом. */
+  readonly skinned: number;
+  /** Мировые матрицы затребованных узлов, в единицах набора. */
+  readonly attach: Record<string, Mat4>;
 }
 
 function bake(pack: Pack, name: string, mesh: Mesh, sampler: Sampler): Baked {
@@ -624,7 +936,7 @@ function bake(pack: Pack, name: string, mesh: Mesh, sampler: Sampler): Baked {
     const v = mesh.uvs[t * 2 + 1]!;
     slot[t] = sampler.slotOf(u, v);
     const c = sampler.colorAt(u, v);
-    if (hueSat(c[0], c[1], c[2]).sat < GREY) grey++;
+    if (hueSat(c[0], c[1], c[2]).sat < greyOf(pack)) grey++;
   }
 
   return {
@@ -638,6 +950,8 @@ function bake(pack: Pack, name: string, mesh: Mesh, sampler: Sampler): Baked {
     slot,
     grey,
     moved: mesh.moved,
+    skinned: mesh.skinned,
+    attach: mesh.attach,
   };
 }
 
@@ -653,6 +967,7 @@ function writeData(pack: Pack, models: Baked[]): string {
   });
 
   const round = (v: number): number => Math.round(v * 1000) / 1000;
+  const held = [...new Set(chosen.flatMap((m) => Object.keys(m.attach)))].sort();
   const body = chosen
     .map((m) => {
       const fields = [
@@ -662,14 +977,29 @@ function writeData(pack: Pack, models: Baked[]): string {
         `    pos: '${b64(m.pos)}',`,
         `    slot: '${b64(m.slot)}',`,
       ];
+      for (const name of held) {
+        const matrix = m.attach[name];
+        if (matrix !== undefined) fields.push(`    hand: [${matrix.map(round).join(', ')}],`);
+      }
       return `  '${m.name}': {\n${fields.join('\n')}\n  },`;
     })
     .join('\n');
 
+  const hand = held.length === 0
+    ? ''
+    : `
+  /**
+   * Мировая матрица узла ${held.join(', ')} в позе запекания и в единицах
+   * набора: столбцами, как её задаёт glTF. Предмет, умноженный на неё,
+   * оказывается в руке — там, где его держит сам набор.
+   */
+  readonly hand?: readonly number[];
+`;
+
   return `/* СГЕНЕРИРОВАНО \`npm run models -- --write\`. Руками не править. */
 
 /**
- * Геометрия принятых моделей набора KayKit Forest (CC0, см. assets/LICENSES.md),
+ * Геометрия принятых моделей набора ${pack.title} (CC0, см. assets/LICENSES.md),
  * запечённая по §6.1: без текстур, цвет — слот палитры на треугольник.
  * Позиции упакованы в 16 бит на ось в габаритах модели (min/max).
  */
@@ -681,7 +1011,7 @@ export interface ${data.type}Model {
   readonly pos: string;
   /** base64 Uint8Array: индекс в ${data.prefix}_SLOTS, один на треугольник. */
   readonly slot: string;
-}
+${hand}}
 
 /** Порядок слотов — контракт с render/palette.ts. */
 export const ${data.prefix}_SLOTS = [
@@ -726,7 +1056,7 @@ function writeCatalog(
         const vote = (c: [number, number, number], weight: number): void => {
           // Серое поле не участвует: большинством голосов оно выиграло бы
           // у настоящих цветов градиента.
-          if (hueSat(c[0], c[1], c[2]).sat < GREY) return;
+          if (hueSat(c[0], c[1], c[2]).sat < greyOf(pack)) return;
           if (rampOf(pack, c[0], c[1], c[2]) !== r.id) return;
           const key = c.join(',');
           const n = (counts.get(key) ?? 0) + weight;
@@ -756,6 +1086,9 @@ function writeCatalog(
       }),
     })),
     adopted: pack.adopted,
+    // Поза, в которой набор обмерен: без неё числа относятся к позе привязки,
+    // то есть к T-позе, и габарит врёт на размах рук.
+    ...(pack.pose === undefined ? {} : { pose: pack.pose }),
     // Сколько картинки набор вообще трогает: страница объясняет этим, почему
     // шкала градиента считается по задетому, а не по атласу.
     ...(usage === undefined
@@ -784,6 +1117,14 @@ function writeCatalog(
       size: [m.max[0] - m.min[0], m.max[1] - m.min[1], m.max[2] - m.min[2]].map(
         (v) => Math.round(v * 100) / 100,
       ),
+      // Модель со скелетом читается иначе: страница обязана уметь показать,
+      // что габарит снят с позы, а не с того, как модель лежит в файле.
+      ...(m.skinned > 0 ? { skinned: m.skinned } : {}),
+      ...(Object.keys(m.attach).length === 0
+        ? {}
+        : { attach: Object.fromEntries(
+            Object.entries(m.attach).map(([k, v]) => [k, v.map((x) => Math.round(x * 1000) / 1000)]),
+          ) }),
       slot: b64(m.slot),
     })),
   });
@@ -800,7 +1141,7 @@ function report(pack: Pack, write: boolean): void {
   const gltfDir = join(dir, 'gltf');
   const atlas = decodePng(join(dir, pack.atlas));
   const files = readdirSync(gltfDir)
-    .filter((f) => f.endsWith('.gltf'))
+    .filter((f) => f.endsWith('.gltf') || f.endsWith('.glb'))
     .sort()
     .map((f) => join(gltfDir, f));
 
@@ -809,9 +1150,18 @@ function report(pack: Pack, write: boolean): void {
     process.exit(1);
   }
 
+  // Поза читается один раз на набор: клип общий для всех четверых скелетов,
+  // потому что скелет у них тоже один.
+  const pose = pack.pose === undefined
+    ? undefined
+    : loadPose(join(dir, pack.pose.file), pack.pose.clip, pack.pose.at);
+
   // Два прохода: сначала геометрия, потом цвет. Шкала градиента может зависеть
   // от того, что набор задел, а это известно только после чтения всех моделей.
-  const meshes = files.map((f) => ({ name: basename(f, '.gltf'), mesh: loadMesh(f) }));
+  const meshes = files.map((f) => ({
+    name: basename(f).replace(/\.(gltf|glb)$/, ''),
+    mesh: loadMesh(f, pose, pack.attach),
+  }));
   const usage = pack.range === 'used' ? usageOf(atlas, meshes.map((m) => m.mesh)) : undefined;
   const sampler = makeSampler(pack, atlas, usage);
   const models = meshes.map((m) => bake(pack, m.name, m.mesh, sampler));
@@ -853,15 +1203,25 @@ function report(pack: Pack, write: boolean): void {
 
   const grey = models.reduce((s, m) => s + m.grey, 0);
   console.log(
-    `\nв сером поле атласа (насыщенность ниже ${GREY * 100}%): ${grey} треугольников` +
+    `\nв сером поле атласа (насыщенность ниже ${greyOf(pack) * 100}%): ${grey} треугольников` +
       ` — ${((grey / totalTris) * 100).toFixed(1)}%`,
   );
 
   const moved = models.filter((m) => m.moved > 0);
+  const movedNames = moved.length > 6 ? `${moved.length} моделей` : moved.map((m) => m.name).join(', ');
   console.log(
     `узлов с собственным трансформом: ${moved.reduce((s, m) => s + m.moved, 0)}` +
-      (moved.length > 0 ? ` (${moved.map((m) => m.name).join(', ')})` : ''),
+      (moved.length > 0 ? ` (${movedNames})` : ''),
   );
+
+  const skinned = models.filter((m) => m.skinned > 0);
+  if (skinned.length > 0) {
+    const held = models.filter((m) => Object.keys(m.attach).length > 0).length;
+    console.log(
+      `со скелетом: ${skinned.length} моделей, поза — ${pack.pose?.clip ?? 'привязки'}` +
+        `; узел для предмета найден у ${held}`,
+    );
+  }
 
   const over = models.filter((m) => m.tris > BUDGET);
   console.log(

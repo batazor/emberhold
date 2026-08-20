@@ -10,7 +10,14 @@ export interface Cell {
   readonly z: number;
 }
 
-export type EnemyKind = 'scavenger' | 'spearman' | 'golem';
+/**
+ * Три типа противника (§15). Идентификаторы — имена моделей набора KayKit
+ * (`Skeleton_Minion`, `Skeleton_Warrior`, `Skeleton_Mage`), и это не описка:
+ * называть тип тем, что игрок видит, честнее, чем придумывать породу.
+ *
+ * **Слова временные, см. §0.1 и §15.** Ни одно решение на них не опирается.
+ */
+export type EnemyKind = 'minion' | 'warrior' | 'mage';
 
 /** §15 — три типа, по одному на диапазон ярусов, различимы силуэтом. */
 export interface EnemyStats {
