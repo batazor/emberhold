@@ -48,7 +48,14 @@ import {
 import type { HeroState, Roster } from './sim/heroes';
 import { ONB_HINT, firstTapCell, grantFirstBuilding, reveal } from './sim/onboarding';
 import type { OnbStep } from './sim/onboarding';
-import { firstGladeCell, generateGlade, gladeFood, siteBlock } from './sim/prologue';
+import {
+  firstGladeCell,
+  generateGlade,
+  gladeCapacity,
+  gladeFood,
+  TENT_WOOD,
+  siteBlock,
+} from './sim/prologue';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
@@ -139,6 +146,10 @@ const PITCH_HINT: Partial<Record<BuildingId, string>> = {
 };
 /** Клетки, уже занятые зданиями лагеря. */
 const pitched: Cell[] = [];
+/** Сколько брусков собрано на поляне. Хранится затем, чтобы кольцо
+ *  подсказки переезжало на следующий брусок в момент подбора, а не
+ *  пересчитывалось каждый кадр. */
+let gladeTaken = -1;
 let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
@@ -377,9 +388,10 @@ function showOnb(step: OnbStep): void {
   hud.setHint(ONB_HINT[step] ?? '');
   campHud.setOnboarding(step);
   // Точка тапа нужна ровно в первом кадре: дальше игрок уже знает жест.
-  if (step === 'glade' && raid !== null) {
+  if ((step === 'glade' || step === 'gather') && raid !== null) {
     const cell = firstGladeCell(raid.loc, raid.hero);
     if (cell !== null) raidView?.showHint(cell.x, cell.z);
+    else raidView?.hideHint();
   } else if (step === 'move' && raid !== null) {
     const cell = firstTapCell(raid.loc, raid.hero);
     if (cell !== null) raidView?.showHint(cell.x, cell.z);
@@ -685,10 +697,26 @@ function tryPlace(cell: Cell): void {
   raidView?.place(placing, cell.x, cell.z);
   play('build');
   pitched.push(cell);
+  // Палатка встаёт из принесённого: бруски уходят из сумки на глазах,
+  // на той же полосе, в которую их только что клали. Ради этой секунды
+  // сбор в прологе и заведён — «здание стоит принесённого» показывается
+  // до лагеря, а не объясняется в нём.
+  //
+  // Тратится не больше, чем собрано: пролог показывает цену, а не запирает
+  // за ней. Запирать умеет лагерная экономика (§20.3), и там цена настоящая.
+  if (placing === 'hq') {
+    const paid = Math.min(TENT_WOOD, raid.bag.wood);
+    raid.bag.wood -= paid;
+    raid.bagTotal -= paid;
+  }
   const next = PITCH_ORDER[PITCH_ORDER.indexOf(placing) + 1];
   if (next === undefined) {
     placing = null;
     raidView?.hideSite();
+    // Что осталось в сумке, герой унёс с собой: лагерь стоит на этой поляне,
+    // и терять принесённое по дороге в него было бы неоткуда.
+    addResources(camp.resources, raid.bag);
+    persist();
     // Лагерь встал — единственное настоящее созвучие игры (§18.3).
     play('levelup');
     hud.setHint('Лагерь разбит');
@@ -720,6 +748,8 @@ function toGlade(): void {
     loadout: loadout(hero),
     loc: generateGlade(seed),
     food: gladeFood(),
+    // Сумка пролога — своя, как и провиант: Склада ещё нет (`prologue.ts`).
+    capacity: gladeCapacity(),
     // Выхода с поляны нет, и кольцо эвакуации не рисуется: уйти можно
     // только тем, что провиант кончился.
     evacOpen: false,
@@ -735,6 +765,7 @@ function toGlade(): void {
   rig.night = 0.12;
   resultShown = false;
   inGlade = true;
+  gladeTaken = -1;
   ear.reset(raid);
   placing = null;
   pitched.length = 0;
@@ -1060,14 +1091,25 @@ startLoop({
       ear.hear(raid);
       if (inGlade) {
         hud.sync(raid, dt);
-        // Кадр кончается ровно на нуле провианта. Голод, который в вылазке
-        // отнимает рану через шесть секунд, сюда не успевает и не должен:
-        // терять ещё нечего, и учить потерям в прологе не на чем.
-        if (raid.food <= 0 && !resultShown) {
+        const taken = raid.loc.containers.filter((c) => c.opened).length;
+        if (taken !== gladeTaken) {
+          gladeTaken = taken;
+          // Первый брусок зажигает полосу рюкзака: ей есть что показать.
+          if (taken > 0) onboarding.set('gather');
+          // Кольцо переезжает на следующий брусок — и гаснет, когда их нет.
+          showOnb(onboarding.step);
+        }
+        // Кадр кончается собранным деревом — или провиантом, если игрок
+        // ушёл бродить мимо брусков. Голод, который в вылазке отнимает рану
+        // через шесть секунд, сюда не успевает и не должен: терять ещё
+        // нечего, и учить потерям в прологе не на чем.
+        const gathered = raid.loc.containers.every((c) => c.opened);
+        if ((gathered || raid.food <= 0) && !resultShown) {
           resultShown = true;
           raid.path = [];
           raid.status = 'evacuated';
           raidView?.hideHint();
+          campPrompt.setReason(gathered ? 'Дерево собрано' : 'Провиант кончился');
           campPrompt.setVisible(true);
           // Пульс отработал своё: он вёл к этой секунде и молчит после неё.
           stopPulse();

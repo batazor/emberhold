@@ -61,6 +61,9 @@ export interface RaidOptions {
   readonly loc?: GameLocation;
   /** Провиант вместо кухонного. Тоже для пролога: Кухни в нём ещё нет. */
   readonly food?: number;
+  /** Вместимость вместо складской. Для пролога: Склада в нём тоже ещё нет,
+   *  и сумка там — то, с чем герой вышел, а не уровень здания. */
+  readonly capacity?: number;
   /**
    * Множитель добычи от богатства локации на карте мира (§4). По умолчанию 1:
    * замеры, бот и золотой мастер считают вылазку без карты.
@@ -99,7 +102,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     // Склад × класс, потом снаряжение: сумка прибавляет, оружие отнимает (§14).
     // Прибавка идёт после доли класса, иначе рюкзак Следопыта съедал бы
     // четверть выкованного короба, о чём игроку никто не говорил.
-    capacity: Math.max(
+    capacity: opts.capacity ?? Math.max(
       1,
       Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity,
     ),

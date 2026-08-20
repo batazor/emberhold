@@ -19,18 +19,25 @@ import type { Cell, GameLocation, RaidState } from './types';
  */
 export type OnbStep =
   /**
-   * Пролог: поляна, герой и одна полоса провианта. Ни боя, ни добычи,
-   * ни выхода — кадр кончается тем, что провиант кончился, и лагерь
-   * предлагается разбить прямо там, где герой встал (`prologue.ts`).
+   * Пролог: поляна, герой, полоса провианта и пара брусков дерева на земле.
+   * Ни боя, ни выхода — кадр кончается собранным деревом или кончившимся
+   * провиантом, и лагерь предлагается разбить прямо там, где герой встал
+   * (`prologue.ts`).
    */
   | 'glade'
+  /**
+   * Первый брусок в сумке. Полоса рюкзака зажигается здесь, а не в вылазке:
+   * ей есть что показать — в сумке лежит то, из чего сейчас встанет палатка.
+   */
+  | 'gather'
   /** 0:00 — герой в локации, одна подсвеченная точка на полу. */
   | 'move'
   /** 0:20 — первый скелет, бой идёт сам собой. */
   | 'approach'
   /** 0:40 — скриптовая рана: урон показан до того, как стал опасным. */
   | 'wound'
-  /** 1:00 — первая добыча, появляется рюкзак. */
+  /** 1:00 — первая добыча вылазки. Полоса рюкзака к этому кадру уже горит
+   *  с пролога; здесь впервые появляется добыча, которую в неё кладут. */
   | 'loot'
   /** 1:15 — выход подсвечен, появляется цена возврата. */
   | 'back'
@@ -48,7 +55,7 @@ export type OnbStep =
   | 'done';
 
 export const ONB_ORDER: readonly OnbStep[] = [
-  'glade',
+  'glade', 'gather',
   'move', 'approach', 'wound', 'loot', 'back', 'bait', 'evac',
   'return', 'build', 'tier', 'done',
 ];
@@ -67,7 +74,11 @@ export const isRaidStep = (step: OnbStep): boolean =>
  * открывался вылазкой, и кнопка «Играть» вела мимо него.
  */
 export const restartStep = (step: OnbStep): OnbStep =>
-  step === 'glade' ? 'glade' : isRaidStep(step) ? 'move' : step;
+  step === 'glade' || step === 'gather'
+    ? 'glade'
+    : isRaidStep(step)
+      ? 'move'
+      : step;
 
 /**
  * Что открыто на этом кадре. «Одна механика на кадр»: полосы включаются по
@@ -92,7 +103,9 @@ export function reveal(step: OnbStep): Reveal {
   return {
     food: true,
     wounds: done || i >= stepIndex('wound'),
-    bag: done || i >= stepIndex('loot'),
+    // Рюкзак зажигается в прологе, на первом бруске, и больше не гаснет:
+    // кадр `loot` вводит уже не полосу, а добычу, которую в неё кладут.
+    bag: done || i >= stepIndex('gather'),
     back: done || i >= stepIndex('back'),
     risk: done || i >= stepIndex('bait'),
     evac: done || i >= stepIndex('evac'),
@@ -106,6 +119,7 @@ export function reveal(step: OnbStep): Reveal {
  */
 export const ONB_HINT: Partial<Record<OnbStep, string>> = {
   glade: 'Коснитесь земли, чтобы идти',
+  gather: 'Соберите бруски',
   move: 'Коснитесь земли, чтобы идти',
   approach: 'Подойдите ближе',
   bait: 'Дальше — ещё один сундук',
