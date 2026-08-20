@@ -101,7 +101,9 @@
   .cover .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
   .cover .cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:22px 0 0;}
   .shelf{display:flex;flex-direction:column;gap:18px;}
-  .shelf h2{font-family:var(--ff-display);font-weight:400;font-size:24px;margin:0;letter-spacing:-.01em;}
+  /* Свой интерлиньяж: h2 наследовал 1.55 от body, и при кегле 24px строка
+     выходила 37 пикселей. У h1 свой 1.05 прописан явно — h2 забыли. */
+  .shelf h2{font-family:var(--ff-display);font-weight:400;font-size:24px;margin:0;letter-spacing:-.01em;line-height:1.15;}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:16px;}
   .card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:8px;
     background:var(--surface);border:1px solid var(--line);padding:18px;min-height:100%;}
