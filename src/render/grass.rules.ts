@@ -12,8 +12,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { generateLocation } from '../sim/generate';
 import { idx } from '../sim/grid';
-import { foodPulse } from '../core/audio';
-import { BEAT_FADE, GRASS_MAX_PER_TILE, plantGrass, tileTop } from './grass';
+import { GRASS_MAX_PER_TILE, plantGrass, tileTop } from './grass';
 
 const loc = generateLocation(4242, 2);
 
@@ -74,18 +73,6 @@ describe('Трава', () => {
       cells.size,
       plan.perPass,
       'два прохода обязаны накрыть все травяные клетки по разу',
-    );
-  });
-
-  test('§18.2 — круг от пульса гаснет до следующего удара', () => {
-    // Круг в шейдере один: новый удар ставит его возраст в ноль и стирает
-    // предыдущий. Если предыдущий к тому времени ещё виден, обрыв читается
-    // рывком поля — а бьёт пульс на голодную голову раз в 600 мс.
-    const fastest = foodPulse(0) ?? { everyMs: 0, hz: 0 };
-    const left = Math.exp(-(fastest.everyMs / 1000) / BEAT_FADE);
-    assert.ok(
-      left < 0.15,
-      `к следующему удару (${fastest.everyMs} мс) от круга остаётся ${(left * 100).toFixed(0)}%`,
     );
   });
 

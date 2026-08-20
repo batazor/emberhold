@@ -76,8 +76,6 @@ let noise: AudioBuffer | null = null;
 let ambient: (() => void) | null = null;
 let ambientTier = -1;
 let pulseTimer: ReturnType<typeof setTimeout> | null = null;
-/** Кому сообщить про удар. Ставит main, чтобы картинка шла в такт (§18.2). */
-let onBeat: (() => void) | null = null;
 let pulseShare = 1;
 let pulseOn = false;
 
@@ -298,17 +296,7 @@ function schedulePulse(): void {
   }
   tn({ type: 'sine', f0: p.hz, f1: p.hz * 0.82, dur: 0.26, gain: 0.3, bus: 'amb' });
   nz({ type: 'lowpass', f0: 260, f1: 120, dur: 0.18, gain: 0.07, bus: 'amb' });
-  onBeat?.();
   pulseTimer = setTimeout(schedulePulse, p.everyMs);
-}
-
-/**
- * Подписка на удар пульса. Нужна картинке: трава качается в такт голоду,
- * и время удара знает только этот таймер. Подписчик один — считать удары
- * больше некому.
- */
-export function onPulseBeat(cb: (() => void) | null): void {
-  onBeat = cb;
 }
 
 /** Доля оставшегося провианта, 0..1. Пульс сам решает, звучать ли. */
