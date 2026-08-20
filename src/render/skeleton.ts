@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { bakedGeometry } from './baked';
+import { bakedGeometry, fitOf } from './baked';
 import type { Part } from './baked';
 import { SKELETON_PALETTE } from './palette';
 import { SKELETON_MODELS, SKELETON_SLOTS } from './skeleton.data';
@@ -43,7 +43,7 @@ export function skeletonGeometry(
     parts.push({ model: SKELETON_MODELS[holds], palette: SKELETON_PALETTE, matrix: model.hand });
   }
 
-  const geometry = bakedGeometry(parts, height);
+  const geometry = bakedGeometry(parts, fitOf(model, height));
   cache.set(key, geometry);
   return geometry;
 }
