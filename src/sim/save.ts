@@ -5,7 +5,7 @@ import type { GearSlot } from './gear';
 import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
 import type { HeroState, Roster } from './heroes';
 import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
-import { ONB_ORDER, restartStep } from './onboarding';
+import { ONB_ORDER, RENAMED_STEPS, restartStep } from './onboarding';
 import type { OnbStep } from './onboarding';
 import { emptyResources } from './resources';
 import { liveVisits } from './world';
@@ -32,7 +32,10 @@ interface SaveV1 {
   watermark: number;
   levels: Record<BuildingId, number>;
   layout: Record<BuildingId, { x: number; z: number }>;
-  resources: Record<ResourceKind, number>;
+  resources: Record<ResourceKind, number> & {
+    /** Легаси: до переименования камень звался солью. Пишется только чтением. */
+    salt?: number;
+  };
   construction: CampState['construction'];
   loadout?: CampState['loadout'];
   raids: number;
@@ -134,7 +137,7 @@ export function load(): LoadResult {
 
     for (const id of BUILDING_ORDER) {
       const level = data.levels?.[id];
-      // Нижняя граница 0, а не 1: непостроенная Кузница — законное состояние.
+      // Нижняя граница 0, а не 1: непостроенная Мастерская — законное состояние.
       if (typeof level === 'number' && level >= 0 && level <= 6) camp.levels[id] = level;
       const pos = data.layout?.[id];
       if (pos !== undefined && typeof pos.x === 'number' && typeof pos.z === 'number') {
@@ -142,7 +145,7 @@ export function load(): LoadResult {
       }
     }
 
-    // Площадь зависит от Штаба, а сейв мог быть записан другой версией правил.
+    // Площадь зависит от Жилья, а сейв мог быть записан другой версией правил.
     // Здание, не влезающее в текущую площадь, возвращается на место по умолчанию:
     // молча уехавшая за край постройка выглядит как пропажа.
     const area = campArea(camp.levels.hq);
@@ -153,7 +156,11 @@ export function load(): LoadResult {
     }
     const res = emptyResources();
     for (const kind of Object.keys(res) as ResourceKind[]) {
-      const value = data.resources?.[kind];
+      // Камень раньше звался солью. Версия сейва ради переименования не поднята
+      // по той же причине, по какой не поднималась ради отряда: сохранения
+      // прежних этапов обязаны открываться, а форма поля не изменилась —
+      // изменилось только его имя.
+      const value = data.resources?.[kind] ?? (kind === 'stone' ? data.resources?.salt : undefined);
       if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
         res[kind] = Math.floor(value);
       }
@@ -188,7 +195,7 @@ export function load(): LoadResult {
     }
 
     readRoster(roster, data.heroes);
-    // Состав догоняется до уровня Штаба: сейв мог быть записан правилами,
+    // Состав догоняется до уровня Жилья: сейв мог быть записан правилами,
     // где гейты §11.8 стояли иначе, и отряд не должен от этого рассыпаться.
     while (syncRoster(roster, camp.levels.hq) !== null) { /* добираем по одному */ }
 
@@ -209,7 +216,8 @@ export function load(): LoadResult {
  * с середины не на чем.
  */
 function readStep(saved: unknown): OnbStep {
-  const step = ONB_ORDER.find((s) => s === saved);
+  const renamed = typeof saved === 'string' ? RENAMED_STEPS[saved] : undefined;
+  const step = renamed ?? ONB_ORDER.find((s) => s === saved);
   if (step === undefined) return 'done';
   return restartStep(step);
 }
@@ -226,7 +234,11 @@ function readRoster(roster: Roster, saved: SaveV1['heroes']): void {
   if (saved === undefined || !Array.isArray(saved.list) || saved.list.length === 0) return;
   const heroes: HeroState[] = [];
   saved.list.forEach((h, i) => {
-    const cls = CLASS_ORDER.find((c) => c === h.cls);
+    // Носильщик раньше звался Солеваром — по ресурсу, которого больше нет.
+    // Без этой строки сейв терял третьего героя вместе с его опытом: незнакомый
+    // класс здесь молча пропускается, а syncRoster потом добирал бы новичка.
+    const saved = h.cls === 'salter' ? 'porter' : h.cls;
+    const cls = CLASS_ORDER.find((c) => c === saved);
     if (cls === undefined) return;
     const level = typeof h.level === 'number' ? Math.floor(h.level) : 1;
     const status = STATUSES.find((s) => s === h.status) ?? 'ready';

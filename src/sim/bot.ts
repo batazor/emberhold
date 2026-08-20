@@ -322,7 +322,7 @@ export interface ProgressionLog {
 
 const DAY = 24 * 3600;
 
-/** Во что вкладываться. Штаб поднимается только когда упёрлись в его потолок. */
+/** Во что вкладываться. Жильё поднимается только когда упёрлись в его потолок. */
 function chooseUpgrade(camp: CampState): BuildingId | null {
   const order: BuildingId[] = ['kitchen', 'storage'];
   for (const id of order) {

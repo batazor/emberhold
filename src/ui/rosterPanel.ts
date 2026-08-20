@@ -119,7 +119,7 @@ export class RosterPanel {
 
   sync(roster: Roster, now: number): void {
     // Строк ровно столько, сколько героев открыто (§11.8). Запертые классы
-    // не показываются: пустой слот с надписью «Штаб ур. 4» — это витрина,
+    // не показываются: пустой слот с надписью «Жильё ур. 4» — это витрина,
     // а не решение, а витрин в игре нет.
     while (this.built < roster.heroes.length) {
       this.rows.push(this.makeRow(this.built));

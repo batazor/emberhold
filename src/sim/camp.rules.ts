@@ -27,9 +27,9 @@ import {
 import { modelKitchenFood } from './balance';
 
 describe('Лагерь', () => {
-  test('§20.4 — здание не может превысить Штаб', () => {
+  test('§20.4 — здание не может превысить Жильё', () => {
     const camp = createCamp();
-    camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     assert.equal(upgradeBlock(camp, 'kitchen'), 'hq-cap');
     assert.equal(upgradeBlock(camp, 'hq'), 'ok');
   });
@@ -37,7 +37,7 @@ describe('Лагерь', () => {
   test('§20.1 — слот один', () => {
     const camp = createCamp();
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 0 };
-    camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     assert.equal(startUpgrade(camp, 'kitchen', 1000), true);
     assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy');
     assert.equal(startUpgrade(camp, 'storage', 1000), false);
@@ -45,10 +45,10 @@ describe('Лагерь', () => {
 
   test('стоимость списывается ровно один раз', () => {
     const camp = createCamp();
-    camp.resources = { salt: 10, wood: 10, iron: 0, crystal: 0 };
+    camp.resources = { stone: 10, wood: 10, iron: 0, crystal: 0 };
     startUpgrade(camp, 'hq', 0);
     assert.equal(camp.resources.wood, 10 - (BUILD_COST[2]?.wood ?? 0));
-    assert.equal(camp.resources.salt, 10 - (BUILD_COST[2]?.salt ?? 0));
+    assert.equal(camp.resources.stone, 10 - (BUILD_COST[2]?.stone ?? 0));
   });
 
   test('не хватает ресурсов — стройка не начинается', () => {
@@ -60,7 +60,7 @@ describe('Лагерь', () => {
 
   test('§20.2 — таймер 3 минуты и достройка по времени', () => {
     const camp = createCamp();
-    camp.resources = { salt: 10, wood: 10, iron: 0, crystal: 0 };
+    camp.resources = { stone: 10, wood: 10, iron: 0, crystal: 0 };
     startUpgrade(camp, 'hq', 1000);
     assert.equal(camp.construction?.endsAt, 1000 + 180);
     assert.equal(completeIfDue(camp, 1100), null, 'раньше срока не достраивается');
@@ -71,7 +71,7 @@ describe('Лагерь', () => {
 
   test('оффлайн-прогресс: стройка завершается «за время отсутствия»', () => {
     const camp = createCamp();
-    camp.resources = { salt: 10, wood: 10, iron: 0, crystal: 0 };
+    camp.resources = { stone: 10, wood: 10, iron: 0, crystal: 0 };
     startUpgrade(camp, 'hq', 0);
     // Игрок закрыл игру и вернулся через сутки.
     assert.equal(completeIfDue(camp, 86400), 'hq');
@@ -94,14 +94,14 @@ describe('Лагерь', () => {
     assert.ok(speedupCost(eightHours, eightHours) > speedupCost(3 * 3600, 3 * 3600) * 10);
   });
 
-  test('ускорение длинной стройки тратит соль и завершает её', () => {
+  test('ускорение длинной стройки тратит камень и завершает её', () => {
     const camp = createCamp();
     camp.levels = { hq: 5, kitchen: 4, storage: 1, forge: 0 };
-    camp.resources = { salt: 9999, wood: 9999, iron: 9999, crystal: 9999 };
+    camp.resources = { stone: 9999, wood: 9999, iron: 9999, crystal: 9999 };
     startUpgrade(camp, 'kitchen', 0); // до ур. 5 — три часа
-    const before = camp.resources.salt;
+    const before = camp.resources.stone;
     assert.equal(speedup(camp, 0), true);
-    assert.ok(camp.resources.salt < before, 'соль списана');
+    assert.ok(camp.resources.stone < before, 'камень списан');
     assert.equal(camp.levels.kitchen, 5);
     assert.equal(camp.construction, null);
   });
@@ -114,7 +114,7 @@ describe('Лагерь', () => {
    */
   test('первый таймер игры больше не пропускается даром', () => {
     const camp = createCamp();
-    camp.resources = { salt: 100, wood: 10, iron: 0, crystal: 0 };
+    camp.resources = { stone: 100, wood: 10, iron: 0, crystal: 0 };
     startUpgrade(camp, 'hq', 0);
     const c = camp.construction!;
     const total = c.endsAt - c.startedAt;
@@ -122,13 +122,36 @@ describe('Лагерь', () => {
     assert.ok(speedupCost(total, total) > 0, 'сразу после начала ускорение платное');
     assert.equal(speedupCost(40, total), 0, 'последние 45 секунд — бесплатны');
 
-    const salt = camp.resources.salt;
+    const stone = camp.resources.stone;
     assert.equal(speedup(camp, 0), true);
-    assert.ok(camp.resources.salt < salt, 'соль потрачена');
+    assert.ok(camp.resources.stone < stone, 'камень потрачен');
     assert.equal(camp.levels.hq, 2);
   });
 
-  test('стартовая раскладка помещается в площадь Штаба ур. 1', () => {
+  test('§16.1 — Мастерская ур. 1 стоит камня и встаёт без таймера', () => {
+    const camp = createCamp();
+    camp.levels.hq = 2; // жильё после второго акта пролога
+    camp.resources = { stone: 1, wood: 99, iron: 99, crystal: 99 };
+    assert.equal(upgradeBlock(camp, 'forge'), 'resources', 'на один камень не встаёт');
+
+    camp.resources.stone = BUILD_COST[1]?.stone ?? 0;
+    assert.equal(startUpgrade(camp, 'forge', 0), true);
+    assert.equal(camp.levels.forge, 1, 'первый уровень мгновенный — таймера нет');
+    assert.equal(camp.construction, null);
+    assert.equal(camp.resources.stone, 0, 'камень ушёл на глазах');
+  });
+
+  test('цена первого уровня бьёт только Мастерскую', () => {
+    // Кухня, Склад и жильё стоят в лагере с ур. 1 и на ключ `1` не выходят
+    // никогда: если это перестанет быть правдой, цена пролога протечёт в них.
+    const camp = createCamp();
+    for (const id of ['hq', 'kitchen', 'storage'] as const) {
+      assert.ok(camp.levels[id] >= 1, `${id} стартует построенным`);
+    }
+    assert.equal(camp.levels.forge, 0, 'Мастерская — единственная непостроенная');
+  });
+
+  test('стартовая раскладка помещается в площадь Жилья ур. 1', () => {
     const camp = createCamp();
     const area = campArea(camp.levels.hq);
     for (const id of ['hq', 'kitchen', 'storage'] as const) {
@@ -162,7 +185,7 @@ describe('Лагерь', () => {
   test('§20.4 — перестановка свободна, но не поверх соседа и не за границу', () => {
     const camp = createCamp();
     assert.equal(moveBuilding(camp, 'kitchen', 4, 1), true);
-    assert.equal(moveBuilding(camp, 'kitchen', 1, 1), false, 'на Штаб нельзя');
+    assert.equal(moveBuilding(camp, 'kitchen', 1, 1), false, 'на Жильё нельзя');
     assert.equal(moveBuilding(camp, 'kitchen', 5, 1), false, 'след 2×2 не влезает в 6×6');
     camp.levels.hq = 5;
     assert.equal(moveBuilding(camp, 'kitchen', 7, 7), true, 'на площади 10×10 можно');
@@ -172,19 +195,19 @@ describe('Лагерь', () => {
 describe('Цены построек', () => {
   test('§20.1 — экран возврата предлагает самое дешёвое доступное улучшение', () => {
     const camp = createCamp();
-    // Кузница здесь уже стоит: её первый уровень бесплатен и мгновенен (§20.3),
+    // Мастерская здесь уже стоит: её первый уровень бесплатен и мгновенен (§20.3),
     // и пока её нет, она перебивает любое платное предложение. Это отдельное
     // правило, оно проверяется в gear.rules.ts.
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 };
-    camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     // У Кухни и Склада ур. 1 — одинаковая цена второго уровня, берётся первый
     // по порядку; главное, что предложение вообще есть.
     assert.notEqual(suggestUpgrade(camp), null);
 
-    camp.resources = { salt: 0, wood: 0, iron: 0, crystal: 0 };
+    camp.resources = { stone: 0, wood: 0, iron: 0, crystal: 0 };
     assert.equal(suggestUpgrade(camp), null, 'без ресурсов покупки нет');
 
-    camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     startUpgrade(camp, 'kitchen', 0);
     assert.equal(suggestUpgrade(camp), null, 'слот занят — предлагать нечего (§20.1)');
   });
@@ -192,11 +215,11 @@ describe('Цены построек', () => {
   test('прогресс к улучшению считается по самому дефицитному ресурсу', () => {
     const camp = createCamp();
     const cost = BUILD_COST[2] ?? {};
-    camp.resources = { salt: cost.salt ?? 0, wood: 1, iron: 0, crystal: 0 };
+    camp.resources = { stone: cost.stone ?? 0, wood: 1, iron: 0, crystal: 0 };
     assert.equal(
       upgradeProgress(camp, 'hq'),
       1 / (cost.wood ?? 1),
-      'соли хватает, считается по дереву',
+      'камня хватает, считается по дереву',
     );
   });
 

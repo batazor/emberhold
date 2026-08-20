@@ -35,11 +35,11 @@ import type { Summary } from './telemetry';
 import type { Tier } from './types';
 
 /**
- * §20.1.2 — прогон без Кузницы: `NOFORGE=1 npm run play`. Переключатель нужен,
+ * §20.1.2 — прогон без Мастерской: `NOFORGE=1 npm run play`. Переключатель нужен,
  * чтобы «второй сток помог» было измеримым, а не заявленным, и переживёт
- * Кузницу: тем же способом меряется любой следующий сток без таймера (§21).
+ * Мастерскую: тем же способом меряется любой следующий сток без таймера (§21).
  *
- * Золотой мастер (npm run verify) снимается всегда с Кузницей: мастер обязан
+ * Золотой мастер (npm run verify) снимается всегда с Мастерскойй: мастер обязан
  * описывать игру, а не её отладочный режим.
  */
 const FORGE = process.env['NOFORGE'] !== '1';
@@ -54,7 +54,7 @@ const CAMP_PAUSE = 40;
 const AWAY = [0, 35 * 60, 3 * 3600, 11 * 3600];
 
 /** Почему экран возврата не смог предложить покупку — §20.1 живёт этим. */
-export type NoOfferReason = 'слот занят' | 'потолок Штаба' | 'нет ресурсов';
+export type NoOfferReason = 'слот занят' | 'потолок Жилья' | 'нет ресурсов';
 
 export interface RaidRow {
   readonly n: number;
@@ -65,7 +65,7 @@ export interface RaidRow {
   readonly durationSec: number;
   readonly depthShare: number;
   readonly offer: BuildingId | null;
-  /** §20.1 — что предложила Кузница, когда стройка была недоступна. */
+  /** §20.1 — что предложила Мастерская, когда стройка была недоступна. */
   readonly gearOffer: GearSlot | null;
   readonly started: string;
 }
@@ -87,9 +87,9 @@ function bestTier(camp: CampState): Tier {
   return best;
 }
 
-/** Во что вкладываться: Кухня и Склад меняют вылазку, Штаб — только потолок. */
+/** Во что вкладываться: Кухня и Склад меняют вылазку, Жильё — только потолок. */
 function chooseUpgrade(camp: CampState): BuildingId | null {
-  // Кузница бесплатна и мгновенна (§20.3): её ставят сразу, как Штаб позволит.
+  // Мастерская бесплатна и мгновенна (§20.3): её ставят сразу, как Жильё позволит.
   if (FORGE && camp.levels.forge === 0 && upgradeBlock(camp, 'forge') === 'ok') return 'forge';
   for (const id of ['kitchen', 'storage'] as BuildingId[]) {
     if (upgradeBlock(camp, id) === 'ok') return id;
@@ -111,7 +111,7 @@ export function playSession(seed: number): SessionResult {
   const rows: RaidRow[] = [];
   const noOffer: Record<NoOfferReason, number> = {
     'слот занят': 0,
-    'потолок Штаба': 0,
+    'потолок Жилья': 0,
     'нет ресурсов': 0,
   };
 
@@ -173,7 +173,7 @@ export function playSession(seed: number): SessionResult {
     // вида — стройка по таймеру и ковка без него (§20.1). Второе существует
     // ровно затем, чтобы первое могло быть занято.
     const raw = suggestUpgrade(camp);
-    // Без Кузницы её нельзя и предлагать: бесплатная непостроенная Кузница
+    // Без Мастерской её нельзя и предлагать: бесплатная непостроенная Мастерская
     // висела бы в предложениях вечно и завышала базовый замер.
     const offer = !FORGE && raw === 'forge' ? null : raw;
     // Порядок трёх веток тот же, что на экране возврата: постройка,
@@ -186,7 +186,7 @@ export function playSession(seed: number): SessionResult {
         camp.construction !== null
           ? 'слот занят'
           : BUILDING_ORDER.every((id) => upgradeBlock(camp, id) === 'hq-cap')
-            ? 'потолок Штаба'
+            ? 'потолок Жилья'
             : 'нет ресурсов';
       noOffer[reason] += 1;
     }

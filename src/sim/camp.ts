@@ -8,8 +8,8 @@ import type { Tier } from './types';
 import type { Visit } from './world';
 
 /**
- * Прототип v0 (§7): три здания плюс Кузница. Лазарет и Плац ждут — они
- * оперируют расписанием отряда, а Кузница закрывает дыру в петле возврата
+ * Прототип v0 (§7): три здания плюс Мастерская. Лазарет и Плац ждут — они
+ * оперируют расписанием отряда, а Мастерская закрывает дыру в петле возврата
  * (§20.1) и потому идёт первой.
  */
 export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge';
@@ -24,9 +24,9 @@ export interface BuildingDef {
   /** §2: каждое здание обязано отвечать на вопрос «что я смогу в вылазке». */
   readonly effect: (level: number) => string;
   /**
-   * Уровень Штаба, с которого здание вообще существует. У первых трёх — 1:
-   * они стоят в лагере с начала игры. Кузница появляется на втором, как
-   * велит кривая §16 («2–3 сессия — Кузница, первое снаряжение»):
+   * Уровень Жилья, с которого здание вообще существует. У первых трёх — 1:
+   * они стоят в лагере с начала игры. Мастерская появляется на втором, как
+   * велит кривая §16 («2–3 сессия — Мастерская, первое снаряжение»):
    * раньше игроку нечем ковать, и она была бы пустой комнатой.
    */
   readonly unlockHq: number;
@@ -43,13 +43,13 @@ export const kitchenFood = (level: number): number => modelKitchenFood(level);
  *  подобрано так, чтобы пример «12 из 19» из §11.2 приходился на Склад ур. 2. */
 export const storageCapacity = (level: number): number => 11 + 4 * level;
 
-/** §20.4 — площадь растёт со Штабом: 6×6 на ур. 1 … 10×10 на ур. 5. */
+/** §20.4 — площадь растёт с Жильём: 6×6 на ур. 1 … 10×10 на ур. 5. */
 export const campArea = (hqLevel: number): number => Math.min(10, 5 + hqLevel);
 
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   hq: {
     id: 'hq',
-    name: 'Штаб',
+    name: 'Жильё',
     effect: (l) => `Потолок уровня зданий ${l} · площадь ${campArea(l)}×${campArea(l)}`,
     unlockHq: 1,
   },
@@ -67,7 +67,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
   forge: {
     id: 'forge',
-    name: 'Кузница',
+    name: 'Мастерская',
     effect: (l) =>
       l <= 0
         ? 'Снаряжение без таймера: ковка и улучшение'
@@ -77,9 +77,9 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
 };
 
 /**
- * §14 — предмет не может быть лучше Кузницы, которая его делает.
+ * §14 — предмет не может быть лучше Мастерской, которая его делает.
  * Потолок предметов (5) ниже потолка зданий (6) намеренно: шестой уровень
- * Кузницы не даёт нового качества, он даёт запас на следующий этап.
+ * Мастерской не даёт нового качества, он даёт запас на следующий этап.
  */
 export const itemCap = (forgeLevel: number): number =>
   Math.max(0, Math.min(MAX_ITEM_LEVEL, forgeLevel));
@@ -108,21 +108,37 @@ export const BUILD_SECONDS: Record<number, number> = {
  *
  * | ярус | успех | добыча | состав                                   |
  * |------|-------|--------|------------------------------------------|
- * | 0    | 100%  |  6,4   | соль 4,5 · дерево 2,0                    |
- * | 1    |  88%  |  7,6   | соль 3,9 · дерево 2,1 · железо 1,6       |
- * | 2    |  73%  | 15,9   | соль 5,8 · дерево 2,2 · железо 6,1 · кристалл 1,8 |
- * | 3    |  79%  | 22,4   | соль 6,8 · железо 9,9 · кристалл 5,7     |
+ * | 0    | 100%  |  6,4   | камень 4,5 · дерево 2,0                    |
+ * | 1    |  88%  |  7,6   | камень 3,9 · дерево 2,1 · железо 1,6       |
+ * | 2    |  73%  | 15,9   | камень 5,8 · дерево 2,2 · железо 6,1 · кристалл 1,8 |
+ * | 3    |  79%  | 22,4   | камень 6,8 · железо 9,9 · кристалл 5,7     |
  *
  * Темп: ур. 2 — полторы вылазки яруса 1, ур. 3 — две, ур. 4 — три вылазки
  * яруса 2, ур. 5 — пять, ур. 6 — семь вылазок яруса 3 (последняя ступень
  * экстраполирована, таблица документа заканчивается на пятой).
  */
 export const BUILD_COST: Record<number, Partial<Resources>> = {
-  2: { salt: 7, wood: 4 },
-  3: { salt: 8, wood: 4, iron: 3 },
-  4: { salt: 14, wood: 5, iron: 15 },
-  5: { salt: 23, wood: 9, iron: 24, crystal: 7 },
-  6: { salt: 48, iron: 70, crystal: 40 },
+  /*
+   * Первый уровень платит одна Мастерская: остальные три здания стоят в лагере
+   * с самого начала и на него не выходят никогда. Поэтому ключ `1` — не ступень
+   * общей кривой, а цена третьего акта пролога (§16.1): жильё выросло до ур. 2,
+   * Мастерская открылась, и камня на поляне нет.
+   *
+   * Двойка измерена, а не назначена (`npm run measure`, блок «Цена Мастерской»):
+   * это самая высокая цена, которую покрывают четыре первых вылазки из пяти.
+   * Выше девяноста процентов не поднимает никакая цена — в каждой десятой
+   * вылазке оба ближних контейнера выпадают деревом. Кому не хватило, тот идёт
+   * во вторую вылазку: это первый настоящий отказ по цене, и он обязан быть.
+   *
+   * Таймера у первого уровня по-прежнему нет (§20.2): ждать игрок ещё
+   * не научился, а платить пролог его уже научил.
+   */
+  1: { stone: 2 },
+  2: { stone: 7, wood: 4 },
+  3: { stone: 8, wood: 4, iron: 3 },
+  4: { stone: 14, wood: 5, iron: 15 },
+  5: { stone: 23, wood: 9, iron: 24, crystal: 7 },
+  6: { stone: 48, iron: 70, crystal: 40 },
 };
 
 /**
@@ -147,7 +163,7 @@ export interface Construction {
 }
 
 export interface CampState {
-  /** Уровень 0 = здания ещё нет в лагере. Такое возможно только у Кузницы. */
+  /** Уровень 0 = здания ещё нет в лагере. Такое возможно только у Мастерской. */
   levels: Record<BuildingId, number>;
   layout: Record<BuildingId, { x: number; z: number }>;
   resources: Resources;
@@ -169,9 +185,9 @@ export interface CampState {
 export function createCamp(): CampState {
   return {
     levels: { hq: 1, kitchen: 1, storage: 1, forge: 0 },
-    // След здания 2×2, площадь при Штабе ур. 1 — 6×6, поэтому левый
-    // верхний угол не может быть правее 4 (§20.4). Кузница появляется
-    // вместе со Штабом ур. 2, когда площадь уже 7×7.
+    // След здания 2×2, площадь при Жилье ур. 1 — 6×6, поэтому левый
+    // верхний угол не может быть правее 4 (§20.4). Мастерская появляется
+    // вместе с Жильём ур. 2, когда площадь уже 7×7.
     layout: {
       hq: { x: 1, z: 1 },
       kitchen: { x: 4, z: 1 },
@@ -205,15 +221,15 @@ export type UpgradeBlock =
 
 /**
  * Почему улучшение недоступно. Возвращается причина, а не булево: игрок должен
- * видеть «Штаб не пускает», а не молчащую серую кнопку.
+ * видеть «Жильё не пускает», а не молчащую серую кнопку.
  */
 export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
   const level = camp.levels[id];
   if (level >= MAX_LEVEL) return 'max';
-  // Здание, которого ещё нет: причина «нужен Штаб ур. N», а не пустое место.
+  // Здание, которого ещё нет: причина «нужен Жильё ур. N», а не пустое место.
   if (!isUnlocked(camp, id)) return 'locked';
   // §20.4 — единственный настоящий ограничитель: никакое здание не может
-  // превысить уровень Штаба.
+  // превысить уровень Жилья.
   if (id !== 'hq' && level + 1 > camp.levels.hq) return 'hq-cap';
   if (camp.construction !== null) return 'slot-busy';
   if (!canAfford(camp.resources, BUILD_COST[level + 1] ?? {})) return 'resources';
@@ -253,7 +269,7 @@ export const freeWindow = (totalSeconds: number): number =>
   Math.min(5 * 60, totalSeconds * 0.25);
 
 /**
- * §20.5 — 2 соли за минуту, ×1.5 за каждый час: дёшево для коротких таймеров,
+ * §20.5 — 2 камня за минуту, ×1.5 за каждый час: дёшево для коротких таймеров,
  * дорого для длинных. Ускорять ночную стройку невыгодно.
  */
 export function speedupCost(remainingSeconds: number, totalSeconds: number): number {
@@ -267,8 +283,8 @@ export function speedup(camp: CampState, now: number): boolean {
   const c = camp.construction;
   if (c === null) return false;
   const cost = speedupCost(c.endsAt - now, c.endsAt - c.startedAt);
-  if (camp.resources.salt < cost) return false;
-  camp.resources.salt -= cost;
+  if (camp.resources.stone < cost) return false;
+  camp.resources.stone -= cost;
   camp.construction = { ...c, endsAt: now };
   completeIfDue(camp, now);
   return true;
@@ -281,7 +297,7 @@ export function speedup(camp: CampState, now: number): boolean {
  *
  * null означает, что покупки нет — слот занят или не хватает ресурсов.
  * В документе на этот случай предусмотрен второй сток без таймера
- * (снаряжение в Кузнице), но Кузницы в v0 нет — см. README.
+ * (снаряжение в Мастерской), но Мастерской в v0 нет — см. README.
  */
 export function suggestUpgrade(camp: CampState): BuildingId | null {
   let best: BuildingId | null = null;
@@ -298,20 +314,20 @@ export function suggestUpgrade(camp: CampState): BuildingId | null {
   return best;
 }
 
-/* ---------- §14: Кузница и снаряжение ---------- */
+/* ---------- §14: Мастерская и снаряжение ---------- */
 
 export type GearBlock = 'ok' | 'no-forge' | 'max' | 'forge-cap' | 'resources';
 
 /**
  * Почему ковка недоступна — по тем же правилам, что и стройка: причина, а не
  * серая кнопка. Слот стройки здесь не участвует вовсе, и это весь смысл
- * Кузницы: §20.1 требует стока, который работает, пока идёт таймер.
+ * Мастерской: §20.1 требует стока, который работает, пока идёт таймер.
  */
 export function gearBlock(camp: CampState, slot: GearSlot): GearBlock {
   if (camp.levels.forge <= 0) return 'no-forge';
   const next = camp.gear[slot] + 1;
   if (next > MAX_ITEM_LEVEL) return 'max';
-  // §14 — Кузница улучшает, а не рандомит: качество ограничено ею самой.
+  // §14 — Мастерская улучшает, а не рандомит: качество ограничено ею самой.
   if (next > itemCap(camp.levels.forge)) return 'forge-cap';
   if (!canAfford(camp.resources, GEAR_COST[next] ?? {})) return 'resources';
   return 'ok';
@@ -334,7 +350,7 @@ export function craftGear(camp: CampState, slot: GearSlot): boolean {
 }
 
 /**
- * Что предложить в Кузнице — самое дешёвое доступное. Правило то же, что
+ * Что предложить в Мастерской — самое дешёвое доступное. Правило то же, что
  * у suggestUpgrade: дорогое предложение читается как «мне это не по карману»
  * и подмену главного действия не выполняет.
  */
@@ -353,7 +369,7 @@ export function suggestGear(camp: CampState): GearSlot | null {
   return best;
 }
 
-/** Как называется то, что предлагает Кузница: «Выковать» пустому слоту,
+/** Как называется то, что предлагает Мастерская: «Выковать» пустому слоту,
  *  «Улучшить» — занятому. Игрок должен понимать это до нажатия. */
 export function gearAction(camp: CampState, slot: GearSlot): string {
   return camp.gear[slot] <= 0 ? `Выковать: ${GEAR[slot].name}` : `Улучшить: ${GEAR[slot].name}`;
@@ -395,7 +411,7 @@ export function villagerCount(camp: CampState): number {
 }
 
 /** §20.4 — перестановка бесплатна и мгновенна: планировка выразительная,
- *  а не механическая. Занятость клетки проверяется, площадь — по Штабу. */
+ *  а не механическая. Занятость клетки проверяется, площадь — по Жилью. */
 export function moveBuilding(camp: CampState, id: BuildingId, x: number, z: number): boolean {
   const area = campArea(camp.levels.hq);
   if (x < 0 || z < 0 || x + 2 > area || z + 2 > area) return false;

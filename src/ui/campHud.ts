@@ -12,7 +12,6 @@ import {
 import type { BuildingId, CampState } from '../sim/camp';
 import { GEAR, GEAR_COST, GEAR_ORDER, gearLine } from '../sim/gear';
 import type { GearSlot } from '../sim/gear';
-import { TIER_NAME, TIER_RISK } from '../sim/config';
 import {
   CONSUMABLES,
   CONSUMABLE_ORDER,
@@ -23,8 +22,6 @@ import { ONB_HINT } from '../sim/onboarding';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
-import { dayAt, regionAt } from '../sim/world';
-import type { WorldNode } from '../sim/world';
 import { WorldMap } from './worldMap';
 
 /**
@@ -57,37 +54,34 @@ export interface CampCallbacks {
 
 const BLOCK_TEXT: Record<string, string> = {
   max: 'Максимальный уровень',
-  locked: 'Нужен Штаб ур. 2',
-  'hq-cap': 'Штаб не пускает выше',
+  locked: 'Нужно Жильё ур. 2',
+  'hq-cap': 'Жильё не пускает выше',
   'slot-busy': 'Слот занят другой стройкой',
   resources: 'Не хватает ресурсов',
 };
 
 const GEAR_BLOCK_TEXT: Record<string, string> = {
   max: 'Лучше не бывает',
-  'forge-cap': 'Кузница не тянет выше',
+  'forge-cap': 'Мастерская не тянет выше',
   resources: 'Не хватает железа',
 };
 
-const RESOURCE_ORDER: readonly ResourceKind[] = ['salt', 'wood', 'iron', 'crystal'];
+const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
 
-/**
- * Карта открывается после второй вылазки (`onboarding.html`, `world.html`):
- * она отвечает на скуку, и показанная раньше читается как ещё один экран
- * меню. До этого вылазка идёт в назначенное место — ровно одно решение
- * на экране, как и требует раскадровка.
+/*
+ * Карта региона открыта всегда, с первой же вылазки.
+ *
+ * Раньше она ждала второй вылазки, а до неё место назначалось само — «ровно
+ * одно решение на экране». Держалось это на том, что игрок к моменту выхода
+ * из раскадровки не видел ни одного меню; с прологом это перестало быть
+ * правдой: пролог сдаёт игрока в лагерь, и в лагере он и так стоит перед
+ * нижней строкой из трёх кнопок. Прятать за одной из них ещё один экран,
+ * который откроется через две вылазки, — это не «одно решение», а отложенное
+ * меню, и назначенное место было его ширмой.
+ *
+ * Кнопка называется «В мир» и ведёт в мир. Ставка §11.6 при этом объявляется
+ * до входа как и прежде — её называет карточка места на самой карте.
  */
-const mapOpen = (camp: CampState, onb: OnbStep): boolean => onb === 'done' && camp.raids >= 2;
-
-/**
- * Назначенное место первой вылазки: самое дешёвое по ставке из тех, что
- * выпали сегодня. Первый поход не выбирают — его показывают, и он обязан
- * быть самым щадящим из возможных.
- */
-function assignedNode(now: number): WorldNode {
-  const nodes = regionAt(dayAt(now)).nodes;
-  return [...nodes].sort((a, b) => a.tier - b.tier)[0]!;
-}
 
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь. */
 type SheetKind = BuildingId | 'tiers' | 'shop' | 'roster' | null;
@@ -126,8 +120,6 @@ export class CampHud {
   private readonly gearRows = new Map<GearSlot, Row>();
   /** Карта региона (§4). Живёт в том же листе, где раньше был список ярусов. */
   private readonly map: WorldMap;
-  /** Вход в назначенное место — пока карта не открылась. */
-  private readonly firstRaid: HTMLButtonElement;
   private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
   private readonly banner: HTMLElement;
 
@@ -135,10 +127,9 @@ export class CampHud {
   private readonly sheetTitle: HTMLElement;
   private readonly sheetClose: HTMLButtonElement;
   private readonly sections = new Map<string, HTMLElement>();
-  /** Раздел «Кузница» — часть карточки Кузницы, а не отдельная витрина. */
+  /** Раздел «Мастерская» — часть карточки Мастерской, а не отдельная витрина. */
   private readonly gearSection: HTMLElement;
   private readonly moveButton: HTMLButtonElement;
-  private readonly tierCard: HTMLElement;
   private readonly bar: HTMLElement;
   private slots!: HTMLElement;
 
@@ -200,7 +191,7 @@ export class CampHud {
       this.sheet.appendChild(section);
     }
 
-    // §20.1 — сток без таймера. Живёт внутри карточки Кузницы: снаряжение
+    // §20.1 — сток без таймера. Живёт внутри карточки Мастерской: снаряжение
     // делает она, и отдельная вкладка разорвала бы эту связь.
     this.gearSection = document.createElement('div');
     this.gearSection.className = 'gear';
@@ -242,18 +233,8 @@ export class CampHud {
 
     const tiers = document.createElement('div');
     tiers.className = 'sec tiers';
-    // §11.6 — ставка объявляется до входа, а не выясняется после провала.
-    this.tierCard = document.createElement('div');
-    this.tierCard.className = 'tier-card';
-    // До карты вылазка идёт в одно назначенное место. Карта в первые минуты
-    // была бы экраном меню раньше, чем появилась скука, которой она отвечает
-    // (`world.html`, часть I; `onboarding.html` — карта после второй вылазки).
-    this.firstRaid = document.createElement('button');
-    this.firstRaid.addEventListener('click', () => {
-      if (this.last !== null) this.cb.onRaid(assignedNode(this.last.now).id);
-    });
     this.map = new WorldMap({ onRaid: (node) => this.cb.onRaid(node) });
-    tiers.append(this.tierCard, this.firstRaid, this.map.root);
+    tiers.append(this.map.root);
     this.sections.set('tiers', tiers);
     this.sheet.appendChild(tiers);
 
@@ -263,7 +244,7 @@ export class CampHud {
     this.bar.append(
       this.makeBarButton('Отряд', 'roster'),
       this.makeBarButton('Припасы', 'shop'),
-      this.makeBarButton('В вылазку', 'tiers', true),
+      this.makeBarButton('В мир', 'tiers', true),
     );
 
     this.root.append(res, this.banner, space, this.sheet, this.bar);
@@ -364,7 +345,7 @@ export class CampHud {
     this.sheet.style.display = kind === null ? 'none' : '';
     for (const [key, el] of this.sections) el.style.display = key === kind ? '' : 'none';
     this.sheetTitle.textContent = this.titleFor(kind);
-    if (kind === 'tiers' && this.last !== null && mapOpen(this.last.camp, this.onb)) {
+    if (kind === 'tiers' && this.last !== null) {
       this.map.open(this.last.camp, this.last.now);
     }
     this.paintOpen();
@@ -393,10 +374,10 @@ export class CampHud {
 
   private titleFor(kind: SheetKind): string {
     if (kind === null) return '';
-    if (kind === 'tiers') {
-      return this.last !== null && mapOpen(this.last.camp, this.onb) ? 'Карта региона' : 'Вылазка';
-    }
-    if (kind === 'shop') return 'В вылазку';
+    if (kind === 'tiers') return 'Карта региона';
+    // Заголовок называет ту же кнопку, что открыла лист: «В вылазку» здесь
+    // называло кнопку, которой больше нет.
+    if (kind === 'shop') return 'Припасы';
     if (kind === 'roster') return 'Отряд';
     return BUILDINGS[kind].name;
   }
@@ -435,22 +416,7 @@ export class CampHud {
   }
 
   private syncTiers(camp: CampState, now: number): void {
-    const map = mapOpen(camp, this.onb);
-    this.map.root.style.display = map ? '' : 'none';
-    this.tierCard.style.display = map ? 'none' : '';
-    this.firstRaid.style.display = map ? 'none' : '';
-    if (map) {
-      this.map.sync(camp, now);
-      return;
-    }
-    // Назначенное место: та же карточка, что раньше называла ярус. Ставка
-    // и здесь объявлена до входа — молчащая кнопка читается как поломка.
-    const node = assignedNode(now);
-    this.tierCard.innerHTML =
-      `<div class="t"><b>${node.name}</b><span class="dim">${TIER_NAME[node.tier]}</span></div>` +
-      `<p class="dim">При провале теряется ${Math.round(TIER_RISK[node.tier] * 100)}% добычи</p>`;
-    this.firstRaid.textContent = 'В вылазку';
-    this.firstRaid.disabled = false;
+    this.map.sync(camp, now);
   }
 
   private syncShop(camp: CampState): void {
@@ -501,8 +467,8 @@ export class CampHud {
       row.status.textContent = formatDuration(left);
       row.button.dataset['mode'] = 'speedup';
       // §20.5 — последние пять минут бесплатны.
-      row.button.textContent = price === 0 ? 'Достроить' : `Ускорить · соль ${price}`;
-      row.button.disabled = price > camp.resources.salt;
+      row.button.textContent = price === 0 ? 'Достроить' : `Ускорить · камень ${price}`;
+      row.button.disabled = price > camp.resources.stone;
       return;
     }
 
@@ -549,24 +515,34 @@ export class CampHud {
     if (this.onb === step) return;
     this.onb = step;
     // Кадры 9 и 10 сами решают, что открыто: на экране ровно одно действие.
-    if (step === 'build') this.openSheet('kitchen');
-    else if (step === 'tier') this.openSheet('tiers');
+    // Оба последних кадра говорят одной карточкой — Мастерской: сначала она
+    // просит камень, потом показывает, что на него куплено. Разводить их
+    // по разным разделам значило бы прятать ответ на вопрос, который кадр
+    // только что задал.
+    if (step === 'build' || step === 'craft') this.openSheet('forge');
     else if (step === 'done') this.close();
   }
 
   /**
-   * Кадры 9 и 10 (`onboarding.html`): сначала пустое место просит здание,
-   * потом выросшая Кухня зовёт на следующий ярус. Ни нижней строки, ни
-   * кнопки «Закрыть»: закрывать нечего, действие ровно одно.
+   * Два последних кадра раскадровки: Мастерская просит камень, потом
+   * показывает ковку. Ни нижней строки, ни кнопки «Закрыть»: закрывать
+   * нечего, действие ровно одно.
    */
   private applyOnboarding(): void {
-    const building = this.onb === 'build';
-    const leaving = this.onb === 'tier';
-    const quiet = building || leaving;
+    /*
+     * «Тихий» кадр прячет нижнюю строку, чтобы на экране осталось ровно одно
+     * действие. На кадре `build` это можно делать только тогда, когда это
+     * действие вправду есть: Мастерская теперь стоит камня, и первой вылазки
+     * на неё хватает не всем (замер: четырём из пяти). Тому, кому не хватило,
+     * спрятанная строка запирает единственный выход — вторую вылазку.
+     *
+     * Поэтому строка прячется по кошельку, а не по номеру кадра.
+     */
+    const affordable =
+      this.last !== null && upgradeBlock(this.last.camp, 'forge') === 'ok';
+    const quiet = (this.onb === 'build' && affordable) || this.onb === 'craft';
 
-    // Подсказка кадра держится, пока кадр не сменится. Там, где подсказки
-    // нет (кадр 10 говорит карточкой яруса), баннер остаётся за обычными
-    // сообщениями лагеря.
+    // Подсказка кадра держится, пока кадр не сменится.
     const hint = ONB_HINT[this.onb];
     if (hint !== undefined) this.banner.textContent = hint;
 
@@ -574,19 +550,13 @@ export class CampHud {
     this.sheetClose.style.display = quiet ? 'none' : '';
     if (quiet) this.moveButton.style.display = 'none';
 
-    // Подарок кадра 9: кнопка обязана называть цену словом, а не нулём, —
-    // «· 0 с» читается как поломка таймера (см. priceLine).
-    const kitchen = this.rows.get('kitchen');
-    if (building && kitchen !== undefined) {
-      kitchen.button.textContent = 'Построить · бесплатно';
-      kitchen.button.disabled = false;
-      kitchen.button.dataset['mode'] = 'upgrade';
-      kitchen.status.textContent = 'Первое здание вырастает сразу';
-      kitchen.barWrap.style.display = 'none';
-    }
-
-    // Карточка и кнопка вылазки живут в syncTiers: и в кадре 10, и после
-    // него это одно и то же — назначенное место, названное до входа.
+    // Цену кадр не переписывает и подарка не делает: Мастерская стоит камня,
+    // и обычная строка цены (`priceLine`) называет его сама. Прежний кадр
+    // подменял здесь кнопку на «Построить · бесплатно» — бесплатных зданий
+    // в игре больше нет ни одного.
+    //
+    // Кадр держится за постройку, а не за экран: игрок, ушедший во вторую
+    // вылазку за недостающим камнем, возвращается на тот же кадр.
   }
 
   /* ---------- мелочи ---------- */
@@ -601,9 +571,13 @@ export class CampHud {
   }
 
   /**
-   * Цена и срок одной строкой. Первый уровень бесплатен и мгновенен
-   * (§20.3), и «· 0 с» читалось бы как поломка таймера, а не как подарок:
-   * ноль в интерфейсе всегда выглядит ошибкой, поэтому он называется словом.
+   * Цена и срок одной строкой. Первый уровень мгновенен (§20.2), и «· 0 с»
+   * читалось бы как поломка таймера: ноль в интерфейсе всегда выглядит
+   * ошибкой, поэтому он называется словом.
+   *
+   * Ветка «бесплатно» осталась не про здания — у всех уровней есть цена
+   * (§20.3), — а про то, что строка обязана уцелеть, если цена когда-нибудь
+   * окажется пустой: молчащий ценник хуже честного слова.
    */
   private priceLine(level: number): string {
     const cost = this.costLine(level);
