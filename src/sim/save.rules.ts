@@ -10,6 +10,17 @@ import { createCamp, startUpgrade } from './camp';
 import { createRoster } from './heroes';
 import { load, save, wipe } from './save';
 
+/** Поддельный localStorage: тесты сейва живут без браузера. */
+function fakeStore(): Map<string, string> {
+  const store = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  return store;
+}
+
 describe('Сохранение', () => {
   test('save/load не падают без localStorage (Node, приватный режим)', () => {
     const camp = createCamp();
@@ -36,16 +47,52 @@ describe('Сохранение', () => {
 
     store.set(
       'emberhold/save',
-      JSON.stringify({ version: 1, levels: { hq: 999 }, resources: { salt: -5 } }),
+      JSON.stringify({ version: 1, levels: { hq: 999 }, resources: { stone: -5 } }),
     );
     const bad = load().camp;
     assert.equal(bad.levels.hq, 1, 'уровень вне диапазона отбрасывается');
-    assert.equal(bad.resources.salt, 0, 'отрицательные ресурсы отбрасываются');
+    assert.equal(bad.resources.stone, 0, 'отрицательные ресурсы отбрасываются');
+  });
+
+  test('сейв, записанный когда камень звался солью, открывается камнем', () => {
+    const store = fakeStore();
+    store.set(
+      'emberhold/save',
+      JSON.stringify({ version: 1, resources: { salt: 42, wood: 7 } }),
+    );
+    const camp = load().camp;
+    assert.equal(camp.resources.stone, 42, 'соль приехала в камень');
+    assert.equal(camp.resources.wood, 7, 'остальные ресурсы не задеты');
+  });
+
+  test('герой, записанный Солеваром, открывается Носильщиком с опытом', () => {
+    const store = fakeStore();
+    store.set(
+      'emberhold/save',
+      JSON.stringify({
+        version: 1,
+        levels: { hq: 4, kitchen: 1, storage: 1, forge: 0 },
+        heroes: { active: 0, list: [{ cls: 'salter', level: 5, xp: 120, wounds: 0, status: 'ready' }] },
+      }),
+    );
+    const hero = load().roster.heroes[0];
+    assert.equal(hero?.cls, 'porter', 'класс переехал под новое имя');
+    assert.equal(hero?.level, 5, 'уровень уцелел');
+    assert.equal(hero?.xp, 120, 'опыт уцелел');
+  });
+
+  test('новое имя сильнее старого: stone побеждает salt в одном сейве', () => {
+    const store = fakeStore();
+    store.set(
+      'emberhold/save',
+      JSON.stringify({ version: 1, resources: { stone: 3, salt: 99 } }),
+    );
+    assert.equal(load().camp.resources.stone, 3);
   });
 
   test('сейв с раскладкой за границей чинится при загрузке', () => {
     const camp = createCamp();
-    camp.layout.kitchen = { x: 9, z: 9 }; // площадь при Штабе ур. 1 — 6×6
+    camp.layout.kitchen = { x: 9, z: 9 }; // площадь при Жилье ур. 1 — 6×6
     save(camp, createRoster(), 0);
     const back = load().camp;
     assert.deepEqual(back.layout.kitchen, createCamp().layout.kitchen);
@@ -77,7 +124,7 @@ describe('Сохранение', () => {
   test('сейв переживает круг save → load', () => {
     const camp = createCamp();
     camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0 };
-    camp.resources = { salt: 50, wood: 40, iron: 20, crystal: 3 };
+    camp.resources = { stone: 50, wood: 40, iron: 20, crystal: 3 };
     camp.layout.kitchen = { x: 6, z: 3 };
     assert.equal(startUpgrade(camp, 'storage', 500), true);
     save(camp, createRoster(), 777);

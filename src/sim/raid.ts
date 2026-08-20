@@ -40,7 +40,7 @@ export interface RaidOptions {
    */
   readonly loadout?: HeroLoadout;
   /**
-   * §14 — снаряжение из Кузницы. Тоже необязательное и по той же причине,
+   * §14 — снаряжение из Мастерской. Тоже необязательное и по той же причине,
    * что и класс: без него вылазка обязана считаться ровно так, как её
    * измеряли при калибровке §20.3, иначе все прежние замеры несравнимы.
    */
@@ -77,6 +77,14 @@ export interface RaidOptions {
    */
   readonly hunger?: boolean;
   /**
+   * Называет ли событие подбора ставку («под угрозой N»). Выключается
+   * прологом: ставка вводится кадром `bait` первой вылазки и нулём — а на
+   * поляне полоса риска намеренно скрыта, и всплывающая строка проговаривала
+   * механику словом раньше, чем игра показывала её делом. Терять на поляне
+   * к тому же нечего: возвращаться некуда, и ставки не существует.
+   */
+  readonly risk?: boolean;
+  /**
    * Множитель добычи от богатства локации на карте мира (§4). По умолчанию 1:
    * замеры, бот и золотой мастер считают вылазку без карты.
    */
@@ -109,7 +117,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     foodMax: opts.food ?? kitchenFood(opts.kitchenLevel),
     bag: emptyResources(),
     bagTotal: 0,
-    // Рюкзак класса: Следопыт −25%, Солевар +30% (§11.7). Не меньше единицы,
+    // Рюкзак класса: Следопыт −25%, Носильщик +30% (§11.7). Не меньше единицы,
     // иначе на Складе ур. 1 Следопыт не смог бы унести ничего.
     // Склад × класс, потом снаряжение: сумка прибавляет, оружие отнимает (§14).
     // Прибавка идёт после доли класса, иначе рюкзак Следопыта съедал бы
@@ -127,6 +135,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     starve: 0,
     containerFood: opts.containerFood ?? FOOD_COST.container,
     hunger: opts.hunger ?? true,
+    risk: opts.risk ?? true,
     consumables: [...(opts.consumables ?? [])],
     fired: [],
     smokeUntil: 0,
@@ -244,7 +253,8 @@ function arriveAt(state: RaidState, cell: Cell): void {
       const taken = Math.min(container.amount, state.capacity - state.bagTotal);
       state.bag[container.kind] += taken;
       state.bagTotal += taken;
-      state.events.push(`+${taken} · ${RESOURCE_NAME[container.kind]} · под угрозой ${atRisk(state)}`);
+      const found = `+${taken} · ${RESOURCE_NAME[container.kind]}`;
+      state.events.push(state.risk ? `${found} · под угрозой ${atRisk(state)}` : found);
     }
   }
 

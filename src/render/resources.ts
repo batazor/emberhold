@@ -25,12 +25,12 @@ export type { ResourceModelName };
  * которым до этого рисовались все четыре. Заглушкой он при этом быть перестал:
  * кристалл и есть октаэдр.
  *
- * Соль — самородки серебра: набор красит их клеткой атласа, которая в нашей
- * палитре и есть соль (иней, соль, сталь). На экране это белые обломки,
- * а не металл.
+ * Камень — `Stone_Chunks_Small`: у набора он свой, подменять нечем и незачем.
+ * Клетки атласа у него те же, что в нашей палитре зовутся камнем, — камень,
+ * камень-свет, скол.
  */
 export const RESOURCE_MODEL: Record<ResourceKind, ResourceModelName | null> = {
-  salt: 'Silver_Nuggets',
+  stone: 'Stone_Chunks_Small',
   wood: 'Wood_Log_A',
   iron: 'Iron_Bars_Stack_Small',
   crystal: null,

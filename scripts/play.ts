@@ -54,7 +54,7 @@ console.log('\nЛагерь на конец');
 console.log('─'.repeat(92));
 console.log(`  ${BUILDING_ORDER.map((id) => `${BUILDINGS[id].name} ${r.levels[id]}`).join(' · ')}`);
 console.log(
-  `  Осталось: соль ${r.resources.salt} · дерево ${r.resources.wood} · ` +
+  `  Осталось: камень ${r.resources.stone} · дерево ${r.resources.wood} · ` +
     `железо ${r.resources.iron} · кристалл ${r.resources.crystal}`,
 );
 console.log(`  Прошло игрового времени: ${r.elapsedHours.toFixed(1)} ч`);

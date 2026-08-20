@@ -56,7 +56,7 @@ export type TelemetryEvent =
   | { t: 'heal_start'; at: number; cls: HeroClassId; wounds: number; seconds: number }
   | { t: 'train_start'; at: number; cls: HeroClassId; level: number }
   | { t: 'exit'; at: number; where: ExitPoint }
-  /** §21.5 — берут ли все три и уходит ли соль. */
+  /** §21.5 — берут ли все три и уходит ли камень. */
   | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' }
   /**
    * Кадры онбординга. Метрика раскадровки — доля дошедших до первой

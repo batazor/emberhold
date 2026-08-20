@@ -43,7 +43,7 @@ const METRICS: readonly { key: string; kind: Kind; label: string }[] = [
   { key: 'avgLost', kind: 'среднее', label: 'потеряно за вылазку' },
   { key: 'avgFoodLeft', kind: 'среднее', label: 'провианта на выходе' },
   { key: 'medianReturnMin', kind: 'среднее', label: 'возврат после таймера, мин' },
-  { key: 'hq', kind: 'уровень', label: 'Штаб на конец' },
+  { key: 'hq', kind: 'уровень', label: 'Жильё на конец' },
   { key: 'kitchen', kind: 'уровень', label: 'Кухня на конец' },
   { key: 'storage', kind: 'уровень', label: 'Склад на конец' },
   { key: 'elapsedHours', kind: 'среднее', label: 'игрового времени, ч' },

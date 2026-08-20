@@ -1,5 +1,5 @@
 /**
- * Правила Кузницы и снаряжения (§14). Живут рядом с gear.ts по тому же
+ * Правила Мастерской и снаряжения (§14). Живут рядом с gear.ts по тому же
  * правилу, что и остальные: фича приносит свои проверки с собой.
  *
  * Запуск: npm run check
@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  BUILD_COST,
   craftGear,
   createCamp,
   gearBlock,
@@ -20,62 +21,72 @@ import { atRisk, createRaid, raidResult } from './raid';
 import { load, save, wipe } from './save';
 import { createRoster } from './heroes';
 
-describe('Кузница', () => {
-  test('§16 — закрыта до Штаба ур. 2 и говорит, чем закрыта', () => {
+describe('Мастерская', () => {
+  test('§16 — закрыта до Жилья ур. 2 и говорит, чем закрыта', () => {
     const camp = createCamp();
-    camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
-    assert.equal(camp.levels.forge, 0, 'в новом лагере Кузницы нет');
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
+    assert.equal(camp.levels.forge, 0, 'в новом лагере Мастерской нет');
     assert.equal(upgradeBlock(camp, 'forge'), 'locked');
     assert.equal(gearBlock(camp, 'weapon'), 'no-forge', 'ковать негде');
     camp.levels.hq = 2;
     assert.equal(upgradeBlock(camp, 'forge'), 'ok');
   });
 
-  test('§20.3 — первый уровень бесплатен и мгновенен', () => {
+  /**
+   * Прежде правило звучало «первый уровень бесплатен и мгновенен» и проверяло
+   * постройку из пустого лагеря. Бесплатность §20.3 с появлением третьего акта
+   * пролога (§16.1) сузилась до самого пролога: там первое здание дарится
+   * `grantLevelOffBooks`, а Мастерская — первая, за которую платят. Мгновенность
+   * осталась: ждать таймер игрок к этому кадру ещё не научился.
+   */
+  test('§16.1 — первый уровень мгновенен, но уже не бесплатен', () => {
     const camp = createCamp();
     camp.levels.hq = 2;
+    assert.equal(startUpgrade(camp, 'forge', 1000), false, 'без камня не встаёт');
+
+    camp.resources.stone = BUILD_COST[1]?.stone ?? 0;
     assert.equal(startUpgrade(camp, 'forge', 1000), true);
     assert.equal(camp.levels.forge, 1, 'выросла на глазах, без таймера');
     assert.equal(camp.construction, null, 'слот стройки свободен');
-    assert.deepEqual(camp.resources, { salt: 0, wood: 0, iron: 0, crystal: 0 });
+    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 0, crystal: 0 });
   });
 
   /**
-   * Главная проверка всей фичи. Ради неё Кузница и переехала из этапа 5
+   * Главная проверка всей фичи. Ради неё Мастерская и переехала из этапа 5
    * в вертикальный срез: §20.1 обещает, что главная кнопка экрана возврата
    * остаётся тратой, даже когда единственный слот стройки занят.
    */
   test('§20.1 — ковка работает, пока слот стройки занят', () => {
     const camp = createCamp();
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 };
-    camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     assert.equal(startUpgrade(camp, 'kitchen', 0), true);
     assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy', 'стройка встала в очередь');
     assert.equal(suggestUpgrade(camp), null, 'постройки предложить нечего');
-    assert.notEqual(suggestGear(camp), null, 'Кузница предлагает трату');
+    assert.notEqual(suggestGear(camp), null, 'Мастерская предлагает трату');
     assert.equal(craftGear(camp, 'weapon'), true);
     assert.equal(camp.gear.weapon, 1);
     assert.notEqual(camp.construction, null, 'ковка не тронула стройку');
   });
 
-  test('§14 — предмет не может быть лучше своей Кузницы', () => {
+  test('§14 — предмет не может быть лучше своей Мастерской', () => {
     const camp = createCamp();
     camp.levels = { hq: 2, kitchen: 1, storage: 1, forge: 1 };
-    camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
     assert.equal(craftGear(camp, 'bag'), true, 'ур. 1 доступен');
-    assert.equal(gearBlock(camp, 'bag'), 'forge-cap', 'ур. 2 требует Кузницу ур. 2');
+    assert.equal(gearBlock(camp, 'bag'), 'forge-cap', 'ур. 2 требует Мастерскую ур. 2');
     camp.levels.forge = 6;
     for (let i = camp.gear.bag; i < MAX_ITEM_LEVEL; i++) craftGear(camp, 'bag');
     assert.equal(camp.gear.bag, MAX_ITEM_LEVEL);
     assert.equal(gearBlock(camp, 'bag'), 'max', 'шестого уровня у предметов нет');
   });
 
-  test('§14 — Кузница улучшает, а не рандомит', () => {
+  test('§14 — Мастерская улучшает, а не рандомит', () => {
     const a = createCamp();
     const b = createCamp();
     for (const camp of [a, b]) {
       camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 };
-      camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+      camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
       craftGear(camp, 'ring');
       craftGear(camp, 'ring');
     }
@@ -88,7 +99,7 @@ describe('Кузница', () => {
   test('§14 — цена только железо и кристалл, и растёт со ступенью', () => {
     for (let level = 1; level <= MAX_ITEM_LEVEL; level++) {
       const cost = GEAR_COST[level] ?? {};
-      assert.equal(cost.salt ?? 0, 0, `соль на уровне ${level}`);
+      assert.equal(cost.stone ?? 0, 0, `камень на уровне ${level}`);
       assert.equal(cost.wood ?? 0, 0, `дерево на уровне ${level}`);
       assert.ok((cost.iron ?? 0) > 0, `железо на уровне ${level}`);
       // §13 — кристалл не входит в цену раньше своего яруса.
@@ -170,14 +181,14 @@ describe('Снаряжение в вылазке', () => {
   test('§14 — снаряжение не теряется при провале', () => {
     const camp = createCamp();
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 };
-    camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
     craftGear(camp, 'weapon');
     craftGear(camp, 'armor');
     const before = { ...camp.gear };
 
     const raid = createRaid({ seed: 11, tier: 2, kitchenLevel: 2, storageLevel: 2, gear: camp.gear });
     raid.bagTotal = 8;
-    raid.bag = { salt: 8, wood: 0, iron: 0, crystal: 0 };
+    raid.bag = { stone: 8, wood: 0, iron: 0, crystal: 0 };
     raid.status = 'failed';
     const result = raidResult(raid);
 
@@ -197,7 +208,7 @@ describe('Снаряжение в вылазке', () => {
     wipe();
     const camp = createCamp();
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 2 };
-    camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
     craftGear(camp, 'torch');
     craftGear(camp, 'torch');
     save(camp, createRoster(), 5);

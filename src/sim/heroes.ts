@@ -12,11 +12,11 @@ import { HERO_WOUNDS } from './balance';
  * Поэтому герой — это класс, уровень и таймер, и ничего больше.
  *
  * Чего здесь намеренно нет: смерти (§3 — герой выбывает на таймер, не
- * исчезает), найма и редкости (герои открываются уровнем Штаба, это гейт
+ * исчезает), найма и редкости (герои открываются уровнем Жилья, это гейт
  * темпа, а не источник дохода).
  */
 
-export type HeroClassId = 'ranger' | 'warrior' | 'salter';
+export type HeroClassId = 'ranger' | 'warrior' | 'porter';
 export type SkillId = 'trail' | 'guard' | 'forage';
 export type HeroStatus = 'ready' | 'raid' | 'healing' | 'training';
 
@@ -59,7 +59,7 @@ export interface HeroClassDef {
   readonly skill: SkillId;
   /** §11.3 — здоровье это раны. У Ратника их четыре (§11.7). */
   readonly wounds: number;
-  /** Доля вместимости Склада: Следопыт −25%, Солевар +30% (§11.7). */
+  /** Доля вместимости Склада: Следопыт −25%, Носильщик +30% (§11.7). */
   readonly bagMul: number;
   /** Доля скорости шага. Скорость — сильная сторона Следопыта. */
   readonly speedMul: number;
@@ -71,7 +71,7 @@ export interface HeroClassDef {
 
 /**
  * Обзор считается по формуле §11.4: `3 + Знание/5`. Отсюда и назначено
- * Знание: Следопыт 10 даёт 5 тайлов, Солевар 5 — четыре (базовая величина
+ * Знание: Следопыт 10 даёт 5 тайлов, Носильщик 5 — четыре (базовая величина
  * прежнего безымянного героя), Ратник 0 — три, то есть ровно «−1» из §11.7.
  *
  * Атака, Защита и Сила пока хранятся и показываются, но в бой не входят:
@@ -104,9 +104,9 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     base: { attack: 5, defense: 6, knowledge: 0, might: 4 },
     growth: { attack: 1, defense: 1, knowledge: 0, might: 0 },
   },
-  salter: {
-    id: 'salter',
-    name: 'Солевар',
+  porter: {
+    id: 'porter',
+    name: 'Носильщик',
     strong: 'рюкзак +30%, добыча',
     weak: 'защита',
     skill: 'forage',
@@ -120,7 +120,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
 
 /** Порядок открытия. Первый герой — Следопыт: его сильная сторона (обзор)
  *  видна с первой вылазки, а слабая (рюкзак) не мешает, пока Склад мал. */
-export const CLASS_ORDER: readonly HeroClassId[] = ['ranger', 'warrior', 'salter'];
+export const CLASS_ORDER: readonly HeroClassId[] = ['ranger', 'warrior', 'porter'];
 
 export interface HeroState {
   readonly id: number;
@@ -142,7 +142,7 @@ export interface Roster {
 
 /* ---------- открытие героев ---------- */
 
-/** §11.8 — второй герой на Штабе ур. 2, третий — ур. 4. */
+/** §11.8 — второй герой на Жилье ур. 2, третий — ур. 4. */
 export const HERO_HQ_GATE: readonly number[] = [1, 2, 4];
 
 export function unlockedHeroes(hqLevel: number): number {
@@ -160,7 +160,7 @@ export function createRoster(): Roster {
 }
 
 /**
- * Догоняет состав отряда до уровня Штаба. Вызывается после каждой стройки
+ * Догоняет состав отряда до уровня Жилья. Вызывается после каждой стройки
  * и при загрузке: сохранение могло быть записано правилами, где гейты стояли
  * иначе, и отряд не должен от этого рассыпаться.
  */
@@ -400,7 +400,7 @@ export function loadout(hero: HeroState): HeroLoadout {
 /** Плейсхолдерный герой для замеров и тестов: ровно те числа, что были
  *  у безымянного героя этапов 1–4, чтобы старые прогоны остались сравнимы. */
 export const DEFAULT_LOADOUT: HeroLoadout = {
-  cls: 'salter',
+  cls: 'porter',
   level: 1,
   wounds: HERO_WOUNDS,
   knowledge: 5,

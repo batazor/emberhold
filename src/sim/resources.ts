@@ -2,10 +2,10 @@ import type { Rng } from '../core/rng';
 import type { Tier } from './types';
 
 /** §13 — четыре ресурса, каждый ради своего решения. */
-export type ResourceKind = 'salt' | 'wood' | 'iron' | 'crystal';
+export type ResourceKind = 'stone' | 'wood' | 'iron' | 'crystal';
 
 export const RESOURCE_NAME: Record<ResourceKind, string> = {
-  salt: 'Соль',
+  stone: 'Камень',
   wood: 'Дерево',
   iron: 'Железо',
   crystal: 'Кристалл',
@@ -13,20 +13,20 @@ export const RESOURCE_NAME: Record<ResourceKind, string> = {
 
 export type Resources = Record<ResourceKind, number>;
 
-export const emptyResources = (): Resources => ({ salt: 0, wood: 0, iron: 0, crystal: 0 });
+export const emptyResources = (): Resources => ({ stone: 0, wood: 0, iron: 0, crystal: 0 });
 
-export const totalOf = (r: Resources): number => r.salt + r.wood + r.iron + r.crystal;
+export const totalOf = (r: Resources): number => r.stone + r.wood + r.iron + r.crystal;
 
 /**
- * §13: соль — со всех ярусов, дерево — 0–2, железо — 1–3,
+ * §13: камень — со всех ярусов, дерево — 0–2, железо — 1–3,
  * кристалл — только 2–3 и редко. Кристалл и есть вся конструкция глубины:
  * если он однажды закапает на мелких ярусах, спускаться станет незачем.
  */
 const LOOT_TABLE: Record<Tier, readonly (readonly [ResourceKind, number])[]> = {
-  0: [['salt', 0.7], ['wood', 0.3]],
-  1: [['salt', 0.5], ['wood', 0.3], ['iron', 0.2]],
-  2: [['salt', 0.4], ['wood', 0.15], ['iron', 0.35], ['crystal', 0.1]],
-  3: [['salt', 0.3], ['iron', 0.45], ['crystal', 0.25]],
+  0: [['stone', 0.7], ['wood', 0.3]],
+  1: [['stone', 0.5], ['wood', 0.3], ['iron', 0.2]],
+  2: [['stone', 0.4], ['wood', 0.15], ['iron', 0.35], ['crystal', 0.1]],
+  3: [['stone', 0.3], ['iron', 0.45], ['crystal', 0.25]],
 };
 
 export function rollLoot(rng: Rng, tier: Tier): ResourceKind {
@@ -36,11 +36,11 @@ export function rollLoot(rng: Rng, tier: Tier): ResourceKind {
     acc += weight;
     if (roll <= acc) return kind;
   }
-  return 'salt';
+  return 'stone';
 }
 
 export function addResources(into: Resources, from: Resources): void {
-  into.salt += from.salt;
+  into.stone += from.stone;
   into.wood += from.wood;
   into.iron += from.iron;
   into.crystal += from.crystal;

@@ -51,14 +51,14 @@ describe('Вылазка', () => {
 
   test('§11.2 — под угрозой ceil(добыча × доля яруса)', () => {
     const raid = createRaid({ seed: 3, tier: 2, kitchenLevel: 3, storageLevel: 2 });
-    raid.bag.salt = 7;
+    raid.bag.stone = 7;
     raid.bagTotal = 7;
     assert.equal(atRisk(raid), 5, '7 × 0.6 = 4.2 → 5');
   });
 
   test('провал теряет долю рюкзака, эвакуация — ничего', () => {
     const raid = createRaid({ seed: 3, tier: 3, kitchenLevel: 3, storageLevel: 2 });
-    raid.bag = { salt: 6, wood: 0, iron: 3, crystal: 1 };
+    raid.bag = { stone: 6, wood: 0, iron: 3, crystal: 1 };
     raid.bagTotal = 10;
 
     raid.status = 'failed';
@@ -69,27 +69,27 @@ describe('Вылазка', () => {
     raid.status = 'evacuated';
     const saved = raidResult(raid);
     assert.equal(saved.lost, 0);
-    assert.deepEqual(saved.carried, { salt: 6, wood: 0, iron: 3, crystal: 1 });
+    assert.deepEqual(saved.carried, { stone: 6, wood: 0, iron: 3, crystal: 1 });
   });
 
   test('потери распределяются по составу рюкзака, а не по одному виду', () => {
     const raid = createRaid({ seed: 3, tier: 2, kitchenLevel: 3, storageLevel: 2 });
-    raid.bag = { salt: 10, wood: 0, iron: 10, crystal: 0 };
+    raid.bag = { stone: 10, wood: 0, iron: 10, crystal: 0 };
     raid.bagTotal = 20;
     raid.status = 'failed';
     const r = raidResult(raid);
     assert.equal(r.lost, 12, '20 × 0.6');
     assert.equal(r.carriedTotal, 8);
-    assert.ok(r.carried.salt > 0 && r.carried.iron > 0, 'обе кучи пострадали');
+    assert.ok(r.carried.stone > 0 && r.carried.iron > 0, 'обе кучи пострадали');
   });
 
   test('добыча доезжает до лагеря', () => {
     const camp = createCamp();
     const raid = createRaid({ seed: 11, tier: 1, kitchenLevel: 3, storageLevel: 2 });
-    raid.bag = { salt: 4, wood: 3, iron: 1, crystal: 0 };
+    raid.bag = { stone: 4, wood: 3, iron: 1, crystal: 0 };
     raid.bagTotal = 8;
     raid.status = 'evacuated';
     addResources(camp.resources, raidResult(raid).carried);
-    assert.deepEqual(camp.resources, { salt: 4, wood: 3, iron: 1, crystal: 0 });
+    assert.deepEqual(camp.resources, { stone: 4, wood: 3, iron: 1, crystal: 0 });
   });
 });

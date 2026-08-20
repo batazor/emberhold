@@ -16,8 +16,10 @@ import {
   REST_EVERY,
   REST_FOOD,
   REST_REACH,
+  CAMP_WOOD,
   TENT_WOOD,
   UPGRADE_WOOD,
+  adoptGladeLayout,
   firstGladeCell,
   gladeCapacity,
   gladeFood,
@@ -27,6 +29,7 @@ import {
   siteBlock,
 } from './prologue';
 import { restartStep } from './onboarding';
+import { campArea, createCamp } from './camp';
 import { commandMove, createRaid, stepRaid } from './raid';
 
 const glade = (seed = 1): ReturnType<typeof generateGlade> => generateGlade(seed);
@@ -47,7 +50,7 @@ describe('Пролог: поляна', () => {
   test('на поляне семь брусков: пять нужных и два запасных', () => {
     for (let seed = 0; seed < 40; seed++) {
       const loc = glade(seed);
-      assert.equal(loc.containers.length, GLADE_LOGS, `сид ${seed}: брусков не семь`);
+      assert.equal(loc.containers.length, GLADE_LOGS, `сид ${seed}: брусков не восемь`);
       let wood = 0;
       for (const c of loc.containers) {
         assert.equal(c.kind, 'wood', `сид ${seed}: на поляне не дерево`);
@@ -57,7 +60,7 @@ describe('Пролог: поляна', () => {
       // поляна не обязана вычищаться под ноль, промах не должен запирать кадр.
       assert.equal(wood, GLADE_LOGS, `сид ${seed}: дерева ${wood}`);
       assert.ok(
-        wood > TENT_WOOD + UPGRADE_WOOD,
+        wood > CAMP_WOOD + UPGRADE_WOOD,
         'запаса нет: любой промах запирает второй уровень',
       );
     }
@@ -80,12 +83,22 @@ describe('Пролог: поляна', () => {
         }
       }
     }
-    // Граница взята из замера жадной раскладки, а не назначена: семь брусков
-    // в кольце 4–7 шагов теснее двух, и требовать от них прежних четырёх
-    // клеток значило бы требовать невозможного. Три — это всё ещё «две
-    // находки», а не одна.
-    // Замер на 40 сидах: ближе 3,16 клетки бруски не сходятся.
-    assert.ok(closest >= 3, `бруски сходятся до ${closest.toFixed(2)} — читаются как одна находка`);
+    /*
+     * Граница берётся из замера жадной раскладки, а не назначается: чем больше
+     * брусков в том же кольце 4–7 шагов, тем они теснее. Прежние «не ближе 4»
+     * были правилом для двух, «не ближе 3» — для семи, теперь их восемь.
+     *
+     * Замер на 200 сидах: ближе 2,83 клетки бруски не сходятся, в среднем
+     * 3,49. Раздвинуть их обратно умеет кольцо 4–8 — оно возвращает 3,16, —
+     * но платит семью секундами пролога и оставляет худший сид с тремя
+     * единицами провианта вместо восьми. Кольцо оставлено, граница опущена
+     * до замеренной.
+     *
+     * 2,83 — это ровно диагональ через клетку (2√2): между брусками остаётся
+     * пустая земля, и «две находки» они читаются по-прежнему. Ниже опускать
+     * нельзя: 2 — это соседняя клетка, то есть одна находка из двух частей.
+     */
+    assert.ok(closest > 2, `бруски сходятся до ${closest.toFixed(2)} — читаются как одна находка`);
   });
 
   test('сумка пролога — своя: Склада ещё нет', () => {
@@ -210,17 +223,17 @@ describe('Пролог: кадр кончается собранным дере�
    *
    * Меряется теперь не «сколько бродить до нуля», а «сколько идти за деревом»:
    * кадр кончается собранными брусками, и это его настоящая длина. Замер
-   * на 60 сидах — 7,8–13,7 с, в среднем 10,7; границы взяты с запасом, чтобы
+   * на 60 сидах — 7,7–12,1 с, в среднем 9,4; границы взяты с запасом, чтобы
    * падение означало смену механики, а не дрожание генератора.
    */
-  test('за деревом на палатку ходят несколько секунд, а не минуту', () => {
-    // Замер на 60 сидах: 4,7–7,7 с, в среднем 5,7. Первый акт стал короче
-    // прежних 7,8–13,7: брусков семь вместо двух, и ближайший ближе.
+  test('за деревом на лагерь ходят несколько секунд, а не минуту', () => {
+    // Замер на 60 сидах: 7,7–12,1 с, в среднем 9,4. Первый акт удлинился,
+    // когда костёр перестал быть бесплатным: собирают три бруска, а не два.
     // Границы взяты с запасом — падение означает смену механики,
     // а не дрожание генератора.
     for (const seed of [0, 7, 23, 41]) {
-      const t = walk(prologue(seed), TENT_WOOD);
-      assert.ok(t > 3 && t < 12, `сид ${seed}: за деревом ходили ${t.toFixed(1)} с`);
+      const t = walk(prologue(seed), CAMP_WOOD);
+      assert.ok(t > 4 && t < 18, `сид ${seed}: за деревом ходили ${t.toFixed(1)} с`);
     }
   });
 
@@ -228,11 +241,11 @@ describe('Пролог: кадр кончается собранным дере�
    * Тупика в первые пятнадцать секунд быть не может: палатка стоит два бруска,
    * и провианта обязано хватать на оба с запасом на то, чтобы побродить.
    */
-  test('провианта хватает на оба бруска, и ещё остаётся', () => {
+  test('провианта хватает на весь лагерь, и ещё остаётся', () => {
     for (let seed = 0; seed < 60; seed++) {
       const state = prologue(seed);
-      walk(state, TENT_WOOD);
-      assert.equal(state.bag.wood, TENT_WOOD, `сид ${seed}: в сумке не палатка`);
+      walk(state, CAMP_WOOD);
+      assert.equal(state.bag.wood, CAMP_WOOD, `сид ${seed}: в сумке не лагерь`);
       assert.ok(state.food >= 5, `сид ${seed}: осталось ${state.food} — побродить нечем`);
     }
   });
@@ -241,12 +254,12 @@ describe('Пролог: кадр кончается собранным дере�
    * Главное правило кадра: **кто идёт по делу, не ждёт**.
    *
    * Отдых у лагеря (+3 за 10 секунд) — цена шагов, потраченных не туда,
-   * а не обязательный простой. Поэтому меряется весь пролог целиком: два
-   * бруска на палатку, три на её второй уровень и дорога обратно к палатке.
+   * а не обязательный простой. Поэтому меряется весь пролог целиком: три
+   * бруска на лагерь, три на второй уровень жилья и дорога обратно к палатке.
    * Жадный маршрут обязан уложиться в `GLADE_FOOD`, ни разу не встав.
    *
-   * Провианта здесь 50, и это число замера, а не оценки: на 60 сидах прямая
-   * дорога занимает 20,9–36,2 с и доходит с остатком 6–26. Не сойдётся —
+   * Провианта здесь 54, и это число замера, а не оценки: на 60 сидах прямая
+   * дорога занимает 24,5–37,5 с и доходит с остатком 8–26. Не сойдётся —
    * поднимать надо провиант, а не темп отдыха: темп задан решением
    * («потратил шаги не туда — стой и жди»), и подкручивать его под маршрут
    * значит отменять цену промаха.
@@ -255,11 +268,11 @@ describe('Пролог: кадр кончается собранным дере�
     let worst = Infinity;
     for (let seed = 0; seed < 60; seed++) {
       const state = prologue(seed);
-      walk(state, TENT_WOOD);
+      walk(state, CAMP_WOOD);
       // Лагерь встаёт там, где игрок стоит, — и туда же он вернётся с деревом.
       const home = { x: Math.round(state.hero.x), z: Math.round(state.hero.z) };
-      state.bag.wood -= TENT_WOOD;
-      state.bagTotal -= TENT_WOOD;
+      state.bag.wood -= CAMP_WOOD;
+      state.bagTotal -= CAMP_WOOD;
       walk(state, UPGRADE_WOOD);
       assert.equal(
         state.bag.wood,
@@ -281,7 +294,7 @@ describe('Пролог: кадр кончается собранным дере�
   });
 
   test('сумка не переполняется: она и есть цена улучшения', () => {
-    assert.ok(TENT_WOOD <= GLADE_BAG, 'палатка не влезает в сумку пролога');
+    assert.equal(CAMP_WOOD, GLADE_BAG, 'лагерь перестал быть ровно полным рюкзаком');
     assert.ok(UPGRADE_WOOD <= GLADE_BAG, 'за улучшением пришлось бы ходить дважды');
   });
 
@@ -413,5 +426,110 @@ describe('Пролог: место под здание', () => {
   test('под ноги герою — нельзя: он оказался бы внутри', () => {
     const c = free();
     assert.equal(siteBlock(loc, [], { x: c.x + 0.2, z: c.z - 0.3 }, c), 'hero');
+  });
+});
+
+describe('Пролог: механику не называют словом раньше механики', () => {
+  test('событие подбора не говорит про ставку', () => {
+    const loc = glade(7);
+    const raid = createRaid({
+      seed: 7, tier: 0, kitchenLevel: 1, storageLevel: 1,
+      loc, food: 50, capacity: 3, evacOpen: false, containerFood: 0,
+      hunger: false, risk: false,
+    });
+    const log = raid.loc.containers[0]!;
+    commandMove(raid, { x: log.x, z: log.z });
+    for (let i = 0; i < 60 * 60 && raid.loc.containers.every((c) => !c.opened); i++) {
+      stepRaid(raid, 1 / 60, false, 0);
+    }
+    assert.ok(raid.loc.containers.some((c) => c.opened), 'брусок подобран');
+    const picked = raid.events.filter((e) => e.startsWith('+'));
+    assert.ok(picked.length > 0, 'событие подбора записано');
+    for (const e of picked) {
+      assert.ok(!e.includes('под угрозой'), `ставка названа до кадра bait: «${e}»`);
+    }
+  });
+
+  test('в вылазке ставка называется по-прежнему', () => {
+    const raid = createRaid({ seed: 3, tier: 1, kitchenLevel: 1, storageLevel: 2 });
+    const box = raid.loc.containers[0]!;
+    commandMove(raid, { x: box.x, z: box.z });
+    for (let i = 0; i < 60 * 60 && raid.loc.containers.every((c) => !c.opened); i++) {
+      stepRaid(raid, 1 / 60, false, 0);
+    }
+    const picked = raid.events.filter((e) => e.startsWith('+'));
+    if (picked.length > 0) {
+      assert.ok(picked.every((e) => e.includes('под угрозой')), 'ставка объявлена');
+    }
+  });
+});
+
+/*
+ * Раскладку выбирает игрок, и она обязана пережить конец пролога: лагерь,
+ * показавший раскладку по умолчанию, обесценил бы единственный выбор кадра.
+ */
+describe('Пролог: поляна становится лагерем', () => {
+  const PITCH = ['hq', 'kitchen'] as const;
+
+  /** Клетки поляны, разнесённые как в жизни: палатка и костёр рядом. */
+  const pitchedAt = (hq: [number, number], kitchen: [number, number]) => [
+    { x: hq[0], z: hq[1] },
+    { x: kitchen[0], z: kitchen[1] },
+  ];
+
+  test('оба здания въезжают в площадь лагеря', () => {
+    const camp = createCamp();
+    camp.levels.hq = 2;
+    camp.levels.forge = 0;
+    adoptGladeLayout(camp, 24, PITCH, pitchedAt([4, 4], [19, 19]));
+    const area = campArea(camp.levels.hq);
+    for (const id of PITCH) {
+      const p = camp.layout[id];
+      assert.ok(p.x >= 0 && p.z >= 0, `${id}: не за краем`);
+      assert.ok(p.x + 2 <= area && p.z + 2 <= area, `${id}: след 2×2 внутри площади`);
+    }
+  });
+
+  test('следы не налезают друг на друга даже из соседних клеток поляны', () => {
+    // Худший случай: игрок поставил костёр вплотную к палатке. После пересчёта
+    // 24 → 7 обе клетки схлопнулись бы в одну, и здания встали бы одно в другое.
+    const camp = createCamp();
+    camp.levels.hq = 2;
+    adoptGladeLayout(camp, 24, PITCH, pitchedAt([11, 11], [12, 11]));
+    const a = camp.layout.hq;
+    const b = camp.layout.kitchen;
+    assert.ok(Math.abs(a.x - b.x) >= 2 || Math.abs(a.z - b.z) >= 2, 'следы разошлись');
+  });
+
+  test('взаимное расположение сохраняется: что было севернее, севернее и осталось', () => {
+    const camp = createCamp();
+    camp.levels.hq = 2;
+    adoptGladeLayout(camp, 24, PITCH, pitchedAt([4, 4], [18, 18]));
+    assert.ok(camp.layout.hq.x <= camp.layout.kitchen.x, 'палатка осталась западнее');
+    assert.ok(camp.layout.hq.z <= camp.layout.kitchen.z, 'палатка осталась севернее');
+  });
+
+  test('любой угол поляны укладывается в лагерь', () => {
+    const area = campArea(2);
+    for (const hq of [[1, 1], [22, 1], [1, 22], [22, 22], [12, 12]] as [number, number][]) {
+      for (const kit of [[1, 1], [22, 22], [12, 1]] as [number, number][]) {
+        const camp = createCamp();
+        camp.levels.hq = 2;
+        adoptGladeLayout(camp, 24, PITCH, pitchedAt(hq, kit));
+        for (const id of PITCH) {
+          const p = camp.layout[id];
+          assert.ok(
+            p.x >= 0 && p.z >= 0 && p.x + 2 <= area && p.z + 2 <= area,
+            `${id} из ${hq} / ${kit} уехал за площадь: ${p.x},${p.z}`,
+          );
+        }
+        const a = camp.layout.hq;
+        const b = camp.layout.kitchen;
+        assert.ok(
+          Math.abs(a.x - b.x) >= 2 || Math.abs(a.z - b.z) >= 2,
+          `следы налезли из ${hq} / ${kit}`,
+        );
+      }
+    }
   });
 });
