@@ -6,7 +6,6 @@ import {
   play,
   startAmbient,
   startCampTune,
-  onPulseBeat,
   startPulse,
   stopAmbient,
   stopCampTune,
@@ -58,6 +57,7 @@ import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { CursorWind } from './render/cursorWind';
+import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { TitleView } from './render/titleView';
@@ -791,26 +791,70 @@ const canvas = rig.renderer.domElement;
  */
 const wind = new CursorWind();
 
-// Голод слышно пульсом (§18.2) — пусть будет и видно: на каждый удар по
-// траве идёт круг от героя, тем чаще, чем меньше провианта.
-onPulseBeat(() => raidView?.beat());
-
 /**
  * Шаг ветра и раздача порыва сценам. Кадром, а не событием мыши: скорость
  * курсора — это путь за кадр, а pointermove приходит пачкой по несколько
  * штук на кадр, и посчитанная между ними скорость показывает частоту
  * опроса мыши, а не руку.
  */
+/**
+ * Ветер от наклона устройства. Отдельный источник, а не второй курсор:
+ * на телефоне курсора нет вовсе, и наклон там — единственное, чем игрок
+ * трогает картинку. Направление приходит в экранных осях, мировое считает
+ * риг: наклон вправо обязан класть траву вправо на экране, а какая это
+ * сторона мира — зависит от того, куда игрок повернул камеру.
+ */
+const tilt = new TiltWind();
+
 function stepWind(dt: number): void {
   wind.step(dt);
   const gust = wind.gust;
   titleView?.setGust(gust);
   raidView?.setGust(gust);
   campView.setGust(gust);
+
+  tilt.step(dt);
+  const camera = mode === 'title' && titleView !== null ? titleView.camera : undefined;
+  const dir = rig.screenDirToWorld(tilt.x, tilt.y, camera);
+  titleView?.setTilt(dir.x, dir.z, tilt.strength);
+  raidView?.setTilt(dir.x, dir.z, tilt.strength);
+  campView.setTilt(dir.x, dir.z, tilt.strength);
+}
+
+addEventListener('deviceorientation', (e) => {
+  tilt.feed(e.beta, e.gamma);
+});
+// Вкладка ушла в фон — замеры перестают приходить, а последний остаётся
+// висеть. Поле не должно ждать возвращения лёжа.
+addEventListener('visibilitychange', () => {
+  if (document.hidden) tilt.stop();
+});
+
+/**
+ * iOS с тринадцатой версии отдаёт гироскоп только по явному разрешению и
+ * только из обработчика жеста. Просим на первом касании — там же, где
+ * просыпается звук, и по той же причине: раньше просить не у кого.
+ */
+type OrientationPermission = {
+  requestPermission?: () => Promise<'granted' | 'denied'>;
+};
+
+let tiltAsked = false;
+
+function askTilt(): void {
+  if (tiltAsked) return;
+  tiltAsked = true;
+  const api = DeviceOrientationEvent as unknown as OrientationPermission;
+  if (typeof api.requestPermission !== 'function') return;
+  void api.requestPermission().catch(() => {
+    // Отказ — не поломка: на телефоне без разрешения трава просто стоит
+    // ровно, как на любом настольном экране.
+  });
 }
 
 canvas.addEventListener('pointerdown', (e) => {
   play('tap');
+  askTilt();
   idleSeconds = 0;
   if (mode !== 'raid') return;
   const hit = rig.screenToGround(e.clientX, e.clientY);
@@ -953,7 +997,6 @@ if (debugParams.has('bench')) {
     },
     blades: () => raidView?.grassBlades ?? 0,
     cursor: (x, z) => wind.point(x, z),
-    beat: () => raidView?.beat(),
   });
 }
 

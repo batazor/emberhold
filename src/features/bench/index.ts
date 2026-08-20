@@ -27,8 +27,6 @@ export interface BenchHooks {
   readonly blades: () => number;
   /** Поставить курсор на землю: (x, z) в мировых клетках. Шаг — за кадром. */
   readonly cursor: (x: number, z: number) => void;
-  /** Ударить пульсом (§18.2) вручную, не голодая две минуты. */
-  readonly beat: () => void;
 }
 
 /** Вешает `window.bench`. Вызывать только под ?bench=1. */
@@ -85,15 +83,6 @@ export function installBench(hooks: BenchHooks): void {
         hooks.cursor(x + i * step, z);
         draw();
       }
-    },
-    /**
-     * Удар пульса и кадры после него. Настоящий удар приходит из таймера
-     * звука, а тот требует и голода, и разрешённого звука: проверять по нему
-     * картинку — это ждать две минуты ради полусекундного круга.
-     */
-    beat(frames = 12): void {
-      hooks.beat();
-      for (let i = 0; i < frames; i++) draw();
     },
     night(value: number): void {
       rig.night = value;

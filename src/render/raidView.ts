@@ -148,8 +148,6 @@ export class RaidView {
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
   /** Порыв от курсора. Считает его main — источник ветра один на игру. */
   private gust: Gust | null = null;
-  /** Пришёл удар пульса. Круг пускается кадром: удар бьёт из таймера звука. */
-  private beatPending = false;
   private disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
 
   /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
@@ -700,11 +698,6 @@ export class RaidView {
       if (dx * dx + dz * dz > 64) continue;
       slots.push({ x: e.x, z: e.z, strength: e.kind === 'mage' ? 1.4 : 0.9 });
     }
-    if (this.beatPending) {
-      this.beatPending = false;
-      // Круг идёт от героя: пульс — это его голод, а не погода на локации.
-      this.grass.beat(hx, hz);
-    }
     this.grass.update(time / 1000, slots as readonly Pusher[], this.gust);
   }
 
@@ -713,9 +706,9 @@ export class RaidView {
     this.gust = gust;
   }
 
-  /** Удар пульса провианта (§18.2): по траве пойдёт круг от героя. */
-  beat(): void {
-    this.beatPending = true;
+  /** Ветер от наклона устройства (render/tiltWind.ts). */
+  setTilt(x: number, z: number, strength: number): void {
+    this.grass?.setTilt(x, z, strength);
   }
 
   dispose(): void {

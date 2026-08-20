@@ -327,6 +327,11 @@ export class CampView {
     this.meadow?.setGust(gust);
   }
 
+  /** Ветер от наклона устройства (render/tiltWind.ts). */
+  setTilt(x: number, z: number, strength: number): void {
+    this.meadow?.setTilt(x, z, strength);
+  }
+
   update(_dt: number, now: number, day = 1): void {
     this.rebuildBuildings();
     this.meadow?.update(now / 1000);

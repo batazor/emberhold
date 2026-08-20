@@ -55,25 +55,14 @@ const GUST_RADIUS = 1.1;
 const GUST_PUSH = 0.65;
 
 /**
- * Удар пульса провианта (§18.2) — круг, расходящийся от героя. Скорость
- * фронта в клетках в секунду: круг должен уйти из-под ног прежде, чем
- * ударит следующий, а бьёт он на голодную голову раз в 600 мс.
+ * Насколько полный наклон кладёт поле. Больше собственного размаха волны
+ * (0.34): наклон обязан читаться как новое состояние поля, а не как
+ * «ветер чуть посвежел».
  */
-const BEAT_SPEED = 7;
+const TILT_BEND = 0.22;
 
-/** Толщина фронта в клетках: волна, а не стена. */
-const BEAT_WIDTH = 1.2;
-
-/**
- * За столько секунд круг гаснет в e раз. Круг в шейдере один, и новый удар
- * обрывает старый — значит, старый обязан догореть раньше. Держится это
- * правилом «круг гаснет до следующего удара», которое сверяется с таблицей
- * пульса (§18.2), а не глазом.
- */
-export const BEAT_FADE = 0.28;
-
-/** Сила круга. Заметно слабее курсора: это дыхание поля, а не порыв. */
-const BEAT_PUSH = 0.8;
+/** Насколько полный наклон разгоняет саму волну. */
+const TILT_GUST = 0.35;
 
 /** Круговая частота отыгрыша, рад/с: качок туда-обратно за секунду. */
 const GUST_SWING = 7;
@@ -211,12 +200,12 @@ export class Grass {
   private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.MeshLambertMaterial;
   private readonly plan: GrassPlan;
-  /** Прошлое время кадра: по нему стареет круг пульса. */
-  private lastTime = -1;
   private readonly uniforms = {
     uGrassTime: { value: 0 },
     // xz — направление ветра, z — длина волны по полю, w — скорость.
     uGrassWind: { value: new THREE.Vector4(0.86, 0.51, 0.55, 1.6) },
+    // Наклон устройства: куда и насколько лежит поле (render/tiltWind.ts).
+    uGrassTilt: { value: new THREE.Vector2() },
     uGrassSway: { value: 0.34 },
     uGrassLean: { value: 0.22 },
     uGrassMaxBend: { value: 0.42 },
@@ -227,8 +216,6 @@ export class Grass {
     uGrassGust: { value: new THREE.Vector4(0, 0, 0, 0) },
     /** Куда дует. Отдельно от позиции: в vec4 места уже нет. */
     uGrassGustDir: { value: new THREE.Vector2(1, 0) },
-    // xy — откуда пошёл круг, z — его возраст в секундах; z < 0 — удара нет.
-    uGrassBeat: { value: new THREE.Vector3(0, 0, -1) },
   };
 
   constructor(loc: GameLocation, perTile: number, maxPerTile = GRASS_MAX_PER_TILE) {
@@ -297,11 +284,12 @@ export class Grass {
    * потребует хранить прошлую позицию каждого врага.
    */
   /**
-   * Удар пульса: круг пошёл из точки (x, z). Дальше он живёт сам, по
-   * возрасту, — держать его состояние в шейдере нечем и не нужно.
+   * Ветер от наклона устройства: (x, z) — мировое направление, strength —
+   * 0..1. Поле ложится в эту сторону и качается сильнее.
    */
-  beat(x: number, z: number): void {
-    this.uniforms.uGrassBeat.value.set(x, z, 0);
+  setTilt(x: number, z: number, strength: number): void {
+    this.uniforms.uGrassTilt.value.set(x * strength * TILT_BEND, z * strength * TILT_BEND);
+    this.uniforms.uGrassSway.value = 0.34 * (1 + strength * TILT_GUST);
   }
 
   update(timeSec: number, pushers: readonly Pusher[], gust: Gust | null = null): void {
@@ -312,15 +300,6 @@ export class Grass {
       if (p === undefined) slots[i]!.set(0, 0, 0);
       else slots[i]!.set(p.x, p.z, p.strength);
     }
-
-    // Возраст круга считается от кадра к кадру: время удара приходит из
-    // звука, а не из цикла, и сверять их часами обеих сторон незачем.
-    const beat = this.uniforms.uGrassBeat.value;
-    if (beat.z >= 0) {
-      beat.z = this.lastTime < 0 ? 0 : beat.z + Math.max(0, timeSec - this.lastTime);
-      if (beat.z > BEAT_FADE * 4) beat.z = -1;
-    }
-    this.lastTime = timeSec;
 
     // Курсор — не седьмой толчок: он не тело, а источник ветра, и живёт
     // своей силой (render/cursorWind.ts).
@@ -385,7 +364,7 @@ export class Grass {
           uniform vec3 uGrassPushers[${PUSHERS}];
           uniform vec4 uGrassGust;
           uniform vec2 uGrassGustDir;
-          uniform vec3 uGrassBeat;
+          uniform vec2 uGrassTilt;
 
           // hash22: два независимых числа из координаты корня. Свойства
           // травинки не хранятся нигде — они выводятся, как у Jarl.
@@ -422,6 +401,10 @@ export class Grass {
                       + 0.35 * sin(uGrassTime * uGrassWind.w * 0.4 + gWave * 1.7 + gPhase);
           vec2 gBend = uGrassWind.xy * gSway * uGrassSway;
           gBend += vec2(cos(gPhase), sin(gPhase)) * uGrassLean;
+          // Наклон устройства: ровный, постоянный крен всего поля. Он
+          // складывается с волной, а не заменяет её, поэтому наклонённое
+          // поле продолжает жить, а не застывает лежащим.
+          gBend += uGrassTilt;
 
           for (int i = 0; i < ${PUSHERS}; i++) {
             vec3 p = uGrassPushers[i];
@@ -444,16 +427,6 @@ export class Grass {
             // настоящего порыва, а не встаёт по линейке.
             float gWaveT = cos(uGrassGust.w * ${GUST_SWING.toFixed(3)} - gGustDist * ${GUST_WAVE.toFixed(3)});
             gBend += gFlow * uGrassGust.z * gGustFall * gWaveT;
-          }
-
-          // Круг от удара пульса: фронт уходит от героя и гаснет. Голод
-          // слышно (§18.2) — теперь его и видно, тем чаще, чем меньше еды.
-          if (uGrassBeat.z >= 0.0) {
-            vec2 gFromBeat = gRoot.xz - uGrassBeat.xy;
-            float gBeatDist = length(gFromBeat);
-            float gFront = (gBeatDist - uGrassBeat.z * ${BEAT_SPEED.toFixed(3)}) / ${BEAT_WIDTH.toFixed(3)};
-            float gRing = exp(-gFront * gFront) * exp(-uGrassBeat.z / ${BEAT_FADE.toFixed(3)});
-            gBend += (gFromBeat / (gBeatDist + 1e-4)) * ${BEAT_PUSH.toFixed(3)} * gRing;
           }
 
           // 1-exp(-x): изгиб подходит к пределу асимптотически. Без этого
