@@ -217,6 +217,9 @@
     <p><b>Формы стыка закрыты все, кроме одной.</b> Перекрёсток — единственное место,
       где набор отвечает «нет»: детали, у которой ход шёл бы на все четыре стороны
       на высоте стены, в нём нет. Там встаёт башня, и ход по стене там кончается.</p>
+    <p><b>Правый щелчок ставит башню и листает её ярусы</b> — 1, 2, 3 и обратно в стену.
+      Это и есть апгрейд: следующий щелчок, и ничего вокруг не пересобирается.
+      Клетка у башни та же на всех трёх уровнях, растёт только высота.</p>
   </div>
   <div class="bar" id="drawBar"></div>
   <div class="yardgrid">
@@ -227,6 +230,35 @@
     <th>Форма стыка</th><th class="num">Клеток</th><th>Какими деталями</th>
   </tr></thead><tbody></tbody></table>
   <p class="note" id="drawNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Башня: апгрейд — это высота</h2>
+    <p>Башня растёт только вверх. След на земле не меняется ни на клетку, и это
+      не мелочь: надстройка не может ни задеть соседнюю стену, ни перегородить двор,
+      а значит апгрейд не требует ни проверки места, ни пересборки стены вокруг.</p>
+    <p><b>Уровень читается высотой, и только высотой.</b> Ярус — 1,01 в единицах
+      набора, то есть 2,02 в клетках локации: полтора роста героя. Подписи уровню
+      не нужно. Первый уровень при этом встаёт <b>вровень со стеной</b>, и это
+      совпадение замеров, а не подгонка: этаж 1,01 плюс зубцы 0,30 и есть 1,31 —
+      высота стены набора.</p>
+    <p><b>Потолок — три яруса, и он посчитан камерой.</b> Камера смотрит с 30°,
+      и башня высотой H прячет за собой H·ctg30° ≈ 1,73H клеток земли. Двор
+      самого большого замка — <span id="yardMax">…</span> клеток. На третьем ярусе
+      башня ещё в него укладывается, четвёртый не укладывается ни в один двор:
+      башня закрыла бы собой всё, ради чего в замок заходят.</p>
+  </div>
+  <div class="yardgrid">
+    <canvas id="levels" class="scene" width="660" height="330"></canvas>
+    <div class="side" style="flex:1;min-width:280px;overflow-x:auto">
+      <table id="levelTable"><thead><tr>
+        <th class="num">Уровень</th><th class="num">Высота</th>
+        <th class="num">Прячет клеток</th><th>Что это значит</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <p class="note" id="levelNote"></p>
 </div>
 
 <div class="sec">
@@ -407,7 +439,7 @@ try{
   throw e;
 }
 
-const {generateCastle, buildWall, fitTurn, turnDir, DIRS, PARTS, STRAIGHT, CORNER, STAIRS, FLOOR, WALK, WALL_TOP} = castleMod;
+const {generateCastle, buildWall, buildTower, keyOf, fitTurn, turnDir, DIRS, PARTS, STRAIGHT, CORNER, STAIRS, FLOOR, WALK, WALL_TOP} = castleMod;
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 const pct = (n, of) => (n / of * 100).toFixed(1) + '%';
@@ -890,6 +922,57 @@ document.getElementById('ironChalk').innerHTML =
   'Поэтому у этого градиента <b>две ступени, а не четыре</b>: ступени, которым нечего ' +
   'было бы достаться, не заводятся.';
 
+/* ---------- башня по ярусам ---------- */
+
+/**
+ * Три башни в ряд и кусок стены рядом с ними. Стена здесь не украшение:
+ * без неё «вровень со стеной» — слово, а с ней это видно.
+ */
+async function drawLevels(){
+  const wall = buildWall([{x:0,z:0},{x:1,z:0},{x:2,z:0}]);
+  const towers = [1, 2, 3].flatMap((level, i) => buildTower({x: i * 3, z: 3}, level));
+  await renderPieces(document.getElementById('levels'), [...wall.pieces, ...towers]);
+}
+
+const TAN30 = Math.tan(30 * Math.PI / 180);
+// Масштаб игры, а не набора: клетка набора занимает CASTLE_CELL клеток
+// локации, и прячет башня клетки локации, а не единицы набора.
+const cellOfPlan = castleMod.CASTLE_CELL;
+// Двор самого большого замка меряется по самим замкам, а не называется.
+const yardSpan = (c) => {
+  const xs = c.yard.map(s => s.x), zs = c.yard.map(s => s.z);
+  return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) + 1;
+};
+let widest = 0;
+for(let s = 0; s < 120; s++) widest = Math.max(widest, yardSpan(generateCastle(s)));
+const yardMax = widest * cellOfPlan;
+document.getElementById('yardMax').textContent = String(yardMax);
+
+const LEVEL_WHAT = [
+  'вровень со стеной: башня есть, но не выделяется',
+  'на ярус выше стены: видно, куда вложились',
+  'потолок: выше башня закрывает двор целиком',
+];
+const levelBody = document.querySelector('#levelTable tbody');
+for(let level = 1; level <= castleMod.TOWER_MAX + 1; level++){
+  const h = castleMod.towerHeight(level);
+  const hides = h * cellOfPlan / TAN30;
+  const over = level > castleMod.TOWER_MAX;
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td class="num">' + (over ? level + ' — нет' : level) + '</td>' +
+    '<td class="num">' + ru(Math.round(h * 100) / 100) + '</td>' +
+    '<td class="num"' + (hides > yardMax ? ' style="color:var(--blood)"' : '') + '>' +
+      ru(hides.toFixed(1)) + '</td>' +
+    '<td>' + (over ? 'не помещается ни в один двор — этого уровня нет' : LEVEL_WHAT[level - 1]) + '</td>';
+  levelBody.appendChild(tr);
+}
+document.getElementById('levelNote').textContent =
+  'Ярус — ' + ru(castleMod.FLOOR) + ' в единицах набора, ' + ru(castleMod.FLOOR * cellOfPlan) +
+  ' в клетках локации. Все числа в таблице посчитаны из замеров набора и наклона камеры; ' +
+  'потолок в ' + castleMod.TOWER_MAX + ' яруса — последний, который в двор ещё укладывается.';
+drawLevels().catch(() => {});
+
 /* ---------- генератор ---------- */
 const sceneCanvas = document.getElementById('scene');
 const planCanvas = document.getElementById('plan');
@@ -1053,6 +1136,8 @@ const START = [
   '...........',
 ];
 let drawn = new Set();
+/** Клетки с башнями: ключ клетки → ярусы. Правый щелчок листает 1 → 2 → 3 → нет. */
+let towers = new Map();
 START.forEach((row, z) => [...row].forEach((c, x) => { if(c === '#') drawn.add(z * GRID + x); }));
 
 function drawPlan(){
@@ -1062,8 +1147,19 @@ function drawPlan(){
   const step = Math.min(W, H) / GRID;
   ctx.clearRect(0, 0, W, H);
   for(const key of drawn){
-    ctx.fillStyle = css.getPropertyValue('--brass').trim();
-    ctx.fillRect((key % GRID) * step + 1, ((key / GRID) | 0) * step + 1, step - 2, step - 2);
+    const x = key % GRID, z = (key / GRID) | 0;
+    const level = towers.get(keyOf({x, z}));
+    ctx.fillStyle = level === undefined
+      ? css.getPropertyValue('--brass').trim()
+      : css.getPropertyValue('--moss').trim();
+    ctx.fillRect(x * step + 1, z * step + 1, step - 2, step - 2);
+    if(level !== undefined){
+      ctx.fillStyle = css.getPropertyValue('--ground').trim();
+      ctx.font = Math.round(step * 0.6) + 'px ' + css.getPropertyValue('--ff-mono');
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(level), (x + 0.5) * step, (z + 0.55) * step);
+    }
   }
   ctx.strokeStyle = css.getPropertyValue('--line').trim();
   ctx.lineWidth = 1;
@@ -1076,7 +1172,7 @@ function drawPlan(){
 function rebuildDrawing(){
   drawPlan();
   const cells = [...drawn].map(k => ({x: k % GRID, z: (k / GRID) | 0}));
-  const built = buildWall(cells);
+  const built = buildWall(cells, undefined, towers);
   renderPieces(drawScene, built.pieces).catch((e) => fail('Модели набора не прочитаны: ' + e));
 
   const byJoint = new Map();
@@ -1096,13 +1192,17 @@ function rebuildDrawing(){
     body.appendChild(tr);
   }
   const cross = byJoint.get('перекрёсток');
+  const built_towers = built.joints.filter(j => j.tower !== undefined);
   document.getElementById('drawNote').textContent =
-    'Клеток ' + cells.length + ', деталей ' + built.pieces.length + '. ' +
+    'Клеток ' + cells.length + ', деталей ' + built.pieces.length +
+    (built_towers.length === 0 ? '' : ', башен ' + built_towers.length +
+      ' (ярусов: ' + built_towers.map(j => j.tower).join(', ') + ')') + '. ' +
     (cross === undefined
       ? 'Перекрёстков нет — попробуйте свести четыре стены в одну клетку.'
       : 'Перекрёстков ' + cross.n + ': на них стоят башни, и ход по стене там кончается.');
 }
 
+drawCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
 drawCanvas.addEventListener('pointerdown', (e) => {
   const box = drawCanvas.getBoundingClientRect();
   const step = Math.min(box.width, box.height) / GRID;
@@ -1110,7 +1210,21 @@ drawCanvas.addEventListener('pointerdown', (e) => {
   const z = Math.floor((e.clientY - box.top) / step);
   if(x < 0 || z < 0 || x >= GRID || z >= GRID) return;
   const key = z * GRID + x;
-  if(drawn.has(key)) drawn.delete(key); else drawn.add(key);
+  const spot = keyOf({x, z});
+  // Правый щелчок (или Alt) листает ярусы башни: 1 → 2 → 3 → снова стена.
+  // Апгрейд — это и есть следующий щелчок, и клетка при нём не меняется.
+  if(e.button === 2 || e.altKey){
+    if(!drawn.has(key)) drawn.add(key);
+    const level = towers.get(spot);
+    if(level === undefined) towers.set(spot, 1);
+    else if(level < castleMod.TOWER_MAX) towers.set(spot, level + 1);
+    else towers.delete(spot);
+  } else if(drawn.has(key)){
+    drawn.delete(key);
+    towers.delete(spot);
+  } else {
+    drawn.add(key);
+  }
   rebuildDrawing();
 });
 
@@ -1125,6 +1239,7 @@ for(const [label, rows] of [
   b.textContent = label;
   b.addEventListener('click', () => {
     drawn = new Set();
+    towers = new Map();
     rows.forEach((row, z) => [...row].forEach((c, x) => { if(c === '#') drawn.add(z * GRID + x); }));
     rebuildDrawing();
   });

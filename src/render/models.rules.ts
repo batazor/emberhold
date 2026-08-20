@@ -22,7 +22,8 @@ import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf } f
 import { FOREST_SLOTS } from './forest.data';
 import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
 import { CASTLE_SCALE, castleGeometry } from './castle';
-import { PARTS, STAIRS, TOWER, WALK, WALL_TOP } from '../sim/castle';
+import { PARTS, STAIRS, TOWER, TOWER_MAX, WALK, WALL_TOP, towerHeight } from '../sim/castle';
+import { ELEVATION } from './scene';
 import { CASTLE_SLOT_ORDER, FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
 import { SKELETON_SLOTS } from './skeleton.data';
 
@@ -185,6 +186,32 @@ describe('Артбук: замок', () => {
       wall > walk && wall > hero * 1.8,
       `стена ${wall.toFixed(2)} при герое ${hero.toFixed(2)} — это забор, а не стена`,
     );
+  });
+
+  test('потолок роста башни посчитан камерой, а не выбран', () => {
+    /**
+     * Камера смотрит с фиксированного наклона, и башня прячет за собой полосу
+     * земли длиной H · ctg(наклон). Двор самого большого замка — 7 клеток
+     * плана, то есть 14 клеток локации; самого малого — 4 плана, 8 локации.
+     *
+     * Требование, из которого взят потолок: **на верхнем уровне башня ещё
+     * помещается в самый большой двор, а следующий уровень не помещается
+     * ни в один**. Ни одно из этих чисел не назначено — все меряются.
+     */
+    const hides = (level: number): number =>
+      (towerHeight(level) * CASTLE_SCALE) / Math.tan(ELEVATION);
+    const YARD_MAX = 7 * CASTLE_SCALE;
+    const YARD_MIN = 4 * CASTLE_SCALE;
+
+    assert.ok(
+      hides(TOWER_MAX) <= YARD_MAX,
+      `башня ${TOWER_MAX} уровня прячет ${hides(TOWER_MAX).toFixed(1)} клеток — больше двора ${YARD_MAX}`,
+    );
+    assert.ok(
+      hides(TOWER_MAX + 1) > YARD_MAX,
+      `башня ${TOWER_MAX + 1} уровня прячет ${hides(TOWER_MAX + 1).toFixed(1)} — потолок занижен`,
+    );
+    assert.ok(hides(1) < YARD_MIN, 'первый уровень уже закрывает самый малый двор');
   });
 
   test('готовый замок укладывается в свой потолок — килобайты', () => {
