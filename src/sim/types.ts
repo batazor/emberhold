@@ -1,4 +1,5 @@
 import type { HeroLoadout } from './heroes';
+import type { ConsumableId } from './consumables';
 import type { ResourceKind, Resources } from './resources';
 
 export type Tier = 0 | 1 | 2 | 3;
@@ -99,6 +100,14 @@ export interface RaidState {
   starve: number;
   /** Копится, пока идёт бой: провиант списывается один раз за стычку (§11.1). */
   inFight: boolean;
+  /** Взятые в вылазку расходники, ещё не сработавшие (§21).
+   *  Имя не loadout: так называется снаряжение героя из §14. */
+  consumables: ConsumableId[];
+  /** Что сработало — для телеметрии и для гашения слота в HUD. */
+  fired: ConsumableId[];
+  /** До этой секунды после дыма противники не просыпаются: без передышки
+   *  контакт восстановился бы на следующем же тике. */
+  smokeUntil: number;
   /** Кто нанёс последний удар — нужен телеметрии и замеру: без атрибуции
    *  «провалы в бою» ничего не говорят о том, что чинить. */
   lastHitBy: EnemyKind | null;

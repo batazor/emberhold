@@ -11,12 +11,20 @@ import {
   upgradeBlock,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
+import {
+  CONSUMABLES,
+  CONSUMABLE_ORDER,
+  CONSUMABLE_SLOTS,
+} from '../sim/consumables';
+import type { ConsumableId } from '../sim/consumables';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
 import type { Tier } from '../sim/types';
 
 export interface CampCallbacks {
   onUpgrade(id: BuildingId): void;
+  onBuyConsumable(id: ConsumableId): void;
+  onRefundConsumable(at: number): void;
   onSpeedup(): void;
   onRaid(tier: Tier): void;
 }
@@ -54,6 +62,8 @@ export class CampHud {
   private readonly rows = new Map<BuildingId, Row>();
   private readonly tierButtons = new Map<Tier, HTMLButtonElement>();
   private readonly banner: HTMLElement;
+  private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
+  private slots!: HTMLElement;
   private bannerTimer = 0;
 
   constructor(parent: HTMLElement, private readonly cb: CampCallbacks) {
@@ -84,6 +94,25 @@ export class CampHud {
       list.appendChild(this.makeRow(id));
     }
 
+    // §21: строка, а не магазин. Отдельный экран превратил бы лагерь
+    // в витрину, а туда возвращаются смотреть на выросшие постройки.
+    const shop = document.createElement('div');
+    shop.className = 'panel shop';
+    const shopLabel = document.createElement('span');
+    shopLabel.className = 'lbl';
+    shopLabel.textContent = 'В вылазку';
+    shop.appendChild(shopLabel);
+    for (const id of CONSUMABLE_ORDER) {
+      const b = document.createElement('button');
+      b.dataset['buy'] = id;
+      b.addEventListener('click', () => this.cb.onBuyConsumable(id));
+      shop.appendChild(b);
+      this.shopButtons.set(id, b);
+    }
+    this.slots = document.createElement('div');
+    this.slots.className = 'slots';
+    shop.appendChild(this.slots);
+
     const raid = document.createElement('div');
     raid.className = 'panel raid';
     const raidLabel = document.createElement('span');
@@ -98,7 +127,7 @@ export class CampHud {
       raid.appendChild(b);
     }
 
-    this.root.append(res, this.banner, list, raid);
+    this.root.append(res, this.banner, list, shop, raid);
     parent.appendChild(this.root);
   }
 
@@ -180,6 +209,35 @@ export class CampHud {
       const blocked = tierBlock(camp, tier) !== 'ok';
       b.disabled = blocked;
       b.textContent = blocked ? `Ярус ${tier} · Кухня ${TIER_KITCHEN_GATE[tier]}` : `Ярус ${tier}`;
+    }
+
+    for (const id of CONSUMABLE_ORDER) {
+      const def = CONSUMABLES[id];
+      const button = this.shopButtons.get(id);
+      if (button === undefined) continue;
+      const price = (Object.entries(def.price) as [keyof typeof camp.resources, number][])
+        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .join(' · ');
+      button.textContent = `${def.name} · ${price}`;
+      button.title = `${def.trigger} → ${def.effect}`;
+      const full = camp.loadout.length >= CONSUMABLE_SLOTS;
+      const afford = (Object.entries(def.price) as [keyof typeof camp.resources, number][]).every(
+        ([kind, amount]) => camp.resources[kind] >= amount,
+      );
+      button.disabled = full || !afford;
+    }
+    this.slots.innerHTML = '';
+    for (let i = 0; i < CONSUMABLE_SLOTS; i++) {
+      const taken = camp.loadout[i];
+      const slot = document.createElement('button');
+      slot.className = 'slot' + (taken === undefined ? ' empty' : '');
+      slot.textContent = taken === undefined ? 'пусто' : CONSUMABLES[taken].name;
+      slot.disabled = taken === undefined;
+      if (taken !== undefined) {
+        slot.title = 'Вернуть';
+        slot.addEventListener('click', () => this.cb.onRefundConsumable(i));
+      }
+      this.slots.appendChild(slot);
     }
 
     const c = camp.construction;

@@ -1,6 +1,8 @@
 import { BUILDINGS, BUILD_COST, suggestUpgrade, upgradeProgress } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { TIER_NAME } from '../sim/config';
+import { CONSUMABLES, cheapestAffordable } from '../sim/consumables';
+import type { ConsumableId } from '../sim/consumables';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
@@ -21,6 +23,8 @@ const ORDER: readonly ResourceKind[] = ['salt', 'wood', 'iron', 'crystal'];
 
 export interface ReturnCallbacks {
   onBuild(id: BuildingId): void;
+  /** §21 — второй сток: когда слот стройки занят, тратить всё равно есть на что. */
+  onBuyConsumable(id: ConsumableId): void;
   onRaid(tier: Tier): void;
   onCamp(): void;
 }
@@ -44,6 +48,8 @@ export class ReturnScreen {
   private shownAt = 0;
   private skipped = false;
   private suggestion: BuildingId | null = null;
+  /** Что предложить, когда слот стройки занят или на здание не хватает. */
+  private consumable: ConsumableId | null = null;
   private tier: Tier = 0;
   /** Отчёт о выборе игрока уходит в телеметрию один раз за экран. */
   private reported = false;
@@ -93,6 +99,9 @@ export class ReturnScreen {
       if (this.suggestion !== null) {
         this.report('build');
         this.cb.onBuild(this.suggestion);
+      } else if (this.consumable !== null) {
+        this.report('build');
+        this.cb.onBuyConsumable(this.consumable);
       } else {
         this.report('raid');
         this.cb.onRaid(this.tier);
@@ -127,6 +136,10 @@ export class ReturnScreen {
     this.skipped = false;
     this.tier = result.tier;
     this.suggestion = suggestUpgrade(camp);
+    // Постройка важнее: она меняет вылазку навсегда, расходник — на одну.
+    this.consumable = this.suggestion === null
+      ? cheapestAffordable(camp.resources, camp.loadout)
+      : null;
 
     const ok = result.status === 'evacuated';
     this.title.textContent = ok ? 'Вылазка завершена' : 'Провал';
@@ -168,6 +181,10 @@ export class ReturnScreen {
     if (this.suggestion !== null) {
       const id = this.suggestion;
       this.primary.textContent = `Построить: ${BUILDINGS[id].name} ур. ${camp.levels[id] + 1}`;
+      this.secondary.textContent = 'Ещё вылазка';
+      this.secondary.style.display = '';
+    } else if (this.consumable !== null) {
+      this.primary.textContent = `Взять: ${CONSUMABLES[this.consumable].name}`;
       this.secondary.textContent = 'Ещё вылазка';
       this.secondary.style.display = '';
     } else {

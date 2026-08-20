@@ -1,4 +1,5 @@
 import { HERO_WOUNDS, TIER_NAME, TIER_RISK } from '../sim/config';
+import { CONSUMABLES } from '../sim/consumables';
 import { atRisk, backSteps } from '../sim/raid';
 import type { RaidState } from '../sim/raid';
 
@@ -27,6 +28,8 @@ export class Hud {
   private readonly risk: HTMLElement;
   private readonly tier: HTMLElement;
   private readonly hint: HTMLElement;
+  private readonly slots: HTMLElement;
+  private slotsKey = '';
   private readonly stats: HTMLElement;
   private hintTimer = 0;
 
@@ -55,6 +58,7 @@ export class Hud {
         <div class="risk"><span id="h-risk"></span> · <span id="h-tier"></span></div>
       </div>
       <div class="bottom">
+        <div id="h-slots" class="raid-slots"></div>
         <div id="h-hint" class="hint"></div>
         <div class="panel night">
           <span class="lbl">Ночь</span><input id="h-night" type="range" min="0" max="100" value="100">
@@ -81,6 +85,7 @@ export class Hud {
     this.risk = this.q('h-risk');
     this.tier = this.q('h-tier');
     this.hint = this.q('h-hint');
+    this.slots = this.q('h-slots');
     this.stats = document.createElement('div');
     this.stats.id = 'stats';
     // В потоке над подсказкой, а не поверх панели: панель меняет высоту
@@ -142,6 +147,27 @@ export class Hud {
     this.risk.innerHTML = `Под угрозой <b>${atRisk(state)}</b> из ${state.bagTotal}`;
     this.tier.textContent = `${TIER_NAME[tier]} · ставка ${Math.round(TIER_RISK[tier] * 100)}%`;
     this.tier.className = tier >= 3 ? 'bad' : tier === 2 ? 'warn' : 'dim';
+
+    // §21: слоты молчат. Пока расходник цел, слот тусклый; счётчиков,
+    // кулдаунов и подсказок нет — всё мигающее отнимает внимание у двух
+    // полос, ради которых панель существует.
+    const key = `${state.consumables.join(',')}|${state.fired.join(',')}`;
+    if (key !== this.slotsKey) {
+      this.slotsKey = key;
+      this.slots.innerHTML = '';
+      for (const id of state.consumables) {
+        const el = document.createElement('span');
+        el.className = 'raid-slot';
+        el.textContent = CONSUMABLES[id].name;
+        this.slots.appendChild(el);
+      }
+      for (const id of state.fired) {
+        const el = document.createElement('span');
+        el.className = 'raid-slot spent';
+        el.textContent = CONSUMABLES[id].name;
+        this.slots.appendChild(el);
+      }
+    }
 
     if (state.events.length > 0) {
       this.hint.textContent = state.events[state.events.length - 1]!;

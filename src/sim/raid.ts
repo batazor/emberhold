@@ -12,6 +12,12 @@ import {
 import { ENEMY_STATS } from './enemies';
 import { DEFAULT_LOADOUT, FORAGE_FOOD, SKILLS, TRAIL_STEP_DISCOUNT } from './heroes';
 import type { HeroLoadout } from './heroes';
+import {
+  CONSUMABLES,
+  RATION_FOOD,
+  SMOKE_THRESHOLD,
+} from './consumables';
+import type { ConsumableId } from './consumables';
 import { generateLocation } from './generate';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
@@ -31,6 +37,8 @@ export interface RaidOptions {
    * несравнимы с калибровкой §20.3.
    */
   readonly loadout?: HeroLoadout;
+  /** Что игрок купил перед входом (§21). По умолчанию — ничего. */
+  readonly consumables?: readonly ConsumableId[];
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
@@ -65,6 +73,9 @@ export function createRaid(opts: RaidOptions): RaidState {
     elapsed: 0,
     inFight: false,
     starve: 0,
+    consumables: [...(opts.consumables ?? [])],
+    fired: [],
+    smokeUntil: 0,
     lastHitBy: null,
     events: [],
   };
@@ -225,7 +236,9 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
 
     // Игрок видит дальше, чем его видят: только так «проход через комнату»
     // становится платным решением, а не внезапной смертью (§15).
-    if (!enemy.awake && dist <= vision * ENEMY_WAKE_SHARE) enemy.awake = true;
+    if (!enemy.awake && dist <= vision * ENEMY_WAKE_SHARE && state.elapsed >= state.smokeUntil) {
+      enemy.awake = true;
+    }
     if (!enemy.awake) continue;
     if (dist > vision + 2) {
       enemy.awake = false;
@@ -293,6 +306,52 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
   }
 }
 
+
+/**
+ * §21.1 — расходник срабатывает сам. Функции «использовать» нет: момент
+ * выбран правилом, поэтому приберечь его на потом физически невозможно,
+ * и возражение §19.1 («берегут для лучшего момента, который не наступает»)
+ * снимается конструкцией, а не обещанием.
+ */
+function fireConsumable(state: RaidState, id: ConsumableId): void {
+  const at = state.consumables.indexOf(id);
+  if (at === -1) return;
+  state.consumables.splice(at, 1);
+  state.fired.push(id);
+  state.events.push(`${CONSUMABLES[id].name}: ${CONSUMABLES[id].effect}`);
+}
+
+/** Проверяется после боя и голода, до проверки смерти: страхует, а не воскрешает. */
+function stepConsumables(state: RaidState): void {
+  const { hero, loc } = state;
+
+  // Повязка — на последней ране, до того как её снимут. Иначе она лечила бы
+  // труп, а §21 обещает страховку от ошибки, а не воскрешение.
+  if (hero.wounds === 1 && state.consumables.includes('bandage')) {
+    fireConsumable(state, 'bandage');
+    hero.wounds += 1;
+  }
+
+  if (state.food <= 0 && state.consumables.includes('ration')) {
+    fireConsumable(state, 'ration');
+    state.food += RATION_FOOD;
+    state.starve = 0;
+  }
+
+  if (state.consumables.includes('smoke')) {
+    let awake = 0;
+    for (const e of loc.enemies) if (e.wounds > 0 && e.awake) awake++;
+    if (awake >= SMOKE_THRESHOLD) {
+      fireConsumable(state, 'smoke');
+      for (const e of loc.enemies) {
+        e.awake = false;
+        e.telegraph = 0;
+      }
+      state.smokeUntil = state.elapsed + 3;
+    }
+  }
+}
+
 export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge: number): void {
   if (state.status !== 'running') return;
   state.events.length = 0;
@@ -317,6 +376,8 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
     }
   }
 
+  stepConsumables(state);
+
   if (state.hero.wounds <= 0) {
     state.hero.wounds = 0;
     state.status = 'failed';
@@ -338,6 +399,8 @@ export interface RaidResult {
   readonly maxBack: number;
   readonly locMaxBack: number;
   readonly durationSec: number;
+  /** Что сработало за вылазку — §21.5 меряет разброс по видам. */
+  readonly fired: readonly ConsumableId[];
 }
 
 /**
@@ -382,6 +445,7 @@ export function raidResult(state: RaidState): RaidResult {
     maxBack: state.maxBack,
     locMaxBack: locationDepth(state.loc),
     durationSec: state.elapsed,
+    fired: [...state.fired],
   };
 }
 

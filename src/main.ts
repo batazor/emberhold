@@ -17,6 +17,8 @@ import type { BuildingId, CampState } from './sim/camp';
 import { HERO_KNOWLEDGE, visionRadius } from './sim/config';
 import { commandMove, createRaid, raidResult, stepRaid } from './sim/raid';
 import type { RaidState } from './sim/raid';
+import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
+import type { ConsumableId } from './sim/consumables';
 import { addResources } from './sim/resources';
 import { load, save } from './sim/save';
 import { loadTelemetry, track } from './sim/telemetry';
@@ -36,6 +38,8 @@ if (app === null) throw new Error('нет #app');
 const loaded = load();
 const clock = new Clock(loaded.watermark);
 let camp: CampState = loaded.camp;
+// Отряд ведёт соседняя ветка (§3, heroes.ts); здесь он только сохраняется.
+const roster = loaded.roster;
 
 loadTelemetry();
 // §9 — время до возвращения в игру после установки таймера. Меряется только
@@ -87,6 +91,10 @@ const campHud = new CampHud(app, {
     // Отказ обязан быть слышен: молчащая кнопка читается как поломка.
     beginUpgrade(id);
   },
+  onBuyConsumable: (id) => buy(id),
+  onRefundConsumable: (at) => {
+    if (refundConsumable(camp, at)) persist();
+  },
   onSpeedup: () => {
     const now = clock.now();
     const c = camp.construction;
@@ -114,11 +122,27 @@ function upgradeReason(state: CampState, id: BuildingId): string {
 
 const statsPanel = new StatsPanel(app);
 
+function buy(id: ConsumableId): boolean {
+  if (!buyConsumable(camp, id)) {
+    campHud.notify(`${CONSUMABLES[id].name}: не хватает или слоты заняты`);
+    return false;
+  }
+  track({ t: 'consumable', at: clock.now(), id, phase: 'buy' });
+  campHud.notify(`${CONSUMABLES[id].name} — в вылазку`);
+  persist();
+  return true;
+}
+
 function persist(): void {
-  save(camp, clock.watermark);
+  save(camp, roster, clock.watermark);
 }
 
 const returnScreen = new ReturnScreen(app, {
+  onBuyConsumable: (id) => {
+    buy(id);
+    returnScreen.hide();
+    toCamp();
+  },
   onBuild: (id) => {
     beginUpgrade(id);
     returnScreen.hide();
@@ -162,7 +186,12 @@ function toRaid(tier: Tier): void {
     tier,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
+    consumables: camp.loadout,
   });
+  // §21 — купленное уходит в вылазку и не возвращается: сгорает независимо
+  // от того, пригодилось или нет. Копить нечего.
+  camp.loadout = [];
+  persist();
   raidView = new RaidView(raid.loc);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -277,6 +306,9 @@ startLoop({
         const result = raidResult(raid);
         addResources(camp.resources, result.carried);
         camp.raids += 1;
+        for (const id of result.fired) {
+          track({ t: 'consumable', at: now, id, phase: 'fire' });
+        }
         persist();
         track({
           t: 'raid_end',

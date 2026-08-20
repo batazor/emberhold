@@ -1,3 +1,4 @@
+import type { ConsumableId } from './consumables';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
 import { modelKitchenFood, TIER_KITCHEN_GATE as GATE } from './balance';
@@ -117,6 +118,9 @@ export interface CampState {
   resources: Resources;
   /** §20.1 — один слот. Это и делает вопрос «что дальше» настоящим выбором. */
   construction: Construction | null;
+  /** Расходники, купленные к следующей вылазке (§21). Сгорают на выходе:
+   *  между вылазками не переносятся, поэтому копить нечего. */
+  loadout: ConsumableId[];
   raids: number;
 }
 
@@ -128,6 +132,7 @@ export function createCamp(): CampState {
     layout: { hq: { x: 1, z: 1 }, kitchen: { x: 4, z: 1 }, storage: { x: 1, z: 4 } },
     resources: emptyResources(),
     construction: null,
+    loadout: [],
     raids: 0,
   };
 }

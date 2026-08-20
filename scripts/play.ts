@@ -22,10 +22,12 @@ import {
   upgradeBlock,
 } from '../src/sim/camp';
 import type { BuildingId, CampState } from '../src/sim/camp';
+import { CONSUMABLES, buyConsumable, cheapestAffordable } from '../src/sim/consumables';
 import { addResources } from '../src/sim/resources';
 import { events, setEvents, summarize, track } from '../src/sim/telemetry';
 import { BUILDING_ORDER } from '../src/sim/camp';
 import type { Tier } from '../src/sim/types';
+import type { ConsumableId } from '../src/sim/consumables';
 
 const RAIDS = 20;
 const RAIDS_PER_SESSION = 5;
@@ -80,19 +82,34 @@ for (let n = 1; n <= RAIDS; n++) {
     if (done !== null) track({ t: 'build_done', at: now, building: done, level: camp.levels[done] });
   }
 
+  // §21: экран возврата предложил расходник — игрок берёт. Дальше он уходит
+  // в вылазку и сгорает независимо от того, пригодился или нет.
   const tier = bestTier(camp);
+  // На мелких ярусах губит провиант, на глубоких — бой (§20.3.2), поэтому
+  // страхуют разное. Брать дважды самое дешёвое — не выбор, а привычка.
+  const wish: ConsumableId[] = tier >= 2 ? ['bandage', 'smoke', 'ration'] : ['ration', 'bandage', 'smoke'];
+  const taken: string[] = [];
+  for (const id of wish) {
+    if (camp.loadout.length >= 2) break;
+    if (!buyConsumable(camp, id)) continue;
+    track({ t: 'consumable', at: now, id, phase: 'buy' });
+    taken.push(CONSUMABLES[id].name);
+  }
+
   const raid = playRaid(
     {
       seed: (rng() * 1e9) | 0,
       tier,
       kitchenLevel: camp.levels.kitchen,
       storageLevel: camp.levels.storage,
+      consumables: camp.loadout,
     },
     POLICIES.balanced,
     rng,
   );
 
   track({ t: 'raid_start', at: now, tier, food: 0, capacity: 0 });
+  camp.loadout = [];
   now += raid.durationSec;
   track({
     t: 'raid_end',
@@ -107,12 +124,14 @@ for (let n = 1; n <= RAIDS; n++) {
     foodLeft: raid.foodLeft,
     durationSec: Math.round(raid.durationSec),
   });
+  for (const id of raid.fired) track({ t: 'consumable', at: now, id, phase: 'fire' });
   addResources(camp.resources, raid.carried);
   camp.raids += 1;
 
   // Экран возврата: что он предложил и что игрок выбрал.
   const offer = suggestUpgrade(camp);
-  if (offer === null) {
+  const offerConsumable = offer === null ? cheapestAffordable(camp.resources, camp.loadout) : null;
+  if (offer === null && offerConsumable === null) {
     const reason =
       camp.construction !== null
         ? 'слот занят'
@@ -123,7 +142,12 @@ for (let n = 1; n <= RAIDS; n++) {
   }
   const plan = chooseUpgrade(camp);
   const chose = plan !== null ? 'build' : 'raid';
-  track({ t: 'return_screen', at: now, canBuy: offer !== null, chose });
+  track({
+    t: 'return_screen',
+    at: now,
+    canBuy: offer !== null || offerConsumable !== null,
+    chose: offer !== null || offerConsumable !== null ? 'build' : 'raid',
+  });
 
   let built = '—';
   if (plan !== null && startUpgrade(camp, plan, now)) {
@@ -139,7 +163,8 @@ for (let n = 1; n <= RAIDS; n++) {
       `${String(raid.lost).padStart(3)}  ` +
       `${String(Math.round(raid.durationSec)).padStart(4)} с  ` +
       `${String(Math.round((raid.maxBack / Math.max(1, raid.locMaxBack)) * 100)).padStart(4)}%  ` +
-      `${offer === null ? 'нечего купить' : BUILDINGS[offer].name.padEnd(7)}  ${built}`,
+      `${offer === null ? 'нечего купить' : BUILDINGS[offer].name.padEnd(7)}  ${built}` +
+      (taken.length > 0 ? `  взял: ${taken.join(', ')}` : ''),
   );
 
   now += CAMP_PAUSE;
@@ -182,6 +207,23 @@ console.log(
   `  Возврат после таймера      ${s.medianReturnMin === null ? '—' : `${s.medianReturnMin.toFixed(0)} мин`}          сравнивать с §20.2`,
 );
 console.log(`  Выходы из сессии           вылазка ${s.exits.raid} · лагерь ${s.exits.camp} · возврат ${s.exits.return}`);
+
+console.log(
+  `  Расходников куплено        ${s.boughtTotal}` +
+    (s.boughtTotal > 0
+      ? `  (${Object.entries(s.bought)
+          .map(([k, n]) => `${CONSUMABLES[k as keyof typeof CONSUMABLES].name} ${n}`)
+          .join(' · ')})`
+      : ''),
+);
+console.log(
+  `  Из них сработало           ${Object.values(s.fired).reduce((a, b) => a + b, 0)}` +
+    (Object.keys(s.fired).length > 0
+      ? `  (${Object.entries(s.fired)
+          .map(([k, n]) => `${CONSUMABLES[k as keyof typeof CONSUMABLES].name} ${n}`)
+          .join(' · ')})`
+      : ''),
+);
 
 console.log('\nЛагерь на конец');
 console.log('─'.repeat(92));

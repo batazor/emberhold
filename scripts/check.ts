@@ -30,8 +30,15 @@ import {
   WOUND_COST,
 } from '../src/sim/balance';
 import { addResources } from '../src/sim/resources';
+import {
+  RATION_FOOD,
+  buyConsumable,
+  cheapestAffordable,
+  refundConsumable,
+} from '../src/sim/consumables';
 import { events, setEvents, summarize } from '../src/sim/telemetry';
 import { load, save, wipe } from '../src/sim/save';
+import { createRoster } from '../src/sim/heroes';
 import { atRisk, backSteps, commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
 import { TICK } from '../src/core/loop';
 import { ENEMY_STATS, TIER_ROSTER } from '../src/sim/enemies';
@@ -194,7 +201,7 @@ console.log('Сохранение');
 check('save/load не падают без localStorage (Node, приватный режим)', () => {
   const camp = createCamp();
   camp.levels.hq = 3;
-  save(camp, 123);
+  save(camp, createRoster(), 123);
   const loaded = load();
   assert.equal(loaded.camp.levels.hq, 1, 'без хранилища — чистый лагерь');
   wipe();
@@ -226,7 +233,7 @@ check('битый и чужой сейв не роняет игру', () => {
 check('сейв с раскладкой за границей чинится при загрузке', () => {
   const camp = createCamp();
   camp.layout.kitchen = { x: 9, z: 9 }; // площадь при Штабе ур. 1 — 6×6
-  save(camp, 0);
+  save(camp, createRoster(), 0);
   const back = load().camp;
   assert.deepEqual(back.layout.kitchen, createCamp().layout.kitchen);
   wipe();
@@ -238,7 +245,7 @@ check('сейв переживает круг save → load', () => {
   camp.resources = { salt: 50, wood: 40, iron: 20, crystal: 3 };
   camp.layout.kitchen = { x: 6, z: 3 };
   assert.equal(startUpgrade(camp, 'storage', 500), true);
-  save(camp, 777);
+  save(camp, createRoster(), 777);
 
   const { camp: back, watermark } = load();
   assert.deepEqual(back.levels, camp.levels);
@@ -380,6 +387,104 @@ check('§15 — голем не встаёт в единственный про�
       assert.ok(reach[idx(loc.size, c.x, c.z)]! >= 0, `сид ${seed}: контейнер отрезан големом`);
     }
   }
+});
+
+console.log('Расходники (§21)');
+
+check('§21.1 — не больше двух за вылазку', () => {
+  const camp = createCamp();
+  camp.resources = { salt: 999, wood: 0, iron: 999, crystal: 0 };
+  assert.equal(buyConsumable(camp, 'ration'), true);
+  assert.equal(buyConsumable(camp, 'bandage'), true);
+  assert.equal(buyConsumable(camp, 'smoke'), false, 'третий слот не продаётся');
+  assert.equal(camp.loadout.length, 2);
+});
+
+check('§21.1 — купленное сгорает: возврат денег только до входа', () => {
+  const camp = createCamp();
+  camp.resources = { salt: 20, wood: 0, iron: 0, crystal: 0 };
+  buyConsumable(camp, 'ration');
+  assert.equal(camp.resources.salt, 16);
+  assert.equal(refundConsumable(camp, 0), true);
+  assert.equal(camp.resources.salt, 20, 'вернули целиком');
+  assert.equal(refundConsumable(camp, 0), false, 'возвращать нечего');
+});
+
+check('§21.1 — повязка срабатывает сама на последней ране', () => {
+  const raid = createRaid({
+    seed: 5, tier: 1, kitchenLevel: 3, storageLevel: 2, consumables: ['bandage'],
+  });
+  raid.hero.wounds = 1;
+  stepRaid(raid, TICK, true, 5);
+  assert.equal(raid.hero.wounds, 2, 'рана возвращена');
+  assert.deepEqual(raid.fired, ['bandage']);
+  assert.equal(raid.consumables.length, 0, 'расходник истрачен');
+});
+
+check('§21 — паёк срабатывает на нуле провианта', () => {
+  const raid = createRaid({
+    seed: 5, tier: 1, kitchenLevel: 3, storageLevel: 2, consumables: ['ration'],
+  });
+  raid.food = 0;
+  stepRaid(raid, TICK, true, 5);
+  assert.equal(raid.food, RATION_FOOD);
+  assert.deepEqual(raid.fired, ['ration']);
+});
+
+check('§21 — повязка страхует ошибку, а не воскрешает', () => {
+  const raid = createRaid({
+    seed: 5, tier: 1, kitchenLevel: 3, storageLevel: 2, consumables: ['bandage'],
+  });
+  raid.hero.wounds = 0;
+  stepRaid(raid, TICK, true, 5);
+  assert.equal(raid.status, 'failed', 'на нуле ран вылазка провалена');
+  assert.deepEqual(raid.fired, [], 'повязка не тратится на труп');
+});
+
+check('§21 — дым гасит свалку и даёт передышку', () => {
+  const raid = createRaid({
+    seed: 5, tier: 2, kitchenLevel: 3, storageLevel: 2, consumables: ['smoke'],
+  });
+  // Врагов надо поставить рядом: далёкие теряют героя в том же тике,
+  // и свалки не получается.
+  for (const e of raid.loc.enemies.slice(0, 2)) {
+    e.x = raid.hero.x + 2;
+    e.z = raid.hero.z + 2;
+    e.awake = true;
+  }
+  stepRaid(raid, TICK, true, 5);
+  assert.deepEqual(raid.fired, ['smoke']);
+  assert.equal(raid.loc.enemies.every((e) => !e.awake), true, 'контакт разорван');
+  assert.ok(raid.smokeUntil > raid.elapsed, 'есть окно, пока никто не просыпается');
+});
+
+check('§21 — без расходников ничего не срабатывает', () => {
+  const raid = createRaid({ seed: 5, tier: 1, kitchenLevel: 3, storageLevel: 2 });
+  raid.hero.wounds = 1;
+  raid.food = 0;
+  stepRaid(raid, TICK, true, 5);
+  assert.deepEqual(raid.fired, []);
+  assert.equal(raid.hero.wounds, 1);
+});
+
+check('§20.1 — экран возврата предлагает расходник, когда слот занят', () => {
+  const camp = createCamp();
+  camp.resources = { salt: 30, wood: 30, iron: 0, crystal: 0 };
+  startUpgrade(camp, 'hq', 0);
+  assert.equal(suggestUpgrade(camp), null, 'стройку предложить нельзя');
+  assert.notEqual(
+    cheapestAffordable(camp.resources, camp.loadout),
+    null,
+    'а расходник — можно: в этом весь второй сток',
+  );
+});
+
+check('§21.3 — предлагается самый дешёвый по карману', () => {
+  const camp = createCamp();
+  camp.resources = { salt: 6, wood: 0, iron: 0, crystal: 0 };
+  assert.equal(cheapestAffordable(camp.resources, camp.loadout), 'ration', 'паёк за 4');
+  camp.resources.salt = 3;
+  assert.equal(cheapestAffordable(camp.resources, camp.loadout), null);
 });
 
 console.log('Телеметрия и экран возврата');
