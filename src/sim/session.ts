@@ -25,6 +25,7 @@ import {
   upgradeBlock,
 } from './camp';
 import type { BuildingId, CampState } from './camp';
+import { CONSUMABLES, buyConsumable, cheapestAffordable } from './consumables';
 import { GEAR } from './gear';
 import type { GearSlot } from './gear';
 import { addResources } from './resources';
@@ -42,6 +43,9 @@ import type { Tier } from './types';
  * описывать игру, а не её отладочный режим.
  */
 const FORGE = process.env['NOFORGE'] !== '1';
+/** §21 — то же самое для расходников: `NOCONSUM=1 npm run play`. Два стока
+ *  надо уметь мерить порознь, иначе вклад каждого виден только суммой. */
+const CONSUM = process.env['NOCONSUM'] !== '1';
 
 export const RAIDS = 20;
 export const RAIDS_PER_SESSION = 5;
@@ -137,10 +141,14 @@ export function playSession(seed: number): SessionResult {
         kitchenLevel: camp.levels.kitchen,
         storageLevel: camp.levels.storage,
         gear: camp.gear,
+        consumables: camp.loadout,
       },
       POLICIES.balanced,
       rng,
     );
+    // §21 — купленное ушло в вылазку и не возвращается: сгорает независимо
+    // от того, пригодилось или нет. Копить нечего.
+    camp.loadout = [];
 
     track({ t: 'raid_start', at: now, tier, food: 0, capacity: 0 });
     now += raid.durationSec;
@@ -157,6 +165,7 @@ export function playSession(seed: number): SessionResult {
       foodLeft: raid.foodLeft,
       durationSec: Math.round(raid.durationSec),
     });
+    for (const id of raid.fired) track({ t: 'consumable', at: now, id, phase: 'fire' });
     addResources(camp.resources, raid.carried);
     camp.raids += 1;
 
@@ -167,8 +176,12 @@ export function playSession(seed: number): SessionResult {
     // Без Кузницы её нельзя и предлагать: бесплатная непостроенная Кузница
     // висела бы в предложениях вечно и завышала базовый замер.
     const offer = !FORGE && raw === 'forge' ? null : raw;
-    const gearOffer = offer === null && FORGE ? suggestGear(camp) : null;
-    if (offer === null && gearOffer === null) {
+    // Порядок трёх веток тот же, что на экране возврата: постройка,
+    // расходник, ковка (см. returnScreen.ts).
+    const consumOffer =
+      offer === null && CONSUM ? cheapestAffordable(camp.resources, camp.loadout) : null;
+    const gearOffer = offer === null && consumOffer === null && FORGE ? suggestGear(camp) : null;
+    if (offer === null && consumOffer === null && gearOffer === null) {
       const reason: NoOfferReason =
         camp.construction !== null
           ? 'слот занят'
@@ -181,8 +194,8 @@ export function playSession(seed: number): SessionResult {
     track({
       t: 'return_screen',
       at: now,
-      canBuy: offer !== null || gearOffer !== null,
-      chose: plan !== null ? 'build' : gearOffer !== null ? 'craft' : 'raid',
+      canBuy: offer !== null || consumOffer !== null || gearOffer !== null,
+      chose: plan !== null ? 'build' : gearOffer !== null ? 'craft' : consumOffer !== null ? 'build' : 'raid',
     });
 
     let started = '—';
@@ -190,6 +203,9 @@ export function playSession(seed: number): SessionResult {
       const toLevel = camp.levels[plan] + 1;
       track({ t: 'build_start', at: now, building: plan, toLevel, seconds: BUILD_SECONDS[toLevel] ?? 0 });
       started = `${plan} → ${toLevel}`;
+    } else if (consumOffer !== null && buyConsumable(camp, consumOffer)) {
+      track({ t: 'consumable', at: now, id: consumOffer, phase: 'buy' });
+      started = CONSUMABLES[consumOffer].name;
     } else if (gearOffer !== null && craftGear(camp, gearOffer)) {
       const level = camp.gear[gearOffer];
       track({ t: 'craft', at: now, slot: gearOffer, toLevel: level });

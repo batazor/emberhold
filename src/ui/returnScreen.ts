@@ -10,6 +10,8 @@ import type { BuildingId, CampState } from '../sim/camp';
 import { GEAR, gearLine } from '../sim/gear';
 import type { GearSlot } from '../sim/gear';
 import { TIER_NAME } from '../sim/config';
+import { CONSUMABLES, cheapestAffordable } from '../sim/consumables';
+import type { ConsumableId } from '../sim/consumables';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
@@ -35,6 +37,8 @@ export interface ReturnCallbacks {
    * снаряжение доступно всегда, и главная кнопка остаётся тратой.
    */
   onCraft(slot: GearSlot): void;
+  /** §21 — третья ветка того же места: расходник тратит соль, которой в избытке. */
+  onBuyConsumable(id: ConsumableId): void;
   onRaid(tier: Tier): void;
   onCamp(): void;
 }
@@ -60,6 +64,7 @@ export class ReturnScreen {
   private suggestion: BuildingId | null = null;
   /** Что предложить, когда постройка недоступна: слот занят или не по карману. */
   private gearSuggestion: GearSlot | null = null;
+  private consumable: ConsumableId | null = null;
   private tier: Tier = 0;
   /** Отчёт о выборе игрока уходит в телеметрию один раз за экран. */
   private reported = false;
@@ -110,6 +115,9 @@ export class ReturnScreen {
       if (this.suggestion !== null) {
         this.report('build');
         this.cb.onBuild(this.suggestion);
+      } else if (this.consumable !== null) {
+        this.report('build');
+        this.cb.onBuyConsumable(this.consumable);
       } else if (this.gearSuggestion !== null) {
         this.report('craft');
         this.cb.onCraft(this.gearSuggestion);
@@ -135,7 +143,12 @@ export class ReturnScreen {
     this.reported = true;
     // «Покупка была доступна» теперь значит любую трату, а не только стройку:
     // §20.1 меряет долю возвратов, на которых игроку было что купить.
-    this.onChoice?.(chose, this.suggestion !== null || this.gearSuggestion !== null);
+    // «Покупка доступна» из §20.1 — это любая трата: постройка, расходник
+    // или ковка. Считать только стройку значило бы мерить дыру, а не её починку.
+    this.onChoice?.(
+      chose,
+      this.suggestion !== null || this.consumable !== null || this.gearSuggestion !== null,
+    );
   }
 
   show(
@@ -149,9 +162,18 @@ export class ReturnScreen {
     this.skipped = false;
     this.tier = result.tier;
     this.suggestion = suggestUpgrade(camp);
-    // Кузница предлагается только тогда, когда постройка не предлагается:
-    // две главные кнопки не бывают главными одновременно.
-    this.gearSuggestion = this.suggestion === null ? suggestGear(camp) : null;
+    // Три ветки одной главной кнопки, и они не бывают главными одновременно.
+    // Порядок — постройка, расходник, ковка. Постройка меняет вылазку
+    // навсегда. Дальше расходник, а не снаряжение, по составу кошелька:
+    // расходник берётся за соль, которой к концу дня в избытке (§13),
+    // а снаряжение — за железо и кристалл, которых как раз не хватает.
+    // Предлагать первым то, что игрок точно может себе позволить, —
+    // и есть смысл второго стока.
+    this.consumable = this.suggestion === null
+      ? cheapestAffordable(camp.resources, camp.loadout)
+      : null;
+    this.gearSuggestion =
+      this.suggestion === null && this.consumable === null ? suggestGear(camp) : null;
 
     const ok = result.status === 'evacuated';
     this.title.textContent = ok ? 'Вылазка завершена' : 'Провал';
@@ -193,6 +215,10 @@ export class ReturnScreen {
     if (this.suggestion !== null) {
       const id = this.suggestion;
       this.primary.textContent = `Построить: ${BUILDINGS[id].name} ур. ${camp.levels[id] + 1}`;
+      this.secondary.textContent = 'Ещё вылазка';
+      this.secondary.style.display = '';
+    } else if (this.consumable !== null) {
+      this.primary.textContent = `Взять: ${CONSUMABLES[this.consumable].name}`;
       this.secondary.textContent = 'Ещё вылазка';
       this.secondary.style.display = '';
     } else if (this.gearSuggestion !== null) {

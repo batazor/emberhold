@@ -35,6 +35,8 @@ import {
 import type { HeroState, Roster } from './sim/heroes';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
+import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
+import type { ConsumableId } from './sim/consumables';
 import { addResources } from './sim/resources';
 import { load, save } from './sim/save';
 import { loadTelemetry, track } from './sim/telemetry';
@@ -124,6 +126,10 @@ const campHud = new CampHud(app, {
     // Отказ обязан быть слышен: молчащая кнопка читается как поломка.
     beginUpgrade(id);
   },
+  onBuyConsumable: (id) => buy(id),
+  onRefundConsumable: (at) => {
+    if (refundConsumable(camp, at)) persist();
+  },
   onSpeedup: () => {
     const now = clock.now();
     const c = camp.construction;
@@ -209,11 +215,27 @@ function forge(slot: GearSlot): boolean {
 
 const statsPanel = new StatsPanel(app);
 
+function buy(id: ConsumableId): boolean {
+  if (!buyConsumable(camp, id)) {
+    campHud.notify(`${CONSUMABLES[id].name}: не хватает или слоты заняты`);
+    return false;
+  }
+  track({ t: 'consumable', at: clock.now(), id, phase: 'buy' });
+  campHud.notify(`${CONSUMABLES[id].name} — в вылазку`);
+  persist();
+  return true;
+}
+
 function persist(): void {
   save(camp, roster, clock.watermark);
 }
 
 const returnScreen = new ReturnScreen(app, {
+  onBuyConsumable: (id) => {
+    buy(id);
+    returnScreen.hide();
+    toCamp();
+  },
   onBuild: (id) => {
     beginUpgrade(id);
     returnScreen.hide();
@@ -308,7 +330,13 @@ function toRaid(tier: Tier): void {
     // §14 — снаряжение складывается поверх класса: класс отвечает «кем идём»,
     // снаряжение — «с чем».
     gear: camp.gear,
+    // §21 — расходники: что взято в эту вылазку и сгорит на выходе.
+    consumables: camp.loadout,
   });
+  // §21 — купленное уходит в вылазку и не возвращается: сгорает независимо
+  // от того, пригодилось или нет. Копить нечего.
+  camp.loadout = [];
+  persist();
   raidView = new RaidView(raid.loc);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -452,6 +480,9 @@ startLoop({
         addResources(camp.resources, result.carried);
         camp.raids += 1;
         finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);
+        for (const id of result.fired) {
+          track({ t: 'consumable', at: now, id, phase: 'fire' });
+        }
         persist();
         track({
           t: 'raid_end',

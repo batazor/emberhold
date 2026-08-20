@@ -1,3 +1,4 @@
+import type { ConsumableId } from './consumables';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
 import { modelKitchenFood, TIER_KITCHEN_GATE as GATE } from './balance';
@@ -153,6 +154,9 @@ export interface CampState {
   construction: Construction | null;
   /** §14 — снаряжение живёт в лагере, а не в вылазке: при провале не теряется. */
   gear: GearState;
+  /** Расходники, купленные к следующей вылазке (§21). Сгорают на выходе:
+   *  между вылазками не переносятся, поэтому копить нечего. */
+  loadout: ConsumableId[];
   raids: number;
 }
 
@@ -171,6 +175,7 @@ export function createCamp(): CampState {
     resources: emptyResources(),
     construction: null,
     gear: emptyGear(),
+    loadout: [],
     raids: 0,
   };
 }

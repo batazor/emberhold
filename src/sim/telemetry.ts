@@ -9,6 +9,7 @@
  * Формат сразу такой, чтобы его можно было отправлять как есть.
  */
 import type { BuildingId } from './camp';
+import type { ConsumableId } from './consumables';
 import type { HeroClassId, SkillId } from './heroes';
 import type { Tier } from './types';
 
@@ -53,7 +54,9 @@ export type TelemetryEvent =
   | { t: 'hero_pick'; at: number; cls: HeroClassId; level: number; rotated: boolean }
   | { t: 'heal_start'; at: number; cls: HeroClassId; wounds: number; seconds: number }
   | { t: 'train_start'; at: number; cls: HeroClassId; level: number }
-  | { t: 'exit'; at: number; where: ExitPoint };
+  | { t: 'exit'; at: number; where: ExitPoint }
+  /** §21.5 — берут ли все три и уходит ли соль. */
+  | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' };
 
 const KEY = 'new-world/telemetry';
 const LIMIT = 500;
@@ -111,6 +114,10 @@ export interface Summary {
   readonly firstBuilding: BuildingId | null;
   readonly medianReturnMin: number | null;
   readonly exits: Readonly<Record<ExitPoint, number>>;
+  /** §21.5 — сколько куплено каждого вида и сколько из них сработало. */
+  readonly bought: Readonly<Record<string, number>>;
+  readonly fired: Readonly<Record<string, number>>;
+  readonly boughtTotal: number;
 }
 
 const mean = (xs: number[]): number =>
@@ -138,6 +145,16 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
   const exits: Record<ExitPoint, number> = { raid: 0, camp: 0, return: 0 };
   for (const e of list) if (e.t === 'exit') exits[e.where] += 1;
 
+  const bought: Record<string, number> = {};
+  const fired: Record<string, number> = {};
+  let boughtTotal = 0;
+  for (const e of list) {
+    if (e.t !== 'consumable') continue;
+    const box = e.phase === 'buy' ? bought : fired;
+    box[e.id] = (box[e.id] ?? 0) + 1;
+    if (e.phase === 'buy') boughtTotal += 1;
+  }
+
   const offered = returns.filter((r) => r.canBuy);
 
   return {
@@ -161,5 +178,8 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
       starts.filter((s) => s.timerLeftSec !== null).map((s) => s.awaySec / 60),
     ),
     exits,
+    bought,
+    fired,
+    boughtTotal,
   };
 }

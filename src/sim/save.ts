@@ -4,6 +4,7 @@ import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
 import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
 import type { HeroState, Roster } from './heroes';
+import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
 import { emptyResources } from './resources';
 import type { ResourceKind } from './resources';
 
@@ -24,6 +25,7 @@ interface SaveV1 {
   layout: Record<BuildingId, { x: number; z: number }>;
   resources: Record<ResourceKind, number>;
   construction: CampState['construction'];
+  loadout?: CampState['loadout'];
   raids: number;
   /**
    * Отряд (§11.8). Поле необязательное, и версия сейва ради него не поднята:
@@ -57,6 +59,7 @@ export function save(camp: CampState, roster: Roster, watermark: number): void {
     layout: camp.layout,
     resources: camp.resources,
     construction: camp.construction,
+    loadout: camp.loadout,
     raids: camp.raids,
     gear: camp.gear,
     heroes: {
@@ -123,6 +126,9 @@ export function load(): LoadResult {
     }
     camp.resources = res;
     if (typeof data.raids === 'number') camp.raids = data.raids;
+    if (Array.isArray(data.loadout)) {
+      camp.loadout = data.loadout.filter((id) => id in CONSUMABLES).slice(0, CONSUMABLE_SLOTS);
+    }
 
     const c = data.construction;
     if (c != null && BUILDING_ORDER.includes(c.building) && typeof c.endsAt === 'number') {

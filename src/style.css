@@ -191,3 +191,18 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .r-acts { display: flex; gap: 6px; }
 .r-acts button { flex: 1; font-size: 12px; }
 .camp-slot { display: contents; }
+
+/* ---------- расходники (§21) ---------- */
+#camp .shop { display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+#camp .shop button { text-align: left; font-size: 12px; }
+#camp .slots { display: flex; gap: 6px; margin-top: 2px; }
+#camp .slots .slot { flex: 1; font-size: 11px; padding: 6px; color: var(--ink); }
+#camp .slots .slot.empty { border-style: dashed; color: var(--dim); }
+/* Слоты в вылазке молчат: тусклые, без счётчиков и подсветки. */
+.raid-slots { display: flex; gap: 6px; justify-content: center; min-height: 18px; }
+.raid-slot {
+  font-size: 10px; letter-spacing: 0.04em; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px;
+  background: var(--panel);
+}
+.raid-slot.spent { opacity: 0.35; text-decoration: line-through; }
