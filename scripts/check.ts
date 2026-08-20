@@ -387,8 +387,32 @@ check('§20.1 — экран возврата предлагает самое д
 
 check('прогресс к улучшению считается по самому дефицитному ресурсу', () => {
   const camp = createCamp();
-  camp.resources = { salt: 4, wood: 4, iron: 0, crystal: 0 }; // нужно wood 8, salt 4
-  assert.equal(upgradeProgress(camp, 'hq'), 0.5, 'дерева половина, соли хватает');
+  const cost = BUILD_COST[2] ?? {};
+  camp.resources = { salt: cost.salt ?? 0, wood: 1, iron: 0, crystal: 0 };
+  assert.equal(
+    upgradeProgress(camp, 'hq'),
+    1 / (cost.wood ?? 1),
+    'соли хватает, считается по дереву',
+  );
+});
+
+check('§13 — ресурсы входят в цену не раньше своего яруса', () => {
+  for (const [level, cost] of Object.entries(BUILD_COST)) {
+    const l = Number(level);
+    // Железо идёт с ярусов 1–3 и в постройки от третьего уровня,
+    // кристалл — только с ярусов 2–3 и в постройки от пятого.
+    if (l < 3) assert.equal(cost.iron ?? 0, 0, `железо на уровне ${l}`);
+    if (l < 5) assert.equal(cost.crystal ?? 0, 0, `кристалл на уровне ${l}`);
+  }
+});
+
+check('§20.3 — цена растёт с уровнем', () => {
+  const totals = [2, 3, 4, 5, 6].map((l) =>
+    Object.values(BUILD_COST[l] ?? {}).reduce((a, b) => a + b, 0),
+  );
+  for (let i = 1; i < totals.length; i++) {
+    assert.ok(totals[i]! > totals[i - 1]!, `уровень ${i + 2} не дороже предыдущего`);
+  }
 });
 
 console.log(`\n${checks} проверок пройдено`);

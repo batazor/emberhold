@@ -206,6 +206,7 @@
           <div class="kv"><span>Пересчитано кланов</span><b id="mBots">4</b></div>
           <div class="kv"><span>Занятых локаций</span><b id="mHeld">—</b></div>
           <div class="kv"><span>Выработанных (0 из 3)</span><b id="mDry">—</b></div>
+          <div class="kv"><span>Богатых (≥ 2 из 3)</span><b id="mRich">—</b></div>
           <div class="kv"><span>Время пересчёта</span><b id="mMs">—</b></div>
           <div class="kv"><span>Байт в сохранении</span><b id="mBytes">0</b></div>
           <p>Байты — это дельты от взаимодействий игрока. Само существование
@@ -231,22 +232,28 @@
   <b>const</b> r = mulberry32(hash(seed, clanId));
   <b>const</b> pace  = 0.7 + r() * 0.6;              <i>// характер клана: медленный / жадный</i>
   <b>const</b> level = 1 + Math.floor(Math.log2(1 + t / (90 * 60e3) * pace));
-  <b>const</b> slots = Math.min(4, 1 + Math.floor(level / 2));
+  <b>const</b> slots = level >= 5 ? 2 : 1;             <i>// клан держит одну-две локации</i>
   <i>// какие локации заняты — выводится из времени, а не хранится</i>
   <b>const</b> shift = Math.floor(t / (40 * 60e3));   <i>// клан переезжает раз в 40 минут</i>
   <b>return</b> { level, nodes: pick(nodeCount, slots, hash(seed, clanId, shift)) };
 }
 
 <b>function</b> richness(nodeId, seed, t, visits) {   <i>// visits — дельты игрока, единственное, что хранится</i>
-  <b>const</b> drain = clansOn(nodeId, seed, t) + visits(nodeId, t);
-  <b>return</b> clamp(3 - drain + Math.floor(elapsedSince(nodeId, t) / (2 * 3600e3)), 0, 3);
+  <b>let</b> r = 3;                                  <i>// окно в 6 часов: 9 смен по 40 минут</i>
+  <b>for</b> (<b>const</b> s <b>of</b> shifts(t, 9)) {
+    <b>const</b> used = clansOn(nodeId, seed, s) || visits(nodeId, s);
+    r = clamp(r + (used ? -1 : 1 / 3), 0, 3);      <i>// −1 за заход, +1 за 2 часа покоя</i>
+  }
+  <b>return</b> Math.round(r);
 }</pre>
     <div class="guard">
       <div class="key">
         <h3>Почему не тикающий цикл</h3>
-        <p>Тысяча ботов стоит столько же, сколько один: считается только то,
-          на что игрок смотрит. Нажмите <b>«1000 кланов»</b> — на карте станет
-          тесно, а время пересчёта почти не изменится.</p>
+        <p>Тысяча кланов не стоит <b>фонового процесса вовсе</b> — цена платится
+          только в момент взгляда. Замер прямо здесь: четверо — доли миллисекунды,
+          тысяча — единицы миллисекунд на полный пересчёт региона. Нажмите
+          <b>«1000 кланов»</b>: они расселены по регионам, в вашем по-прежнему
+          четверо, но посчитаны все до единого.</p>
       </div>
       <div>
         <h3>Что всё-таки хранится</h3>
@@ -434,7 +441,7 @@
     var r=mulberry32(hash(SEED,id));
     var pace=0.7+r()*0.6;
     var level=1+Math.floor(Math.log2(1+t/(90*MIN)*pace));
-    var slots=Math.min(4,1+Math.floor(level/2));
+    var slots=level>=5?2:1;                             // клан держит одну-две локации
     var shift=Math.floor(t/SHIFT);
     var h=hash(SEED,id,shift), rr=mulberry32(h), nodes=[], seen={};
     while(nodes.length<slots){
@@ -446,31 +453,38 @@
 
   // ——— богатство узла: окно в 6 часов, без единой записи в память ———
   var WINDOW=9;                                         // 9 смен по 40 минут = 6 часов
+  function regionOf(id,botCount){                      // мир — не один регион
+    var regions=Math.max(1,Math.round(botCount/CLANS.length));
+    return hash(SEED,id,7)%regions;
+  }
   function worldAt(t,botCount){
     var occupied=[], i, k, s;
-    for(i=0;i<NODES;i++){occupied.push(new Array(WINDOW).fill(0));}
+    for(i=0;i<NODES;i++)occupied.push(new Array(WINDOW).fill(0));
     var shiftNow=Math.floor(t/SHIFT);
+    var owner=new Array(NODES).fill(-1), here=[];
     for(k=0;k<botCount;k++){
       for(s=0;s<WINDOW;s++){
-        var st=clanState(k,(shiftNow-s)*SHIFT);
-        for(i=0;i<st.nodes.length;i++)occupied[st.nodes[i]][s]=1;
+        var st=clanState(k,(shiftNow-s)*SHIFT);         // считаем всех: это и есть цена наблюдения
+        if(regionOf(k,botCount))continue;               // но в этом регионе стоят не все
+        for(i=0;i<st.nodes.length;i++){
+          occupied[st.nodes[i]][s]=1;
+          if(s===0&&owner[st.nodes[i]]<0){
+            owner[st.nodes[i]]=here.indexOf(k)>=0?here.indexOf(k):(here.push(k)-1);
+          }
+        }
       }
     }
     var rich=[], held=[];
     for(i=0;i<NODES;i++){
-      var drain=0, free=0;
-      for(s=0;s<WINDOW;s++){ if(occupied[i][s])drain++; else free++; }
-      var v=3-drain+Math.floor(free/3);                 // +1 за 2 часа покоя
-      rich.push(Math.max(0,Math.min(3,v)));
+      var v=3;                                          // от старой смены к новой, с зажимом
+      for(s=WINDOW-1;s>=0;s--){
+        v+=occupied[i][s]?-1:1/3;                       // −1 за заход, +1 за 2 часа покоя
+        if(v<0)v=0; if(v>3)v=3;
+      }
+      rich.push(Math.round(v));
       held.push(occupied[i][0]?1:0);
     }
-    // кто именно стоит на узле — только для видимых четырёх фракций
-    var owner=new Array(NODES).fill(-1);
-    for(k=0;k<Math.min(botCount,CLANS.length);k++){
-      var st2=clanState(k,t);
-      for(i=0;i<st2.nodes.length;i++)if(owner[st2.nodes[i]]<0)owner[st2.nodes[i]]=k;
-    }
-    return {rich:rich,held:held,owner:owner,t:t};
+    return {rich:rich,held:held,owner:owner,here:here,t:t};
   }
 
   var RICH_COL=["#A33B3B","#B05C33","#C08A3A","#7DA163"];
@@ -538,3 +552,237 @@
     host.appendChild(cv);
     return ctx;
   }
+
+  // ——————————————————————————————————————————————————————————————
+  // Раскадровка
+  // ——————————————————————————————————————————————————————————————
+  function sb(){return '<div class="sb"><span>9:41</span><span>Соляной Тракт</span></div>';}
+  function top(t,s){return '<div class="top"><b>'+t+'</b><i>'+s+'</i></div>';}
+  function map(o){                                     // кадр карты внутри телефона
+    return '<div class="map" data-map="1" data-w="292" data-h="'+(o.h||210)+'" data-t="'+(o.t||1440)+
+      '" data-focus="'+(o.focus===undefined?-1:o.focus)+'"'+(o.dim?' data-dim="1"':'')+'></div>';
+  }
+
+  var BEATS=[
+  {no:"01",cap:"День 2",title:"Карта открывается тогда, когда надоело",
+   does:"После третьей вылазки в одну и ту же локацию появляется карта региона: двадцать точек, всё видно сразу.",
+   teach:"Локации не равны. У ближней уже стоит крест — она выработана вами же полчаса назад.",
+   hide:"Ни тумана войны, ни скролла, ни исследования. Исследование живёт внутри вылазки, здесь — сравнение.",
+   html:sb()+top("Соляной Тракт","регион · 20 локаций")+
+     '<div class="body">'+map({t:1440,focus:-1,h:250})+
+       '<div class="panel"><div class="t"><b>Ближняя низина</b><i class="warn">выработана</i></div>'+
+       '<p>Вы забрали отсюда всё за три захода. Полное восстановление — через 6 часов,'+
+       ' первый заход вернётся через два.</p></div>'+
+       '<div class="line"><span>Локаций с богатством 2 из 3 и выше</span><b class="good">11 из 19</b></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">Выбрать локацию</a></div>'},
+
+  {no:"02",cap:"Карточка",title:"Три числа, по которым сравнивают",
+   does:"Ярус, ставка и богатство — всё, что нужно для решения. Ставка объявлена до входа, как требует §1.",
+   teach:"Богатство — общий ресурс: его тратят и игрок, и кланы. Отсюда конкуренция без единого удара по чужому лагерю.",
+   hide:"Ни времени в пути, ни платы за вход, ни энергии. Сессия — 15 минут, любой таймер перемещения съест её целиком.",
+   html:sb()+top("Старая варница","ярус 1 · день")+
+     '<div class="body">'+map({t:1440,focus:2,h:200})+
+       '<div class="panel"><div class="t"><b>Богатство</b><i>3 из 3</i></div>'+
+       '<div class="pips"><s></s><s></s><s></s></div>'+
+       '<p>Каждая вылазка — чужая или ваша — тратит один заход.</p></div>'+
+       '<div class="line"><span>Под угрозой</span><b>30% добычи</b></div>'+
+       '<div class="line"><span>Провиант на дорогу</span><b>50</b></div>'+
+       '<div class="line"><span>Кто здесь</span><b class="good">никого</b></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">Войти</a><a class="cta ghost">На карту</a></div>'},
+
+  {no:"03",cap:"После вылазки",title:"Локация помнит ваш заход",
+   does:"Возврат на карту: у пройденной локации на один заход меньше и виден срок восстановления.",
+   teach:"Ресурс общий и конечный — значит, у карты появляется расписание, а у игрока причина знать соседние точки.",
+   hide:"Ни очков, ни рейтинга за зачистку. Награда за вылазку уже выдана — карта не платит второй раз.",
+   html:sb()+top("Старая варница","ярус 1 · после вылазки")+
+     '<div class="body">'+map({t:1560,focus:2,h:200})+
+       '<div class="panel"><div class="t"><b>Богатство</b><i class="warn">2 из 3</i></div>'+
+       '<div class="pips"><s></s><s></s><s class="off"></s></div>'+
+       '<p>+1 за 2 часа. Полное восстановление — через 2 часа.</p></div>'+
+       '<div class="line"><span>Ближайшая богатая</span><b>Сухое русло · 3 из 3</b></div>'+
+       '<div class="line"><span>Её ярус</span><b>2 · ставка 60%</b></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">В Сухое русло</a><a class="cta ghost">В лагерь</a></div>'},
+
+  {no:"04",cap:"Клан",title:"Соседи видны и заняты своим делом",
+   does:"На двух точках появились метки фракций. Клан Соляного Тракта работает там прямо сейчас — богатство уже просело.",
+   teach:"Мир населён и без живых игроков. Фракции названы фракциями: никто не притворяется человеком.",
+   hide:"Ни атаки на клан, ни защиты своего узла, ни чата. Взаимодействие — только асинхронная конкуренция за ресурс (§4).",
+   html:sb()+top("Регион","4 фракции · 20 локаций")+
+     '<div class="body">'+map({t:1760,focus:-1,h:214})+
+       '<div class="clan"><i style="background:#C9A227"></i>'+
+       '<div class="who"><b>Клан Соляного Тракта</b><span>лагерь ур. 6 · 3 локации</span></div>'+
+       '<span class="tag busy">рядом</span></div>'+
+       '<div class="clan"><i style="background:#7DA163"></i>'+
+       '<div class="who"><b>Вольная Артель</b><span>лагерь ур. 4 · 2 локации</span></div>'+
+       '<span class="tag">дальше</span></div>'+
+       '<div class="panel"><p>Клан не нападает и не отнимает добычу. Он тратит тот же'+
+       ' ресурс, что и вы, — и поэтому меняет ваш маршрут.</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta ghost">Смотреть регион</a></div>'},
+
+  {no:"05",cap:"Решение",title:"Ближе и беднее против дальше и дороже",
+   does:"Экран ставит рядом две локации: выработанную под боком и богатую на ярус выше, с вдвое большей ставкой.",
+   teach:"Это то же решение, что внутри вылазки — «уйти с тем, что есть, или пройти ещё комнату», — только на масштабе дня.",
+   hide:"Автовыбора «лучшей локации» нет. Он бы уничтожил единственное решение, ради которого карта существует.",
+   html:sb()+top("Куда идти","сравнение")+
+     '<div class="body">'+
+       '<div class="panel"><div class="t"><b>Ближняя низина</b><i class="warn">0 из 3</i></div>'+
+       '<div class="line"><span>Ярус 1 · ставка 30%</span><b class="bad">добыча ×0,4</b></div>'+
+       '<p>Не запрет, а плохая сделка: идти можно, просто невыгодно.</p></div>'+
+       '<div class="panel"><div class="t"><b>Сухое русло</b><i>3 из 3</i></div>'+
+       '<div class="line"><span>Ярус 2 · ставка 60%</span><b class="good">добыча ×1,0</b></div>'+
+       '<p>Дороже провиант, выше риск, зато полная жила.</p></div>'+
+       map({t:1560,focus:5,h:150})+
+     '</div>'+
+     '<div class="nav"><a class="cta danger">В Сухое русло — ставка 60%</a>'+
+     '<a class="cta ghost">В низину</a></div>'},
+
+  {no:"06",cap:"Событие",title:"Событие поднимает ставку и награду вместе",
+   does:"На локации объявлена Соляная буря: +25% к доле под угрозой и +50% к добыче. Объявление — до входа, как требует §1.",
+   teach:"Событие — не сюрприз, а предложение. Сюрприз после входа читается как несправедливость и учит перестраховываться.",
+   hide:"Ни таймера обратного отсчёта под давлением, ни «успей за 10 минут». Окно события — часы, а не минуты.",
+   html:sb()+top("Пепельный распадок","ярус 2 · буря")+
+     '<div class="body">'+map({t:1980,focus:3,h:190})+
+       '<div class="panel"><div class="t"><b>Соляная буря</b><i>ещё 3 ч 20 мин</i></div>'+
+       '<div class="line"><span>Под угрозой</span><b class="bad">60% → 85%</b></div>'+
+       '<div class="line"><span>Добыча</span><b class="good">+50%</b></div>'+
+       '<p>Обзор −1 всю вылазку. Событие видно на карте до входа.</p></div>'+
+       '<div class="line"><span>Богатство</span><b>3 из 3</b></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta danger">Войти в бурю</a><a class="cta ghost">Позже</a></div>'},
+
+  {no:"07",cap:"Таблица",title:"Рейтинг лагерей — единственная витрина мира",
+   does:"Развитие фракций и игрока в одной таблице. Никаких очков за бои: только уровень лагеря и число занятых локаций.",
+   teach:"Мир растёт без игрока — это и есть причина возвращаться. Клан обгоняет, пока вы спите.",
+   hide:"Ни наград за место, ни сезонов, ни сброса. Таблица — ориентир, а не вторая экономика.",
+   html:sb()+top("Развитие региона","асинхронно · без реалтайма")+
+     '<div class="body">'+
+       '<div class="clan"><i style="background:#C9A227"></i>'+
+       '<div class="who"><b>Клан Соляного Тракта</b><span>ур. 6 · 3 локации</span></div>'+
+       '<span class="tag">1</span></div>'+
+       '<div class="clan me"><i style="background:#E8EEEA"></i>'+
+       '<div class="who"><b>Ваш лагерь</b><span>ур. 5 · 1 локация</span></div>'+
+       '<span class="tag busy">2</span></div>'+
+       '<div class="clan"><i style="background:#7DA163"></i>'+
+       '<div class="who"><b>Вольная Артель</b><span>ур. 4 · 2 локации</span></div>'+
+       '<span class="tag">3</span></div>'+
+       '<div class="clan"><i style="background:#D2662F"></i>'+
+       '<div class="who"><b>Пепельный Обоз</b><span>ур. 3 · 2 локации</span></div>'+
+       '<span class="tag">4</span></div>'+
+       '<div class="panel"><p>Состояние каждой фракции выведено функцией от сида и часов.'+
+       ' Открытие этой таблицы — единственный момент, когда оно вообще вычисляется.</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta ghost">На карту</a></div>'},
+
+  {no:"08",cap:"Без сети",title:"Карта гаснет — игра продолжается",
+   does:"Без сети карта показана серой и недоступной. Личные локации, лагерь, стройка и тренировка работают полностью.",
+   teach:"Онлайн-слой добавляет мир, но не держит игру. Потеря сети не блокирует ни одну петлю, кроме мировой карты (§5).",
+   hide:"Ни экрана ошибки, ни блокирующего диалога, ни повторных попыток подключения на весь экран.",
+   html:sb()+top("Нет сети","мировая карта недоступна")+
+     '<div class="body">'+map({t:1440,focus:-1,h:214,dim:1})+
+       '<div class="panel"><div class="t"><b>Доступно без сети</b><i>всё, кроме карты</i></div>'+
+       '<p>Лагерь, стройка, тренировка, личные локации по сиду. Прогресс уйдёт'+
+       ' на сервер при подключении — время таймеров считается монотонно.</p></div>'+
+       '<div class="line"><span>Личных локаций</span><b class="good">3 · ярусы 0–2</b></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">В личную локацию</a><a class="cta ghost">В лагерь</a></div>'}
+  ];
+
+  var rail=document.getElementById("rail");
+  BEATS.forEach(function(b){
+    var d=document.createElement("div");d.className="beat";
+    d.innerHTML='<div class="no">'+b.no+'<small>'+b.cap+'</small></div>'+
+      '<div class="mini"><div class="phone">'+b.html+'</div></div>'+
+      '<div class="txt"><h3>'+b.title+'</h3>'+
+        '<div class="row does"><b>Делает</b><span>'+b.does+'</span></div>'+
+        '<div class="row teach"><b>Учит</b><span>'+b.teach+'</span></div>'+
+        '<div class="row hide"><b>Не показывает</b><span>'+b.hide+'</span></div></div>';
+    rail.appendChild(d);
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-map]"),function(el){
+    var w=+el.getAttribute("data-w"), h=+el.getAttribute("data-h");
+    var t=+el.getAttribute("data-t")*MIN, focus=+el.getAttribute("data-focus");
+    el.style.height=h+"px";
+    var ctx=mkCanvas(el,w,h);
+    drawMap(ctx,w,h,worldAt(t,CLANS.length),{focus:focus,dim:el.hasAttribute("data-dim")});
+  });
+
+  // ——————————————————————————————————————————————————————————————
+  // Интерактивная модель
+  // ——————————————————————————————————————————————————————————————
+  var board=document.getElementById("world"), bctx=board.getContext("2d");
+  var BW=0, BH=0, botCount=CLANS.length, playing=false;
+  var tEl=document.getElementById("t");
+
+  function sizeBoard(){
+    BW=board.parentNode.clientWidth; BH=Math.round(BW*0.62);
+    board.width=BW*DPR; board.height=BH*DPR;
+    board.style.height=BH+"px";
+    bctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  function fmt(min){
+    var d=Math.floor(min/1440), h=Math.floor(min%1440/60), m=Math.round(min%60);
+    return (d?d+" д ":"")+h+" ч "+(m<10?"0":"")+m+" мин";
+  }
+  function refresh(){
+    var min=+tEl.value, t=min*MIN;
+    var t0=performance.now();
+    var w=worldAt(t,botCount);
+    var ms=performance.now()-t0;
+    drawMap(bctx,BW,BH,w,{});
+    var held=0,dry=0,good=0;
+    for(var i=0;i<NODES;i++){
+      if(i===CAMP)continue;
+      held+=w.held[i];
+      if(w.rich[i]===0)dry++;
+      if(w.rich[i]>=2)good++;
+    }
+    document.getElementById("mBots").textContent=botCount;
+    document.getElementById("mHeld").textContent=held+" из "+(NODES-1);
+    document.getElementById("mDry").textContent=dry;
+    var richEl=document.getElementById("mRich");
+    richEl.textContent=good+" из "+(NODES-1);
+    richEl.style.color=good>=3?"":"var(--blood)";       // условие §III: минимум три
+    document.getElementById("mMs").textContent=ms.toFixed(ms<10?2:0)+" мс";
+    document.getElementById("mBytes").textContent="0 — только сид и часы";
+    document.getElementById("tlbl").textContent="с начала мира: "+fmt(min)+
+      " · пересчёт с нуля на каждый кадр, истории нет";
+  }
+  tEl.addEventListener("input",refresh);
+  window.addEventListener("resize",function(){sizeBoard();refresh();});
+
+  var playBtn=document.getElementById("play");
+  playBtn.addEventListener("click",function(){
+    playing=!playing;
+    playBtn.setAttribute("aria-pressed",playing?"true":"false");
+    playBtn.textContent=playing?"Остановить время":"Пустить время";
+  });
+  var stressBtn=document.getElementById("stress");
+  stressBtn.addEventListener("click",function(){
+    var on=stressBtn.getAttribute("aria-pressed")!=="true";
+    stressBtn.setAttribute("aria-pressed",on?"true":"false");
+    botCount=on?1000:CLANS.length;
+    stressBtn.textContent=on?"4 клана":"1000 кланов";
+    refresh();
+  });
+
+  var last=0;
+  function loop(ts){
+    var dt=last?ts-last:16; last=ts;
+    if(playing){
+      var v=+tEl.value+dt*0.6;                          // минута мира за ~1,7 мс
+      if(v>+tEl.max)v=0;
+      tEl.value=v; refresh();
+    }
+    requestAnimationFrame(loop);
+  }
+  sizeBoard(); refresh();
+  if(!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
