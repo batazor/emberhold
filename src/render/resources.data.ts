@@ -48,8 +48,8 @@ export const RESOURCES_SLOTS = [
   'жар',
   'пламя',
   'латунь',
-  'тень',
-  'камень-тень',
+  'краска-алая',
+  'краска-синяя',
 ] as const;
 
 export const RESOURCES_MODELS = {
