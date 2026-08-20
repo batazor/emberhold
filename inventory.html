@@ -1,0 +1,1040 @@
+<meta charset="utf-8">
+<title>Инвентарь героя</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);margin:0;}
+  .fail{color:var(--blood);}
+
+  button{font-family:var(--ff-ui);font-size:13px;padding:6px 12px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  .scroll{overflow-x:auto;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard div.warn{border-left-color:var(--blood);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard div.warn h3{color:var(--blood);}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+
+  /* ---------- экран инвентаря ---------- */
+  .screen{background:#17150F;border:1px solid var(--line);box-shadow:var(--shadow);
+    display:grid;grid-template-columns:minmax(320px,1.05fr) minmax(300px,1fr);
+    color:#EAE5DA;user-select:none;touch-action:pan-y;}
+  @media (max-width:820px){ .screen{grid-template-columns:1fr;} }
+  .screen h4{font-family:var(--ff-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:#9A9285;font-weight:600;margin:0 0 10px;}
+  .doll{padding:18px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;
+    border-right:1px solid #33302A;}
+  @media (max-width:820px){ .doll{border-right:0;border-bottom:1px solid #33302A;} }
+  .stack{display:flex;flex-direction:column;gap:26px;}
+  .figure{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    min-height:340px;}
+  .figure canvas{max-width:100%;height:auto;cursor:grab;touch-action:none;}
+  .figure canvas:active{cursor:grabbing;}
+  .camera{display:flex;gap:6px;}
+  .camera button{padding:3px 10px;font-size:12px;border-color:#5A5347;color:#9A9285;}
+  .camera button:hover{background:#5A5347;color:#EAE5DA;}
+  #cameraNote{color:#6E675C;}
+
+  .cell{width:70px;height:70px;border:1px solid #3E3A31;background:#211E18;position:relative;
+    display:flex;align-items:center;justify-content:center;border-radius:3px;}
+  .cell canvas{width:100%;height:100%;}
+  .cell .lvl{position:absolute;right:4px;bottom:2px;font-family:var(--ff-mono);font-size:10px;
+    color:#D3A93A;}
+  .cell .tag{position:absolute;left:-6px;right:-6px;bottom:100%;font-family:var(--ff-mono);
+    font-size:9px;line-height:1.25;letter-spacing:.1em;text-transform:uppercase;color:#8C8477;
+    text-align:center;padding-bottom:4px;}
+  .cell.slot{border-style:dashed;}
+  .cell.filled{border-style:solid;border-color:#5A5347;background:#262219;cursor:grab;
+    touch-action:none;}
+  .cell.filled:active{cursor:grabbing;}
+  .cell.ok{border-color:#D3A93A;box-shadow:inset 0 0 0 1px #D3A93A;}
+  .cell.no{border-color:#C36565;box-shadow:inset 0 0 0 1px #C36565;}
+  .cell.lift{opacity:.28;}
+
+  .side{padding:18px;display:flex;flex-direction:column;gap:18px;}
+  .bag{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,70px));gap:8px;}
+  .mods{display:grid;grid-template-columns:1fr auto auto;gap:4px 12px;margin:0;font-size:13px;}
+  .mods span{color:#9A9285;}
+  .mods b{font-family:var(--ff-mono);font-weight:400;font-variant-numeric:tabular-nums;text-align:right;}
+  .mods i{font-family:var(--ff-mono);font-style:normal;font-size:12px;text-align:right;min-width:52px;}
+  .mods i.up{color:#8AAE6A;} .mods i.down{color:#C36565;}
+  .hint{font-family:var(--ff-mono);font-size:11px;color:#8C8477;min-height:2.6em;margin:0;}
+  .ghost{position:fixed;width:70px;height:70px;pointer-events:none;z-index:99;opacity:.9;
+    border:1px solid #D3A93A;background:#262219;border-radius:3px;}
+  .ghost canvas{width:100%;height:100%;}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Артбук · инвентарь</div>
+  <h1>Экран, на котором вещь <em>надевается перетаскиванием</em></h1>
+  <p class="lede">Пять слотов §14 — оружие, броня, фонарь, сумка, кольцо —
+    до сих пор существовали только строчками текста в Кузнице. Здесь они
+    получают экран: <b>слева герой со слотами, справа рюкзак, вещь тащится
+    из рюкзака на героя мышью или пальцем</b>. Снятое возвращается в рюкзак,
+    занятый слот меняется местами с тем, что несёшь.</p>
+  <p class="lede">Это не картинка, а работающий прототип. Значки нарисованы
+    из моделей набора, оружие встаёт в правую кисть, а факел или щит — в левую,
+    оба по измеренным узлам <code>handslot.r</code> и <code>handslot.l</code>;
+    фигура крутится, а сводка справа считается
+    <b>формулами самой игры</b> — <code>gearMods()</code> из <code>src/sim/gear.ts</code>,
+    без единого числа, переписанного на страницу.</p>
+  <p class="lede fail" id="warn" style="display:none"></p>
+</header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Экран</h2>
+    <p>Тащите вещь из рюкзака на слот. Слот подсветится жёлтым, если вещь ему
+      подходит, и красным, если нет: кольцо в слот оружия не влезет. Короткий
+      тап работает вместо перетаскивания — вещь уходит в свой слот сама,
+      а надетая возвращается в рюкзак. Наведение показывает, что изменится
+      в вылазке, до того как вещь надета. Фигура поворачивается перетаскиванием
+      и колесом, а три кнопки под ней крутят на четверть — так же, как камера
+      вылазки.</p>
+  </div>
+  <div class="screen">
+    <div class="doll">
+      <div class="stack" id="slotsLeft"></div>
+      <div class="figure">
+        <canvas id="hero" width="300" height="400"></canvas>
+        <div class="camera" id="camera">
+          <button data-turn="-1">влево</button>
+          <button data-turn="0">сброс</button>
+          <button data-turn="1">вправо</button>
+        </div>
+        <p class="note" id="cameraNote">тащите фигуру — повернётся · колесо — ближе</p>
+      </div>
+      <div class="stack" id="slotsRight"></div>
+    </div>
+    <div class="side">
+      <div>
+        <h4>Рюкзак</h4>
+        <div class="bag" id="bag"></div>
+      </div>
+      <div>
+        <h4>Что будет в вылазке</h4>
+        <dl class="mods" id="mods"></dl>
+      </div>
+      <p class="hint" id="hint"></p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что экран обязан делать</h2>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Компромисс виден до примерки</h3>
+      <p>§14 держится на том, что снаряжение <b>расширяет выбор, а не множит
+        урон</b>: у каждой вещи есть и прибавка, и цена. Поэтому наведение
+        показывает обе стороны сразу — <b>+3 к рюкзаку и −1 за тяжёлое
+        оружие</b> в одной сводке. Экран, который показывает только плюс,
+        превращает выбор в «надеть всё».</p>
+    </div>
+    <div class="key">
+      <h3>Левая рука одна на двоих</h3>
+      <p>Фонарь и щит просятся в одну кисть, и в этом весь смысл (§14.2):
+        <b>«вижу дальше» против «переживу удар»</b>. Щит даёт раны, при щите
+        обзор не растёт вовсе, и надеть оба нельзя — второй вытесняет первого
+        обратно в рюкзак. Это единственный слот, который игрок пересматривает
+        перед каждым ярусом.</p>
+    </div>
+    <div class="key">
+      <h3>Слот принимает своё</h3>
+      <p>Пять слотов и пять родов вещей. Кольцо в оружие не кладётся,
+        и экран говорит это цветом рамки в момент перетаскивания, а не
+        сообщением после броска. Промах ничего не ломает: вещь возвращается
+        туда, откуда её взяли.</p>
+    </div>
+    <div class="key">
+      <h3>Тап равен перетаскиванию</h3>
+      <p>Игра управляется тапом по клетке (§6), и инвентарь не имеет права
+        требовать точного перетаскивания на телефоне. Короткий тап делает
+        то же самое: вещь идёт в свой слот, надетая — обратно в рюкзак.
+        Перетаскивание остаётся для тех, кому так привычнее.</p>
+    </div>
+    <div class="warn">
+      <h3>Видно на герое только две вещи</h3>
+      <p>Оружие встаёт в правую кисть, факел с огоньком или щит — в левую,
+        обе по узлам набора: это измерено и работает. Броня, сумка и кольцо на фигуре не появляются: запекание
+        склеивает меши персонажа в одну геометрию, узла на спине в риге нет,
+        а кольцо на игровой камере мельче пикселя. В слоте они видны, на
+        герое — нет.</p>
+    </div>
+    <div class="warn">
+      <h3>Чего экран не делает</h3>
+      <p>Ни сортировки, ни фильтров, ни сравнения двух вещей бок о бок,
+        ни перебросов свойств. §14 запрещает рулетку прямо, а всё остальное —
+        это интерфейс, который растёт быстрее, чем игра, ради которой он
+        заведён.</p>
+    </div>
+    <div>
+      <h3>Имена рабочие</h3>
+      <p>«Кайло», «Соляная куртка», «Заплечный короб» — подписи из
+        <code>sim/gear.ts</code>, а не решения о мире (§0.1). Значки взяты
+        из готовых наборов и тоже временные: своей вещи в наборах нет ни у
+        одного слота, кроме оружия.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что это меняет в документе</h2>
+    <p>§14.1 записал: «слот и есть инвентарь» — и вывел отсюда, что экрана
+      не нужно. Прототип с этим спорит ровно в одном месте и соглашается
+      в остальном.</p>
+  </div>
+  <div class="scroll">
+    <table id="delta">
+      <thead><tr><th>Что записано</th><th>Что делает экран</th></tr></thead>
+      <tbody>
+        <tr><td>Предмет в слоте один, растёт уровнями</td>
+            <td class="mono">остаётся: уровень — свойство вещи, не пятая копия модели</td></tr>
+        <tr><td>Перебросов нет, рулетки нет</td>
+            <td class="mono">остаётся: экран ничего не крутит, он только надевает</td></tr>
+        <tr><td>Ни сравнения, ни сортировки</td>
+            <td class="mono">остаётся: сравнение одно — с тем, что надето сейчас</td></tr>
+        <tr><td>Отдельного экрана инвентаря нет</td>
+            <td class="mono">меняется: экран есть, и он же показывает цену слота</td></tr>
+        <tr><td>В слоте один предмет, и он растёт уровнями</td>
+            <td class="mono">уточняется: в левой руке два рода вещей — фонарь
+              или щит, — но в ней по-прежнему одна вещь (§14.2)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Строчка про отсутствие экрана переписана — решение записано
+    в <code>DESIGN.md §14.2</code>. Она выводилась
+    из того, что <b>инвентарь — это сортировка и сравнение</b>, а без них
+    показывать нечего. Прототип показывает третье, чего в том рассуждении
+    не было: <b>цену слота</b>. Фонарь против сумки — это «вижу дальше»
+    против «унесу больше», и увидеть это можно только рядом.</p>
+</div>
+
+</div>
+
+<script type="module">
+const ADV = './assets/kaykit-adventurers/';
+const DNG = './assets/kaykit-dungeon/';
+const CLIPS = './assets/kaykit-animations/gltf/';
+
+function fail(text){
+  const w = document.getElementById('warn');
+  w.textContent = text;
+  w.style.display = '';
+}
+
+let P, GEAR, GEAR_ORDER, OFFHAND, gearMods, gearItemLine, advCat, dngCat, forestSlots;
+try{
+  // Слоты, их подписи и формулы приходят из самой игры. Второй список слотов
+  // или вторая формула разошлись бы с игрой молча, а экран именно про то,
+  // что игрок видит настоящую цену слота, а не её пересказ.
+  P = await import('/src/render/palette.ts');
+  ({ GEAR, GEAR_ORDER, OFFHAND, gearMods, gearItemLine } = await import('/src/sim/gear.ts'));
+  forestSlots = (await import('/src/render/forest.data.ts')).FOREST_SLOTS;
+  [advCat, dngCat] = await Promise.all(
+    [ADV, DNG].map((dir) => fetch(dir + 'catalog.json').then((r) => r.json())),
+  );
+}catch(e){
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /inventory.html. ' + e);
+  throw e;
+}
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const dec = (n, k = 2) => n.toFixed(k).replace('.', ',');
+
+/* ---------- наборы: слот треугольника → цвет игры ---------- */
+
+/**
+ * Слот в каталоге — индекс в списке набора, цвет — в палитре игры, и списки
+ * эти у наборов разные. Сводим их по имени: искать по индексу значило бы
+ * завести ещё одну копию порядка слотов.
+ */
+function packOf(dir, cat, order, palette, extra = {}){
+  return {
+    dir, cat,
+    colors: cat.slots.map((name) => {
+      const at = order.indexOf(name);
+      return hex(at >= 0 ? palette[at] : extra[name] ?? 0xff00ff);
+    }),
+    slots: new Map(cat.models.map((m) => {
+      const raw = atob(m.slot);
+      const list = new Uint8Array(raw.length);
+      for(let i = 0; i < raw.length; i++) list[i] = raw.charCodeAt(i);
+      return [m.name, list];
+    })),
+    find: (name) => cat.models.find((m) => m.name === name),
+  };
+}
+const adv = packOf(ADV, advCat, P.ADVENTURERS_SLOT_ORDER, P.ADVENTURERS_PALETTE);
+// Подземелью хватает палитры леса, а золоту достаётся цвет добычи из вылазки —
+// так же, как в артбуке подземелья.
+const dng = packOf(DNG, dngCat, forestSlots, P.FOREST_PALETTE, {'золото': P.PALETTE.loot});
+
+/* ---------- разбор .gltf и .glb ---------- */
+const SIZE = {SCALAR:1, VEC2:2, VEC3:3, VEC4:4, MAT4:16};
+const READER = {5121:'getUint8', 5123:'getUint16', 5125:'getUint32', 5126:'getFloat32'};
+const BYTES = {5121:1, 5123:2, 5125:4, 5126:4};
+const IDENT = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+
+function mul(a, b){
+  const out = new Array(16).fill(0);
+  for(let c = 0; c < 4; c++) for(let r = 0; r < 4; r++){
+    let s = 0;
+    for(let k = 0; k < 4; k++) s += a[k*4 + r] * b[c*4 + k];
+    out[c*4 + r] = s;
+  }
+  return out;
+}
+const apply = (m, p) => [0, 1, 2].map(c => m[c]*p[0] + m[4+c]*p[1] + m[8+c]*p[2] + m[12+c]);
+
+function localFrame(node, frame){
+  if(node.matrix && frame === undefined) return node.matrix;
+  const [x, y, z, w] = frame?.r ?? node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = frame?.s ?? node.scale ?? [1, 1, 1];
+  const [tx, ty, tz] = frame?.t ?? node.translation ?? [0, 0, 0];
+  const r = [
+    1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+    2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+    2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y),
+  ];
+  return [r[0]*sx, r[1]*sx, r[2]*sx, 0, r[3]*sy, r[4]*sy, r[5]*sy, 0,
+          r[6]*sz, r[7]*sz, r[8]*sz, 0, tx, ty, tz, 1];
+}
+
+/** Файл набора вместе с буфером: `.gltf` рядом с `.bin` или один `.glb`. */
+async function loadDoc(url){
+  const raw = await (await fetch(url)).arrayBuffer();
+  if(!url.endsWith('.glb')){
+    const gltf = JSON.parse(new TextDecoder().decode(raw));
+    const bin = await (await fetch(url.replace(/[^/]*$/, '') + gltf.buffers[0].uri)).arrayBuffer();
+    return {gltf, bin, at:0};
+  }
+  const dv = new DataView(raw);
+  let at = 12, gltf = null, bin = null, binAt = 0;
+  while(at + 8 <= raw.byteLength){
+    const len = dv.getUint32(at, true);
+    const type = String.fromCharCode(dv.getUint8(at+4), dv.getUint8(at+5), dv.getUint8(at+6), dv.getUint8(at+7));
+    if(type === 'JSON') gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(raw, at+8, len)));
+    else if(type.startsWith('BIN')){ bin = raw; binAt = at + 8; }
+    at += 8 + len;
+  }
+  return {gltf, bin, at:binAt};
+}
+
+function reader(doc){
+  const dv = new DataView(doc.bin);
+  return (index) => {
+    const acc = doc.gltf.accessors[index], bv = doc.gltf.bufferViews[acc.bufferView];
+    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
+    const stride = bv.byteStride ?? size * bytes;
+    const start = doc.at + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = [];
+    for(let i = 0; i < acc.count; i++){
+      const row = [];
+      for(let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
+      out.push(size === 1 ? row[0] : row);
+    }
+    return out;
+  };
+}
+
+const lerp = (a, b, t) => a + (b - a) * t;
+function slerp(a, b, t){
+  let dot = a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3];
+  const to = dot < 0 ? b.map(v => -v) : b.slice();
+  dot = Math.abs(dot);
+  if(dot > 0.9995) return a.map((v, i) => lerp(v, to[i], t));
+  const th = Math.acos(dot), sin = Math.sin(th);
+  return a.map((v, i) => v * Math.sin((1 - t) * th) / sin + to[i] * Math.sin(t * th) / sin);
+}
+
+/* ---------- отрисовщик: ортокамера 45°/30°, как в игре ---------- */
+const AZ = 45 * Math.PI / 180, EL = 30 * Math.PI / 180;
+const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map(c => c / l); })();
+
+function project(p, az = AZ){
+  const ca = Math.cos(az), sa = Math.sin(az), ce = Math.cos(EL), se = Math.sin(EL);
+  const x = p[0] * ca - p[2] * sa, y = p[1], z = p[0] * sa + p[2] * ca;
+  return [x, y * ce - z * se, y * se + z * ce];
+}
+function shade(color, k){
+  const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+  return 'rgb(' + rgb.map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
+}
+function draw(canvas, tris, colors, fit, az = AZ){
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const view = tris.map(t => t.map((p) => project(p, az)));
+
+  let place = fit;
+  if(place === undefined){
+    let min = [Infinity, Infinity], max = [-Infinity, -Infinity];
+    for(const t of view) for(const p of t){
+      if(p[0] < min[0]) min[0] = p[0];
+      if(p[0] > max[0]) max[0] = p[0];
+      if(p[1] < min[1]) min[1] = p[1];
+      if(p[1] > max[1]) max[1] = p[1];
+    }
+    const scale = Math.min((w - 12) / (max[0] - min[0] || 1), (h - 12) / (max[1] - min[1] || 1));
+    place = {scale, ox: w / 2 - (min[0] + max[0]) / 2 * scale, oy: h / 2 + (min[1] + max[1]) / 2 * scale};
+  }
+
+  // Художник: дальние треугольники первыми. Z-буфера здесь нет и не нужно.
+  const order = view.map((t, i) => [i, (t[0][2] + t[1][2] + t[2][2]) / 3]).sort((a, b) => b[1] - a[1]);
+  for(const [i] of order){
+    const t = tris[i];
+    const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+    const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+    const n = [u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0]];
+    const len = Math.hypot(...n) || 1;
+    const lit = Math.max(0, (n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]) / len);
+    ctx.fillStyle = shade(colors[i], 0.42 + lit * 0.85);
+    ctx.beginPath();
+    const p = view[i];
+    ctx.moveTo(place.ox + p[0][0]*place.scale, place.oy - p[0][1]*place.scale);
+    ctx.lineTo(place.ox + p[1][0]*place.scale, place.oy - p[1][1]*place.scale);
+    ctx.lineTo(place.ox + p[2][0]*place.scale, place.oy - p[2][1]*place.scale);
+    ctx.closePath();
+    ctx.fill();
+  }
+  return place;
+}
+
+/* ---------- скелет и поза ---------- */
+
+/**
+ * Персонаж в позе. Поза берётся та же, в которой модель запечена в игру
+ * (§6.1.4: один нарисованный кадр, а не поза привязки), — иначе экран
+ * показывал бы героя, которого в игре нет.
+ */
+class Rig {
+  constructor(doc){
+    const g = doc.gltf, read = reader(doc);
+    this.g = g;
+    this.parent = new Int32Array(g.nodes.length).fill(-1);
+    this.walk = [];
+    const order = (at) => {
+      this.walk.push(at);
+      for(const c of g.nodes[at].children ?? []){ this.parent[c] = at; order(c); }
+    };
+    for(const root of g.scenes[g.scene ?? 0].nodes) order(root);
+    this.world = new Float32Array(g.nodes.length * 16);
+    this.byName = new Map(g.nodes.map((n, i) => [n.name, i]));
+
+    // Примитивы в порядке обхода сцены — тот же, которым считался список слотов.
+    this.parts = [];
+    const take = (at) => {
+      const node = g.nodes[at];
+      if(node.mesh !== undefined) for(const prim of g.meshes[node.mesh].primitives){
+        if(prim.attributes.TEXCOORD_0 === undefined || prim.indices === undefined) continue;
+        const skinned = node.skin !== undefined && prim.attributes.JOINTS_0 !== undefined;
+        this.parts.push({
+          node: at,
+          name: g.meshes[node.mesh].name,
+          pos: read(prim.attributes.POSITION),
+          idx: read(prim.indices),
+          jnt: skinned ? read(prim.attributes.JOINTS_0) : null,
+          wgt: skinned ? read(prim.attributes.WEIGHTS_0) : null,
+          skin: skinned ? node.skin : -1,
+        });
+      }
+      for(const c of node.children ?? []) take(c);
+    };
+    for(const root of g.scenes[g.scene ?? 0].nodes) take(root);
+
+    this.skins = (g.skins ?? []).map((skin) => ({
+      joints: skin.joints,
+      inverse: skin.inverseBindMatrices === undefined ? null : read(skin.inverseBindMatrices),
+      matrices: [],
+    }));
+  }
+
+  pose(clip, t){
+    const g = this.g;
+    for(const at of this.walk){
+      const node = g.nodes[at];
+      const m = localFrame(node, clip?.at(node.name, t));
+      const up = this.parent[at];
+      this.world.set(up < 0 ? m : mul(this.worldOf(up), m), at * 16);
+    }
+    for(const skin of this.skins){
+      skin.matrices = skin.joints.map((j, k) =>
+        mul(this.worldOf(j), skin.inverse === null ? IDENT : skin.inverse[k]));
+    }
+  }
+
+  worldOf(at){ return Array.from(this.world.subarray(at * 16, at * 16 + 16)); }
+  nodeOf(name){ return this.worldOf(this.byName.get(name)); }
+
+  /** Треугольники в текущей позе; порядок — тот же, что у списка слотов. */
+  triangles(){
+    return this.parts.flatMap((part) => this.partTriangles(part));
+  }
+
+  /** Один примитив: им берётся отдельный меш персонажа — торс под значок брони. */
+  partTriangles(part){
+    const place = part.skin < 0 ? this.worldOf(part.node) : null;
+    const M = part.skin < 0 ? null : this.skins[part.skin].matrices;
+    const at = (v) => {
+      if(place !== null) return apply(place, part.pos[v]);
+      // Четыре веса на вершину; собственный трансформ узла с мешем glTF
+      // велит игнорировать — положение задают кости.
+      const p = part.pos[v], o = [0, 0, 0];
+      for(let k = 0; k < 4; k++){
+        const w = part.wgt[v][k];
+        if(w === 0) continue;
+        const m = M[part.jnt[v][k]];
+        for(let c = 0; c < 3; c++) o[c] += w * (m[c]*p[0] + m[4+c]*p[1] + m[8+c]*p[2] + m[12+c]);
+      }
+      return o;
+    };
+    const out = [];
+    for(let i = 0; i < part.idx.length; i += 3){
+      out.push([at(part.idx[i]), at(part.idx[i+1]), at(part.idx[i+2])]);
+    }
+    return out;
+  }
+}
+
+/** Клип: дорожки по имени кости, выборка в произвольный момент. */
+class Clip {
+  constructor(doc, anim){
+    const read = reader(doc), g = doc.gltf;
+    this.name = anim.name;
+    this.tracks = new Map();
+    for(const ch of anim.channels){
+      const node = g.nodes[ch.target.node]?.name;
+      if(node === undefined) continue;
+      const s = anim.samplers[ch.sampler];
+      const byPath = this.tracks.get(node) ?? {};
+      byPath[ch.target.path] = {times: read(s.input), values: read(s.output)};
+      this.tracks.set(node, byPath);
+    }
+  }
+  at(node, t){
+    const byPath = this.tracks.get(node);
+    if(byPath === undefined) return undefined;
+    const pick = (track, quat) => {
+      const {times, values} = track;
+      let i = 0;
+      while(i + 1 < times.length && times[i + 1] <= t) i++;
+      const j = Math.min(i + 1, times.length - 1);
+      const span = times[j] - times[i];
+      const k = span > 0 ? Math.min(1, Math.max(0, (t - times[i]) / span)) : 0;
+      return quat ? slerp(values[i], values[j], k) : values[i].map((v, c) => lerp(v, values[j][c], k));
+    };
+    return {
+      t: byPath.translation ? pick(byPath.translation, false) : undefined,
+      r: byPath.rotation ? pick(byPath.rotation, true) : undefined,
+      s: byPath.scale ? pick(byPath.scale, false) : undefined,
+    };
+  }
+}
+
+/** Предмет: скелета нет, поза не нужна — только треугольники. */
+async function loadProp(pack, name){
+  const doc = await loadDoc(pack.dir + pack.find(name).file);
+  const g = doc.gltf, read = reader(doc);
+  const out = [];
+  const walk = (at, parent) => {
+    const node = g.nodes[at];
+    const world = mul(parent, localFrame(node, undefined));
+    if(node.mesh !== undefined) for(const prim of g.meshes[node.mesh].primitives){
+      if(prim.attributes.TEXCOORD_0 === undefined || prim.indices === undefined) continue;
+      const pos = read(prim.attributes.POSITION), idx = read(prim.indices);
+      for(let i = 0; i < idx.length; i += 3){
+        out.push([0, 1, 2].map((k) => apply(world, pos[idx[i+k]])));
+      }
+    }
+    for(const c of node.children ?? []) walk(c, world);
+  };
+  for(const root of g.scenes[g.scene ?? 0].nodes) walk(root, IDENT);
+  return {tris: out, colors: Array.from(pack.slots.get(name), (s) => pack.colors[s])};
+}
+
+/**
+ * Один меш персонажа, вынутый из его файла: цвета берутся из того же списка
+ * слотов, что и у целой модели, — по смещению примитива в порядке обхода сцены.
+ * Иначе торс покрасился бы началом списка, то есть головой.
+ */
+async function loadMesh(pack, character, meshName){
+  const doc = await loadDoc(pack.dir + pack.find(character).file);
+  const rig = new Rig(doc);
+  const clipDoc = await loadDoc(CLIPS + pack.cat.pose.file.split('/').pop());
+  const anim = (clipDoc.gltf.animations ?? []).find((a) => a.name === pack.cat.pose.clip);
+  rig.pose(anim === undefined ? null : new Clip(clipDoc, anim), pack.cat.pose.at);
+
+  const all = pack.slots.get(character);
+  const tris = [], colors = [];
+  let at = 0;
+  for(const part of rig.parts){
+    const count = part.idx.length / 3;
+    if(part.name === meshName){
+      tris.push(...rig.partTriangles(part));
+      for(let i = 0; i < count; i++) colors.push(pack.colors[all[at + i]]);
+    }
+    at += count;
+  }
+  return {tris, colors};
+}
+
+const meshCache = new Map();
+function meshOf(pack, character, meshName){
+  const id = pack.dir + character + '#' + meshName;
+  if(!meshCache.has(id)) meshCache.set(id, loadMesh(pack, character, meshName));
+  return meshCache.get(id);
+}
+
+const propCache = new Map();
+function propOf(pack, name){
+  const id = pack.dir + name;
+  if(!propCache.has(id)) propCache.set(id, loadProp(pack, name));
+  return propCache.get(id);
+}
+
+/* ---------- вещи ---------- */
+
+/**
+ * Чем слот выглядит. Своей модели нет ни у одного слота, кроме оружия, —
+ * значки взяты из готовых наборов и временны ровно так же, как имена (§0.1).
+ * `hand` стоит только там, где узел действительно измерен: правая рука держит
+ * предмет, левая — свет, остальное на фигуре не появляется вовсе.
+ */
+/**
+ * Наборы нарисованы в разных сетках, и сводить их на глаз здесь нельзя.
+ * У подземелья модуль пола и стены — четыре единицы на клетку; у набора
+ * героев рост персонажа 2,385 единицы приведён к росту примитива 1,38 клетки.
+ * Отсюда множитель для чужого предмета в руке — вычисленный, а не подобранный.
+ */
+const DUNGEON_TILE = 4;
+const HERO_TILES = 1.38;
+
+const LOOK = {
+  weapon: {pack: adv, model: 'axe_1handed', hand: 'handslot.r'},
+  // Своей модели у брони нет ни в одном наборе, и значком ей служит то самое,
+  // что слот меняет, — корпус персонажа, вынутый из его же файла одним мешем.
+  armor:  {pack: adv, character: 'Knight', mesh: 'Knight_Body'},
+  torch:  {pack: dng, model: 'torch_lit', hand: 'handslot.l', glow: true},
+  shield: {pack: adv, model: 'shield_round_barbarian', hand: 'handslot.l'},
+  bag:    {pack: adv, model: 'quiver'},
+  ring:   {pack: dng, model: 'keyring'},
+};
+
+/**
+ * Подпись ячейки — имя слота, а не вещи: в левую руку ложатся двое, и «Фонарь»
+ * на пустой ячейке врал бы про то, что туда влезет. Имя вещи живёт в подсказке
+ * и приходит из игры.
+ */
+const SLOT_TITLE = {
+  weapon: 'Оружие', armor: 'Броня', torch: 'Левая рука', bag: 'Сумка', ring: 'Кольцо',
+};
+
+/** Что за вещь: в левой руке их два рода, в остальных слотах по одному. */
+const kindOf = (item) => item.kind ?? item.slot;
+const defOf = (item) => (item.slot === 'torch' ? OFFHAND[kindOf(item)] : GEAR[item.slot]);
+/** Что сейчас в левой руке — это и есть параметр, который ждёт `gearMods`. */
+const offhandOf = (w) => (w.torch === null ? 'torch' : kindOf(w.torch));
+
+let nextId = 1;
+const thing = (slot, level, kind) => ({id: nextId++, slot, level, kind: kind ?? slot});
+
+/** Начальное состояние прототипа: две вещи надеты, остальные лежат в рюкзаке. */
+let worn = {
+  weapon: thing('weapon', 2), armor: null, torch: null,
+  bag: thing('bag', 1), ring: null,
+};
+let sack = [
+  thing('weapon', 4), thing('armor', 1), thing('armor', 3),
+  thing('torch', 2), thing('torch', 4),
+  // Щит занимает тот же слот, что фонарь: рука одна, и это весь смысл (§14.2).
+  thing('torch', 1, 'shield'), thing('torch', 3, 'shield'),
+  thing('bag', 3), thing('ring', 2), thing('ring', 5),
+];
+const SACK_CELLS = 12;
+
+const stateOf = (w) => Object.fromEntries(GEAR_ORDER.map((s) => [s, w[s]?.level ?? 0]));
+const modsOf = (w) => gearMods(stateOf(w), offhandOf(w));
+
+/* ---------- значки: модель рисуется один раз ---------- */
+const icons = new Map();
+function iconOf(kind){
+  if(!icons.has(kind)) icons.set(kind, (async () => {
+    const look = LOOK[kind];
+    const off = document.createElement('canvas');
+    off.width = 132; off.height = 132;
+    const shape = look.mesh === undefined
+      ? await propOf(look.pack, look.model)
+      : await meshOf(look.pack, look.character, look.mesh);
+    draw(off, shape.tris, shape.colors);
+    return off;
+  })());
+  return icons.get(kind);
+}
+
+/* ---------- сводка: числа считает сама игра ---------- */
+const ROWS = [
+  ['Рюкзак', (m) => m.capacity, (v) => (v > 0 ? '+' : '') + v, 1],
+  ['Ран сверх базовых', (m) => m.wounds, (v) => '+' + v, 1],
+  ['Провиант за шаг', (m) => m.foodStep, (v) => '×' + dec(v), -1],
+  ['Пауза между ударами', (m) => m.attackInterval, (v) => '×' + dec(v), -1],
+  ['Обзор', (m) => m.vision, (v) => '+' + v, 1],
+  ['Доля под угрозой', (m) => m.risk, (v) => '×' + dec(v), -1],
+];
+
+function renderMods(preview){
+  const now = modsOf(worn);
+  const soon = preview === null ? null : modsOf(preview);
+  const dl = document.getElementById('mods');
+  dl.innerHTML = '';
+  for(const [label, read, show, better] of ROWS){
+    const a = read(now), b = soon === null ? a : read(soon);
+    const delta = b - a;
+    const span = document.createElement('span');
+    span.textContent = label;
+    const value = document.createElement('b');
+    value.textContent = show(a);
+    const mark = document.createElement('i');
+    if(Math.abs(delta) > 1e-9){
+      mark.textContent = '→ ' + show(b);
+      mark.className = delta * better > 0 ? 'up' : 'down';
+    }
+    dl.append(span, value, mark);
+  }
+}
+
+/* ---------- фигура ---------- */
+const hero = {rig: null, tris: null, colors: null, frame: null};
+/** Камера фигуры: наклон игровой и не трогается, крутится только азимут. */
+const view = {az: AZ, zoom: 1};
+
+/**
+ * Рамка фигуры считается по радиусу и высоте, а не по габариту кадра. Кадр
+ * зависит и от поворота, и от того, что в руках, — фигура пульсировала бы
+ * на каждом повороте и подпрыгивала бы от надетого топора.
+ */
+function frameOf(tris, pad){
+  let radius = 0, low = Infinity, high = -Infinity;
+  for(const t of tris) for(const p of t){
+    radius = Math.max(radius, Math.hypot(p[0], p[2]));
+    low = Math.min(low, p[1]);
+    high = Math.max(high, p[1]);
+  }
+  return {radius: radius + pad, low, high};
+}
+
+/** Место на канве при текущем зуме: масштаб один, центр по середине фигуры. */
+function placeOf(canvas, frame, zoom){
+  const ce = Math.cos(EL), se = Math.sin(EL);
+  const halfY = (frame.high - frame.low) / 2 * ce + frame.radius * se;
+  const scale = Math.min((canvas.width - 24) / (frame.radius * 2),
+                         (canvas.height - 24) / (halfY * 2)) * zoom;
+  return {scale, ox: canvas.width / 2, oy: canvas.height / 2 + (frame.low + frame.high) / 2 * ce * scale};
+}
+
+async function heroLoad(){
+  const doc = await loadDoc(ADV + adv.find('Barbarian').file);
+  hero.rig = new Rig(doc);
+  // Клип позы лежит в соседнем наборе, и каталог называет его путём от себя;
+  // странице нужно только имя файла.
+  const clipDoc = await loadDoc(CLIPS + advCat.pose.file.split('/').pop());
+  const anim = (clipDoc.gltf.animations ?? []).find((a) => a.name === advCat.pose.clip);
+  hero.rig.pose(anim === undefined ? null : new Clip(clipDoc, anim), advCat.pose.at);
+  hero.tris = hero.rig.triangles();
+  hero.colors = Array.from(adv.slots.get('Barbarian'), (s) => adv.colors[s]);
+  hero.frame = frameOf(hero.tris, 0.25);
+  const perTile = (hero.frame.high - hero.frame.low) / HERO_TILES;
+  LOOK.torch.scale = perTile / DUNGEON_TILE;
+  drawHero();
+}
+
+async function drawHero(){
+  if(hero.tris === null) return;
+  const canvas = document.getElementById('hero');
+  let tris = hero.tris, colors = hero.colors;
+  // Рук две, и обе — узлы набора: правая держит предмет, левая факел.
+  // Слот без узла на фигуре не появляется вовсе, и это решение, а не заготовка.
+  for(const slot of GEAR_ORDER){
+    if(worn[slot] === null) continue;
+    const look = LOOK[kindOf(worn[slot])];
+    if(look.hand === undefined) continue;
+    const prop = await propOf(look.pack, look.model);
+    const hand = hero.rig.nodeOf(look.hand);
+    const k = look.scale ?? 1;
+    tris = tris.concat(prop.tris.map((t) => t.map((p) => apply(hand, [p[0]*k, p[1]*k, p[2]*k]))));
+    colors = colors.concat(prop.colors);
+  }
+  const place = placeOf(canvas, hero.frame, view.zoom);
+  draw(canvas, tris, colors, place, view.az);
+
+  // Фонарь светит и на фигуре: в игре это светящаяся точка (§11.4), и место
+  // ей даёт тот же узел левой кисти, что держит факел, а не подобранный сдвиг.
+  if(worn.torch !== null && kindOf(worn.torch) === 'torch'){
+    const node = hero.rig.nodeOf(LOOK.torch.hand);
+    const p = project([node[12], node[13], node[14]], view.az);
+    const x = place.ox + p[0] * place.scale, y = place.oy - p[1] * place.scale;
+    const ctx = canvas.getContext('2d');
+    const r = 10 + worn.torch.level * 2;
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+    glow.addColorStop(0, 'rgba(255,207,144,.95)');
+    glow.addColorStop(0.35, 'rgba(255,177,102,.45)');
+    glow.addColorStop(1, 'rgba(255,177,102,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/* ---------- ячейки ---------- */
+const SIDE = {left: ['weapon', 'armor'], right: ['torch', 'bag', 'ring']};
+const HINT = 'Тащите вещь на слот — или коротко нажмите, и она наденется сама.';
+
+function cellOf(item, drop, label){
+  const el = document.createElement('div');
+  el.className = 'cell' + (label === undefined ? '' : ' slot') + (item === null ? '' : ' filled');
+  el.dataset.drop = drop;
+  if(label !== undefined){
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = label;
+    el.appendChild(tag);
+  }
+  if(item !== null){
+    el.dataset.id = item.id;
+    const canvas = document.createElement('canvas');
+    canvas.width = 132; canvas.height = 132;
+    el.appendChild(canvas);
+    const lvl = document.createElement('span');
+    lvl.className = 'lvl';
+    lvl.textContent = 'ур. ' + item.level;
+    el.appendChild(lvl);
+    iconOf(kindOf(item)).then((off) => canvas.getContext('2d').drawImage(off, 0, 0));
+  }
+  return el;
+}
+
+function render(){
+  for(const [side, list] of Object.entries(SIDE)){
+    const host = document.getElementById(side === 'left' ? 'slotsLeft' : 'slotsRight');
+    host.innerHTML = '';
+    for(const slot of list) host.appendChild(cellOf(worn[slot], 'slot:' + slot, SLOT_TITLE[slot]));
+  }
+  const bag = document.getElementById('bag');
+  bag.innerHTML = '';
+  for(let i = 0; i < SACK_CELLS; i++) bag.appendChild(cellOf(sack[i] ?? null, 'bag'));
+  renderMods(null);
+  document.getElementById('hint').textContent = HINT;
+  redrawHero();
+}
+
+const byId = (id) => sack.find((x) => x.id === id) ?? Object.values(worn).find((x) => x !== null && x.id === id) ?? null;
+const isWorn = (item) => worn[item.slot] === item;
+
+function equip(item){
+  if(isWorn(item)) return;
+  const prev = worn[item.slot];
+  sack = sack.filter((x) => x !== item);
+  worn[item.slot] = item;
+  if(prev !== null) sack.push(prev);
+  render();
+}
+function unequip(item){
+  if(!isWorn(item)) return;
+  if(sack.length >= SACK_CELLS){
+    document.getElementById('hint').textContent = 'Рюкзак полон — снимать некуда.';
+    return;
+  }
+  worn[item.slot] = null;
+  sack.push(item);
+  render();
+}
+
+/* ---------- перетаскивание: одно и то же для мыши и пальца ---------- */
+const screen = document.querySelector('.screen');
+let drag = null;
+
+function targetAt(x, y){
+  const el = document.elementFromPoint(x, y);
+  return el === null ? null : el.closest('[data-drop]');
+}
+function fits(item, cell){
+  if(cell === null) return false;
+  const drop = cell.dataset.drop;
+  if(drop === 'bag') return isWorn(item);
+  return drop === 'slot:' + item.slot;
+}
+function clearMarks(){
+  for(const el of screen.querySelectorAll('.ok, .no')) el.classList.remove('ok', 'no');
+}
+
+screen.addEventListener('pointerdown', (e) => {
+  const cell = e.target.closest('.cell.filled');
+  if(cell === null) return;
+  const item = byId(Number(cell.dataset.id));
+  if(item === null) return;
+  drag = {item, cell, x: e.clientX, y: e.clientY, moved: false, ghost: null};
+  // Захват указателя — чтобы вещь не терялась, когда палец уходит за край
+  // ячейки. Он же не обязан существовать: у синтетических событий его нет.
+  try{ screen.setPointerCapture(e.pointerId); }catch(err){ /* без захвата тоже едет */ }
+  e.preventDefault();
+});
+
+screen.addEventListener('pointermove', (e) => {
+  if(drag === null){
+    // Наведение: сводка показывает, что будет, до того как вещь надета.
+    const cell = e.target.closest('.cell.filled');
+    if(cell === null){ renderMods(null); document.getElementById('hint').textContent = HINT; return; }
+    const item = byId(Number(cell.dataset.id));
+    if(item === null) return;
+    renderMods(isWorn(item) ? {...worn, [item.slot]: null} : {...worn, [item.slot]: item});
+    const def = defOf(item);
+    document.getElementById('hint').textContent =
+      def.name + ' · ' + gearItemLine(def, item.level) + ' · ' + def.tradeoff;
+    return;
+  }
+  if(!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+  if(!drag.moved){
+    drag.moved = true;
+    drag.cell.classList.add('lift');
+    const ghost = document.createElement('div');
+    ghost.className = 'ghost';
+    const canvas = document.createElement('canvas');
+    canvas.width = 132; canvas.height = 132;
+    ghost.appendChild(canvas);
+    document.body.appendChild(ghost);
+    iconOf(kindOf(drag.item)).then((off) => canvas.getContext('2d').drawImage(off, 0, 0));
+    drag.ghost = ghost;
+    renderMods(isWorn(drag.item) ? {...worn, [drag.item.slot]: null} : {...worn, [drag.item.slot]: drag.item});
+  }
+  drag.ghost.style.left = (e.clientX - 35) + 'px';
+  drag.ghost.style.top = (e.clientY - 35) + 'px';
+  clearMarks();
+  const cell = targetAt(e.clientX, e.clientY);
+  if(cell !== null && cell !== drag.cell) cell.classList.add(fits(drag.item, cell) ? 'ok' : 'no');
+});
+
+screen.addEventListener('pointerup', (e) => {
+  if(drag === null) return;
+  const {item, moved, ghost} = drag;
+  if(ghost !== null) ghost.remove();
+  drag.cell.classList.remove('lift');
+  clearMarks();
+  drag = null;
+  if(!moved){
+    // Короткий тап равен перетаскиванию: игра управляется тапом, и инвентарь
+    // не имеет права требовать точности, которой в ней больше нигде нет.
+    if(isWorn(item)) unequip(item); else equip(item);
+    return;
+  }
+  const cell = targetAt(e.clientX, e.clientY);
+  if(!fits(item, cell)) { render(); return; }
+  if(cell.dataset.drop === 'bag') unequip(item); else equip(item);
+});
+
+screen.addEventListener('pointerleave', () => {
+  if(drag === null){ renderMods(null); document.getElementById('hint').textContent = HINT; }
+});
+
+/* ---------- камера фигуры ---------- */
+
+/**
+ * Перерисовка через кадр: поворот шлёт события чаще, чем канва успевает
+ * нарисовать семь тысяч треугольников кистью, и без склейки кадры уезжают
+ * в очередь и приходят не по порядку.
+ */
+let pending = false;
+function redrawHero(){
+  if(pending) return;
+  pending = true;
+  const go = () => { pending = false; drawHero(); };
+  // В фоновой вкладке кадров отрисовки нет вовсе: `requestAnimationFrame`
+  // там не тикает, и фигура застыла бы до возврата на вкладку — включая ту,
+  // что открыта в оглавлении артбуков соседней панелью.
+  if(document.hidden) setTimeout(go, 0); else requestAnimationFrame(go);
+}
+
+const heroCanvas = document.getElementById('hero');
+let turning = null;
+
+heroCanvas.addEventListener('pointerdown', (e) => {
+  turning = {x: e.clientX, az: view.az};
+  try{ heroCanvas.setPointerCapture(e.pointerId); }catch(err){ /* без захвата тоже едет */ }
+  e.preventDefault();
+});
+heroCanvas.addEventListener('pointermove', (e) => {
+  if(turning === null) return;
+  view.az = turning.az + (e.clientX - turning.x) * 0.012;
+  redrawHero();
+});
+for(const type of ['pointerup', 'pointercancel']) heroCanvas.addEventListener(type, () => { turning = null; });
+
+heroCanvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  view.zoom = Math.min(2.4, Math.max(0.7, view.zoom * (1 - e.deltaY * 0.0015)));
+  redrawHero();
+}, {passive: false});
+
+// Кнопки поворачивают на четверть — ровно как камера вылазки (`scene.rotate`),
+// и они же нужны там, где колеса нет: на телефоне.
+document.getElementById('camera').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if(b === null) return;
+  const turn = Number(b.dataset.turn);
+  if(turn === 0){ view.az = AZ; view.zoom = 1; } else view.az += turn * Math.PI / 2;
+  redrawHero();
+});
+
+render();
+await heroLoad();
+</script>

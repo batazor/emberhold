@@ -54,7 +54,7 @@ export const GEAR: Record<GearSlot, GearDef> = {
     slot: 'torch',
     name: 'Рудничный фонарь',
     effect: (l) => `Обзор +${torchVision(l)}`,
-    tradeoff: 'Занимает слот, который мог бы дать вместимость',
+    tradeoff: 'Занимает левую руку: щита в ней уже не будет',
   },
   bag: {
     slot: 'bag',
@@ -67,6 +67,30 @@ export const GEAR: Record<GearSlot, GearDef> = {
     name: 'Спокойная рука',
     effect: (l) => `Под угрозой меньше на ${Math.round(ringRisk(l) * 100)}%`,
     tradeoff: 'Один аффикс, задан при ковке и не меняется',
+  },
+};
+
+/**
+ * §14.2 — левая рука одна, а желающих на неё двое: фонарь и щит. Это
+ * единственное место раздела, где за один слот спорят две вещи, а не слот
+ * спорит со слотом, — и спор ровно тот, которого §14 требует от снаряжения:
+ * **вижу дальше против переживу удар**.
+ *
+ * Щит покупает ту же живучесть, что и броня, и это не дублирование:
+ * дублировалась бы цена, а она разная. Броня платит провиантом на каждом
+ * шаге, щит — темнотой, то есть ярусом, на который вообще имеет смысл идти.
+ */
+export type Offhand = 'torch' | 'shield';
+
+export const OFFHAND_ORDER: readonly Offhand[] = ['torch', 'shield'];
+
+export const OFFHAND: Record<Offhand, GearDef> = {
+  torch: GEAR.torch,
+  shield: {
+    slot: 'torch',
+    name: 'Щит',
+    effect: (l) => `Ран +${shieldWounds(l)}`,
+    tradeoff: 'Занимает левую руку: обзор не растёт вовсе',
   },
 };
 
@@ -88,6 +112,13 @@ export const armorFoodStep = (level: number): number => (level >= 3 ? 1.15 : 1);
  * предметом означало бы задним числом ужесточить каждый ярус.
  */
 export const torchVision = (level: number): number => (level >= 4 ? 2 : level >= 2 ? 1 : 0);
+
+/**
+ * Раны от щита. Раны целые (§11.3), поэтому порог, а не плавный рост.
+ * Первая приходит раньше, чем у брони: щит платит дороже — не долей расхода,
+ * а обзором, от которого зависит, дойдёшь ли вообще.
+ */
+export const shieldWounds = (level: number): number => (level >= 4 ? 2 : level >= 1 ? 1 : 0);
 
 /** Прибавка к рюкзаку. Уровень Склада даёт больше — сумка догоняет, не заменяет. */
 export const bagCapacity = (level: number): number => Math.max(0, level);
@@ -144,21 +175,28 @@ export const NO_MODS: GearMods = {
   risk: 1,
 };
 
-export function gearMods(gear: GearState): GearMods {
+/**
+ * `offhand` по умолчанию — фонарь: так левая рука вела себя до §14.2,
+ * и ни один старый вызов не меняет от этого ни числа.
+ */
+export function gearMods(gear: GearState, offhand: Offhand = 'torch'): GearMods {
+  const shield = offhand === 'shield';
   return {
     // Оружие тяжёлое всегда, а не с какого-то уровня: компромисс обязан
     // существовать с первой же ковки, иначе первый предмет — бесплатный.
     capacity: bagCapacity(gear.bag) - (gear.weapon > 0 ? 1 : 0),
-    wounds: armorWounds(gear.armor),
+    wounds: armorWounds(gear.armor) + (shield ? shieldWounds(gear.torch) : 0),
     foodStep: armorFoodStep(gear.armor),
     attackInterval: weaponInterval(gear.weapon),
-    vision: torchVision(gear.torch),
+    vision: shield ? 0 : torchVision(gear.torch),
     risk: 1 - ringRisk(gear.ring),
   };
 }
 
 /** Строка для панели: «ур. 3 · Рюкзак +3». Пустой слот честно говорит, что пуст. */
+export const gearItemLine = (def: GearDef, level: number): string =>
+  level <= 0 ? 'не выковано' : `ур. ${level} · ${def.effect(level)}`;
+
 export function gearLine(slot: GearSlot, level: number): string {
-  const def = GEAR[slot];
-  return level <= 0 ? 'не выковано' : `ур. ${level} · ${def.effect(level)}`;
+  return gearItemLine(GEAR[slot], level);
 }
