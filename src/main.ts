@@ -2,6 +2,17 @@ import './style.css';
 import { Clock } from './core/clock';
 import { startLoop } from './core/loop';
 import {
+  bindPageAudio,
+  play,
+  setFoodShare,
+  startAmbient,
+  startCampTune,
+  startPulse,
+  stopAmbient,
+  stopCampTune,
+  stopPulse,
+} from './core/audio';
+import {
   BUILDINGS,
   BUILD_SECONDS,
   campArea,
@@ -47,7 +58,7 @@ import {
 import type { OnbStep } from './sim/onboarding';
 import { firstGladeCell, generateGlade, gladeFood, siteBlock } from './sim/prologue';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
-import type { RaidState } from './sim/raid';
+import type { RaidState, RaidStatus } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { addResources } from './sim/resources';
@@ -167,6 +178,8 @@ function heroForRaid(): HeroState | null {
   return firstReady(roster);
 }
 
+bindPageAudio();
+
 const rig = new SceneRig(app);
 const campView = new CampView(camp);
 rig.world.add(campView.group);
@@ -207,6 +220,7 @@ const campHud = new CampHud(app, {
           level: camp.levels.kitchen,
         });
         setOnb('tier');
+        play('levelup');
         campHud.notify(`${BUILDINGS.kitchen.name} ур. ${camp.levels.kitchen}`);
       }
       return;
@@ -428,11 +442,14 @@ const returnScreen = new ReturnScreen(app, {
 function beginUpgrade(id: BuildingId): boolean {
   const now = clock.now();
   if (!startUpgrade(camp, id, now)) {
+    // Отказ обязан быть слышен так же, как виден (§18.3).
+    play('deny');
     campHud.notify(`${BUILDINGS[id].name}: ${upgradeReason(camp, id)}`);
     return false;
   }
   const toLevel = camp.levels[id] + 1;
   track({ t: 'build_start', at: now, building: id, toLevel, seconds: BUILD_SECONDS[toLevel] ?? 0 });
+  play('build');
   campHud.notify(`${BUILDINGS[id].name}: стройка началась`);
   persist();
   return true;
@@ -467,6 +484,70 @@ function finishRaidForHero(
     track({ t: 'heal_start', at: now, cls: hero.cls, wounds: outcome.wounds, seconds: outcome.healSec });
     campHud.notify(`${name} ранен — Лазарет ${RosterPanel.healText(outcome.wounds)}`);
   }
+}
+
+/* ---------- звук (§18) ---------- */
+
+/**
+ * Что уже прозвучало. Симуляция о звуке не знает и событий для него не
+ * выдаёт — main сравнивает состояние с прошлым тиком и озвучивает разницу.
+ * Так звук остаётся вторым каналом для тех же данных (§18.1), а не второй
+ * их копией внутри правил.
+ */
+const heard = {
+  steps: 0,
+  wounds: 0,
+  bag: 0,
+  enemyWounds: 0,
+  alive: 0,
+  ticks: 0,
+  cooldown: 0,
+  status: 'running' as RaidStatus,
+};
+
+const enemyWoundsOf = (state: RaidState): number =>
+  state.loc.enemies.reduce((sum, e) => sum + Math.max(0, e.wounds), 0);
+
+/** Живых противников. Смерть слышна по убыли их числа, а не по наличию
+ *  мёртвого: мёртвый остаётся мёртвым, и проверка «есть труп» звучала бы
+ *  на каждом следующем попадании. */
+const aliveOf = (state: RaidState): number =>
+  state.loc.enemies.reduce((n, e) => n + (e.wounds > 0 ? 1 : 0), 0);
+
+/** Сколько десятых запаса уже потрачено: тик расхода звучит на каждой. */
+const foodTicksOf = (state: RaidState): number =>
+  Math.floor(((state.foodMax - state.food) / state.foodMax) * 10);
+
+function listenFrom(state: RaidState): void {
+  heard.steps = state.steps;
+  heard.wounds = state.hero.wounds;
+  heard.bag = state.bagTotal;
+  heard.enemyWounds = enemyWoundsOf(state);
+  heard.alive = aliveOf(state);
+  heard.ticks = foodTicksOf(state);
+  heard.cooldown = state.hero.cooldown;
+  heard.status = state.status;
+}
+
+function hearRaid(state: RaidState): void {
+  if (state.steps > heard.steps) play('step');
+  // Замах слышен до результата (§18.3): откат прыгает вверх в момент удара.
+  if (state.hero.cooldown > heard.cooldown + 0.01) play('swing');
+  const enemyWounds = enemyWoundsOf(state);
+  const alive = aliveOf(state);
+  // Попадание — только по живому: последний удар звучит смертью, а не оба
+  // разом. §18.3 — попадание не громче ранения, и подавно не поверх смерти.
+  if (enemyWounds < heard.enemyWounds && alive === heard.alive) play('hit');
+  if (alive < heard.alive) play('kill');
+  if (state.hero.wounds < heard.wounds) play('wound');
+  if (state.bagTotal > heard.bag) play('chest');
+  const ticks = foodTicksOf(state);
+  if (ticks > heard.ticks) play('tick');
+  if (state.status !== heard.status && state.status !== 'running') {
+    play(state.status === 'evacuated' ? 'evac' : 'fail');
+  }
+  setFoodShare(state.foodMax > 0 ? Math.max(0, state.food) / state.foodMax : 0);
+  listenFrom(state);
 }
 
 /* ---------- переходы между сценами ---------- */
@@ -520,6 +601,10 @@ function toRaid(tier: Tier): boolean {
   rig.setZoom(18, true);
   rig.night = 1;
   resultShown = false;
+  stopCampTune();
+  startAmbient(tier);
+  listenFrom(raid);
+  startPulse();
   mode = 'raid';
   hud.setVisible(true);
   campHud.setVisible(false);
@@ -555,6 +640,9 @@ function toTitle(): void {
   // Ранний вечер: тени от букв уже длинные, но поле ещё зелёное, а не серое.
   rig.night = 0.08;
   mode = 'title';
+  stopPulse();
+  stopAmbient();
+  stopCampTune();
   inGlade = false;
   campPrompt.setVisible(false);
   hud.setVisible(false);
@@ -608,14 +696,20 @@ function tryPlace(cell: Cell): void {
   raidView?.showSite(placing, cell.x, cell.z, ok);
   // Отказ не молчит и не двигает кадр: красное пятно остаётся под пальцем,
   // и следующий тап игрок делает уже зная, почему прошлый не сработал.
-  if (!ok) return;
+  if (!ok) {
+    play('deny');
+    return;
+  }
 
   raidView?.place(placing, cell.x, cell.z);
+  play('build');
   pitched.push(cell);
   const next = PITCH_ORDER[PITCH_ORDER.indexOf(placing) + 1];
   if (next === undefined) {
     placing = null;
     raidView?.hideSite();
+    // Лагерь встал — единственное настоящее созвучие игры (§18.3).
+    play('levelup');
     hud.setHint('Лагерь разбит');
     return;
   }
@@ -660,6 +754,11 @@ function toGlade(): void {
   rig.night = 0.12;
   resultShown = false;
   inGlade = true;
+  // Поляна на поверхности — подложка «Подступы», светлая (§18.4).
+  stopCampTune();
+  startAmbient(0);
+  listenFrom(raid);
+  startPulse();
   placing = null;
   pitched.length = 0;
   raidView.hideSite();
@@ -676,6 +775,12 @@ function toGlade(): void {
 
 function toCamp(): void {
   leaveTitle();
+  // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
+  // в лагере провиант ничего не отсчитывает. Взамен — единственная
+  // мелодия игры, и звучит она только здесь.
+  stopPulse();
+  stopAmbient();
+  startCampTune();
   inGlade = false;
   campPrompt.setVisible(false);
   raidView?.dispose();
@@ -784,6 +889,7 @@ function campTap(clientX: number, clientY: number): void {
 const canvas = rig.renderer.domElement;
 
 canvas.addEventListener('pointerdown', (e) => {
+  play('tap');
   idleSeconds = 0;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -1098,6 +1204,7 @@ startLoop({
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
+      hearRaid(raid);
       if (inGlade) {
         hud.sync(raid, dt);
         // Кадр кончается ровно на нуле провианта. Голод, который в вылазке
@@ -1109,6 +1216,8 @@ startLoop({
           raid.status = 'evacuated';
           raidView?.hideHint();
           campPrompt.setVisible(true);
+          // Пульс отработал своё: он вёл к этой секунде и молчит после неё.
+          stopPulse();
         }
         return;
       }
@@ -1158,6 +1267,7 @@ startLoop({
     const finished = completeIfDue(camp, now);
     if (finished !== null) {
       track({ t: 'build_done', at: now, building: finished, level: camp.levels[finished] });
+      play('levelup');
       campHud.notify(`${BUILDINGS[finished].name} готов`);
       persist();
     }

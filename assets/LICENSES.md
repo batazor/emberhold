@@ -15,11 +15,13 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-dungeon/gltf/*.gltf`, `*.bin` — 211 моделей: стены, полы, лестницы, мебель, тара, утварь, знамёна | [kaylousberg.itch.io/kaykit-dungeon-pack](https://kaylousberg.itch.io/kaykit-dungeon-pack), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
 | `kaykit-dungeon/dungeon_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-skeletons/gltf/*.gltf`, `*.bin`, `*.glb` — 17 моделей: четыре скелета, оружие, щиты, стрелы | [kaylousberg.itch.io/kaykit-skeletons](https://kaylousberg.itch.io/kaykit-skeletons), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
-| `kaykit-skeletons/clips/*.glb` — 26 клипов на общий риг `Rig_Medium` | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-skeletons/skeleton_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
+| `kaykit-animations/gltf/*.glb` — 159 скелетных клипов: ход, бой, работа, быт | [kaylousberg.itch.io/kaykit-character-animations](https://kaylousberg.itch.io/kaykit-character-animations), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
+| `kaykit-animations/rig/*.glb`, `mannequin_texture.png` — два манекена набора и их текстура | там же | CC0 1.0 | Kay Lousberg |
 
-`kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`
-и `kaykit-skeletons/License.txt` — файлы лицензий как они пришли в архивах,
+`kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
+`kaykit-skeletons/License.txt` и `kaykit-animations/License.txt` — файлы
+лицензий как они пришли в архивах,
 без правок.
 
 ## Apache 2.0 и что она требует
@@ -48,23 +50,31 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 `forestart.html`, `dungeonart.html` и `enemyart.html` (только на dev-сервере:
 страницы читают файлы отсюда).
 
-Лес закрывает окружение, скелеты — двоих противников из трёх. Герои, здания
-и голем делаются своими руками — §6.1 это и предполагал.
+Набор анимаций устроен иначе: запекать в нём нечего — в клипе нет ни цвета,
+ни геометрии, только дорожки костей. Он же даёт позу, в которой обмеряются
+и запекаются скелеты (§6.1.3): свои два файла клипов набор скелетов тоже
+привёз, но они побайтно те же, и своей копии здесь нет намеренно. Его меряет `scripts/clips.ts`
+(`npm run clips`), а `charart.html` читает `.glb` целиком и проигрывает их
+в браузере. В бандл не едет и он.
+
+Лес закрывает окружение, скелеты — всех трёх противников. Герои и здания
+делаются своими руками — §6.1 это и предполагал.
 
 ## Скелеты едут, и это видно в весе
 
-`kaykit-skeletons/` взят в игру: три модели из семнадцати запечены
-в `src/render/skeleton.data.ts` и стоят 315 КБ base64 — игра целиком в gzip
-выросла с 226 до 322 КБ. Клипы анимации лежат в наборе целиком и в бандл
+`kaykit-skeletons/` взят в игру: пять моделей из семнадцати запечены
+в `src/render/skeleton.data.ts` и стоят 442 КБ base64 — игра целиком в gzip
+выросла с 226 до 359 КБ. Клипы анимации лежат в наборе целиком и в бандл
 не едут: проигрывателя у игры нет (§6.1.3). Атлас, как и у первых двух
 наборов, остаётся в `assets/` и в сборку не попадает.
 
-## Подземелье лежит, но не едет
+## Подземелье и анимации лежат, но не едут
 
-`kaykit-dungeon/` измерен целиком, и в бандле от него нет ни байта: список
-принятых моделей пуст, `.data.ts` под него не пишется. Реестру это всё равно —
+`kaykit-dungeon/` и `kaykit-animations/` измерены целиком, и в бандле от них
+нет ни байта: список принятых моделей пуст, `.data.ts` под них не пишется,
+а клипы игра пока не проигрывает вовсе. Реестру это всё равно —
 файлы в репозитории есть, значит запись обязана быть, — но при чтении
-«чужие ассеты в игре» набор считать не нужно: в игру он не попал (§6.1.2).
+«чужие ассеты в игре» эти наборы считать не нужно: в игру они не попали (§6.1.2).
 
 ## Чего здесь нет и почему
 

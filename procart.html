@@ -1,0 +1,1923 @@
+<meta charset="utf-8">
+<title>Процедурная геометрия на WebGPU</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --stage:#0C0B08;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+  }
+
+  *{box-sizing:border-box;}
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;margin:0;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  /* Свой интерлиньяж: h2 наследовал 1.55 от body, и при кегле 29px строка
+     выходила 45 пикселей. У h1 свой 1.05 прописан явно — h2 забыли. */
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;line-height:1.15;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  .hd p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .hd p b{color:var(--text);font-weight:600;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+  a{color:var(--brass);}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);margin:0;}
+  .fail{color:var(--blood);}
+  [hidden]{display:none !important;}
+
+  /* ---------- органы управления ---------- */
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  button[disabled]{opacity:.45;cursor:default;}
+  button[disabled]:hover{background:transparent;color:var(--brass);}
+  .ctl{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:var(--dim);}
+  .ctl input[type=range]{width:132px;accent-color:var(--brass);}
+  .ctl output{font-family:var(--ff-mono);font-size:12px;color:var(--text);min-width:40px;
+    font-variant-numeric:tabular-nums;}
+  label.chk{display:inline-flex;gap:7px;align-items:center;font-size:13px;color:var(--dim);cursor:pointer;}
+  label.chk input{accent-color:var(--brass);}
+
+  /* ---------- сцены ---------- */
+  .stage{position:relative;background:var(--stage);border:1px solid var(--line);overflow:hidden;
+    touch-action:none;cursor:crosshair;}
+  .stage canvas{display:block;width:100%;height:min(56vh,500px);}
+  .tile{position:relative;background:var(--stage);border:1px solid var(--line);overflow:hidden;}
+  .tile canvas{display:block;width:100%;height:300px;}
+  .badge{position:absolute;right:8px;top:8px;font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.11em;
+    text-transform:uppercase;color:#cfc6b4;background:rgba(0,0,0,.5);padding:3px 8px;border:1px solid #ffffff22;}
+  .hintbox{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);text-align:center;
+    font-family:var(--ff-mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:#b7ae9c;
+    pointer-events:none;transition:opacity .3s;}
+  .flat{background:var(--surface);border:1px solid var(--line);}
+  .flat canvas{display:block;width:100%;}
+
+  /* ---------- счётчики ---------- */
+  .meter{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:1px;
+    background:var(--line);border:1px solid var(--line);}
+  .meter div{background:var(--surface);padding:9px 12px;display:flex;flex-direction:column;gap:1px;min-width:0;}
+  .meter b{font-family:var(--ff-mono);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;
+    overflow-wrap:anywhere;}
+  .meter span{font-family:var(--ff-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+
+  .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;align-items:start;}
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard div.no{border-left-color:var(--blood);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard div.no h3{color:var(--blood);}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Разведка техники · WebGPU</div>
+  <h1>Геометрия, которой <em>нет в бандле</em></h1>
+  <p class="lede">Десять приёмов из разбора Codrops
+    <a href="https://tympanus.net/codrops/2026/08/11/exploring-procedural-geometry-with-three-js-and-webgpu/"
+      target="_blank" rel="noreferrer">Exploring Procedural Geometry with Three.js and WebGPU</a>,
+    пересобранных на нашей версии three (0.180) и запущенных прямо здесь. Ни одного файла модели,
+    ни одной текстуры: всё, что видно на странице, считается из чисел в момент показа. Цвета взяты
+    из <code>src/render/palette.ts</code>, генератор случайных чисел — из <code>src/core/rng.ts</code>;
+    ни того, ни другого страница не заводит своего.</p>
+  <p class="lede">Игра рисуется <code>WebGLRenderer</code> (<code>src/render/scene.ts</code>), страница —
+    <code>WebGPURenderer</code> с узловыми материалами (TSL). <b>В игру отсюда не едет ничего.</b>
+    Страница — взвешивание: под каждым приёмом стоит счётчик, а не оценка, и последний раздел собран
+    по этим счётчикам, а не по впечатлению. Числа считаются на вашей машине, поэтому у соседа
+    они другие — это и есть смысл замера.</p>
+  <p class="lede fail" id="warn" hidden></p>
+</header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Кисть по поверхности</h2>
+    <p>Проведите указателем по земле. Штрих — это путь, пересчитанный на равные шаги, репер
+      в каждой точке пути и геометрия, выращенная от начала штриха к его концу. Четыре кисти —
+      четыре разных способа превратить путь в геометрию; остальные разделы разбирают их по частям
+      и на тех же материалах: ползунок из раздела двигает узел здесь, потому что материал один.</p>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="paint"></canvas>
+    <div class="badge" id="backend">инициализация…</div>
+    <div class="hintbox" id="hint">проведите по поверхности</div>
+  </div>
+  <div class="bar" id="brushes"></div>
+  <div class="bar">
+    <span class="ctl"><label for="density">плотность</label>
+      <input type="range" id="density" min="0" max="1" step="0.01" value="1"><output id="densityV">100%</output></span>
+    <span class="ctl"><label for="seed">сид</label>
+      <input type="range" id="seed" min="1" max="64" step="1" value="7"><output id="seedV">7</output></span>
+    <button id="clear">Очистить</button>
+    <button id="demo">Провести за меня</button>
+  </div>
+  <div class="meter">
+    <div><b id="mGpu">—</b><span>кадр, мс</span></div>
+    <div><b id="mDraw">0</b><span>вызовов</span></div>
+    <div><b id="mTri">0</b><span>треугольников</span></div>
+    <div><b id="mInst">0</b><span>инстансов</span></div>
+    <div><b id="mStroke">0</b><span>штрихов</span></div>
+    <div><b id="mPts">0</b><span>точек пути</span></div>
+    <div><b id="mRay">—</b><span>луч, мкс</span></div>
+  </div>
+  <p class="note" id="stageNote">Тени выключены намеренно: в разборе их нет, а сравнивать стоимость приёмов
+    проще без второго прохода сцены.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Перевыборка штриха</h2>
+    <p>События указателя приходят неровно: быстрое движение растягивает шаг, медленное — сжимает,
+      и один и тот же штрих даёт то пять точек на клетку, то одну на пять клеток. Геометрию по таким
+      точкам ставить нельзя — она сгущается там, где рука замедлилась. Поэтому путь пересчитывается
+      по длине дуги: копится пройденное, точка выпускается каждые <code>PATH_STEP</code> единиц.</p>
+  </div>
+  <div class="flat"><canvas id="resCanvas"></canvas></div>
+  <div class="meter">
+    <div><b id="rEv">—</b><span>событий</span></div>
+    <div><b id="rMin">—</b><span>шаг min, ед.</span></div>
+    <div><b id="rMax">—</b><span>шаг max, ед.</span></div>
+    <div><b id="rRatio">—</b><span>разброс</span></div>
+    <div><b id="rOut">—</b><span>точек после</span></div>
+    <div><b id="rStep">—</b><span>шаг после, ед.</span></div>
+  </div>
+  <p class="note">Замер снят с вашего последнего штриха на холсте выше. Сверху — сырые события, снизу —
+    то, что доехало до геометрии.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Репер на поверхности</h2>
+    <p>Точка пути — это ещё не место для геометрии: кристаллу нужно, куда расти, а ленте — куда
+      расходиться в ширину. Значит, в каждой точке нужен репер: нормаль <b>n</b> и два касательных
+      вектора. Их берут векторным произведением, и ровно здесь прячется вырожденный случай:
+      если опорная ось совпала с нормалью, произведение даёт ноль и репер рассыпается.
+      Защита — одна строка: при <code>|n.x| &gt; 0.9</code> опорная ось меняется.</p>
+  </div>
+  <div class="flat"><canvas id="frameCanvas"></canvas></div>
+  <div class="bar">
+    <label class="chk"><input type="checkbox" id="guardOff"> убрать защиту от совпадения осей</label>
+  </div>
+  <p class="note" id="frameNote">Ведите указателем вдоль поверхности. Красная зона — где опорная ось
+    почти параллельна нормали.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Кристаллы: экземпляры вместо моделей</h2>
+    <p>Кисть ставит не модели, а <b>параметры</b>: якорь, репер, три стабильных случайных числа и ранг.
+      Геометрия одна — шестигранная призма с сужением и пирамидальной верхушкой, 18 треугольников, —
+      а вариантов столько, сколько чисел. Плотность не пересобирает буферы: инстанс с рангом выше порога
+      получает нулевой масштаб и остаётся в буфере. Поэтому вызовов отрисовки при любом положении
+      ползунка ровно столько же — счётчик под сценой это и показывает.</p>
+  </div>
+  <div class="tile"><canvas id="viewCrystal"></canvas><div class="badge">кристаллы</div></div>
+  <div class="bar">
+    <span class="ctl"><label for="cDensity">плотность</label>
+      <input type="range" id="cDensity" min="0" max="1" step="0.01" value="1"><output id="cDensityV">100%</output></span>
+    <label class="chk"><input type="checkbox" id="cGlass"> стекло: transmission + dispersion</label>
+    <button id="cReplay">Провести заново</button>
+  </div>
+  <div class="meter">
+    <div><b id="cAll">0</b><span>инстансов</span></div>
+    <div><b id="cVis">0</b><span>видимых</span></div>
+    <div><b id="cDraw">0</b><span>вызовов</span></div>
+    <div><b id="cTri">0</b><span>треугольников</span></div>
+    <div><b id="cGpu">—</b><span>кадр, мс</span></div>
+  </div>
+  <p class="note" id="cNote">Отбраковка рангом: <code>inst.rank &lt;= плотность</code>. Ранг раздан один раз
+    при рождении, поэтому кристаллы не пляшут при движении ползунка — исчезают всегда одни и те же.
+    Треугольников при этом не убывает, и это не ошибка счётчика: отбракованный экземпляр остаётся
+    в буфере и проходит вершинный этап, просто вырожденным. Экономия здесь на вызовах и на пикселях,
+    а не на вершинах.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Трещина: ширина живёт в вершине</h2>
+    <p>Лента строится из осевой линии: обе вершины сегмента сидят в одной точке пути, а расходятся
+      уже в вершинном узле — вдоль касательной, на половину ширины, с поправкой на дрожание и сужение
+      к концу. Отсюда свойство, ради которого это и сделано: <b>ползунок ширины не трогает буферы</b>.
+      Ветки отбраковываются так же, как кристаллы, — сравнением ранга с порогом, без пересборки.</p>
+  </div>
+  <div class="tile"><canvas id="viewFissure"></canvas><div class="badge">трещина</div></div>
+  <div class="bar">
+    <span class="ctl"><label for="fWidth">ширина</label>
+      <input type="range" id="fWidth" min="0.05" max="1.2" step="0.01" value="0.42"><output id="fWidthV">0.42</output></span>
+    <span class="ctl"><label for="fBranch">ветвление</label>
+      <input type="range" id="fBranch" min="0" max="1" step="0.01" value="0.7"><output id="fBranchV">70%</output></span>
+  </div>
+  <div class="bar" id="heatTerms"></div>
+  <div class="meter">
+    <div><b id="fMoves">0</b><span>движений ползунка</span></div>
+    <div><b id="fRebuild">0</b><span>пересборок буфера</span></div>
+    <div><b id="fVerts">0</b><span>вершин</span></div>
+    <div><b id="fBr">0</b><span>веток</span></div>
+    <div><b id="fDraw">0</b><span>вызовов</span></div>
+  </div>
+  <p class="note">Четыре слагаемых свечения включаются по отдельности: центр сечения, бегущий пульс,
+    мерцание и вспышка на фронте роста. Выключите все — останется геометрия.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Полог: одна фаза на вершину и фрагмент</h2>
+    <p>Складки ткани и блики на них — это одно и то же число, посчитанное дважды. Вершинный узел
+      гнёт полотно по <code>foldPhase</code>, фрагментный берёт <b>ту же</b> фазу и делает из неё яркость.
+      Пока фаза общая, блик сидит на гребне складки. Разорвите её — и станет видно, зачем всё это:
+      свет поедет по ткани сам по себе, и полотно распадётся на два несвязанных движения.</p>
+  </div>
+  <div class="tile"><canvas id="viewCurtain"></canvas><div class="badge">полог</div></div>
+  <div class="bar">
+    <span class="ctl"><label for="kWave">амплитуда</label>
+      <input type="range" id="kWave" min="0" max="2" step="0.01" value="1"><output id="kWaveV">1.00</output></span>
+    <span class="ctl"><label for="kHeight">высота</label>
+      <input type="range" id="kHeight" min="0.5" max="5" step="0.05" value="2.7"><output id="kHeightV">2.70</output></span>
+    <label class="chk"><input type="checkbox" id="kBroken"> разорвать фазу</label>
+  </div>
+  <p class="note">Подол приколот, гребень летает: амплитуда умножена на <code>aV<sup>1.35</sup></code>,
+    где <code>aV</code> — высота вершины в полотне. Степень больше единицы прижимает низ сильнее,
+    чем линейная.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Колония: волна в мире, а не в инстансе</h2>
+    <p>Каждый полип берёт свечение не из своего таймера, а из общего поля: скалярное произведение
+      мировой координаты на направление волны минус время. Полипы стоят по-разному — значит, вспыхивают
+      с задержкой, и по колонии проходит волна, которой никто не управляет. Переключите на собственную
+      фазу: те же полипы, тот же ритм, но связь между соседями исчезает.</p>
+  </div>
+  <div class="tile"><canvas id="viewColony"></canvas><div class="badge">колония</div></div>
+  <div class="bar">
+    <span class="ctl"><label for="pPulse">скорость</label>
+      <input type="range" id="pPulse" min="0.1" max="3" step="0.05" value="1.1"><output id="pPulseV">1.10</output></span>
+    <label class="chk"><input type="checkbox" id="pOwn"> фаза у каждого своя</label>
+  </div>
+  <p class="note">Волна и мерцание не спорят: собственный твич полипа берётся из <code>hash(instanceIndex)</code>
+    и добавляется поверх поля, а не вместо него.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Рост без таймера на инстанс</h2>
+    <p>Растут все, а таймера нет ни у кого. Есть два числа: <b>дистанция рождения</b> — сколько
+      единиц пути было пройдено, когда объект появился, — и <b>фронт роста</b>, ползущий по той же шкале.
+      Разность, делённая на окно, даёт долю; доля проходит через <code>easeOutBack</code> и превращается
+      в масштаб. Перебег кривой выше единицы — то, из-за чего кристалл «вставляется» в землю,
+      а не надувается.</p>
+  </div>
+  <div class="flat"><canvas id="growCanvas"></canvas></div>
+  <div class="bar">
+    <span class="ctl"><label for="gT">фронт</label>
+      <input type="range" id="gT" min="0" max="1" step="0.005" value="0.35"><output id="gTV">0.35</output></span>
+    <label class="chk"><input type="checkbox" id="gAniso" checked> сжимать ширину сильнее высоты</label>
+  </div>
+  <p class="note">У ленты и полога рост устроен иначе — время рождения записано в саму вершину, и фронт
+    считает шейдер. Причина не в красоте: у инстансов рост правит матрицы, а у ленты матрица одна на весь
+    штрих, и трогать её нечем.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Сид: тот же штрих дважды</h2>
+    <p>Случайность здесь — это <code>mulberry32</code> из <code>src/core/rng.ts</code>, тот самый, на котором
+      держится генерация локаций. Сид штриха собирается из общего сида и номера штриха умножением на
+      константу Кнута; поэтому смена общего сида перетасовывает всю страницу разом, а не сдвигает её на шаг.
+      Проверяется это не на глаз: кисть считает контрольную сумму всех параметров экземпляров.</p>
+  </div>
+  <div class="bar">
+    <span class="ctl"><label for="sSeed">сид</label>
+      <input type="range" id="sSeed" min="1" max="64" step="1" value="7"><output id="sSeedV">7</output></span>
+    <button id="sRun">Посчитать дважды</button>
+  </div>
+  <table id="seedTable"><thead><tr>
+    <th>Сид</th><th>Штрих</th><th class="num">Экземпляров</th><th>Контрольная сумма</th><th>Второй прогон</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="seedNote">Сумма считается по позиции, масштабу, рангу и повороту каждого экземпляра:
+    32-битная FNV-1a по 32-битным долям чисел.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Пост-обработка: сколько стоит свечение</h2>
+    <p>Свечение здесь не нарисовано в материале — оно собрано из яркости кадра: проход сцены с MSAA×4,
+      bloom по порогу, виньетка от <code>screenUV</code> и ACES на выходе. Всё это — узловой граф, а не
+      цепочка проходов, но стоит он всё равно кадра. Кнопка ниже меряет: одна и та же сцена рисуется
+      по семьдесят кадров в каждой конфигурации — первые двадцать два уходят в прогрев, —
+      а время берётся с таймстемпов GPU.</p>
+  </div>
+  <div class="bar" id="postToggles"></div>
+  <div class="bar"><button id="postRun">Замерить</button><span class="note" id="postState"></span></div>
+  <table id="postTable"><thead><tr>
+    <th>Конфигурация</th><th class="num">Кадр, мс</th><th class="num">Против голой сцены</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="postNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что из этого годится Emberhold</h2>
+    <p>Выводы собраны по счётчикам выше — тем, что вы только что видели на своей машине,
+      а не по обещаниям разбора.</p>
+  </div>
+  <div class="guard" id="verdict"></div>
+</div>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three/webgpu';
+import {
+  attribute, positionLocal, positionWorld, uniform, float, vec3, mix, smoothstep,
+  step, hash, instanceIndex, varying, color, pass, screenUV, vec2,
+} from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { PALETTE } from '/src/render/palette.ts';
+import { mulberry32 } from '/src/core/rng.ts';
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/* ---------------------------------------------------------------------------
+   Поверхность. Она известна формулой, поэтому нормаль берётся производной,
+   а не читается из атрибутов: у нас нет чужой модели, по которой пришлось бы
+   гадать. Тот же H() лепит и меш земли, и реперы на пути — расхождению
+   между тем, что видно, и тем, во что ставится геометрия, взяться неоткуда.
+--------------------------------------------------------------------------- */
+const H = (x, z) =>
+  0.62 * Math.sin(x * 0.31) * Math.cos(z * 0.27) +
+  0.30 * Math.sin(x * 0.71 + 1.3) * Math.sin(z * 0.58 - 0.7) +
+  0.13 * Math.sin((x + z) * 1.13 + 0.4);
+
+const NORM_EPS = 0.04;
+function normalAt(x, z, out = new THREE.Vector3()) {
+  const dx = (H(x + NORM_EPS, z) - H(x - NORM_EPS, z)) / (2 * NORM_EPS);
+  const dz = (H(x, z + NORM_EPS) - H(x, z - NORM_EPS)) / (2 * NORM_EPS);
+  return out.set(-dx, 1, -dz).normalize();
+}
+
+/** Репер по нормали. Защита от совпадения осей — та самая одна строка. */
+function tangentFrame(n, guard = true) {
+  const t1 = new THREE.Vector3(1, 0, 0);
+  if (guard && Math.abs(n.x) > 0.9) t1.set(0, 1, 0);
+  t1.cross(n).normalize();
+  const t2 = new THREE.Vector3().crossVectors(n, t1);
+  return { t1, t2 };
+}
+
+function frameAt(x, z) {
+  const n = normalAt(x, z);
+  const { t1, t2 } = tangentFrame(n);
+  return { p: new THREE.Vector3(x, H(x, z), z), n, t1, t2, dist: 0 };
+}
+
+/* ---------------------------------------------------------------------------
+   Земля. Неиндексированная — значит, у каждого треугольника своя нормаль
+   и плоское затенение бесплатно (§6.1). Цвет — вершинный, из палитры игры.
+--------------------------------------------------------------------------- */
+const C_LOW = new THREE.Color(PALETTE.grassBase);
+const C_HIGH = new THREE.Color(PALETTE.rock);
+const C_DEEP = new THREE.Color(PALETTE.backdrop);
+
+function ground(size, seg) {
+  const g = new THREE.PlaneGeometry(size, size, seg, seg).rotateX(-Math.PI / 2);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, H(pos.getX(i), pos.getZ(i)));
+  const flat = g.toNonIndexed();
+  g.dispose();
+  flat.computeVertexNormals();
+  const p = flat.attributes.position;
+  const col = new Float32Array(p.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    const k = clamp01((y + 0.9) / 1.9);
+    c.copy(C_DEEP).lerp(C_LOW, clamp01(k * 1.6)).lerp(C_HIGH, clamp01((k - 0.45) * 1.5));
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  flat.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.MeshStandardNodeMaterial({ vertexColors: true, flatShading: true, roughness: 0.96 });
+  return new THREE.Mesh(flat, mat);
+}
+
+function lights(scene) {
+  scene.add(new THREE.HemisphereLight(0xbcd2e8, 0x2b2519, 0.85));
+  const sun = new THREE.DirectionalLight(PALETTE.sun, 1.9);
+  sun.position.set(9, 14, 5);
+  scene.add(sun, sun.target);
+}
+
+/** Камера игры: ортографика, азимут 45°, наклон 30° (§6.1). */
+function rigCamera(frustum, aspect, target = new THREE.Vector3()) {
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 160);
+  cam.userData.frustum = frustum;
+  const el = Math.PI / 6, az = Math.PI / 4, d = 45;
+  cam.position.set(
+    target.x + d * Math.cos(el) * Math.cos(az),
+    target.y + d * Math.sin(el),
+    target.z + d * Math.cos(el) * Math.sin(az),
+  );
+  cam.lookAt(target);
+  fitCamera(cam, aspect);
+  return cam;
+}
+
+function fitCamera(cam, aspect) {
+  const fh = cam.userData.frustum;
+  const fw = fh * aspect;
+  cam.left = -fw / 2; cam.right = fw / 2; cam.top = fh / 2; cam.bottom = -fh / 2;
+  cam.updateProjectionMatrix();
+}
+
+/* ---------------------------------------------------------------------------
+   Общие узлы. Время — своё, а не встроенное: материалы делят между собой два
+   разных рендерера, у каждого свой кадровый счётчик, и «время рождения»,
+   записанное в вершину одним, вторым читалось бы мимо.
+--------------------------------------------------------------------------- */
+const uTime = uniform(0);
+const uWidth = uniform(0.42);
+const uBranch = uniform(0.7);
+const uWave = uniform(1);
+const uHeight = uniform(2.7);
+const uBroken = uniform(0);
+const uPulse = uniform(1.1);
+const uOwn = uniform(0);
+const uHeat = [uniform(1), uniform(1), uniform(1), uniform(1)];
+
+const GROW_T = 0.55;      // окно роста ленты и полога, секунды
+const GROW_WINDOW = 2.0;  // окно роста экземпляров, единицы пути
+const GROW_SPEED = 11;    // фронт роста, единиц пути в секунду
+
+const easeOutBack = (t) => {
+  const c1 = 1.70158, c3 = c1 + 1;
+  const u = t - 1;
+  return 1 + c3 * u * u * u + c1 * u * u;
+};
+
+/* ---------- кристалл ---------- */
+
+/** Шестигранная призма с сужением и пирамидальной верхушкой: 18 треугольников. */
+function shardGeometry() {
+  const r0 = 0.5, r1 = 0.33, h1 = 0.72, h2 = 1;
+  const pos = [];
+  const push = (v) => pos.push(v.x, v.y, v.z);
+  const ring = (r, y) => {
+    const out = [];
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      out.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+    }
+    return out;
+  };
+  const base = ring(r0, 0), mid = ring(r1, h1);
+  const apex = new THREE.Vector3(0, h2, 0);
+  for (let k = 0; k < 6; k++) {
+    const j = (k + 1) % 6;
+    push(base[k]); push(base[j]); push(mid[j]);
+    push(base[k]); push(mid[j]); push(mid[k]);
+    push(mid[k]); push(mid[j]); push(apex);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+const SHARD = shardGeometry();
+const SHARD_TRIS = SHARD.attributes.position.count / 3;
+
+function crystalMaterial(glass) {
+  const aSeed = attribute('aSeed', 'float');
+  const tint = mix(color(PALETTE.moon), color(PALETTE.spearman), aSeed);
+  const opts = { flatShading: true, roughness: glass ? 0.08 : 0.34, metalness: 0 };
+  const m = glass
+    ? new THREE.MeshPhysicalNodeMaterial({ ...opts, transmission: 0.7, dispersion: 3, ior: 1.6, thickness: 1.1, transparent: true })
+    : new THREE.MeshStandardNodeMaterial(opts);
+  m.colorNode = mix(tint, color(PALETTE.evac), positionLocal.y.mul(0.5));
+  const breathe = uTime.mul(1.6).add(aSeed.mul(6.28)).sin().mul(0.18).add(0.32);
+  m.emissiveNode = tint.mul(breathe);
+  return m;
+}
+const CRYSTAL_MATS = { solid: null, glass: null };
+const crystalMat = (glass) => {
+  const key = glass ? 'glass' : 'solid';
+  CRYSTAL_MATS[key] ??= crystalMaterial(glass);
+  return CRYSTAL_MATS[key];
+};
+
+/* ---------- лента трещины ---------- */
+
+function fissureMaterial() {
+  /* Восемь вершинных буферов на конвейер — предел WebGPU, а лента просит
+     десять чисел на вершину. Поэтому мелочь упакована в два vec4: буферов
+     пять, чисел столько же. Без упаковки конвейер просто не собирается,
+     и кадр уходит в чёрное целиком — проверено. */
+  const rib = attribute('aRib', 'vec4');
+  const grow = attribute('aGrow', 'vec4');
+  const aSide = attribute('aSide', 'vec3');
+  const aAcross = rib.x, aDist = rib.y, aRank = rib.z, aJit = rib.w;
+  const aWalk = grow.x, aMaxWalk = grow.y, aBirth = grow.z;
+
+  const m = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, transparent: true, depthWrite: false });
+  const born = smoothstep(0, GROW_T, uTime.sub(aBirth));
+  const taper = float(1).sub(aWalk.div(aMaxWalk)).pow(0.7);
+  const sel = step(aRank, uBranch);
+  m.positionNode = positionLocal.add(
+    aSide.mul(uWidth.mul(0.5).mul(aAcross).mul(aJit)).mul(taper.mul(sel).mul(born)),
+  );
+
+  /* Четыре слагаемых жара — ровно те, что в разборе, и каждое включается
+     отдельно: иначе нечем показать, что делает именно оно. */
+  const center = float(1).sub(smoothstep(0.12, 1, aAcross.abs())).mul(uHeat[0]);
+  const pulse = aDist.mul(7).sub(uTime.mul(3.4)).sin().mul(0.5).add(0.5).mul(uHeat[1]);
+  const flicker = uTime.mul(9).add(aDist.mul(3.1)).sin().mul(0.5).add(0.5).mul(0.4).mul(uHeat[2]);
+  const flash = float(1).sub(smoothstep(0, 0.9, uTime.sub(aBirth))).mul(uHeat[3]);
+  const heat = center.mul(0.9).add(pulse.mul(0.5)).add(flicker).add(flash.mul(1.4)).add(0.12);
+  m.colorNode = mix(color(PALETTE.telegraph), color(PALETTE.torch), heat.clamp(0, 1)).mul(heat.clamp(0.05, 2.4));
+  m.opacityNode = sel.mul(born).mul(taper.clamp(0, 1));
+  return m;
+}
+let FISSURE_MAT = null;
+const fissureMat = () => (FISSURE_MAT ??= fissureMaterial());
+
+/* ---------- полог ---------- */
+
+function curtainMaterial() {
+  const aSide = attribute('aSide', 'vec3');
+  const aUp = attribute('aUp', 'vec3');
+  /* Та же упаковка, что у ленты, и по той же причине — предел буферов. */
+  const sheet = attribute('aSheet', 'vec4');
+  const aV = sheet.x, aDist = sheet.y, aPhase = sheet.z, aBirth = sheet.w;
+
+  const m = new THREE.MeshBasicNodeMaterial({
+    side: THREE.DoubleSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const unfurl = smoothstep(0, GROW_T * 2, uTime.sub(aBirth));
+  const foldPhase = aDist.mul(6.3).add(uTime.mul(1.1)).add(aPhase);
+  const sway = foldPhase.sin().add(
+    aDist.mul(11.7).sub(uTime.mul(0.7)).add(aV.mul(1.8)).add(aPhase).sin().mul(0.5),
+  );
+  const amp = uWave.mul(0.17).mul(aV.pow(1.35)).mul(unfurl);
+  const lift = aV.mul(uHeight).mul(unfurl);
+  m.positionNode = positionLocal.add(aUp.mul(lift)).add(aSide.mul(amp.mul(sway).mul(3.2)));
+
+  /* Та же фаза, что гнула полотно, — теперь как яркость. Разрыв фазы
+     подменяет её независимой: блик съезжает со складки, и видно, зачем
+     вершине и фрагменту вообще считать одно число. */
+  const shown = mix(foldPhase, aDist.mul(6.3).add(uTime.mul(1.9)), uBroken);
+  const folds = shown.cos().abs().pow(1.6).mul(0.85).add(0.4);
+  const hue = mix(color(PALETTE.evac), color(PALETTE.spearman), aV.pow(0.8));
+  m.colorNode = mix(hue, color(PALETTE.moon), folds.mul(0.35)).mul(folds);
+  m.opacityNode = float(1).sub(aV.mul(0.5)).mul(unfurl).mul(0.7);
+  return m;
+}
+let CURTAIN_MAT = null;
+const curtainMat = () => (CURTAIN_MAT ??= curtainMaterial());
+
+/* ---------- колония ---------- */
+
+function colonyMaterial() {
+  const aSeed = attribute('aSeed', 'float');
+  const own = varying(hash(instanceIndex), 'vOwn');
+  const m = new THREE.MeshStandardNodeMaterial({ flatShading: true, roughness: 0.55 });
+  const wave = positionWorld.dot(vec3(1.6, 1.1, 1.35)).mul(2.6)
+    .sub(uTime.mul(uPulse.mul(2.1))).sin().mul(0.5).add(0.5).pow(2.5);
+  const solo = uTime.mul(uPulse.mul(2.1)).add(own.mul(28)).sin().mul(0.5).add(0.5).pow(2.5);
+  const lit = mix(wave, solo, uOwn);
+  const twitch = uTime.mul(3.1).add(own.mul(41)).sin().mul(0.5).add(0.5).mul(0.22);
+  const tint = mix(color(PALETTE.evac), color(PALETTE.moon), aSeed);
+  m.colorNode = mix(color(0x1d2a2a), color(PALETTE.spearman), aSeed.mul(0.7));
+  m.emissiveNode = tint.mul(lit.add(twitch).mul(2.1));
+  return m;
+}
+let COLONY_MAT = null;
+const colonyMat = () => (COLONY_MAT ??= colonyMaterial());
+const POLYP = new THREE.IcosahedronGeometry(0.5, 0).scale(1, 1.35, 1);
+const POLYP_TRIS = POLYP.index ? POLYP.index.count / 3 : POLYP.attributes.position.count / 3;
+
+/* ---------------------------------------------------------------------------
+   Кисти. У каждой один вход — push(точка пути) — и один выход: объект сцены.
+   Поэтому холст и разделы гоняют один и тот же код: разница только в том,
+   кто подаёт точки — указатель или заранее посчитанная кривая.
+--------------------------------------------------------------------------- */
+/* Два счётчика для раздела о трещине: сколько раз двинули ползунок и сколько
+   раз при этом собрали буфер. Второй растёт только на новом штрихе — в этом
+   вся мысль приёма, и она проверяется числом, а не обещанием. */
+let sliderMoves = 0, rebuilds = 0;
+
+const UP = new THREE.Vector3(0, 1, 0);
+const _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _axis = new THREE.Vector3();
+let density = 1;
+let glassOn = false;
+
+class InstancedBrush {
+  constructor(geometry, cap, cluster, tris) {
+    this.geo = geometry.clone();
+    this.seeds = new Float32Array(cap);
+    this.geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(this.seeds, 1));
+    this.mesh = new THREE.InstancedMesh(this.geo, null, cap);
+    this.mesh.frustumCulled = false;
+    this.mesh.count = 0;
+    this.object = this.mesh;
+    this.cluster = cluster;
+    this.tris = tris;
+    this.cap = cap;
+    this.inst = [];
+    this.cursor = 0;
+    this.grown = 0;
+    this.maxDist = 0;
+  }
+
+  push(pt, rng) {
+    const before = this.inst.length;
+    this.cluster(rng, pt, (rec) => {
+      if (this.inst.length >= this.cap) return;
+      this.seeds[this.inst.length] = rec.seed;
+      this.inst.push(rec);
+    });
+    if (this.inst.length > before) {
+      this.geo.attributes.aSeed.needsUpdate = true;
+      this.mesh.count = this.inst.length;
+      this.maxDist = pt.dist;
+    }
+  }
+
+  /** Матрица одного экземпляра. Ширина сжимается сильнее высоты — иначе
+      рост читается как надувание шара, а не как выход из земли. */
+  place(i, k) {
+    const it = this.inst[i];
+    const on = it.rank <= density ? 1 : 0;
+    const kw = k * (0.6 + 0.4 * k) * on;
+    _s.set(it.sx * kw, it.sy * k * on, it.sx * kw);
+    _m.compose(it.p, it.q, _s);
+    this.mesh.setMatrixAt(i, _m);
+  }
+
+  refresh() {
+    for (let i = 0; i < this.inst.length; i++) {
+      const t = (this.grown - this.inst[i].birth) / GROW_WINDOW;
+      this.place(i, t <= 0 ? 0 : t >= 1 ? 1 : easeOutBack(t));
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  update(dt) {
+    this.grown = Math.min(this.grown + dt * GROW_SPEED, this.maxDist + GROW_WINDOW);
+    let touched = false;
+    for (let i = this.cursor; i < this.inst.length; i++) {
+      const t = (this.grown - this.inst[i].birth) / GROW_WINDOW;
+      if (t <= 0) break;
+      this.place(i, t >= 1 ? 1 : easeOutBack(t));
+      touched = true;
+      if (t >= 1 && i === this.cursor) this.cursor = i + 1;
+    }
+    if (touched) this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  stats() {
+    let vis = 0;
+    for (const it of this.inst) if (it.rank <= density) vis++;
+    return { instances: this.inst.length, visible: vis, triangles: vis * this.tris, draws: 1 };
+  }
+
+  dispose() { this.geo.dispose(); }
+}
+
+/** Общая раскладка гроздью: смещение в касательной плоскости, посадка на землю. */
+function clusterMaker(count, spread, sizeFn, tiltMax) {
+  return (rng, pt, emit) => {
+    const n = count[0] + Math.floor(rng() * (count[1] - count[0] + 1));
+    for (let s = 0; s < n; s++) {
+      const a = rng() * Math.PI * 2;
+      const rad = Math.sqrt(rng()) * spread;
+      const x = pt.p.x + pt.t1.x * Math.cos(a) * rad + pt.t2.x * Math.sin(a) * rad;
+      const z = pt.p.z + pt.t1.z * Math.cos(a) * rad + pt.t2.z * Math.sin(a) * rad;
+      const nAt = normalAt(x, z);
+      const q = new THREE.Quaternion().setFromUnitVectors(UP, nAt);
+      _q.setFromAxisAngle(nAt, rng() * Math.PI * 2);
+      q.premultiply(_q);
+      const b = rng() * Math.PI * 2;
+      _axis.set(Math.cos(b), 0, Math.sin(b)).normalize();
+      _q.setFromAxisAngle(_axis, (rng() - 0.5) * tiltMax);
+      q.premultiply(_q);
+      const [sx, sy] = sizeFn(rng);
+      emit({
+        p: new THREE.Vector3(x, H(x, z) - sy * 0.12, z),
+        q, sx, sy,
+        rank: rng(),
+        seed: rng(),
+        birth: pt.dist,
+      });
+    }
+  };
+}
+
+function makeCrystalBrush() {
+  const b = new InstancedBrush(SHARD, 900, clusterMaker([2, 5], 0.55, (r) => {
+    const h = 0.5 + r() * 1.15;
+    return [h * (0.2 + r() * 0.2), h];
+  }, 0.55), SHARD_TRIS);
+  b.mesh.material = crystalMat(glassOn);
+  b.kind = 'crystal';
+  return b;
+}
+
+function makeColonyBrush() {
+  const b = new InstancedBrush(POLYP, 1200, clusterMaker([3, 7], 0.75, (r) => {
+    const h = 0.22 + r() * 0.4;
+    return [h * (0.7 + r() * 0.5), h];
+  }, 0.9), POLYP_TRIS);
+  b.mesh.material = colonyMat();
+  b.kind = 'colony';
+  return b;
+}
+
+/* ---------- лента ---------- */
+
+/* Лента и полотно лежат на самой земле, а земля пишет глубину. Без подъёма
+   по нормали их съедает тест глубины — ровно то, что и случилось при первой
+   сборке: геометрия рисовалась, счётчик треугольников рос, на экране пусто. */
+const LIFT = 0.07;
+const BRANCH_STEP = 0.34;
+const MAX_BRANCH = 26;
+
+class FissureBrush {
+  constructor(cap = 5400) {
+    rebuilds++;
+    this.cap = cap;
+    this.v = 0;
+    this.geo = new THREE.BufferGeometry();
+    this.buf = {};
+    const add = (name, size) => {
+      const arr = new Float32Array(cap * size);
+      const at = new THREE.BufferAttribute(arr, size);
+      at.setUsage(THREE.DynamicDrawUsage);
+      this.geo.setAttribute(name === 'position' ? 'position' : name, at);
+      this.buf[name] = arr;
+    };
+    /* normal нужен не свету — его спрашивает узловой материал, и без него
+       конвейер WebGPU не собирается вовсе: кадр уходит целиком в чёрное. */
+    add('position', 3); add('aSide', 3); add('normal', 3); add('aRib', 4); add('aGrow', 4);
+    this.geo.setDrawRange(0, 0);
+    this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
+    this.mesh = new THREE.Mesh(this.geo, fissureMat());
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    this.mesh.renderOrder = 2;
+    this.object = this.mesh;
+    this.prev = null;
+    this.branches = [];
+    this.branchCount = 0;
+    this.kind = 'fissure';
+  }
+
+  vertex(pt, across, birth) {
+    const i = this.v++;
+    const b = this.buf;
+    b.position[i * 3] = pt.p.x; b.position[i * 3 + 1] = pt.p.y; b.position[i * 3 + 2] = pt.p.z;
+    b.aSide[i * 3] = pt.side.x; b.aSide[i * 3 + 1] = pt.side.y; b.aSide[i * 3 + 2] = pt.side.z;
+    b.normal[i * 3] = 0; b.normal[i * 3 + 1] = 1; b.normal[i * 3 + 2] = 0;
+    b.aRib[i * 4] = across; b.aRib[i * 4 + 1] = pt.dist; b.aRib[i * 4 + 2] = pt.rank; b.aRib[i * 4 + 3] = pt.jit;
+    b.aGrow[i * 4] = pt.walk; b.aGrow[i * 4 + 1] = pt.maxWalk; b.aGrow[i * 4 + 2] = birth;
+  }
+
+  /** Сегмент — две вершины в одной точке пути; расходятся они уже в узле. */
+  quad(a, c, birth) {
+    if (this.v + 6 > this.cap) return;
+    this.vertex(a, -1, birth); this.vertex(c, -1, birth); this.vertex(c, 1, birth);
+    this.vertex(a, -1, birth); this.vertex(c, 1, birth); this.vertex(a, 1, birth);
+  }
+
+  push(pt, rng, now) {
+    const cur = {
+      p: pt.p.clone().addScaledVector(pt.n, LIFT), side: pt.t1, dist: pt.dist, jit: 0.75 + rng() * 0.5,
+      rank: 0, walk: 0, maxWalk: 1,
+    };
+    if (this.prev) this.quad(this.prev, cur, now);
+    this.prev = cur;
+
+    if (rng() < 0.26 && this.branchCount < MAX_BRANCH) {
+      const side = rng() < 0.5 ? -1 : 1;
+      const dir = new THREE.Vector2(pt.t2.x, pt.t2.z).normalize().multiplyScalar(side);
+      if (dir.lengthSq() > 0.01) {
+        this.branchCount++;
+        this.branches.push({
+          x: pt.p.x, z: pt.p.z, dir, walk: 0,
+          maxWalk: BRANCH_STEP * (3 + Math.floor(rng() * 7)),
+          rank: 0.05 + rng() * 0.95,
+          prev: { ...cur, rank: 0.05 + rng() * 0.95, walk: 0, maxWalk: 1 },
+        });
+        const b = this.branches[this.branches.length - 1];
+        b.prev.rank = b.rank;
+        b.prev.maxWalk = b.maxWalk;
+      }
+    }
+
+    for (let i = this.branches.length - 1; i >= 0; i--) {
+      const b = this.branches[i];
+      const wob = (rng() - 0.5) * 0.55;
+      b.dir.rotateAround({ x: 0, y: 0 }, wob).normalize();
+      b.x += b.dir.x * BRANCH_STEP;
+      b.z += b.dir.y * BRANCH_STEP;
+      b.walk += BRANCH_STEP;
+      const n = normalAt(b.x, b.z);
+      const { t1 } = tangentFrame(n);
+      const next = {
+        p: new THREE.Vector3(b.x, H(b.x, b.z), b.z).addScaledVector(n, LIFT), side: t1,
+        dist: b.prev.dist + BRANCH_STEP, jit: 0.6 + rng() * 0.5,
+        rank: b.rank, walk: b.walk, maxWalk: b.maxWalk,
+      };
+      this.quad(b.prev, next, now);
+      b.prev = next;
+      if (b.walk >= b.maxWalk) this.branches.splice(i, 1);
+    }
+
+    for (const name of Object.keys(this.buf)) this.geo.attributes[name].needsUpdate = true;
+    this.geo.setDrawRange(0, this.v);
+    this.mesh.visible = this.v > 0;
+  }
+
+  update() {}
+  stats() { return { instances: 0, visible: 0, triangles: this.v / 3, draws: 1, verts: this.v, branches: this.branchCount }; }
+  dispose() { this.geo.dispose(); }
+}
+
+/* ---------- полог ---------- */
+
+const ROWS = 9;
+
+class CurtainSheet {
+  constructor(phase, top, cap = 8200) {
+    this.cap = cap; this.v = 0; this.phase = phase; this.top = top;
+    this.geo = new THREE.BufferGeometry();
+    this.buf = {};
+    const add = (name, size) => {
+      const arr = new Float32Array(cap * size);
+      const at = new THREE.BufferAttribute(arr, size);
+      at.setUsage(THREE.DynamicDrawUsage);
+      this.geo.setAttribute(name, at);
+      this.buf[name] = arr;
+    };
+    add('position', 3); add('aSide', 3); add('aUp', 3); add('normal', 3); add('aSheet', 4);
+    this.geo.setDrawRange(0, 0);
+    this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
+    this.mesh = new THREE.Mesh(this.geo, curtainMat());
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    this.prev = null;
+  }
+
+  vertex(pt, v, birth) {
+    if (this.v >= this.cap) return;
+    const i = this.v++;
+    const b = this.buf;
+    b.position[i * 3] = pt.p.x + pt.n.x * LIFT;
+    b.position[i * 3 + 1] = pt.p.y + pt.n.y * LIFT;
+    b.position[i * 3 + 2] = pt.p.z + pt.n.z * LIFT;
+    b.aSide[i * 3] = pt.t1.x; b.aSide[i * 3 + 1] = pt.t1.y; b.aSide[i * 3 + 2] = pt.t1.z;
+    b.aUp[i * 3] = pt.n.x; b.aUp[i * 3 + 1] = pt.n.y; b.aUp[i * 3 + 2] = pt.n.z;
+    b.normal[i * 3] = pt.n.x; b.normal[i * 3 + 1] = pt.n.y; b.normal[i * 3 + 2] = pt.n.z;
+    b.aSheet[i * 4] = v; b.aSheet[i * 4 + 1] = pt.dist; b.aSheet[i * 4 + 2] = this.phase; b.aSheet[i * 4 + 3] = birth;
+  }
+
+  push(pt, now) {
+    if (this.prev) {
+      for (let r = 0; r < ROWS - 1; r++) {
+        const v0 = (r / (ROWS - 1)) * this.top, v1 = ((r + 1) / (ROWS - 1)) * this.top;
+        this.vertex(this.prev, v0, now); this.vertex(pt, v0, now); this.vertex(pt, v1, now);
+        this.vertex(this.prev, v0, now); this.vertex(pt, v1, now); this.vertex(this.prev, v1, now);
+      }
+      for (const name of Object.keys(this.buf)) this.geo.attributes[name].needsUpdate = true;
+      this.geo.setDrawRange(0, this.v);
+      this.mesh.visible = this.v > 0;
+    }
+    this.prev = pt;
+  }
+}
+
+class CurtainBrush {
+  constructor() {
+    this.object = new THREE.Group();
+    this.sheets = [new CurtainSheet(0, 1), new CurtainSheet(1.9, 0.66)];
+    for (const s of this.sheets) this.object.add(s.mesh);
+    this.kind = 'curtain';
+  }
+  push(pt, rng, now) { for (const s of this.sheets) s.push(pt, now); }
+  update() {}
+  stats() {
+    const v = this.sheets.reduce((a, s) => a + s.v, 0);
+    return { instances: 0, visible: 0, triangles: v / 3, draws: this.sheets.length, verts: v };
+  }
+  dispose() { for (const s of this.sheets) s.geo.dispose(); }
+}
+
+const KINDS = {
+  crystal: { label: 'Кристаллы', step: 0.5, make: makeCrystalBrush },
+  fissure: { label: 'Трещина', step: 0.26, make: () => new FissureBrush() },
+  curtain: { label: 'Полог', step: 0.42, make: () => new CurtainBrush() },
+  colony: { label: 'Колония', step: 0.55, make: makeColonyBrush },
+};
+
+/* ---------------------------------------------------------------------------
+   Штрих: сырые точки → равномерный путь → кисть. Перевыборка живёт здесь,
+   в одном месте на всю страницу, и её же меряет раздел «Перевыборка штриха».
+--------------------------------------------------------------------------- */
+const KNUTH = 2654435761;
+const strokeSeed = (global, index) => ((Math.imul(global, KNUTH) ^ (index * 40503 + 1)) >>> 0);
+
+const MAX_POINTS = 240;
+
+class Stroke {
+  constructor(kind, seedIndex, globalSeed) {
+    this.kind = kind;
+    this.step = KINDS[kind].step;
+    this.rng = mulberry32(strokeSeed(globalSeed, seedIndex));
+    this.brush = KINDS[kind].make();
+    this.object = this.brush.object;
+    this.travelled = 0;
+    this.next = 0;
+    this.pathDist = 0;
+    this.points = 0;
+    this.last = null;
+    this.raw = [];
+    this.gaps = [];
+  }
+
+  /** Сырая точка от указателя или от кривой — в мировых координатах земли. */
+  sample(x, z, now) {
+    if (this.points >= MAX_POINTS) return;
+    if (this.last === null) {
+      this.last = new THREE.Vector2(x, z);
+      this.raw.push([x, z]);
+      this.emit(x, z, now);
+      this.next = this.step;
+      return;
+    }
+    const seg = Math.hypot(x - this.last.x, z - this.last.y);
+    this.raw.push([x, z]);
+    if (seg > 0) this.gaps.push(seg);
+    let acc = this.travelled;
+    while (seg > 0 && acc + seg >= this.next && this.points < MAX_POINTS) {
+      const f = (this.next - acc) / seg;
+      this.emit(this.last.x + (x - this.last.x) * f, this.last.y + (z - this.last.y) * f, now);
+      this.next += this.step;
+    }
+    this.travelled += seg;
+    this.last.set(x, z);
+  }
+
+  emit(x, z, now) {
+    const pt = frameAt(x, z);
+    pt.dist = this.pathDist;
+    this.pathDist += this.step;
+    this.points++;
+    this.brush.push(pt, this.rng, now);
+  }
+
+  update(dt) { this.brush.update(dt); }
+  stats() { return this.brush.stats(); }
+  dispose() { this.brush.dispose(); }
+}
+
+/* ---------------------------------------------------------------------------
+   Холст.
+--------------------------------------------------------------------------- */
+const stage = {
+  canvas: $('paint'), renderer: null, scene: null, camera: null, post: null,
+  terrain: null, strokes: [], kind: 'crystal', seedIndex: 0, globalSeed: 7,
+  drawing: null, feed: null, visible: true, rayUs: 0, drew: false,
+};
+const MAX_STROKES = 9;
+const postOn = { bloom: true, vignette: true, aces: true };
+let sceneColor = null, bloomNode = null, vignetteNode = null;
+
+async function initStage() {
+  const r = new THREE.WebGPURenderer({ canvas: stage.canvas, antialias: true, trackTimestamp: true });
+  r.setPixelRatio(Math.min(devicePixelRatio, 2));
+  await r.init();
+  stage.renderer = r;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(PALETTE.night);
+  /* Туман считается от камеры, а камера стоит в 45 единицах: при ближней
+     границе меньше этого числа в тумане оказывается вся сцена целиком —
+     первый вариант страницы был именно таким и читался как чёрный лист. */
+  scene.fog = new THREE.Fog(new THREE.Color(PALETTE.night), 40, 104);
+  lights(scene);
+  stage.terrain = ground(60, 44);
+  scene.add(stage.terrain);
+  stage.scene = scene;
+  stage.camera = rigCamera(21, 1, new THREE.Vector3(0, 0, 0));
+
+  const scenePass = pass(scene, stage.camera, { samples: 4 });
+  sceneColor = scenePass.getTextureNode();
+  bloomNode = bloom(sceneColor, 0.85, 0.6, 0.22);
+  vignetteNode = float(1).sub(smoothstep(0.5, 0.92, screenUV.distance(vec2(0.5, 0.5))).mul(0.35));
+  stage.post = new THREE.PostProcessing(r);
+  applyPost();
+  resizeStage();
+
+  const back = r.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL2';
+  $('backend').textContent = back + ' · three ' + THREE.REVISION;
+  return back;
+}
+
+function applyPost() {
+  let out = sceneColor;
+  if (postOn.bloom) out = out.add(bloomNode);
+  if (postOn.vignette) out = out.mul(vignetteNode);
+  stage.post.outputNode = out;
+  stage.post.needsUpdate = true;
+  stage.renderer.toneMapping = postOn.aces ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+  stage.renderer.toneMappingExposure = 1.25;
+}
+
+const anyPost = () => postOn.bloom || postOn.vignette;
+
+function resizeStage() {
+  const w = stage.canvas.clientWidth, h = stage.canvas.clientHeight;
+  if (!w || !h) return;
+  stage.renderer.setSize(w, h, false);
+  fitCamera(stage.camera, w / h);
+}
+
+/* ---------- указатель ---------- */
+
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+
+function pick(e) {
+  const r = stage.canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, stage.camera);
+  const t0 = performance.now();
+  const hit = ray.intersectObject(stage.terrain, false)[0];
+  const us = (performance.now() - t0) * 1000;
+  stage.rayUs = stage.rayUs ? stage.rayUs * 0.85 + us * 0.15 : us;
+  return hit ? hit.point : null;
+}
+
+function beginStroke(kind) {
+  const s = new Stroke(kind, stage.seedIndex++, stage.globalSeed);
+  stage.scene.add(s.object);
+  stage.strokes.push(s);
+  while (stage.strokes.length > MAX_STROKES) {
+    const old = stage.strokes.shift();
+    stage.scene.remove(old.object);
+    old.dispose();
+  }
+  return s;
+}
+
+stage.canvas.addEventListener('pointerdown', (e) => {
+  if (!stage.renderer) return;
+  stage.canvas.setPointerCapture(e.pointerId);
+  stage.feed = null;
+  const p = pick(e);
+  stage.drawing = beginStroke(stage.kind);
+  if (p) stage.drawing.sample(p.x, p.z, clock);
+  stage.drew = true;
+  $('hint').style.opacity = '0';
+  e.preventDefault();
+});
+
+stage.canvas.addEventListener('pointermove', (e) => {
+  if (!stage.drawing) return;
+  const p = pick(e);
+  if (p) stage.drawing.sample(p.x, p.z, clock);
+  e.preventDefault();
+});
+
+const endStroke = () => {
+  if (!stage.drawing) return;
+  lastStroke = stage.drawing;
+  drawResample();
+  stage.drawing = null;
+};
+addEventListener('pointerup', endStroke);
+addEventListener('pointercancel', endStroke);
+
+/* ---------- штрих «за меня» ---------- */
+
+/** Кривая ведётся с меняющейся скоростью нарочно: ровный шаг сырых событий
+    не бывает у руки, и раздел о перевыборке меряет именно это. */
+function demoSamples(seed, scale, wobble) {
+  const rng = mulberry32(seed);
+  const out = [];
+  const turns = 1.4 + rng() * 1.6;
+  const phase = rng() * 6.28;
+  for (let i = 0; i <= 150; i++) {
+    const u = i / 150;
+    const speed = 0.55 + 0.45 * Math.sin(u * 9.1 + phase) + 0.3 * Math.sin(u * 21 + 1.1);
+    const t = u + 0.04 * Math.sin(u * 12 + phase) * speed;
+    const a = phase + t * turns * Math.PI;
+    const r = scale * (0.35 + 0.65 * t);
+    out.push([Math.cos(a) * r + Math.sin(t * 5) * wobble, Math.sin(a) * r * 0.8 + Math.cos(t * 4) * wobble]);
+  }
+  return out;
+}
+
+function autoStroke(kind, seed, scale) {
+  const s = beginStroke(kind);
+  stage.feed = { stroke: s, pts: demoSamples(seed, scale, 0.5), i: 0, acc: 0, rate: 42 };
+  stage.drew = true;
+  $('hint').style.opacity = '0';
+  return s;
+}
+
+/* ---------------------------------------------------------------------------
+   Плитки разделов. Рендерер на все четыре один: сцены рисуются по очереди
+   в его холст и переносятся в свой канвас копией кадра. Отдельный рендерер
+   на плитку — это отдельное устройство GPU на каждую, и платить четырежды
+   за то, что видно по одной штуке за раз, незачем.
+--------------------------------------------------------------------------- */
+const views = [];
+let viewsRenderer = null;
+let viewOff = null;
+let viewTurn = 0;
+
+function curveSamples(shape, seed, scale) {
+  const rng = mulberry32(seed);
+  const out = [];
+  const phase = rng() * 6.28;
+  const N = 150;
+  for (let i = 0; i <= N; i++) {
+    const u = i / N;
+    /* Скорость руки гуляет нарочно: ровного шага у сырых событий не бывает. */
+    const t = clamp01(u + 0.05 * Math.sin(u * 11 + phase) + 0.02 * Math.sin(u * 27));
+    let x, z;
+    if (shape === 'meander') {
+      x = (t - 0.5) * 2 * scale;
+      z = Math.sin(t * 5.2 + phase) * scale * 0.34 + Math.sin(t * 11 + phase) * scale * 0.08;
+    } else if (shape === 'arc') {
+      const a = Math.PI * (0.15 + t * 0.9) + phase * 0.1;
+      x = Math.cos(a) * scale;
+      z = Math.sin(a) * scale * 0.55;
+    } else if (shape === 'blob') {
+      const a = phase + t * Math.PI * 2;
+      const r = scale * (0.62 + 0.3 * Math.sin(a * 3 + phase));
+      x = Math.cos(a) * r; z = Math.sin(a) * r * 0.75;
+    } else {
+      const a = phase + t * Math.PI * 2.4;
+      const r = scale * (0.3 + 0.7 * t);
+      x = Math.cos(a) * r; z = Math.sin(a) * r * 0.8;
+    }
+    out.push([x, z]);
+  }
+  return out;
+}
+
+function makeView(id, kind, opts) {
+  const canvas = $(id);
+  const ctx = canvas.getContext('2d');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(PALETTE.night);
+  scene.fog = new THREE.Fog(new THREE.Color(PALETTE.night), 38, 82);
+  lights(scene);
+  scene.add(ground(opts.size ?? 40, 30));
+  const camera = rigCamera(opts.frustum ?? 13, 1);
+  const v = {
+    id, canvas, ctx, scene, camera, kind, opts, visible: false,
+    stroke: null, feed: null, idle: 0, seed: opts.seed,
+  };
+  v.reset = () => {
+    if (v.stroke) { scene.remove(v.stroke.object); v.stroke.dispose(); }
+    v.stroke = new Stroke(kind, 0, v.seed);
+    scene.add(v.stroke.object);
+    v.feed = { pts: curveSamples(opts.shape, v.seed, opts.scale ?? 5), i: 0, acc: 0, rate: opts.rate ?? 55 };
+    v.idle = 0;
+  };
+  v.update = (dt) => {
+    if (v.feed) {
+      v.feed.acc += dt * v.feed.rate;
+      while (v.feed.acc >= 1) {
+        v.feed.acc -= 1;
+        if (v.feed.i >= v.feed.pts.length) { v.feed = null; break; }
+        const s = v.feed.pts[v.feed.i++];
+        v.stroke.sample(s[0], s[1], clock);
+      }
+    } else {
+      v.idle += dt;
+      if (v.idle > (opts.hold ?? 4.5)) v.reset();
+    }
+    v.stroke.update(dt);
+  };
+  v.reset();
+  views.push(v);
+  const io = new IntersectionObserver((es) => { v.visible = es[0].isIntersecting; }, { rootMargin: '120px' });
+  io.observe(canvas);
+  return v;
+}
+
+async function initViews() {
+  viewOff = document.createElement('canvas');
+  viewsRenderer = new THREE.WebGPURenderer({ canvas: viewOff, antialias: true, trackTimestamp: true });
+  viewsRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  await viewsRenderer.init();
+  viewsRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  viewsRenderer.toneMappingExposure = 1.25;
+  makeView('viewCrystal', 'crystal', { shape: 'spiral', seed: 21, scale: 4.6, frustum: 13 });
+  makeView('viewFissure', 'fissure', { shape: 'meander', seed: 34, scale: 6.4, frustum: 15 });
+  makeView('viewCurtain', 'curtain', { shape: 'arc', seed: 12, scale: 5.4, frustum: 15, rate: 40 });
+  makeView('viewColony', 'colony', { shape: 'blob', seed: 55, scale: 4.2, frustum: 13 });
+  resizeViews();
+}
+
+function resizeViews() {
+  if (!viewsRenderer || views.length === 0) return;
+  const dpr = Math.min(devicePixelRatio, 2);
+  const w = views[0].canvas.clientWidth, h = views[0].canvas.clientHeight;
+  if (!w || !h) return;
+  viewsRenderer.setSize(w, h, false);
+  for (const v of views) {
+    v.canvas.width = Math.round(w * dpr);
+    v.canvas.height = Math.round(h * dpr);
+    fitCamera(v.camera, w / h);
+  }
+}
+
+async function renderViews() {
+  const live = views.filter((v) => v.visible);
+  if (live.length === 0) return;
+  const v = live[viewTurn++ % live.length];
+  await viewsRenderer.renderAsync(v.scene, v.camera);
+  v.ctx.drawImage(viewOff, 0, 0);
+  if (v.kind === 'crystal') {
+    const st = v.stroke.stats();
+    $('cAll').textContent = fmt(st.instances);
+    $('cVis').textContent = fmt(st.visible);
+    $('cDraw').textContent = fmt(viewsRenderer.info.render.drawCalls);
+    $('cTri').textContent = fmt(viewsRenderer.info.render.triangles);
+    const ts = viewsRenderer.info.render.timestamp;
+    if (ts > 0) $('cGpu').textContent = ts.toFixed(2);
+  }
+  if (v.kind === 'fissure') {
+    const st = v.stroke.stats();
+    $('fVerts').textContent = fmt(st.verts);
+    $('fBr').textContent = fmt(st.branches);
+    $('fDraw').textContent = fmt(viewsRenderer.info.render.drawCalls);
+    $('fRebuild').textContent = fmt(rebuilds);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Кадр. Один цикл на обе сцены: холст каждый кадр, плитки — по одной за кадр
+   и только видимые.
+--------------------------------------------------------------------------- */
+let clock = 0;
+let lastT = performance.now();
+let frames = 0;
+let busy = false;
+
+/* Цикл — рендерера, а не свой. Узловой кадр (а с ним проход сцены в pass()
+   и сброс счётчиков info) двигает только собственный цикл анимации: при
+   своём requestAnimationFrame граф замирает на первом кадре, и сцена
+   продолжает рисоваться, но в кадр попадает картинка, снятая один раз.
+   Так эта страница и выглядела до того, как счётчик кадров показал единицу. */
+function startLoop() {
+  stage.renderer.setAnimationLoop(() => {
+    if (busy) return;
+    busy = true;
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - lastT) / 1000);
+    lastT = now;
+    tick(dt).finally(() => { busy = false; });
+  });
+  /* Второму рендереру цикл нужен ровно за тем же — двигать свой узловой кадр. */
+  viewsRenderer.setAnimationLoop(() => {});
+}
+
+async function tick(dt) {
+  clock += dt;
+  uTime.value = clock;
+
+  if (stage.feed) {
+    const f = stage.feed;
+    f.acc += dt * f.rate;
+    while (f.acc >= 1) {
+      f.acc -= 1;
+      if (f.i >= f.pts.length) {
+        stage.feed = null;
+        lastStroke = f.stroke;
+        drawResample();
+        break;
+      }
+      const s = f.pts[f.i++];
+      f.stroke.sample(s[0], s[1], clock);
+    }
+  }
+  for (const s of stage.strokes) s.update(dt);
+  for (const v of views) if (v.visible) v.update(dt);
+
+  if (stage.visible || collector) {
+    if (anyPost()) await stage.post.renderAsync();
+    else await stage.renderer.renderAsync(stage.scene, stage.camera);
+    frames++;
+    if (collector || frames % 6 === 0) await stage.renderer.resolveTimestampsAsync('render');
+    if (collector) sampleFrame();
+    await renderViews();
+    if (frames % 6 === 3) await viewsRenderer.resolveTimestampsAsync('render');
+    if (frames % 12 === 0) updateMeters();
+  } else {
+    frames++;
+    await renderViews();
+    if (frames % 6 === 3) await viewsRenderer.resolveTimestampsAsync('render');
+  }
+}
+
+/* Замер идёт кадрами того же цикла: собственный цикл рендерил бы застывший
+   проход сцены и мерил бы не сцену, а один полноэкранный треугольник. */
+let collector = null;
+const collect = (total, warmup) => new Promise((res) => { collector = { total, warmup, i: 0, ms: [], res }; });
+
+function sampleFrame() {
+  const c = collector;
+  const ts = stage.renderer.info.render.timestamp;
+  c.i++;
+  if (c.i > c.warmup) c.ms.push(ts > 0 ? ts : NaN);
+  if (c.i >= c.total) { collector = null; c.res(c.ms); }
+}
+
+function updateMeters() {
+  const info = stage.renderer.info.render;
+  const ts = info.timestamp;
+  $('mGpu').textContent = ts > 0 ? ts.toFixed(2) : '—';
+  $('mDraw').textContent = fmt(info.drawCalls);
+  $('mTri').textContent = fmt(info.triangles);
+  let inst = 0, pts = 0;
+  for (const s of stage.strokes) { inst += s.stats().instances; pts += s.points; }
+  $('mInst').textContent = fmt(inst);
+  $('mStroke').textContent = fmt(stage.strokes.length);
+  $('mPts').textContent = fmt(pts);
+  $('mRay').textContent = stage.rayUs ? Math.round(stage.rayUs).toString() : '—';
+  const vr = $('vRay');
+  if (vr && stage.rayUs) vr.textContent = String(Math.round(stage.rayUs));
+}
+
+/* ---------------------------------------------------------------------------
+   Плоские схемы. Три вещи из разбора смотреть в 3D незачем: перевыборка,
+   вырожденный репер и кривая роста — это графики, и рисуются они холстом 2D.
+--------------------------------------------------------------------------- */
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+
+function fitFlat(canvas, cssHeight) {
+  const dpr = Math.min(devicePixelRatio, 2);
+  /* Ширина берётся у родителя, но у него она бывает нулевой — например,
+     во вкладке, которую браузер не раскладывает. Нулевой канвас потом
+     роняет всё, что попробует с него рисовать, поэтому есть нижняя граница. */
+  const box = canvas.parentElement;
+  const w = Math.max(320, box.clientWidth || Math.round(box.getBoundingClientRect().width) || 0);
+  canvas.style.height = cssHeight + 'px';
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, cssHeight);
+  return { ctx, w, h: cssHeight };
+}
+
+let lastStroke = null;
+
+function drawResample() {
+  const { ctx, w, h } = fitFlat($('resCanvas'), 196);
+  const dim = css('--dim'), line = css('--line'), brass = css('--brass'), ember = css('--ember');
+  ctx.font = '11px ui-monospace, Menlo, monospace';
+  if (!lastStroke || lastStroke.raw.length < 3) {
+    ctx.fillStyle = dim;
+    ctx.fillText('проведите по холсту выше — здесь появится замер вашего штриха', 18, h / 2);
+    return;
+  }
+  const s = lastStroke;
+  const pad = 20;
+  const gaps = s.gaps.slice();
+  const total = gaps.reduce((a, b) => a + b, 0);
+  const maxGap = Math.max(...gaps), minGap = Math.min(...gaps);
+  const X = (d) => pad + (d / total) * (w - pad * 2);
+
+  ctx.strokeStyle = line;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, 74); ctx.lineTo(w - pad, 74); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, 150); ctx.lineTo(w - pad, 150); ctx.stroke();
+
+  ctx.fillStyle = dim;
+  ctx.fillText('сырые события указателя: ' + s.raw.length, pad, 26);
+  ctx.fillText('после перевыборки, шаг ' + s.step.toFixed(2) + ' ед.: ' + s.points, pad, 172);
+
+  /* Столбик над засечкой — длина шага. Ровный частокол внизу против рваного
+     сверху и есть весь смысл приёма. */
+  let d = 0;
+  for (const g of gaps) {
+    const x = X(d);
+    const bar = (g / maxGap) * 40;
+    ctx.strokeStyle = ember;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.moveTo(x, 74); ctx.lineTo(x, 74 - bar); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = css('--text');
+    ctx.beginPath(); ctx.moveTo(x, 70); ctx.lineTo(x, 78); ctx.stroke();
+    d += g;
+  }
+  ctx.strokeStyle = brass;
+  for (let i = 0; i < s.points; i++) {
+    const x = X(Math.min(i * s.step, total));
+    ctx.beginPath(); ctx.moveTo(x, 146); ctx.lineTo(x, 154); ctx.stroke();
+  }
+
+  $('rEv').textContent = fmt(s.raw.length);
+  $('rMin').textContent = minGap.toFixed(3);
+  $('rMax').textContent = maxGap.toFixed(2);
+  $('rRatio').textContent = (maxGap / Math.max(minGap, 1e-4)).toFixed(0) + '×';
+  $('rOut').textContent = fmt(s.points);
+  $('rStep').textContent = s.step.toFixed(2);
+}
+
+/* ---------- вырожденный репер ---------- */
+
+const frameState = { angle: 0.9, guard: true };
+
+function blobR(a) { return 1 + 0.16 * Math.sin(a * 3 + 0.7) + 0.08 * Math.cos(a * 5); }
+
+function blobNormal(a) {
+  const e = 0.001;
+  const p = (t) => [Math.cos(t) * blobR(t), Math.sin(t) * blobR(t)];
+  const [x0, y0] = p(a - e), [x1, y1] = p(a + e);
+  const tx = x1 - x0, ty = y1 - y0;
+  const len = Math.hypot(tx, ty);
+  let nx = ty / len, ny = -tx / len;
+  if (nx * Math.cos(a) + ny * Math.sin(a) < 0) { nx = -nx; ny = -ny; }
+  return [nx, ny];
+}
+
+function drawFrame() {
+  const { ctx, w, h } = fitFlat($('frameCanvas'), 264);
+  const cx = w / 2, cy = h / 2 - 10, R = Math.min(w * 0.2, 86);
+  const dim = css('--dim'), line = css('--line'), brass = css('--brass'), blood = css('--blood'), text = css('--text');
+  ctx.font = '11px ui-monospace, Menlo, monospace';
+
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 360; i++) {
+    const a0 = (i / 180) * Math.PI, a1 = ((i + 1) / 180) * Math.PI;
+    const [nx] = blobNormal((a0 + a1) / 2);
+    ctx.strokeStyle = Math.abs(nx) > 0.9 ? blood : line;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a0) * blobR(a0) * R, cy - Math.sin(a0) * blobR(a0) * R);
+    ctx.lineTo(cx + Math.cos(a1) * blobR(a1) * R, cy - Math.sin(a1) * blobR(a1) * R);
+    ctx.stroke();
+  }
+
+  const a = frameState.angle;
+  const r = blobR(a) * R;
+  const px = cx + Math.cos(a) * r, py = cy - Math.sin(a) * r;
+  const [nx, ny] = blobNormal(a);
+  const guard = frameState.guard && Math.abs(nx) > 0.9;
+  /* Длина векторного произведения до нормировки — то самое число, которое
+     без защиты уходит в ноль. Считается ровно как в tangentFrame(). */
+  const crossLen = guard ? Math.abs(nx) : Math.abs(ny);
+  const t2x = ny * (guard ? -1 : 1), t2y = -nx * (guard ? -1 : 1);
+
+  const arrow = (x, y, dx, dy, len, col, label) => {
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
+    const ex = x + dx * len, ey = y - dy * len;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+    const ang = Math.atan2(-dy, dx);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - Math.cos(ang - 0.4) * 8, ey - Math.sin(ang - 0.4) * 8);
+    ctx.lineTo(ex - Math.cos(ang + 0.4) * 8, ey - Math.sin(ang + 0.4) * 8);
+    ctx.closePath(); ctx.fill();
+    ctx.fillText(label, ex + 6, ey - 4);
+  };
+
+  arrow(px, py, nx, ny, 54, brass, 'n');
+  arrow(px, py, t2x, t2y, 40 * Math.max(crossLen, 0.02), text, 't2');
+  ctx.strokeStyle = crossLen < 0.15 ? blood : text;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(px, py, Math.max(3, 13 * crossLen), 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = dim;
+  ctx.fillText('|n.x| = ' + Math.abs(nx).toFixed(3), 18, 26);
+  ctx.fillText('опорная ось = ' + (guard ? '(0, 1, 0) — сработала защита' : '(1, 0, 0)'), 18, 44);
+  ctx.fillStyle = crossLen < 0.15 ? blood : text;
+  ctx.fillText('|ось × n| = ' + crossLen.toFixed(3) + (crossLen < 0.15 ? '  ← репер рассыпается' : ''), 18, 62);
+  ctx.fillStyle = dim;
+  ctx.fillText('t1 смотрит из плоскости листа — он показан кружком,', 18, h - 34);
+  ctx.fillText(frameState.guard
+    ? 'и его радиус — та самая длина. Защита включена: ниже 0.436 не опускается.'
+    : 'и его радиус — та самая длина. Защита снята: в красной зоне он схлопывается.', 18, h - 16);
+}
+
+$('frameCanvas').addEventListener('pointermove', (e) => {
+  const r = $('frameCanvas').getBoundingClientRect();
+  const cx = r.width / 2, cy = r.height / 2 - 10;
+  frameState.angle = Math.atan2(-(e.clientY - r.top - cy), e.clientX - r.left - cx);
+  drawFrame();
+});
+
+/* ---------- кривая роста ---------- */
+
+function drawGrow() {
+  const { ctx, w, h } = fitFlat($('growCanvas'), 250);
+  const dim = css('--dim'), line = css('--line'), brass = css('--brass'), text = css('--text');
+  const aniso = $('gAniso').checked;
+  const front = Number($('gT').value);
+  ctx.font = '11px ui-monospace, Menlo, monospace';
+  const L = 26, R = w - 26, T = 22, B = 150;
+  const X = (t) => L + t * (R - L);
+  const Y = (v) => B - (v / 1.25) * (B - T);
+
+  ctx.strokeStyle = line; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(L, Y(1)); ctx.lineTo(R, Y(1)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(L, Y(0)); ctx.lineTo(R, Y(0)); ctx.stroke();
+  ctx.fillStyle = dim;
+  ctx.fillText('1.0', 4, Y(1) + 4); ctx.fillText('0', 12, Y(0) + 4);
+
+  const plot = (fn, col, dash) => {
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash);
+    ctx.beginPath();
+    for (let i = 0; i <= 120; i++) {
+      const t = i / 120, v = fn(t);
+      i ? ctx.lineTo(X(t), Y(v)) : ctx.moveTo(X(t), Y(v));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  plot((t) => easeOutBack(t), brass, []);
+  plot((t) => { const k = easeOutBack(t); return aniso ? k * (0.6 + 0.4 * k) : k; }, text, [4, 3]);
+  const legendX = Math.max(L + 6, R - 230);
+  ctx.fillStyle = brass; ctx.fillText('высота: easeOutBack(t)', legendX, B - 26);
+  ctx.fillStyle = text; ctx.fillText(aniso ? 'ширина: k · (0.6 + 0.4k)' : 'ширина: k', legendX, B - 10);
+
+  const k0 = front >= 1 ? 1 : easeOutBack(front);
+  ctx.fillStyle = brass;
+  ctx.beginPath(); ctx.arc(X(front), Y(k0), 4, 0, Math.PI * 2); ctx.fill();
+
+  /* Ряд экземпляров: у каждого своя дистанция рождения, фронт один. */
+  const n = 13;
+  ctx.fillStyle = dim;
+  ctx.fillText('фронт идёт по дистанции — таймера у экземпляров нет', L, 178);
+  for (let i = 0; i < n; i++) {
+    const birth = i / (n - 1);
+    const t = clamp01((front * 1.35 - birth) / 0.34);
+    const k = t <= 0 ? 0 : t >= 1 ? 1 : easeOutBack(t);
+    const kw = aniso ? k * (0.6 + 0.4 * k) : k;
+    const x = L + (i + 0.5) * ((R - L) / n);
+    const base = 232, hh = 44 * k, ww = 11 * kw;
+    /* Ещё не рождённые тоже нарисованы — точкой. Пустое место читалось бы
+       как «их нет», а они есть: у каждого уже посчитаны все числа. */
+    if (k <= 0) {
+      ctx.fillStyle = line;
+      ctx.beginPath(); ctx.arc(x, base - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+      continue;
+    }
+    ctx.fillStyle = brass;
+    ctx.globalAlpha = 0.35 + 0.65 * Math.min(1, k);
+    ctx.beginPath();
+    ctx.moveTo(x - ww, base); ctx.lineTo(x, base - hh); ctx.lineTo(x + ww, base); ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = css('--ember'); ctx.lineWidth = 1.5;
+  const fx = L + clamp01(front * 1.35) * (R - L);
+  ctx.beginPath(); ctx.moveTo(fx, 186); ctx.lineTo(fx, 236); ctx.stroke();
+}
+
+/* ---------------------------------------------------------------------------
+   Органы управления. Ползунки правят узлы, а не пересобирают буферы, —
+   поэтому счётчик пересборок под трещиной и стоит рядом со счётчиком движений.
+--------------------------------------------------------------------------- */
+const allStrokes = () => [...stage.strokes, ...views.map((v) => v.stroke)].filter(Boolean);
+
+function setDensity(v) {
+  density = v;
+  for (const s of allStrokes()) if (s.brush.refresh) s.brush.refresh();
+  $('density').value = String(v);
+  $('cDensity').value = String(v);
+  $('densityV').textContent = Math.round(v * 100) + '%';
+  $('cDensityV').textContent = Math.round(v * 100) + '%';
+}
+
+function setGlass(on) {
+  glassOn = on;
+  for (const s of allStrokes()) {
+    if (s.brush.kind === 'crystal') s.brush.mesh.material = crystalMat(on);
+  }
+}
+
+function toggleBar(host, items, get, set) {
+  for (const [i, label] of items.entries()) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(get(i)));
+    b.onclick = () => { set(i, !get(i)); b.setAttribute('aria-pressed', String(get(i))); };
+    host.append(b);
+  }
+}
+
+function buildControls() {
+  const bar = $('brushes');
+  for (const [key, k] of Object.entries(KINDS)) {
+    const b = document.createElement('button');
+    b.textContent = k.label;
+    b.setAttribute('aria-pressed', String(key === stage.kind));
+    b.onclick = () => {
+      stage.kind = key;
+      for (const x of bar.children) x.setAttribute('aria-pressed', String(x === b));
+    };
+    bar.append(b);
+  }
+
+  $('density').oninput = (e) => setDensity(Number(e.target.value));
+  $('cDensity').oninput = (e) => setDensity(Number(e.target.value));
+  $('seed').oninput = (e) => {
+    stage.globalSeed = Number(e.target.value);
+    $('seedV').textContent = e.target.value;
+  };
+  $('clear').onclick = () => {
+    for (const s of stage.strokes) { stage.scene.remove(s.object); s.dispose(); }
+    stage.strokes.length = 0;
+    stage.feed = null;
+  };
+  $('demo').onclick = () => autoStroke(stage.kind, stage.globalSeed * 13 + stage.seedIndex, 7.6);
+
+  $('cGlass').onchange = (e) => setGlass(e.target.checked);
+  $('cReplay').onclick = () => { for (const v of views) if (v.kind === 'crystal') v.reset(); };
+
+  const move = (el, out, fn, digits) => {
+    el.oninput = (e) => {
+      const v = Number(e.target.value);
+      sliderMoves++;
+      $('fMoves') && ($('fMoves').textContent = fmt(sliderMoves));
+      $('fRebuild') && ($('fRebuild').textContent = fmt(rebuilds));
+      out.textContent = digits === 0 ? Math.round(v * 100) + '%' : v.toFixed(digits);
+      fn(v);
+    };
+  };
+  move($('fWidth'), $('fWidthV'), (v) => { uWidth.value = v; }, 2);
+  move($('fBranch'), $('fBranchV'), (v) => { uBranch.value = v; }, 0);
+  move($('kWave'), $('kWaveV'), (v) => { uWave.value = v; }, 2);
+  move($('kHeight'), $('kHeightV'), (v) => { uHeight.value = v; }, 2);
+  move($('pPulse'), $('pPulseV'), (v) => { uPulse.value = v; }, 2);
+  $('kBroken').onchange = (e) => { uBroken.value = e.target.checked ? 1 : 0; };
+  $('pOwn').onchange = (e) => { uOwn.value = e.target.checked ? 1 : 0; };
+
+  toggleBar($('heatTerms'), ['центр сечения', 'пульс', 'мерцание', 'вспышка фронта'],
+    (i) => uHeat[i].value > 0.5, (i, on) => { uHeat[i].value = on ? 1 : 0; });
+
+  toggleBar($('postToggles'), ['bloom', 'виньетка', 'ACES'],
+    (i) => [postOn.bloom, postOn.vignette, postOn.aces][i],
+    (i, on) => { postOn[['bloom', 'vignette', 'aces'][i]] = on; applyPost(); });
+
+  $('guardOff').onchange = (e) => { frameState.guard = !e.target.checked; drawFrame(); };
+  $('gT').oninput = (e) => { $('gTV').textContent = Number(e.target.value).toFixed(2); drawGrow(); };
+  $('gAniso').onchange = drawGrow;
+  $('sSeed').oninput = (e) => { $('sSeedV').textContent = e.target.value; };
+  $('sRun').onclick = runSeedTable;
+  $('postRun').onclick = measurePost;
+}
+
+/* ---------------------------------------------------------------------------
+   Сид: контрольная сумма параметров экземпляров. FNV-1a по 32-битным долям
+   чисел — не ради криптографии, а ради того, чтобы «одинаково» было числом.
+--------------------------------------------------------------------------- */
+const f32 = new Float32Array(1);
+const u32 = new Uint32Array(f32.buffer);
+
+function checksum(globalSeed, index) {
+  const s = new Stroke('crystal', index, globalSeed);
+  for (const [x, z] of curveSamples('spiral', 9, 4.5)) s.sample(x, z, 0);
+  let hsh = 0x811c9dc5;
+  const eat = (v) => {
+    f32[0] = v;
+    const x = u32[0];
+    for (let b = 0; b < 4; b++) {
+      hsh = ((hsh ^ ((x >>> (b * 8)) & 255)) >>> 0);
+      hsh = Math.imul(hsh, 16777619) >>> 0;
+    }
+  };
+  for (const it of s.brush.inst) {
+    eat(it.p.x); eat(it.p.y); eat(it.p.z);
+    eat(it.sx); eat(it.sy); eat(it.rank);
+    eat(it.q.x); eat(it.q.y); eat(it.q.z); eat(it.q.w);
+  }
+  const out = { n: s.brush.inst.length, hex: hsh.toString(16).padStart(8, '0') };
+  s.dispose();
+  return out;
+}
+
+function runSeedTable() {
+  const seed = Number($('sSeed').value);
+  const body = $('seedTable').querySelector('tbody');
+  body.textContent = '';
+  const rows = [];
+  for (let i = 0; i < 3; i++) rows.push([seed, i, checksum(seed, i), checksum(seed, i)]);
+  rows.push([seed + 1, 0, checksum(seed + 1, 0), checksum(seed + 1, 0)]);
+  for (const [sd, idx, a, b] of rows) {
+    const tr = document.createElement('tr');
+    const same = a.hex === b.hex;
+    tr.innerHTML =
+      '<td class="mono">' + sd + '</td>' +
+      '<td class="mono">' + idx + '</td>' +
+      '<td class="num">' + a.n + '</td>' +
+      '<td class="mono">' + a.hex + '</td>' +
+      '<td class="mono" style="color:' + (same ? css('--moss') : css('--blood')) + '">' +
+        b.hex + (same ? ' · совпало' : ' · разошлось') + '</td>';
+    body.append(tr);
+  }
+  $('seedNote').textContent =
+    'Сид ' + seed + ' и сид ' + (seed + 1) + ' дают разные штрихи, но каждый — свой, тот же самый при повторе. ' +
+    'Сумма считается по позиции, масштабу, рангу и повороту каждого экземпляра: FNV-1a по 32-битным долям чисел.';
+}
+
+/* ---------------------------------------------------------------------------
+   Замер пост-обработки. Одна и та же сцена, четыре конфигурации, время —
+   с таймстемпов GPU; если их нет, берётся время стены и об этом сказано.
+--------------------------------------------------------------------------- */
+async function measurePost() {
+  const btn = $('postRun');
+  btn.disabled = true;
+  const saved = { ...postOn };
+  const configs = [
+    ['голая сцена', { bloom: false, vignette: false, aces: false }],
+    ['+ ACES', { bloom: false, vignette: false, aces: true }],
+    ['+ виньетка', { bloom: false, vignette: true, aces: true }],
+    ['+ bloom — полный граф', { bloom: true, vignette: true, aces: true }],
+  ];
+  const rows = [];
+  let wallOnly = false;
+  for (const [name, cfg] of configs) {
+    Object.assign(postOn, cfg);
+    applyPost();
+    $('postState').textContent = 'меряю: ' + name + '…';
+    const ms = (await collect(70, 22)).filter((v) => Number.isFinite(v));
+    if (ms.length === 0) { wallOnly = true; rows.push([name, NaN]); continue; }
+    ms.sort((a, b) => a - b);
+    rows.push([name, ms[Math.floor(ms.length / 2)]]);
+  }
+  Object.assign(postOn, saved);
+  applyPost();
+  btn.disabled = false;
+  $('postState').textContent = '';
+
+  const body = $('postTable').querySelector('tbody');
+  body.textContent = '';
+  const base = rows[0][1];
+  rows.forEach(([name, ms], i) => {
+    const tr = document.createElement('tr');
+    const delta = i === 0 || !Number.isFinite(ms) ? '—'
+      : (ms - base >= 0 ? '+' : '') + (ms - base).toFixed(2) + ' мс';
+    tr.innerHTML =
+      '<td>' + name + '</td>' +
+      '<td class="num">' + (Number.isFinite(ms) ? ms.toFixed(2) : '—') + '</td>' +
+      '<td class="num">' + delta + '</td>';
+    body.append(tr);
+  });
+  const cost = rows[3][1] - base;
+  $('postNote').textContent = wallOnly
+    ? 'Таймстемпы GPU в этом браузере недоступны, а без них честного времени кадра не снять: ' +
+      'время стены на renderAsync меряет очередь, а не работу видеокарты.'
+    : 'Время снято таймстемпами GPU: медиана 48 кадров из 70, первые 22 — прогрев. Полный граф стоит ' +
+      cost.toFixed(2) + ' мс на кадр при ' + fmt(stage.renderer.info.render.triangles) + ' треугольниках сцены.';
+  const el = $('vBloom');
+  if (el && Number.isFinite(cost)) el.textContent = cost.toFixed(2) + ' мс';
+}
+
+/* ---------------------------------------------------------------------------
+   Выводы. Собираются после замеров и подставляют в текст то, что намерили.
+--------------------------------------------------------------------------- */
+function buildVerdict(backend) {
+  const tris = stage.terrain.geometry.attributes.position.count / 3;
+  $('verdict').innerHTML = `
+    <div class="key">
+      <h3>Ноль веса ассетов</h3>
+      <p>Кристалл — это ${SHARD_TRIS} треугольников и десять чисел на экземпляр; в бандле от него
+        ничего. Лес (<code>forest.data.ts</code>) едет запечённой геометрией всем игрокам,
+        и <b>процедурная мелочь — единственный способ добавить разнообразия, не добавив килобайтов</b>.
+        Это прямо по §6.1: без текстур, цвет из палитры, плоское затенение.</p>
+    </div>
+    <div class="key">
+      <h3>Отбраковка рангом — берём</h3>
+      <p>Ранг раздаётся при рождении, порог сравнивается с ним, вызовов отрисовки столько же.
+        У нас ровно эта задача уже стоит у травы (<code>src/render/grass.ts</code>): плотность
+        зависит от устройства, а <b>трава при смене плотности не должна пересаживаться</b>.
+        Сейчас меняется <code>count</code> — исчезают последние; с рангом исчезают
+        всегда одни и те же.</p>
+    </div>
+    <div class="key">
+      <h3>Сид уже наш</h3>
+      <p>Страница не завела своего ГПСЧ: <code>mulberry32</code> взят из <code>src/core/rng.ts</code>,
+        сид штриха собран из общего умножением на константу Кнута. Таблица выше показывает,
+        что повтор даёт ту же контрольную сумму, — значит, <b>процедурная мелочь воспроизводима
+        так же, как локация</b>, и баг в ней ловится сидом.</p>
+    </div>
+    <div class="no">
+      <h3>Рендерер другой</h3>
+      <p>Игра рисуется <code>WebGLRenderer</code>, а узловые материалы работают только
+        в <code>WebGPURenderer</code>. Здесь он поднялся на бэкенде <b><span id="vBackend">${backend}</span></b> —
+        то есть <b>WebGPU у игрока не обязателен</b>, есть откат на WebGL2. Но переезд —
+        это переписать все материалы игры на узлы, и это отдельное решение, а не побочный эффект.
+        Цена в килобайтах известна: <code>npm run build</code> кладёт эту страницу в чанк
+        <b>610 КБ (175 КБ gzip)</b> против <b>586 КБ (149 КБ gzip)</b> у той three, которую тянет игра.</p>
+    </div>
+    <div class="no">
+      <h3>Стекло — мимо правил</h3>
+      <p>Transmission и dispersion дают ту самую хрустальную картинку из разбора и ломают
+        §6.1 сразу в двух местах: это не плоское затенение и не цвет из палитры. Включите
+        флажок в разделе про кристаллы и посмотрите на счётчик кадра — <b>цена видна там же,
+        где вид</b>.</p>
+    </div>
+    <div>
+      <h3>Свечение стоит кадра</h3>
+      <p>Bloom, виньетка и ACES — узловой граф, а не цепочка проходов, но кадр они всё равно
+        едят: <b><span id="vBloom">замерьте в разделе ниже</span></b> к голой сцене. Для лагеря
+        это допустимо, для вылазки на телефоне — предмет отдельного замера, а не вкуса.</p>
+    </div>
+    <div>
+      <h3>Луч дешевле зависимости</h3>
+      <p>В разборе по поверхности стреляют через <code>three-mesh-bvh</code>. Наша земля —
+        ${fmt(tris)} треугольников, и обычный <code>Raycaster</code> отвечает за
+        <b><span id="vRay">${stage.rayUs ? Math.round(stage.rayUs) : '—'}</span> мкс</b> на событие
+        (счётчик «луч» на холсте). <b>Зависимости не нужно</b>, пока сцена такого размера.</p>
+    </div>
+    <div>
+      <h3>Кисть — инструмент, а не механика</h3>
+      <p>Рисовать геометрию руками игроку негде: локации собирает <code>src/sim/generate.ts</code>,
+        и по правилу <code>npm run arch</code> симуляция не знает про three. Что переносится —
+        это путь: <b>перевыборка по длине дуги и репер — чистая математика</b> и живут в sim,
+        а геометрия по этим точкам строится в render.</p>
+    </div>`;
+}
+
+/* ---------------------------------------------------------------------------
+   Запуск.
+--------------------------------------------------------------------------- */
+function fail(text) {
+  const w = $('warn');
+  w.textContent = text;
+  w.hidden = false;
+}
+
+addEventListener('resize', () => {
+  if (stage.renderer) resizeStage();
+  resizeViews();
+  drawResample(); drawFrame(); drawGrow();
+});
+
+new IntersectionObserver((es) => { stage.visible = es[0].isIntersecting; }, { rootMargin: '200px' })
+  .observe(stage.canvas);
+
+try {
+  const backend = await initStage();
+  await initViews();
+  buildControls();
+  drawResample();
+  drawFrame();
+  drawGrow();
+  runSeedTable();
+  buildVerdict(backend);
+  setDensity(1);
+  autoStroke('crystal', 3, 7.4);
+  startLoop();
+  if (backend !== 'WebGPU') {
+    fail('WebGPU в этом браузере недоступен — страница поднялась на откате WebGL2. ' +
+      'Узловые материалы работают, времена кадра будут другими.');
+  }
+} catch (e) {
+  fail('Сцена не поднялась: ' + (e && e.message ? e.message : e) +
+    '. Страница требует браузера с WebGPU или WebGL2.');
+  console.error(e);
+}
+</script>

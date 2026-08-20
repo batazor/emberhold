@@ -292,7 +292,14 @@ const SKELETONS: Pack = {
   fallback: 'steel',
   /** Серого поля у этого атласа нет: сталь набора и есть почти серое. */
   grey: 0.02,
-  pose: { file: 'clips/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
+  /**
+   * Клип берётся из соседнего набора анимаций, а не из своего: скелеты
+   * приехали с двумя файлами клипов, и оба побайтно совпадают с файлами
+   * `kaykit-animations` — тот же риг, те же дорожки. Хранить их дважды значит
+   * держать полтора мегабайта одного и того же и две строки в реестре
+   * лицензий на один и тот же файл.
+   */
+  pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
   attach: ['handslot.r'],
   categoryOf: (name) => SKELETON_CATEGORIES[name.split('_')[1]!] ?? 'Прочее',
   /**

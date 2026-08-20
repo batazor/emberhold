@@ -123,7 +123,14 @@ const STORAGE_OK = new Set(['src/sim/save.ts', 'src/sim/telemetry.ts']);
  * Список именной: новый файл в core/, потянувшийся к DOM, обязан объяснить
  * себя здесь, а не проскочить под общим разрешением слоя.
  */
-const BROWSER_HARNESS = new Set(['src/core/loop.ts', 'src/core/clock.ts']);
+const BROWSER_HARNESS = new Set([
+  'src/core/loop.ts',
+  'src/core/clock.ts',
+  // Звук (§18) — такая же обвязка, как часы и цикл: ему положено знать про
+  // AudioContext и про сворачивание вкладки. Игровой логики в нём нет, что
+  // играть — решает main по изменениям состояния.
+  'src/core/audio.ts',
+]);
 
 for (const [file, code] of source) {
   const layer = layerOf(file);

@@ -180,6 +180,13 @@
       поэтому мелодия есть только в лагере — короткая петля, которая звучит,
       пока игрок думает, и обрывается на выходе в вылазку.</p>
     <div class="snd" id="amb"></div>
+
+    <h3 style="margin:26px 0 8px">Мелодия лагеря</h3>
+    <p>Единственная мелодия в игре. Две фразы вперемешку в ля-миноре — том же строе,
+      что арпеджио роста здания, поэтому достроившееся под музыку здание попадает
+      внутрь неё, а не поверх. Главное здесь не ноты, а тишина:
+      <b>пауза между фразами длиннее самой фразы</b>. Ею петля и не надоедает.</p>
+    <div class="snd" id="tune"></div>
   </div>
 
   <div class="sec">
@@ -417,12 +424,64 @@
     ambEl.appendChild(card);
   });
 
+  // ——— мелодия лагеря ———
+  // Ноты номерами MIDI, а не в герцах: строй тогда видно глазами, и он
+  // проверяется правилом в игре (core/audio.rules.ts).
+  var PHRASES=[
+    {notes:[[69,0,0.9],[72,0.55,0.7],[76,1.1,1.1],[74,2.0,0.8],[69,2.7,1.4]],rest:6},
+    {notes:[[64,0,1.0],[67,0.6,0.8],[69,1.2,1.2],[67,2.2,0.7],[64,2.8,1.6]],rest:9}
+  ];
+  var DRONE=45;
+  function midiHz(m){return 440*Math.pow(2,(m-69)/12);}
+  function phraseSec(P){return P.notes.reduce(function(e,n){return Math.max(e,n[1]+n[2]);},0);}
+
+  var tuneTimer=null,tuneOn=false,tuneAt=0;
+  function phrase(){
+    clearTimeout(tuneTimer); tuneTimer=null;
+    if(!tuneOn)return;
+    var P=PHRASES[tuneAt%PHRASES.length],len=phraseSec(P);
+    tn({type:"sine",f0:midiHz(DRONE),dur:len,gain:0.05,bus:busAmb});
+    P.notes.forEach(function(n){
+      tn({type:"triangle",f0:midiHz(n[0]),dur:n[2],gain:0.11,at:n[1],bus:busAmb});
+    });
+    tuneAt++;
+    tuneTimer=setTimeout(phrase,(len+P.rest)*1000);
+  }
+
+  var tuneEl=document.getElementById("tune");
+  (function(){
+    var card=document.createElement("div"); card.className="card";
+    var loopSec=PHRASES.reduce(function(s,P){return s+phraseSec(P)+P.rest;},0);
+    card.innerHTML='<div class="top"><b>Петля</b></div>'+
+      '<div class="rec">две фразы в ля-миноре · круг '+loopSec.toFixed(0)+' с · гудящее ля под фразой</div>'+
+      '<p>Фразы '+PHRASES.map(function(P){return phraseSec(P).toFixed(1)+' с';}).join(' и ')+
+      ', паузы после них '+PHRASES.map(function(P){return P.rest+' с';}).join(' и ')+
+      '. Пауза длиннее фразы: сплошная музыка в лагере утомляет быстрее, чем её отсутствие.</p>'+
+      '<p class="says"><s>Сообщает</s>Можно не торопиться</p>';
+    var btn=document.createElement("button"); btn.type="button"; btn.className="play";
+    btn.textContent="Слушать";
+    btn.addEventListener("click",function(){
+      AC(); tuneOn=!tuneOn;
+      btn.setAttribute("aria-pressed",tuneOn?"true":"false");
+      btn.textContent=tuneOn?"Остановить":"Слушать";
+      if(tuneOn){tuneAt=0;phrase();}else{clearTimeout(tuneTimer);tuneTimer=null;}
+    });
+    card.querySelector(".top").appendChild(btn);
+    tuneEl.appendChild(card);
+  })();
+
+  function stopTune(){
+    tuneOn=false; clearTimeout(tuneTimer); tuneTimer=null;
+    [].forEach.call(document.querySelectorAll("#tune button"),function(b){
+      b.setAttribute("aria-pressed","false"); b.textContent="Слушать";});
+  }
+
   document.getElementById("unlock").addEventListener("click",function(){AC();SOUNDS.tap();});
   document.getElementById("vol").addEventListener("input",function(e){
     if(master)master.gain.value=e.target.value/100;
   });
   document.addEventListener("visibilitychange",function(){
-    if(document.hidden){running=false;clearTimeout(timer);stopAmb();
+    if(document.hidden){running=false;clearTimeout(timer);stopAmb();stopTune();
       pulseBtn.setAttribute("aria-pressed","false");pulseBtn.textContent="Запустить пульс";
       if(ac&&ac.state==="running")ac.suspend();
       document.getElementById("status").textContent="аудио приостановлено";}
