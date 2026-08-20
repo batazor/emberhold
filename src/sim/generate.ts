@@ -233,23 +233,23 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
   }
 
   // «Обходится по кругу» — обещание, которое обязано выполняться: узкий
-  // проход годится голему только если обход существует. Замер ловил обратное
-  // как 80 смертей от голема на ярусе 3: он вставал в единственный проход,
+  // проход годится магу только если обход существует. Замер ловил обратное
+  // как 80 смертей от мага на ярусе 3: он вставал в единственный проход,
   // и обойти его было нельзя — только умереть об него.
-  const golemChokes =
-    TIER_ROSTER[tier].includes('golem')
+  const mageChokes =
+    TIER_ROSTER[tier].includes('mage')
       ? chokes.filter((c) => hasDetour(size, blocked, evac, containers, c % size, (c / size) | 0))
       : chokes;
 
   /**
-   * §15 — голем перекрывает маршрут, но не отрезает его. Разница существенная:
+   * §15 — маг перекрывает маршрут, но не отрезает его. Разница существенная:
    * узкий проход, который можно обойти кругом, — это решение; единственный
    * проход к добыче — это стена, притворяющаяся врагом.
    *
-   * Клетка проверяется: если, замуровав зону голема 3×3, хоть один контейнер
+   * Клетка проверяется: если, замуровав зону мага 3×3, хоть один контейнер
    * становится недостижим от эвакуации, клетка отбрасывается.
    */
-  const golemBlocksLoot = (cell: number): boolean => {
+  const mageBlocksLoot = (cell: number): boolean => {
     const walled = Uint8Array.from(blocked);
     const gx = cell % size;
     const gz = (cell / size) | 0;
@@ -265,12 +265,12 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
   const enemies: Enemy[] = [];
   TIER_ROSTER[tier].forEach((kind, i) => {
     const stats = ENEMY_STATS[kind];
-    // §15 — голем перекрывает маршрут, а не гонится. Значит его место
+    // §15 — маг перекрывает маршрут, а не гонится. Значит его место
     // в узком проходе: там обход стоит шагов, а прорыв — ран.
-    const pool = kind === 'golem' && golemChokes.length > 0 ? golemChokes : open;
+    const pool = kind === 'mage' && mageChokes.length > 0 ? mageChokes : open;
     const cell =
-      kind === 'golem'
-        ? takeFrom(pool, golemBlocksLoot) ?? takeFrom(open, golemBlocksLoot)
+      kind === 'mage'
+        ? takeFrom(pool, mageBlocksLoot) ?? takeFrom(open, mageBlocksLoot)
         : takeFrom(pool);
     if (cell === null) return;
     const x = cell % size;
@@ -294,7 +294,7 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
 
 /**
  * Есть ли путь в обход клетки: перекрываем её вместе с ближайшими соседями
- * (голем занимает не точку, а зону досягаемости) и проверяем, что от точки
+ * (маг занимает не точку, а зону досягаемости) и проверяем, что от точки
  * эвакуации по-прежнему достижим каждый контейнер.
  */
 function hasDetour(

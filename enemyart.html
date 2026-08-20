@@ -1,0 +1,940 @@
+<meta charset="utf-8">
+<title>Набор моделей: противники</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;
+    background:var(--ground);padding:12px 0;border-bottom:1px solid var(--line);}
+  .bar hr{border:0;border-left:1px solid var(--line);height:20px;margin:0 4px;}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+
+  .models{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;}
+  .m{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
+  .m.take{border-color:var(--brass);}
+  .m .stage{background:#12100c;display:flex;justify-content:center;padding:8px 0;}
+  .m b{font-family:var(--ff-display);font-weight:400;font-size:14px;padding:8px 11px 1px;
+    overflow-wrap:anywhere;}
+  .m u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
+    padding:0 11px 10px;display:flex;justify-content:space-between;gap:8px;}
+  .m u s{text-decoration:none;}
+  .m u s.over{color:var(--blood);}
+  .m i{font-family:var(--ff-mono);font-style:normal;font-size:9.5px;color:var(--brass);
+    padding:0 11px 10px;margin-top:-6px;}
+
+  .pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;}
+  .pair figure{margin:0;background:var(--surface);border:1px solid var(--line);}
+  .pair .stage{background:#12100c;display:flex;justify-content:center;padding:10px 0;}
+  .pair figcaption{padding:10px 13px 13px;font-size:13.5px;color:var(--dim);}
+  .pair figcaption b{color:var(--text);font-weight:600;display:block;font-family:var(--ff-display);
+    font-size:15px;font-weight:400;margin-bottom:3px;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.miss{color:var(--ember);}
+  tr.new td{background:color-mix(in srgb, var(--brass) 9%, transparent);}
+  .chip{display:inline-flex;align-items:center;gap:8px;}
+  .chip i{width:30px;height:16px;border:1px solid var(--line);display:block;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+  .fail{color:var(--blood);}
+  .scroll{overflow-x:auto;}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Артбук · готовый набор</div>
+  <h1>Противники, <em>которых не пришлось рисовать</em></h1>
+  <p class="lede">KayKit Character Pack: Skeletons 1.1, бесплатный тариф, лицензия CC0:
+    четыре скелета, у каждого внутри ещё один — двадцать три кости, скин и общий
+    на всех риг, — плюс оружие, щиты и стрелы. Страница показывает не витрину, а сами файлы из
+    <code>assets/kaykit-skeletons</code>: геометрия читается из <code>.gltf</code>
+    и <code>.glb</code>, поза берётся из клипа, числа считает <code>npm run models</code>,
+    цвет — из палитры игры.</p>
+  <p class="lede"><b>Этот набор, в отличие от подземелья, взят в игру.</b>
+    Все три противника §15 — модели отсюда, по скелету на тип; нарисованных
+    руками врагов в игре не осталось. Что это стоило, посчитано ниже
+    до килобайта: <b>бюджет противника пришлось переписать</b>, потому что
+    в треугольниках он больше ничего не значит.</p>
+  <p class="lede"><b>Названия противников — рабочие (§0.1).</b> «Скелет-воин» —
+    подпись к <code>Skeleton_Warrior</code>, а не имя мира; лора за ними нет
+    и придумана задним числом не будет. Менять их можно правкой строки.</p>
+  <p class="lede fail" id="warn" style="display:none"></p>
+</header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что в наборе</h2>
+    <p>Категории — по второму слову имени файла. Треугольники посчитаны по индексам
+      примитивов, габарит — по позициям вершин, уже сложенным со скином и позой;
+      ни то, ни другое не взято с витрины.</p>
+  </div>
+  <div class="scroll"><table id="cats"><thead><tr>
+    <th>Категория</th><th class="num">Моделей</th><th class="num">Треугольников</th>
+    <th class="num">В среднем</th><th class="num">Самая тяжёлая</th><th>Она же</th>
+  </tr></thead><tbody></tbody></table></div>
+  <p class="note" id="total"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Скелет — это поза, а не файл</h2>
+    <p>Первые два набора были мебелью: где вершина записана, там она и стоит.
+      Здесь вершины записаны в <b>позе привязки</b> — руки в стороны, T-поза, —
+      а куда они попадут на самом деле, решают двадцать три кости и клип.
+      Обмерить файл как есть значит получить габарит с размахом рук
+      и модель, которая ни в одном кадре игры так не стоит.</p>
+    <p>Поэтому запекание берёт <b>кадр клипа</b>: <code id="poseName">…</code>
+      из <code>clips/Rig_Medium_General.glb</code>. Клип лежит отдельным файлом
+      с манекеном вместо скелета — риг у всех четверых один, и клипы записаны
+      один раз на риг, а не по разу на модель. Связывает их имя кости.</p>
+  </div>
+  <div class="pair" id="poses"></div>
+  <div class="scroll"><table id="bind"><thead><tr>
+    <th>Модель</th><th>Габарит в позе привязки</th><th>Габарит в позе клипа</th>
+    <th class="num">Уже по X</th>
+  </tr></thead><tbody></tbody></table></div>
+  <p class="note">Ширина — это и есть разведённые руки. По высоте разница меньше:
+    в обеих позах скелет стоит на ногах.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Атлас: кость, сталь и сукно</h2>
+    <p>Картинка раскрашена целиком и с запечённой светотенью: под треугольниками
+      набора оказывается <span id="touched">…</span>. §6.1 запрещает текстурные
+      ассеты, и разрешается это так же, как в лесу и подземелье:
+      <code>scripts/models.ts</code> снимает цвет с атласа один раз и заменяет его
+      <b>слотом палитры</b>. В игру едет число, картинка остаётся здесь.</p>
+    <p><b>Новое здесь — окно яркости.</b> Кость и кожа сидят в одном тёплом углу
+      атласа: по оттенку их не различить, и на первом заходе кость целиком уехала
+      в дерево. Разделяет их яркость, и разделяет чисто — между <span id="valley">…</span>
+      у атласа провал. Поэтому у градиента появилось третье окно вдобавок
+      к оттенку и насыщенности.</p>
+  </div>
+  <div class="scroll"><table id="slots"><thead><tr>
+    <th>Градиент</th><th>Слот</th><th>Было в атласе</th><th>Стало в игре</th>
+    <th class="num">Треугольников</th>
+  </tr></thead><tbody></tbody></table></div>
+  <p class="note" id="slotNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Каталог</h2>
+    <p>Камера та же, что в игре: азимут 45°, наклон 30°, плоское затенение, один
+      источник света. Первый переключатель меняет цвет — <b>как нарисовано
+      в наборе</b> против <b>как выглядит в игре</b>. Второй меняет позу: файл как он есть
+      против кадра клипа. Обводка — то, что игра берёт.</p>
+  </div>
+  <div class="bar" id="filters"></div>
+  <div class="models" id="grid"></div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Бюджет, который перестал быть треугольниками</h2>
+    <p>§6.1 задаёт противнику <b>700 треугольников</b>. В наборе нет ни одной
+      модели скелета дешевле пяти тысяч. Это не «набор плохой» — это бюджет,
+      обоснование которого сюда не переносится.</p>
+    <p>§6.1 объясняет потолок двумя вещами: чтобы модель <b>читалась на пяти
+      сантиметрах экрана</b> и <b>рисовалась за вечер</b>. Второе к готовому набору
+      не относится вовсе — рисовать нечего. Первое относится, но измеряется
+      силуэтом, а не числом треугольников: пятитысячный скелет на пяти сантиметрах
+      читается лучше семисоттреугольной коробки, потому что у него есть череп.</p>
+    <p>Цена готовой модели одна и она другая — <b>килобайты в бандле у всех
+      игроков</b>. Её и меряем.</p>
+  </div>
+  <div class="scroll"><table id="cost"><thead><tr>
+    <th>Что</th><th class="num">Было</th><th class="num">Стало</th><th class="num">Разница</th>
+  </tr></thead><tbody>
+    <tr><td>Треугольников у противников (все три вида)</td>
+      <td class="num">314</td><td class="num" id="costTris">…</td><td class="num" id="costTrisD">…</td></tr>
+    <tr><td>Игра целиком, gzip</td>
+      <td class="num">226 КБ</td><td class="num">359 КБ</td><td class="num">+133 КБ · +59%</td></tr>
+    <tr><td>Из них запечённые модели, gzip</td>
+      <td class="num">18 КБ</td><td class="num">151 КБ</td><td class="num">+133 КБ</td></tr>
+  </tbody></table></div>
+  <p class="note">Замер сборки: <code>npm run build</code>, чанки <code>index</code>,
+    <code>forest.data</code>, <code>three</code> и css. Треугольники — <code>npm run check</code>.</p>
+  <div class="guard">
+    <div class="key">
+      <h3>Новая единица потолка</h3>
+      <p>У принятого набора бюджет в килобайтах, и он проверяется тестом,
+        а не памятью: <b>600 КБ base64</b> при нынешних <span id="packKb">…</span>.
+        Число посчитано, а не выбрано, — это весь набор, который вообще может
+        понадобиться врагам: <b>четыре скелета и всё их оружие, 598 КБ</b>.</p>
+    </div>
+    <div class="key">
+      <h3>Упереться можно один раз</h3>
+      <p>В этом и смысл такого потолка. За ним не «ещё один противник»,
+        а второй набор — и это отдельное решение, а не строка в списке
+        принятого.</p>
+    </div>
+    <div>
+      <h3>Чем можно было заплатить меньше</h3>
+      <p>Вершины пишутся несклеенными — по три на треугольник, ради плоского
+        затенения. У этих моделей вершин почти столько же, сколько треугольников:
+        индексированная запись сняла бы <b>около трети</b>. Это следующий шаг,
+        и он общий для всех наборов, а не для этого.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что взято и куда встало</h2>
+    <p>Три модели из семнадцати. Список короткий по той же причине, что у леса,
+      но цена здесь другого порядка: каждая строка — десятки килобайт
+      у всех игроков.</p>
+  </div>
+  <div class="scroll"><table id="took"><thead><tr>
+    <th>Противник (§15)</th><th>Модель набора</th><th class="num">Треугольников</th>
+    <th class="num">Рост, клеток</th><th>Почему эта</th>
+  </tr></thead><tbody></tbody></table></div>
+  <div class="guard">
+    <div class="key">
+      <h3>Древко вкладывается в кулак</h3>
+      <p>Воин с топором, маг с посохом: §15 требует, чтобы тип читался
+        силуэтом, а силуэт делает то, что в руке. Место для предмета
+        не подобрано на глаз — это узел <code>handslot.r</code> самого набора,
+        и его мировая матрица запечена рядом с геометрией.</p>
+    </div>
+    <div class="key">
+      <h3>Порода одна, снаряжение разное</h3>
+      <p>Три типа §15 — это <b>три скелета, а не три существа</b>. Различает их
+        то, что видно за секунду: голые кости, шлем с топором, шляпа с посохом.</p>
+    </div>
+    <div class="key">
+      <h3>Названия — временные</h3>
+      <p>«Скелет-воин» — это подпись к <code>Skeleton_Warrior</code>, а не имя
+        мира. <b>Лора за ними нет и не будет придумана задним числом:</b> до этой
+        страницы здесь стояли «соляной падальщик» и «обвальный голем»,
+        сочинённые без единого решения за ними. Менять эти слова можно свободно
+        и не обсуждая — их читает только интерфейс (§15).</p>
+    </div>
+    <div>
+      <h3>Разбойника не берём</h3>
+      <p>От Воина он отличается капюшоном вместо шлема, а стоит столько же.
+        Четвёртого противника §15 не предусматривает, и модель «про запас» —
+        это килобайты у всех игроков за то, чего в игре нет.</p>
+    </div>
+    <div>
+      <h3>Противники перестали крутиться</h3>
+      <p>Примитив можно было вращать вокруг оси и качать в воздухе — это читалось
+        как «метка врага». Скелет так читаться перестаёт: он <b>стоит на полу
+        и поворачивается к герою</b>, а покачивается только пока идёт.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Двадцать шесть клипов, которые пока лежат</h2>
+    <p>Набор пришёл с ригом на двадцать три кости и двумя файлами анимации.
+      Раздел 17 просит пять состояний — покой, ходьба, удар, урон, падение;
+      в наборе есть все, кроме удара, и по два варианта на состояние.</p>
+    <p>Игра их не проигрывает: в ней нет ни загрузчика glTF, ни проигрывателя
+      клипов, а запечённая геометрия — это один кадр. <b>Это не пропуск, а порядок
+      работ:</b> §17 перестал быть вопросом «кто это нарисует» и стал вопросом
+      «кто это напишет». Пока не написано, покой и ходьба держатся на том же,
+      на чём держались у примитивов, — на положении и повороте меша.</p>
+  </div>
+  <div class="scroll"><table id="clips"><thead><tr>
+    <th>Состояние §17.1</th><th>Клипы набора</th><th>Что делает игра сейчас</th>
+  </tr></thead><tbody>
+    <tr><td>Покой</td><td class="mono">Idle_A · Idle_B</td><td>кадр <code>Idle_A</code>, запечённый в геометрию</td></tr>
+    <tr><td>Ходьба</td><td class="mono">Walking_A · B · C · Running_A · B</td><td>покачивание меша, пока противник идёт</td></tr>
+    <tr><td>Удар</td><td class="miss">нет в бесплатном тарифе</td><td>эмиссия материала на замахе (§17.3)</td></tr>
+    <tr><td>Урон</td><td class="mono">Hit_A · Hit_B</td><td>масштаб по ранам: подранок ниже</td></tr>
+    <tr><td>Падение</td><td class="mono">Death_A · Death_B</td><td>меш выключается</td></tr>
+  </tbody></table></div>
+  <p class="note">Остальные клипы набора — прыжки, подбор, использование предмета,
+    появление из земли и из воздуха — механик под себя в игре не имеют.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Решения, которые это потребовало</h2>
+    <p>Первые два набора добавили инструменту по правилу. Этот добавил пять,
+      и все пять — из-за того, что модель здесь не лежит, а стоит.</p>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Контейнер GLB</h3>
+      <p>Лес и подземелье отдали <code>.gltf</code> с буфером рядом, скелеты —
+        <code>.glb</code>, где JSON и буфер лежат кусками в одном файле.
+        Разбор дописан один раз; дальше по коду разницы нет.</p>
+    </div>
+    <div class="key">
+      <h3>Скиннинг на запекании</h3>
+      <p>Позиция вершины — сумма по костям, а собственный трансформ узла с мешем
+        glTF велит игнорировать. Шлем при этом <b>не скинован</b> и висит на кости
+        головы обычным узлом: одна модель требует обоих способов сразу.</p>
+    </div>
+    <div>
+      <h3>Окно яркости у градиента</h3>
+      <p>Кость и кожа делят окно оттенка и делятся только светлотой.
+        Правило общее — лес и подземелье после него не сдвинулись ни на байт.</p>
+    </div>
+    <div>
+      <h3>Порог серого — свойство набора</h3>
+      <p>У леса серое было пустым полем атласа, у подземелья — белой тканью.
+        Здесь серое — это сталь, полноценный материал, и общий порог
+        выбрасывал бы её из собственной шкалы.</p>
+    </div>
+    <div>
+      <h3>Две вершины держали шкалу</h3>
+      <p>Пока нижняя граница насыщенности стояла круглым числом, два треугольника
+        цвета <code>#fbf7f2</code> не попадали ни в одно окно, падали в запасную
+        сталь и растягивали её шкалу с 0,71 до 0,97. На шести тысячах треугольников
+        доспеха оставался <b>один оттенок из трёх</b>.</p>
+    </div>
+    <div>
+      <h3>Палитра стала одним списком по-настоящему</h3>
+      <p>28 цветов артбука лежали в двух местах — короткими ключами для примитивов
+        и русскими именами для наборов. Теперь имена одни, а что списки
+        не разошлись, проверяет тест, а не ревью.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script type="module">
+const PACK = './assets/kaykit-skeletons/';
+const CATALOG = PACK + 'catalog.json';
+const GLTF = PACK + 'gltf/';
+const ATLAS = PACK + 'skeleton_texture.png';
+
+function fail(text){
+  const w = document.getElementById('warn');
+  w.textContent = text;
+  w.style.display = '';
+}
+
+let palette, slotNames, cat;
+try{
+  // Палитра и порядок слотов берутся из самого модуля игры: две копии одного
+  // списка разошлись бы молча, а страница именно про то, что список один.
+  const p = await import('/src/render/palette.ts');
+  palette = p.SKELETON_PALETTE;
+  slotNames = p.SKELETON_SLOT_ORDER;
+  cat = await (await fetch(CATALOG)).json();
+}catch(e){
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /enemyart.html. ' + e);
+  throw e;
+}
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const pct = (n, of) => (n / of * 100).toFixed(1) + '%';
+const kb = (n) => Math.round(n / 1024) + ' КБ';
+
+/* Русский счёт: «1 модель», «2 модели», «5 моделей». Числа здесь считаются
+   из каталога, поэтому склонение тоже обязано считаться, а не угадываться. */
+const plural = (n, one, few, many) => {
+  const t = Math.abs(n) % 100, u = t % 10;
+  if (t > 10 && t < 20) return many;
+  if (u > 1 && u < 5) return few;
+  return u === 1 ? one : many;
+};
+const models = (n) => n + ' ' + plural(n, 'модель', 'модели', 'моделей');
+
+/* ---------- атлас: он нужен только чтобы показать «как в наборе» ---------- */
+
+let atlas = null, atlasWaiting = null;
+const ensureAtlas = () => (atlasWaiting ??= loadAtlas().then((a) => { atlas = a; return a; }));
+
+async function loadAtlas(){
+  const img = new Image();
+  img.src = ATLAS;
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const ctx = c.getContext('2d', {willReadFrequently:true});
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, img.width, img.height).data;
+  return {
+    width:img.width, height:img.height,
+    // UV в glTF считаются от верхнего края — это и есть порядок строк в PNG.
+    at(u, v){
+      const x = Math.min(img.width - 1, Math.max(0, Math.floor(u * img.width)));
+      const y = Math.min(img.height - 1, Math.max(0, Math.floor(v * img.height)));
+      const o = (y * img.width + x) * 4;
+      return 'rgb(' + data[o] + ',' + data[o+1] + ',' + data[o+2] + ')';
+    },
+  };
+}
+
+/* ---------- сводка по категориям ---------- */
+const totalTris = cat.models.reduce((s, m) => s + m.tris, 0);
+const cats = new Map();
+for(const m of cat.models){
+  const c = cats.get(m.category) ?? {n:0, tris:0, worst:m};
+  c.n++; c.tris += m.tris;
+  if(m.tris > c.worst.tris) c.worst = m;
+  cats.set(m.category, c);
+}
+const catsBody = document.querySelector('#cats tbody');
+for(const [key, c] of [...cats].sort((a, b) => b[1].tris - a[1].tris)){
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + key + '</td><td class="num">' + c.n + '</td><td class="num">' + c.tris +
+    '</td><td class="num">' + Math.round(c.tris / c.n) + '</td><td class="num">' + c.worst.tris +
+    '</td><td class="mono">' + c.worst.name + '</td>';
+  catsBody.appendChild(tr);
+}
+document.getElementById('total').textContent =
+  cat.models.length + ' моделей · ' + totalTris + ' треугольников · атлас ' +
+  cat.atlas.width + '×' + cat.atlas.height + ' · ' + cat.pack + ' · лицензия ' + cat.license;
+document.getElementById('poseName').textContent = cat.pose.clip;
+
+/* ---------- слоты: было → стало ---------- */
+const slots = new Map();
+const slotTris = new Array(cat.slots.length).fill(0);
+for(const m of cat.models){
+  const raw = atob(m.slot);
+  const list = new Uint8Array(raw.length);
+  for(let i = 0; i < raw.length; i++){ list[i] = raw.charCodeAt(i); slotTris[list[i]]++; }
+  slots.set(m.name, list);
+}
+const colorOfSlot = (name) => palette[slotNames.indexOf(name)];
+const slotsBody = document.querySelector('#slots tbody');
+cat.slots.forEach((name, at) => {
+  const ramp = cat.ramps.find(r => r.slots.includes(name));
+  const first = ramp.slots[0] === name;
+  const source = ramp.source[ramp.slots.indexOf(name)];
+  const color = colorOfSlot(name);
+  const tr = document.createElement('tr');
+  if(ramp.id === 'bone') tr.className = 'new';
+  const was = slotTris[at] === 0
+    ? '<td class="miss">не задет ни одним треугольником</td>'
+    : '<td><span class="chip"><i style="background:' + source + '"></i>' + source + '</span></td>';
+  tr.innerHTML =
+    '<td>' + (first ? ramp.title : '') + '</td>' +
+    '<td class="mono">' + name + '</td>' + was +
+    '<td><span class="chip"><i style="background:' + hex(color) + '"></i>' + hex(color) + '</span></td>' +
+    '<td class="num">' + slotTris[at] + ' · ' + pct(slotTris[at], totalTris) + '</td>';
+  slotsBody.appendChild(tr);
+});
+document.getElementById('touched').textContent =
+  cat.touched.colors + ' цветов из ' + cat.touched.atlasColors + ', а сами эти цвета занимают ' +
+  Math.round(cat.touched.share * 100) + '% картинки';
+const boneTris = cat.ramps.find(r => r.id === 'bone').slots
+  .reduce((s, n) => s + slotTris[cat.slots.indexOf(n)], 0);
+document.getElementById('slotNote').textContent =
+  'Подсвечена кость — ради неё в шкале и появилось окно яркости: ' +
+  pct(boneTris, totalTris) + ' треугольников набора. Соль, которой она стала, ' +
+  'в палитре уже была: локация — соляные копи, и бледная кость там на месте.';
+
+/* ---------- отрисовщик: ортокамера 45°/30°, плоское затенение ---------- */
+const AZ = 45 * Math.PI / 180, EL = 30 * Math.PI / 180;
+const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map(c => c / l); })();
+
+function project(p){
+  const ca = Math.cos(AZ), sa = Math.sin(AZ), ce = Math.cos(EL), se = Math.sin(EL);
+  const x = p[0] * ca - p[2] * sa, y = p[1], z = p[0] * sa + p[2] * ca;
+  return [x, y * ce - z * se, y * se + z * ce];
+}
+function shade(color, k){
+  const rgb = color.startsWith('#')
+    ? [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16))
+    : color.slice(4, -1).split(',').map(Number);
+  return 'rgb(' + rgb.map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
+}
+
+function draw(canvas, tris, colors){
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const view = tris.map(t => t.map(project));
+
+  let min = [Infinity, Infinity], max = [-Infinity, -Infinity];
+  for(const t of view) for(const p of t){
+    if(p[0] < min[0]) min[0] = p[0];
+    if(p[0] > max[0]) max[0] = p[0];
+    if(p[1] < min[1]) min[1] = p[1];
+    if(p[1] > max[1]) max[1] = p[1];
+  }
+  const scale = Math.min((w - 16) / (max[0] - min[0] || 1), (h - 16) / (max[1] - min[1] || 1));
+  const ox = w / 2 - (min[0] + max[0]) / 2 * scale, oy = h / 2 + (min[1] + max[1]) / 2 * scale;
+
+  // Художник: дальние треугольники первыми. Z-буфера здесь нет и не нужно.
+  const order = view.map((t, i) => [i, (t[0][2] + t[1][2] + t[2][2]) / 3]).sort((a, b) => b[1] - a[1]);
+  for(const [i] of order){
+    const t = tris[i];
+    const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+    const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+    const n = [u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0]];
+    const len = Math.hypot(...n) || 1;
+    const lit = Math.max(0, (n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]) / len);
+    ctx.fillStyle = shade(colors[i], 0.42 + lit * 0.85);
+    ctx.beginPath();
+    const p = view[i];
+    ctx.moveTo(ox + p[0][0]*scale, oy - p[0][1]*scale);
+    ctx.lineTo(ox + p[1][0]*scale, oy - p[1][1]*scale);
+    ctx.lineTo(ox + p[2][0]*scale, oy - p[2][1]*scale);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/* ---------- чтение glTF/GLB: позиции, UV, кости и поза ---------- */
+const SIZE = {SCALAR:1, VEC2:2, VEC3:3, VEC4:4, MAT4:16};
+const READER = {5121:'getUint8', 5123:'getUint16', 5125:'getUint32', 5126:'getFloat32'};
+const BYTES = {5121:1, 5123:2, 5125:4, 5126:4};
+const IDENT = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+
+function mul(a, b){
+  const out = new Array(16).fill(0);
+  for(let c = 0; c < 4; c++) for(let r = 0; r < 4; r++){
+    let s = 0;
+    for(let k = 0; k < 4; k++) s += a[k*4 + r] * b[c*4 + k];
+    out[c*4 + r] = s;
+  }
+  return out;
+}
+/** Собственный трансформ узла; кадр клипа, если он есть, его заменяет. */
+function local(node, pose){
+  const frame = pose?.get(node.name);
+  if(node.matrix && frame === undefined) return node.matrix;
+  const [x, y, z, w] = frame?.r ?? node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = frame?.s ?? node.scale ?? [1, 1, 1];
+  const [tx, ty, tz] = frame?.t ?? node.translation ?? [0, 0, 0];
+  const r = [
+    1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+    2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+    2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y),
+  ];
+  return [r[0]*sx, r[1]*sx, r[2]*sx, 0, r[3]*sy, r[4]*sy, r[5]*sy, 0,
+          r[6]*sz, r[7]*sz, r[8]*sz, 0, tx, ty, tz, 1];
+}
+const apply = (m, p) => [0, 1, 2].map(c => m[c]*p[0] + m[4+c]*p[1] + m[8+c]*p[2] + m[12+c]);
+
+/** Файл набора вместе с буфером: `.gltf` рядом с `.bin` или один `.glb`. */
+async function loadDoc(url){
+  const raw = await (await fetch(url)).arrayBuffer();
+  if(!url.endsWith('.glb')){
+    const gltf = JSON.parse(new TextDecoder().decode(raw));
+    const bin = await (await fetch(url.replace(/[^/]*$/, '') + gltf.buffers[0].uri)).arrayBuffer();
+    return {gltf, bin, at:0};
+  }
+  const dv = new DataView(raw);
+  let at = 12, gltf = null, bin = null, binAt = 0;
+  while(at + 8 <= raw.byteLength){
+    const len = dv.getUint32(at, true);
+    const type = String.fromCharCode(dv.getUint8(at+4), dv.getUint8(at+5), dv.getUint8(at+6), dv.getUint8(at+7));
+    if(type === 'JSON') gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(raw, at+8, len)));
+    else if(type.startsWith('BIN')){ bin = raw; binAt = at + 8; }
+    at += 8 + len;
+  }
+  return {gltf, bin, at:binAt};
+}
+
+function reader(doc){
+  const dv = new DataView(doc.bin);
+  return (index) => {
+    const acc = doc.gltf.accessors[index], bv = doc.gltf.bufferViews[acc.bufferView];
+    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
+    const stride = bv.byteStride ?? size * bytes;
+    const start = doc.at + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = [];
+    for(let i = 0; i < acc.count; i++){
+      const row = [];
+      for(let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
+      out.push(size === 1 ? row[0] : row);
+    }
+    return out;
+  };
+}
+
+const lerp = (a, b, t) => a + (b - a) * t;
+function slerp(a, b, t){
+  let dot = a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3];
+  const to = dot < 0 ? b.map(v => -v) : b.slice();
+  dot = Math.abs(dot);
+  if(dot > 0.9995) return a.map((v, i) => lerp(v, to[i], t));
+  const th = Math.acos(dot), sin = Math.sin(th);
+  return a.map((v, i) => v * Math.sin((1 - t) * th) / sin + to[i] * Math.sin(t * th) / sin);
+}
+
+/** Кадр клипа как таблица «имя кости → TRS». Клип общий на весь риг. */
+async function loadPose(file, clipName, at){
+  const doc = await loadDoc(PACK + file);
+  const read = reader(doc);
+  const clip = doc.gltf.animations.find(a => a.name === clipName);
+  const out = new Map();
+  for(const ch of clip.channels){
+    const name = doc.gltf.nodes[ch.target.node]?.name;
+    if(name === undefined) continue;
+    const s = clip.samplers[ch.sampler];
+    const times = read(s.input), values = read(s.output);
+    let i = 0;
+    while(i + 1 < times.length && times[i + 1] <= at) i++;
+    const j = Math.min(i + 1, times.length - 1);
+    const span = times[j] - times[i];
+    const k = span > 0 ? Math.min(1, Math.max(0, (at - times[i]) / span)) : 0;
+    const entry = out.get(name) ?? {};
+    if(ch.target.path === 'rotation') entry.r = slerp(values[i], values[j], k);
+    else if(ch.target.path === 'translation') entry.t = values[i].map((v, c) => lerp(v, values[j][c], k));
+    else if(ch.target.path === 'scale') entry.s = values[i].map((v, c) => lerp(v, values[j][c], k));
+    out.set(name, entry);
+  }
+  return out;
+}
+
+const posePromise = loadPose(cat.pose.file, cat.pose.clip, cat.pose.at);
+
+/**
+ * Очередь на одну работу за раз с передышкой между ними. Скелет — пять тысяч
+ * треугольников, и рисуются они кистью по канве, треугольник за треугольником;
+ * семнадцать таких подряд, без возврата управления браузеру, — это несколько
+ * секунд белой страницы. Очередь ничего не ускоряет, она возвращает страницу
+ * читателю между моделями.
+ */
+const queue = [];
+let running = false;
+// Передышка — таймером, а не кадром отрисовки: в фоновой вкладке кадров нет
+// вовсе, и очередь на requestAnimationFrame встала бы намертво до переключения
+// на неё. Страницу открывают в соседней вкладке чаще, чем в текущей.
+const breathe = () => new Promise((done) => setTimeout(done, 0));
+async function work(task){
+  queue.push(task);
+  if(running) return;
+  running = true;
+  while(queue.length > 0){
+    await breathe();
+    try{ await queue.shift()(); }catch(e){ /* модель не открылась — карточка скажет об этом сама */ }
+  }
+  running = false;
+}
+
+/**
+ * Треугольники модели в позе `pose` (или в позе привязки, если её нет).
+ * Порядок обхода — по сцене: он же контракт со списком слотов из каталога.
+ */
+async function loadModel(name, pose){
+  // Скелеты пришли одним `.glb`, оружие и щиты — `.gltf` с буфером рядом.
+  const skinned = cat.models.find(m => m.name === name)?.skinned !== undefined;
+  const doc = await loadDoc(GLTF + name + (skinned ? '.glb' : '.gltf'));
+  const g = doc.gltf, read = reader(doc);
+  const world = new Array(g.nodes?.length ?? 0).fill(IDENT);
+
+  const walk = (at, parent) => {
+    const node = g.nodes[at];
+    world[at] = mul(parent, local(node, pose));
+    for(const child of node.children ?? []) walk(child, world[at]);
+  };
+  for(const root of g.scenes[g.scene ?? 0].nodes) walk(root, IDENT);
+
+  const tris = [], uvs = [];
+  const take = (index, model, skin) => {
+    for(const prim of g.meshes[index].primitives){
+      if(prim.attributes.TEXCOORD_0 === undefined || prim.indices === undefined) continue;
+      const pos = read(prim.attributes.POSITION), uv = read(prim.attributes.TEXCOORD_0);
+      const idx = read(prim.indices);
+
+      // Скиннинг: позиция вершины — сумма по костям, собственный трансформ
+      // узла с мешем glTF велит игнорировать.
+      let matrixOf = null;
+      if(skin !== undefined && prim.attributes.JOINTS_0 !== undefined){
+        const joints = read(prim.attributes.JOINTS_0), weights = read(prim.attributes.WEIGHTS_0);
+        const bones = g.skins[skin];
+        const inverse = bones.inverseBindMatrices === undefined ? null : read(bones.inverseBindMatrices);
+        const bone = bones.joints.map((node, k) => mul(world[node] ?? IDENT, inverse ? inverse[k] : IDENT));
+        matrixOf = (v) => {
+          const out = new Array(16).fill(0);
+          for(let k = 0; k < 4; k++){
+            const w = weights[v][k];
+            if(w === 0) continue;
+            const m = bone[joints[v][k]] ?? IDENT;
+            for(let c = 0; c < 16; c++) out[c] += m[c] * w;
+          }
+          return out;
+        };
+      }
+
+      for(let i = 0; i < idx.length; i += 3){
+        tris.push([0, 1, 2].map(k => {
+          const v = idx[i+k];
+          return apply(matrixOf === null ? model : matrixOf(v), pos[v]);
+        }));
+        uvs.push([
+          (uv[idx[i]][0] + uv[idx[i+1]][0] + uv[idx[i+2]][0]) / 3,
+          (uv[idx[i]][1] + uv[idx[i+1]][1] + uv[idx[i+2]][1]) / 3,
+        ]);
+      }
+    }
+  };
+  const collect = (at) => {
+    const node = g.nodes[at];
+    if(node.mesh !== undefined) take(node.mesh, world[at], node.skin);
+    for(const child of node.children ?? []) collect(child);
+  };
+  for(const root of g.scenes[g.scene ?? 0].nodes) collect(root);
+  return {tris, uvs};
+}
+
+const boundsOf = (tris) => {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for(const t of tris) for(const p of t) for(let c = 0; c < 3; c++){
+    if(p[c] < min[c]) min[c] = p[c];
+    if(p[c] > max[c]) max[c] = p[c];
+  }
+  return [0, 1, 2].map(c => Math.round((max[c] - min[c]) * 100) / 100);
+};
+
+/* ---------- поза привязки против позы клипа ---------- */
+const CHARACTERS = cat.models.filter(m => m.skinned).map(m => m.name);
+const bindBody = document.querySelector('#bind tbody');
+const poses = document.getElementById('poses');
+
+async function showPoses(){
+  const pose = await posePromise;
+  const shots = [
+    ['Skeleton_Warrior', null, 'Поза привязки — как записано в файле',
+     'Габарит снят с разведённых рук. Ни один кадр игры так не выглядит.'],
+    ['Skeleton_Warrior', pose, 'Кадр клипа ' + cat.pose.clip + ' — как обмерено',
+     'Руки опущены, и вместе с ними на место встаёт узел, в который вкладывается древко.'],
+  ];
+  for(const [name, p, title, text] of shots){
+    const fig = document.createElement('figure');
+    const canvas = document.createElement('canvas');
+    canvas.width = 320; canvas.height = 300;
+    const stage = document.createElement('div');
+    stage.className = 'stage';
+    stage.appendChild(canvas);
+    fig.appendChild(stage);
+    fig.insertAdjacentHTML('beforeend', '<figcaption><b>' + title + '</b>' + text + '</figcaption>');
+    poses.appendChild(fig);
+    work(async () => {
+      const {tris} = await loadModel(name, p ?? undefined);
+      const list = slots.get(name);
+      draw(canvas, tris, tris.map((_, i) => hex(colorOfSlot(cat.slots[list[i]]))));
+    });
+  }
+
+  for(const name of CHARACTERS){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="mono">' + name + '</td><td class="mono">…</td><td class="mono">' +
+      cat.models.find(m => m.name === name).size.join('×') + '</td><td class="num">…</td>';
+    bindBody.appendChild(tr);
+    work(async () => {
+      const bind = boundsOf((await loadModel(name)).tris);
+      const posed = cat.models.find(m => m.name === name).size;
+      tr.children[1].textContent = bind.join('×');
+      tr.children[3].textContent = Math.round((1 - posed[0] / bind[0]) * 100) + '%';
+    });
+  }
+}
+showPoses();
+
+/* ---------- сетка карточек ---------- */
+const grid = document.getElementById('grid');
+const cards = [];
+let mode = 'palette';
+let posed = true;
+
+for(const m of cat.models){
+  const card = document.createElement('div');
+  card.className = 'm' + (cat.adopted.includes(m.name) ? ' take' : '');
+  card.dataset.category = m.category;
+  const canvas = document.createElement('canvas');
+  canvas.width = 168; canvas.height = 168;
+  const stage = document.createElement('div');
+  stage.className = 'stage';
+  stage.appendChild(canvas);
+  card.innerHTML = '<b>' + m.name.replace(/^Skeleton_/, '').replace(/_/g, ' ') + '</b>' +
+    '<u><s>' + m.tris + ' тр.</s><s>' + m.size.join('×') + '</s></u>' +
+    (cat.adopted.includes(m.name) ? '<i>берёт игра</i>' : '');
+  card.prepend(stage);
+  grid.appendChild(card);
+  cards.push({model:m, card, canvas, loaded:{}});
+}
+
+function paint(item){
+  const key = posed && item.model.skinned ? 'posed' : 'bind';
+  const data = item.loaded[key];
+  if(data === undefined) return;
+  const {tris, uvs} = data;
+  const list = slots.get(item.model.name);
+  // Пока картинка не пришла, карточка остаётся в палитре: пустая рамка врала бы
+  // сильнее, чем цвет, который через мгновение сменится.
+  const colors = mode === 'pack' && atlas !== null
+    ? tris.map((_, i) => atlas.at(uvs[i][0], uvs[i][1]))
+    : tris.map((_, i) => hex(colorOfSlot(cat.slots[list[i]])));
+  draw(item.canvas, tris, colors);
+}
+
+async function ensure(item){
+  const key = posed && item.model.skinned ? 'posed' : 'bind';
+  if(item.loaded[key] !== undefined) return;
+  const pose = key === 'posed' ? await posePromise : undefined;
+  item.loaded[key] = await loadModel(item.model.name, pose);
+}
+
+const repaint = () => { for(const c of cards) if(c.card.style.display !== 'none') show(c); };
+const show = (item) => work(async () => {
+  try{
+    await ensure(item);
+    if(mode === 'pack') await ensureAtlas();
+    paint(item);
+  }catch(e){
+    item.card.querySelector('.stage').textContent = '—';
+  }
+});
+
+const seen = new IntersectionObserver((entries) => {
+  for(const entry of entries){
+    if(!entry.isIntersecting) continue;
+    const item = cards.find(c => c.card === entry.target);
+    seen.unobserve(entry.target);
+    show(item);
+  }
+}, {rootMargin:'400px'});
+for(const c of cards) seen.observe(c.card);
+
+/* ---------- фильтр и переключатели ---------- */
+const bar = document.getElementById('filters');
+const press = (group, on) => { for(const b of group) b.setAttribute('aria-pressed', b === on ? 'true' : 'false'); };
+
+const filters = [];
+for(const key of ['Всё', ...cats.keys()]){
+  const b = document.createElement('button');
+  b.textContent = key;
+  b.setAttribute('aria-pressed', key === 'Всё' ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(filters, b);
+    for(const c of cards) c.card.style.display = (key === 'Всё' || c.model.category === key) ? '' : 'none';
+  });
+  filters.push(b);
+  bar.appendChild(b);
+}
+bar.appendChild(document.createElement('hr'));
+
+const modes = [];
+for(const [key, label] of [['palette', 'В нашей палитре'], ['pack', 'В цветах набора']]){
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.setAttribute('aria-pressed', key === mode ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(modes, b);
+    mode = key;
+    if(key === 'pack') ensureAtlas().then(repaint);
+    else repaint();
+  });
+  modes.push(b);
+  bar.appendChild(b);
+}
+bar.appendChild(document.createElement('hr'));
+
+const stances = [];
+for(const [key, label] of [[true, 'В позе ' + cat.pose.clip], [false, 'В позе привязки']]){
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.setAttribute('aria-pressed', key === posed ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(stances, b);
+    posed = key;
+    repaint();
+  });
+  stances.push(b);
+  bar.appendChild(b);
+}
+
+/* ---------- что взято ---------- */
+const TOOK = [
+  ['Скелет', 'Skeleton_Minion', 0.72,
+   'самый голый силуэт набора — кости, пояс и ничего больше; на ярусах 0–1 он и должен читаться как дешёвый'],
+  ['Скелет-воин', 'Skeleton_Warrior', 0.95,
+   'рогатый шлем и доспех против голых костей; длину силуэту даёт топор в правой руке'],
+  ['Скелет-маг', 'Skeleton_Mage', 1,
+   'шляпа и посох — на ярусе 3 он не гонится, а держит проход, и стоять на месте ему идёт'],
+];
+const tookBody = document.querySelector('#took tbody');
+let tookTris = 0;
+for(const [enemy, name, height, why] of TOOK){
+  const m = cat.models.find(x => x.name === name);
+  const held = {Skeleton_Warrior:'Skeleton_Axe', Skeleton_Mage:'Skeleton_Staff'}[name];
+  const staff = held === undefined ? null : cat.models.find(x => x.name === held);
+  const tris = m.tris + (staff?.tris ?? 0);
+  tookTris += tris;
+  const tr = document.createElement('tr');
+  tr.className = 'new';
+  tr.innerHTML = '<td>' + enemy + '</td><td class="mono">' + name +
+    (staff ? ' + ' + held : '') + '</td><td class="num">' +
+    tris + '</td><td class="num">' + height +
+    '</td><td>' + why + '</td>';
+  tookBody.appendChild(tr);
+}
+
+/* ---------- цена ---------- */
+const adoptedTris = cat.models
+  .filter(m => cat.adopted.includes(m.name))
+  .reduce((s, m) => s + m.tris, 0);
+document.getElementById('costTris').textContent = adoptedTris;
+document.getElementById('costTrisD').textContent = '×' + Math.round(adoptedTris / 314);
+// 19 байт на треугольник: девять чисел по два байта на позиции и байт на слот;
+// base64 добавляет треть. Это ровно то, что окажется в бандле.
+const packBytes = Math.ceil(adoptedTris * 18 / 3) * 4 + Math.ceil(adoptedTris / 3) * 4;
+document.getElementById('packKb').textContent = kb(packBytes);
+
+/* ---------- провал яркости между костью и кожей ---------- */
+const bone = cat.ramps.find(r => r.id === 'bone');
+const wood = cat.ramps.find(r => r.id === 'wood');
+const lum = (h) => {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  return (0.2126*r + 0.7152*g + 0.0722*b) / 255;
+};
+document.getElementById('valley').textContent =
+  'самой светлой кожей (' + lum(wood.source[wood.source.length - 1]).toFixed(2) +
+  ') и самой тёмной костью (' + lum(bone.source[0]).toFixed(2) + ')';
+</script>
