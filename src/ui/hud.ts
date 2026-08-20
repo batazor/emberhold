@@ -14,6 +14,8 @@ export interface HudCallbacks {
   onZoom(delta: number): void;
   onEvacuate(): void;
   onNight(value: number): void;
+  /** Отладка, не механика: плотность травы в травинках на клетку. */
+  onGrass(perTile: number): void;
   /** §11.7 — умение, раз за вылазку. Одна кнопка: вторую руку она не занимает. */
   onSkill(): void;
 }
@@ -68,6 +70,7 @@ export class Hud {
         <div id="h-hint" class="hint"></div>
         <div class="panel night">
           <span class="lbl">Ночь</span><input id="h-night" type="range" min="0" max="100" value="100">
+          <span class="lbl">Трава</span><input id="h-grass" type="range" min="0" max="64" value="24">
         </div>
         <div class="ctl">
           <button data-act="rot-l">⟲</button>
@@ -114,6 +117,10 @@ export class Hud {
 
     this.q('h-night').addEventListener('input', (e) => {
       this.cb.onNight(Number((e.target as HTMLInputElement).value) / 100);
+    });
+
+    this.q('h-grass').addEventListener('input', (e) => {
+      this.cb.onGrass(Number((e.target as HTMLInputElement).value));
     });
   }
 
@@ -205,6 +212,10 @@ export class Hud {
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
     this.stats.style.visibility = visible ? 'visible' : 'hidden';
+  }
+
+  setGrass(perTile: number): void {
+    (this.q('h-grass') as HTMLInputElement).value = String(perTile);
   }
 
   setStats(text: string): void {

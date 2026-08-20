@@ -9,6 +9,12 @@ import { PALETTE } from './palette';
 const ELEVATION = (30 * Math.PI) / 180;
 const CAM_DIST = 42;
 
+/* Цвета неба: считаются один раз, а не заводятся каждый кадр в update. */
+const SKY_NIGHT = new THREE.Color(0x27324d);
+const SKY_DAY = new THREE.Color(0xbcd2e8);
+const FOG_NIGHT = new THREE.Color(PALETTE.night);
+const FOG_DAY = new THREE.Color(PALETTE.day);
+
 export class SceneRig {
   readonly scene = new THREE.Scene();
   readonly renderer: THREE.WebGLRenderer;
@@ -122,10 +128,15 @@ export class SceneRig {
   update(dt: number, heroX: number, heroZ: number, visionRadius: number): void {
     const day = 1 - this.night;
 
+    // §11.4 — вне фонаря темно, и это механика: обзор и есть дальность света.
+    // Пробовал добавить лунный подсвет ради силуэтов (0.2 и 0.16 вместо
+    // 0.05 и 0.07) — не понадобилось: чернил экран не свет, а тёмное стекло
+    // в style.css, общее у HUD с экраном возврата. Если силуэты за кругом
+    // света всё-таки нужны, весь рычаг — эти две константы.
     this.sun.intensity = 0.05 + day * 1.75;
     this.sun.color.setHSL(0.09 + this.night * 0.5, 0.55 - day * 0.25, 0.55 + day * 0.12);
     this.hemi.intensity = 0.07 + day * 0.58;
-    this.hemi.color.lerpColors(new THREE.Color(0x27324d), new THREE.Color(0xbcd2e8), day);
+    this.hemi.color.lerpColors(SKY_NIGHT, SKY_DAY, day);
 
     const sunAngle = (0.25 + day * 0.5) * Math.PI;
     this.sun.position.set(heroX + Math.cos(sunAngle) * 24, 12 + day * 20, heroZ + 14);
@@ -141,14 +152,14 @@ export class SceneRig {
       heroZ + Math.sin(this.azimuth) * 0.75,
     );
 
-    this.fog.color.lerpColors(
-      new THREE.Color(PALETTE.night),
-      new THREE.Color(PALETTE.day),
-      day * day,
-    );
+    this.fog.color.lerpColors(FOG_NIGHT, FOG_DAY, day * day);
     (this.scene.background as THREE.Color).copy(this.fog.color);
-    this.fog.near = CAM_DIST + 2 + day * 8;
-    this.fog.far = CAM_DIST + 14 + day * 55;
+    // §6: «туман — только дымка позади сцены». Он и начинается позади:
+    // при ортокамере глубина считается от камеры, и near = CAM_DIST + 2
+    // затягивал дымкой дальнюю половину самой локации — та самая размытость.
+    // 18 — половина диагонали самой большой локации (§11.1, ярус 3: 20 клеток).
+    this.fog.near = CAM_DIST + 18 + day * 6;
+    this.fog.far = CAM_DIST + 48 + day * 40;
 
     this.focus.lerp(this.target, Math.min(1, dt * 3.5));
     this.azimuth += (this.azimuthGoal - this.azimuth) * Math.min(1, dt * 6);
@@ -170,7 +181,49 @@ export class SceneRig {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /**
+   * Туман наружу: заставка ставит свой, экспоненциальный (как в демке
+   * FluffyGrass), и возвращает этот на выходе. Линейный туман §6 считается
+   * от камеры и на свободной камере ведёт себя не так, как задумано.
+   */
+  setFog(fog: THREE.Fog | THREE.FogExp2 | null): void {
+    this.scene.fog = fog;
+  }
+
+  get linearFog(): THREE.Fog {
+    return this.fog;
+  }
+
+  /** Доля дня: 1 — полдень, 0 — ночь. Трава заставки и лагеря светится сама
+   *  и обязана знать время суток числом. */
+  get dayFactor(): number {
+    return 1 - this.night;
+  }
+
+  /** Цвет неба этого кадра. Чужой туман обязан держаться его же цвета. */
+  get skyColor(): THREE.Color {
+    return this.scene.background as THREE.Color;
+  }
+
+  /**
+   * Отрисовка чужой камерой. Ортоизометрия — правило игры (§6), но у
+   * заставки камера свободная: там нет ни сетки, ни пути назад, ни
+   * «персонажа за стеной», ради которых правило существует.
+   */
+  renderWith(camera: THREE.Camera): void {
+    this.renderer.render(this.scene, camera);
+  }
+
   get drawCalls(): number {
     return this.renderer.info.render.calls;
+  }
+
+  /* Отладочные окна в свет: ими смотрят замером, а не глазом (?bench=1). */
+  get sunIntensity(): number {
+    return this.sun.intensity;
+  }
+
+  get backgroundHex(): string {
+    return `#${(this.scene.background as THREE.Color).getHexString()}`;
   }
 }

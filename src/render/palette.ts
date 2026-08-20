@@ -9,6 +9,8 @@ export const PALETTE = {
   sun: 0xffe7bd,
   torch: 0xffb166,
   groundHue: 0.12,
+  grassBase: 0x2c3a1c,
+  grassTip: 0x8fb45f,
   rock: 0x6a6355,
   heroBody: 0xdcd2b0,
   heroCloak: 0x8a3f2e,

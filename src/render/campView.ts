@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { BUILDING_ORDER, builtBuildings, campArea, villagerCount } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { HERO_SPEED } from '../sim/config';
+import { FluffyGrass } from './fluffyGrass';
 import { forestGeometry, forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
-import { FOREST_PALETTE, PALETTE } from './palette';
+import { PALETTE } from './palette';
 
 /**
  * Сцена лагеря по camp.html: жители ходят и работают, стройка видна по
@@ -34,6 +35,9 @@ const CAMP_TREES: readonly ForestModelName[] = [
   'Tree_Bare_2_B_Color1',
 ];
 const CAMP_ROCKS: readonly ForestModelName[] = ['Rock_1_G_Color1', 'Rock_3_H_Color1'];
+
+/** Уровень земли вокруг площадки: луг из buildMeadow, на нём же стоит лес. */
+const MEADOW_Y = -0.02;
 
 /** Насколько далеко за поляну уходит лес, в клетках. */
 const FOREST_DEPTH = 5;
@@ -65,6 +69,7 @@ export class CampView {
 
   constructor(private camp: CampState) {
     this.buildGround();
+    this.buildMeadow();
     this.buildHero();
     this.rebuildBuildings();
   }
@@ -98,17 +103,9 @@ export class CampView {
     if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;
     this.groundMesh = mesh;
     this.group.add(mesh);
-
-    // Подстилка под лесом. Без неё деревья висят в пустоте: у лагеря нет
-    // фона, как у вылазки, — есть только квадрат поляны.
-    const floor = new THREE.Mesh(
-      this.track(new THREE.PlaneGeometry(90, 90)),
-      this.track(new THREE.MeshLambertMaterial({ color: FOREST_PALETTE[0] })),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(4.5, -0.42, 4.5);
-    floor.receiveShadow = true;
-    this.group.add(floor, this.forest);
+    // Своей подстилки у леса нет: земля под ним — луг из buildMeadow,
+    // и деревья стоят на его уровне (MEADOW_Y).
+    this.group.add(this.forest);
   }
 
   private groundMesh!: THREE.InstancedMesh;
@@ -156,7 +153,7 @@ export class CampView {
         const z = list[i + 1]!;
         const n = noise(z, x);
         const size = tree ? 1.9 + n * 1.1 : 0.5 + n * 0.5;
-        dummy.position.set(x + (n - 0.5) * 0.8, -0.4, z + (noise(x + 7, z) - 0.5) * 0.8);
+        dummy.position.set(x + (n - 0.5) * 0.8, MEADOW_Y, z + (noise(x + 7, z) - 0.5) * 0.8);
         dummy.rotation.set(0, n * 6.28, 0);
         dummy.scale.set(size * (0.9 + n * 0.2), size, size * (0.9 + n * 0.2));
         dummy.updateMatrix();
@@ -164,6 +161,74 @@ export class CampView {
       }
       this.forest.add(mesh);
     }
+  }
+
+  private meadow: FluffyGrass | null = null;
+
+  /**
+   * Луг вокруг лагеря — та же трава, что на заставке. Растёт снаружи
+   * площадки, а не на ней: площадка застраивается и переставляется (§20.4),
+   * и трава под Штабом торчала бы сквозь него.
+   *
+   * Уровень луга — вровень с крышкой площадки, а не ниже: опущенный луг
+   * превращал лагерь в висящую плиту с чёрным ребром. Вровень трава
+   * подходит к клеткам вплотную, а опущенные клетки за границей площади
+   * прячутся под ним.
+   */
+  private buildMeadow(): void {
+    // Радиус — по видимой земле, а не по площадке: при ортокамере в 30°
+    // полоса земли уходит вглубь на две высоты кадра, и круг поменьше
+    // обрывался краем в нижней части экрана.
+    const RADIUS = 30;
+    const RINGS = 26;
+    const SEGMENTS = 72;
+    const cx = 5;
+    const cz = 5;
+    const y = MEADOW_Y;
+
+    const position: number[] = [];
+    const index: number[] = [];
+    for (let ring = 0; ring <= RINGS; ring++) {
+      const r = (ring / RINGS) * RADIUS;
+      for (let seg = 0; seg < SEGMENTS; seg++) {
+        const a = (seg / SEGMENTS) * Math.PI * 2;
+        position.push(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r);
+      }
+    }
+    for (let ring = 0; ring < RINGS; ring++) {
+      for (let seg = 0; seg < SEGMENTS; seg++) {
+        const next = (seg + 1) % SEGMENTS;
+        const a = ring * SEGMENTS + seg;
+        const b = ring * SEGMENTS + next;
+        const c = (ring + 1) * SEGMENTS + seg;
+        const d = (ring + 1) * SEGMENTS + next;
+        index.push(a, b, c, b, d, c);
+      }
+    }
+
+    const geo = this.track(new THREE.BufferGeometry());
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+    geo.setIndex(index);
+    geo.computeVertexNormals();
+    const terrain = new THREE.Mesh(
+      geo,
+      this.track(new THREE.MeshLambertMaterial({ color: 0x4f6b45 })),
+    );
+    terrain.receiveShadow = true;
+    this.group.add(terrain);
+
+    this.meadow = new FluffyGrass(terrain, {
+      fieldSize: RADIUS * 2,
+      count: 11000,
+      scale: 4,
+      // Запрет читает текущую площадь: она растёт со Штабом, и после роста
+      // луг пересевается (rebuildBuildings).
+      reject: (x, z) => {
+        const edge = this.area - 0.5 + 0.7;
+        return x > -1.2 && x < edge && z > -1.2 && z < edge;
+      },
+    });
+    this.group.add(this.meadow.group);
   }
 
   private buildHero(): void {
@@ -248,7 +313,9 @@ export class CampView {
       }
     }
     this.groundMesh.instanceMatrix.needsUpdate = true;
+    // Площадь изменилась — лес и трава отступают с новых клеток вместе.
     this.buildForest(area);
+    this.meadow?.replant();
     this.syncVillagers();
   }
 
@@ -290,8 +357,12 @@ export class CampView {
     return { x: p.x + 0.5 + Math.cos(angle) * 1.3, z: p.z + 0.5 + Math.sin(angle) * 1.3 };
   }
 
-  update(dt: number, now: number): void {
+  update(dt: number, now: number, day = 1): void {
     this.rebuildBuildings();
+    this.meadow?.update(now / 1000);
+    // Трава FluffyGrass сама себе освещение, поэтому время суток ей
+    // передаётся числом: иначе вечерний лагерь стоит в полуденной траве.
+    this.meadow?.setLight(0.35 + day * 0.65);
 
     const hqPos = this.camp.layout.hq;
     this.hero.position.set(hqPos.x + 1.9, 0.55, hqPos.z + 0.5);
@@ -373,6 +444,8 @@ export class CampView {
 
   dispose(): void {
     this.group.removeFromParent();
+    this.meadow?.dispose();
+    this.meadow = null;
     this.groundMesh.dispose();
     // Геометрия леса общая на страницу (кэш forest.ts) — освобождаются только
     // буферы экземпляров.

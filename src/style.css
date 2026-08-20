@@ -10,10 +10,17 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* Игровой интерфейс не выделяется: случайный протяг по панели не должен
    превращаться в выделение текста и съедать нажатие. */
-#hud, #camp, /* ---------- экран возврата (мокап 04) ---------- */
-#return {
+#hud, #camp, #return {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 6;
+  padding: 18px; z-index: 6;
+}
+/* Сцену гасит только экран возврата (мокап 04): он приходит вместо игры,
+   а не поверх неё. HUD вылазки и панели лагеря стоят над сценой и обязаны
+   её показывать — пока они делили это правило с возвратом, вся игра шла
+   под тёмным стеклом на 86% с размытием. Отсюда же брались «темно и
+   размыто» в вылазке и «а где лагерь» после кнопки «Играть». */
+#return {
+  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px);
 }
 #return.on { display: flex; }
 #return .panel { width: 100%; max-width: 360px; }
@@ -206,3 +213,15 @@ button[disabled] { opacity: 0.4; cursor: default; }
   background: var(--panel);
 }
 .raid-slot.spent { opacity: 0.35; text-decoration: line-through; }
+
+/* ---------- стартовый экран ---------- */
+/* Заголовок стоит в сцене буквами, поэтому здесь только вход в игру.
+   Кнопка крупнее прочих: это единственное, что на экране можно нажать. */
+#start {
+  position: fixed; inset: auto 0 0 0; display: flex; justify-content: center;
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+#start button {
+  pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
+}
