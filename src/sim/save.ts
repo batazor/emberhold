@@ -1,5 +1,7 @@
 import type { BuildingId, CampState } from './camp';
 import { BUILDING_ORDER, campArea, createCamp } from './camp';
+import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
+import type { HeroState, Roster } from './heroes';
 import { emptyResources } from './resources';
 import type { ResourceKind } from './resources';
 
@@ -21,14 +23,24 @@ interface SaveV1 {
   resources: Record<ResourceKind, number>;
   construction: CampState['construction'];
   raids: number;
+  /**
+   * Отряд (§11.8). Поле необязательное, и версия сейва ради него не поднята:
+   * сохранение этапов 1–4 обязано открываться — иначе на каждом этапе игрок
+   * терял бы лагерь, а мы — возможность сравнить замеры до и после.
+   */
+  heroes?: {
+    active: number;
+    list: { cls: string; level: number; xp: number; wounds: number; status: string; busyUntil: number | null }[];
+  };
 }
 
 export interface LoadResult {
   readonly camp: CampState;
+  readonly roster: Roster;
   readonly watermark: number;
 }
 
-export function save(camp: CampState, watermark: number): void {
+export function save(camp: CampState, roster: Roster, watermark: number): void {
   const data: SaveV1 = {
     version: VERSION,
     savedAt: Date.now() / 1000,
@@ -38,6 +50,17 @@ export function save(camp: CampState, watermark: number): void {
     resources: camp.resources,
     construction: camp.construction,
     raids: camp.raids,
+    heroes: {
+      active: roster.active,
+      list: roster.heroes.map((h) => ({
+        cls: h.cls,
+        level: h.level,
+        xp: h.xp,
+        wounds: h.wounds,
+        status: h.status,
+        busyUntil: h.busyUntil,
+      })),
+    },
   };
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -49,18 +72,19 @@ export function save(camp: CampState, watermark: number): void {
 
 export function load(): LoadResult {
   const camp = createCamp();
+  const roster = createRoster();
   let raw: string | null = null;
   try {
     raw = localStorage.getItem(KEY);
   } catch {
     raw = null;
   }
-  if (raw === null) return { camp, watermark: 0 };
+  if (raw === null) return { camp, roster, watermark: 0 };
 
   try {
     const data = JSON.parse(raw) as Partial<SaveV1>;
     // Чужая или будущая версия — начинаем заново, но не роняем игру.
-    if (data.version !== VERSION) return { camp, watermark: 0 };
+    if (data.version !== VERSION) return { camp, roster, watermark: 0 };
 
     for (const id of BUILDING_ORDER) {
       const level = data.levels?.[id];
@@ -94,10 +118,51 @@ export function load(): LoadResult {
     if (c != null && BUILDING_ORDER.includes(c.building) && typeof c.endsAt === 'number') {
       camp.construction = c;
     }
-    return { camp, watermark: typeof data.watermark === 'number' ? data.watermark : 0 };
+
+    readRoster(roster, data.heroes);
+    // Состав догоняется до уровня Штаба: сейв мог быть записан правилами,
+    // где гейты §11.8 стояли иначе, и отряд не должен от этого рассыпаться.
+    while (syncRoster(roster, camp.levels.hq) !== null) { /* добираем по одному */ }
+
+    return { camp, roster, watermark: typeof data.watermark === 'number' ? data.watermark : 0 };
   } catch {
-    return { camp, watermark: 0 };
+    return { camp, roster, watermark: 0 };
   }
+}
+
+const STATUSES: readonly HeroState['status'][] = ['ready', 'raid', 'healing', 'training'];
+
+/**
+ * Отряд из сейва. Читается по одному полю с проверкой, как и всё остальное:
+ * поле, которому нельзя верить на сервере, нельзя записывать и здесь (§6).
+ * Герой «в вылазке» на момент записи возвращается готовым — вылазка
+ * не переживает перезапуск, и оставлять его занятым навсегда нельзя.
+ */
+function readRoster(roster: Roster, saved: SaveV1['heroes']): void {
+  if (saved === undefined || !Array.isArray(saved.list) || saved.list.length === 0) return;
+  const heroes: HeroState[] = [];
+  saved.list.forEach((h, i) => {
+    const cls = CLASS_ORDER.find((c) => c === h.cls);
+    if (cls === undefined) return;
+    const level = typeof h.level === 'number' ? Math.floor(h.level) : 1;
+    const status = STATUSES.find((s) => s === h.status) ?? 'ready';
+    heroes.push({
+      id: i,
+      cls,
+      level: Math.max(1, Math.min(MAX_HERO_LEVEL, level)),
+      xp: typeof h.xp === 'number' && h.xp >= 0 ? Math.floor(h.xp) : 0,
+      wounds: typeof h.wounds === 'number' && h.wounds >= 0 ? Math.floor(h.wounds) : 0,
+      status: status === 'raid' ? 'ready' : status,
+      busyUntil:
+        status !== 'raid' && typeof h.busyUntil === 'number' ? h.busyUntil : null,
+    });
+  });
+  if (heroes.length === 0) return;
+  roster.heroes = heroes;
+  roster.active =
+    typeof saved.active === 'number' && saved.active >= 0 && saved.active < heroes.length
+      ? saved.active
+      : 0;
 }
 
 export function wipe(): void {

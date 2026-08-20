@@ -1,4 +1,4 @@
-import type { EnemyKind, EnemyStats, Tier } from './types';
+import type { EnemyKind, EnemyStats } from './types';
 
 /**
  * §15 — три типа, по одному на диапазон ярусов. Различимы силуэтом раньше,
@@ -41,13 +41,9 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   },
 };
 
-/** Состав по ярусам. Падальщики ходят парами (§15). */
-export const TIER_ROSTER: Record<Tier, readonly EnemyKind[]> = {
-  0: ['scavenger', 'scavenger'],
-  1: ['scavenger', 'scavenger', 'scavenger', 'scavenger'],
-  // Бюджет ран, а не «пусть будет сложнее»: у героя их три (§11.3), каждая
-  // встреча стоит примерно одну, и при пяти противниках на локацию провал
-  // в бою становится нормой вместо провала по провианту.
-  2: ['scavenger', 'scavenger', 'spearman', 'spearman'],
-  3: ['spearman', 'spearman', 'golem', 'golem'],
-};
+/**
+ * Состав выводится моделью из бюджета ран (§22): копейщики и големы набираются
+ * до бюджета, падальщики — по числу ожидаемых стычек. Руками здесь не правят;
+ * сложность яруса задаётся в TIER_SPEC.
+ */
+export { TIER_ROSTER } from './balance';

@@ -1,6 +1,6 @@
 import { mulberry32, randInt } from '../core/rng';
 import type { Rng } from '../core/rng';
-import { TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
+import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
 import { rollLoot } from './resources';
@@ -206,7 +206,7 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
   });
 
   const containers: Container[] = [];
-  const containerCount = 3 + tier * 2;
+  const containerCount = TIER_CONTAINERS[tier];
   const maxBack = open.length > 0 ? backSteps[open[0]!]! : 0;
 
   for (let i = 0; i < containerCount; i++) {

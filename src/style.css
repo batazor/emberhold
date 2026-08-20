@@ -171,3 +171,19 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .sp-note { font-size: 11px; color: var(--dim); margin: 0 0 8px; }
 #stats-panel .acts { display: flex; gap: 6px; margin-top: 12px; }
 #stats-panel .acts button { flex: 1; }
+
+/* ---------- отряд (§11.8) ---------- */
+#roster {
+  pointer-events: auto; display: flex; flex-direction: column; gap: 8px;
+  max-height: 40vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+#roster .r { display: flex; flex-direction: column; gap: 4px; }
+#roster .r + .r { padding-top: 8px; border-top: 1px solid var(--line); }
+/* Активный герой выделен рамкой, а не цветом текста: строка должна читаться
+   с расстояния вытянутой руки, как и всё остальное в лагере. */
+#roster .r.on { border-left: 2px solid var(--warn); padding-left: 7px; }
+.r-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.r-meta { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.r-skill { font-size: 11px; color: var(--dim); }
+.r-acts { display: flex; gap: 6px; }
+.r-acts button { flex: 1; font-size: 12px; }

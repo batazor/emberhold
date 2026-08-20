@@ -4,22 +4,24 @@
  */
 import type { Tier } from './types';
 
-/** §11.1 — размер локации по ярусам, в тайлах. Одна локация = один ярус. */
-export const TIER_SIZE: Record<Tier, number> = { 0: 8, 1: 12, 2: 16, 3: 20 };
-
 /**
- * §12.1 и §12.3 — ценность находки растёт с глубиной комнаты.
- * Множитель — во сколько раз содержимое у дна ценнее, чем у входа.
- * Плоское распределение обесценивает глубину: риск растёт, награда нет,
- * и решение «идти дальше» перестаёт существовать.
+ * Числа ярусов больше не назначаются здесь — они выводятся моделью (§22)
+ * из описания сложности и переэкспортируются, чтобы существующие импорты
+ * не менялись. Править ярус означает править TIER_SPEC в balance.ts,
+ * а не четвёрку чисел, подогнанных друг под друга.
  */
-export const TIER_DEPTH_VALUE: Record<Tier, number> = { 0: 1.4, 1: 1.8, 2: 2.6, 3: 3.5 };
-
-/** Величина находки у самого входа, до умножения на глубину. */
-export const TIER_CONTAINER_BASE: Record<Tier, number> = { 0: 2, 1: 2, 2: 3, 3: 3 };
-
-/** §11.2 — доля рюкзака под угрозой при провале. */
-export const TIER_RISK: Record<Tier, number> = { 0: 0, 1: 0.3, 2: 0.6, 3: 1 };
+export {
+  FOOD_COST,
+  HERO_WOUNDS,
+  TIER_CONTAINERS,
+  TIER_CONTAINER_BASE,
+  TIER_DEPTH_VALUE,
+  TIER_FOOD,
+  TIER_KITCHEN_GATE,
+  TIER_RISK,
+  TIER_SIZE,
+  modelKitchenFood,
+} from './balance';
 
 export const TIER_NAME: Record<Tier, string> = {
   0: 'Подступы',
@@ -27,13 +29,6 @@ export const TIER_NAME: Record<Tier, string> = {
   2: 'Ярус 2',
   3: 'Дно',
 };
-
-/** §11.1 — расход провианта. */
-export const FOOD_COST = {
-  step: 1,
-  fight: 3,
-  container: 5,
-} as const;
 
 /** §11.4 — радиус обзора в тайлах. */
 export const visionRadius = (knowledge: number, night: boolean, torch: boolean): number =>
@@ -47,8 +42,7 @@ export const visionRadius = (knowledge: number, night: boolean, torch: boolean):
  */
 export const ENEMY_WAKE_SHARE = 0.6;
 
-/** §11.3 — здоровье героя это раны, а не полоска. */
-export const HERO_WOUNDS = 3;
+/** §11.3 — герой: раны переехали в balance.ts, там на них опирается модель. */
 export const HERO_ATTACK_INTERVAL = 1.2;
 export const HERO_REACH = 1.0;
 

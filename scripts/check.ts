@@ -21,6 +21,14 @@ import {
   upgradeProgress,
   villagerCount,
 } from '../src/sim/camp';
+import {
+  deriveTier,
+  modelKitchenFood,
+  TIER_KITCHEN_GATE,
+  TIER_SPEC,
+  HERO_WOUNDS,
+  WOUND_COST,
+} from '../src/sim/balance';
 import { addResources } from '../src/sim/resources';
 import { events, setEvents, summarize } from '../src/sim/telemetry';
 import { load, save, wipe } from '../src/sim/save';
@@ -151,8 +159,12 @@ check('стартовая раскладка помещается в площа�
 });
 
 check('§2 — уровни зданий меняют вылазку', () => {
-  assert.equal(kitchenFood(1), 50); // §11.1
-  assert.equal(kitchenFood(3), 90);
+  // Числа Кухни больше не назначены руками: кривая выведена моделью (§22).
+  // Закреплять здесь 50 и 90 означало бы фиксировать то, что модель обязана
+  // пересчитывать, — проверяем связь, а не значение.
+  assert.equal(kitchenFood(1), modelKitchenFood(1));
+  assert.equal(kitchenFood(3), modelKitchenFood(3));
+  assert.ok(kitchenFood(2) > kitchenFood(1), 'запас растёт с уровнем');
   assert.equal(storageCapacity(2), 19); // пример «12 из 19» из §11.2
   assert.equal(campArea(1), 6); // §20.4
   assert.equal(campArea(5), 10);
@@ -249,9 +261,11 @@ const run = (state: ReturnType<typeof createRaid>, seconds: number): void => {
 
 check('§2 — Кухня и Склад задают провиант и рюкзак', () => {
   const raid = createRaid({ seed: 1, tier: 1, kitchenLevel: 3, storageLevel: 2 });
-  assert.equal(raid.food, 90);
-  assert.equal(raid.foodMax, 90);
-  assert.equal(raid.capacity, 19);
+  // Значения берутся из кривых, а не повторяются числом: кривая Кухни выведена
+  // моделью и меняется вместе с TIER_SPEC.
+  assert.equal(raid.food, kitchenFood(3));
+  assert.equal(raid.foodMax, kitchenFood(3));
+  assert.equal(raid.capacity, storageCapacity(2));
 });
 
 check('§11.1 — путь назад считается от эвакуации', () => {
@@ -330,9 +344,20 @@ check('§15 — герой достаёт до каждого противник
   }
 });
 
-check('бюджет ран: не больше четырёх противников на локацию', () => {
+check('§22 — бюджет ран, а не голов', () => {
+  // Считать противников поштучно означает мерить не то: падальщик стоит
+  // 0 ран (герой убивает его раньше первого удара), копейщик 1, голем 2.
+  // Замер детерминирован — 150 из 150 забегов дали одно и то же значение.
   for (const [tier, roster] of Object.entries(TIER_ROSTER)) {
-    assert.ok(roster.length <= 4, `ярус ${tier}: ${roster.length} противников`);
+    const wounds = roster.reduce((sum, kind) => sum + WOUND_COST[kind], 0);
+    assert.ok(
+      wounds < HERO_WOUNDS,
+      `ярус ${tier}: состав стоит ${wounds} ран при ${HERO_WOUNDS} у героя — ` +
+        'драка со всеми означает гарантированную смерть, а не риск',
+    );
+    // Верхняя граница по головам остаётся, но она про отрисовку:
+    // скиннованные меши не инстансятся (§21).
+    assert.ok(roster.length <= 12, `ярус ${tier}: ${roster.length} противников`);
   }
 });
 
@@ -458,3 +483,19 @@ check('§20.3 — цена растёт с уровнем', () => {
 });
 
 console.log(`\n${checks} проверок пройдено`);
+
+check('§12.2 и §22 — запас на гейте лежит между «до дна» и «полным обходом»', () => {
+  for (const tier of [0, 1, 2, 3] as const) {
+    const d = deriveTier(TIER_SPEC[tier]);
+    const food = kitchenFood(TIER_KITCHEN_GATE[tier]);
+    assert.ok(
+      d.geometry.deepAndBack <= food * 0.85,
+      `ярус ${tier}: до дна и обратно ${d.geometry.deepAndBack} не влезает в ${food}`,
+    );
+    assert.ok(
+      d.geometry.fullTour > food,
+      `ярус ${tier}: полный обход ${d.geometry.fullTour} по карману при ${food}`,
+    );
+    assert.ok(d.checks.survivable, `ярус ${tier}: забег непереживаем`);
+  }
+});

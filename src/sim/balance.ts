@@ -1,5 +1,20 @@
-import { HERO_WOUNDS, FOOD_COST } from './config';
 import type { EnemyKind, Tier } from './types';
+
+/**
+ * Базовые стоимости живут здесь, а не в config: модель на них опирается,
+ * а config их переэкспортирует. Иначе получается кольцевая зависимость —
+ * config тянет модель ради ярусов, модель тянет config ради стоимостей.
+ */
+
+/** §11.1 — расход провианта. */
+export const FOOD_COST = {
+  step: 1,
+  fight: 3,
+  container: 5,
+} as const;
+
+/** §11.3 — здоровье героя это раны, а не полоска. */
+export const HERO_WOUNDS = 3;
 
 /**
  * Модель баланса яруса. Числа не назначаются руками, а выводятся из описания
@@ -194,3 +209,50 @@ export const TIER_SPEC: Record<Tier, TierSpec> = {
  * Поэтому ярус задаётся описанием сложности, а не четвёркой чисел,
  * подогнанных друг под друга.
  */
+
+/* ---------- выведенные таблицы: единственный источник чисел яруса ---------- */
+
+const derived = {
+  0: deriveTier(TIER_SPEC[0]),
+  1: deriveTier(TIER_SPEC[1]),
+  2: deriveTier(TIER_SPEC[2]),
+  3: deriveTier(TIER_SPEC[3]),
+} as const;
+
+export const TIER_SIZE: Record<Tier, number> = {
+  0: TIER_SPEC[0].size, 1: TIER_SPEC[1].size, 2: TIER_SPEC[2].size, 3: TIER_SPEC[3].size,
+};
+export const TIER_RISK: Record<Tier, number> = {
+  0: TIER_SPEC[0].risk, 1: TIER_SPEC[1].risk, 2: TIER_SPEC[2].risk, 3: TIER_SPEC[3].risk,
+};
+export const TIER_DEPTH_VALUE: Record<Tier, number> = {
+  0: TIER_SPEC[0].depthValue, 1: TIER_SPEC[1].depthValue,
+  2: TIER_SPEC[2].depthValue, 3: TIER_SPEC[3].depthValue,
+};
+export const TIER_CONTAINER_BASE: Record<Tier, number> = {
+  0: TIER_SPEC[0].base, 1: TIER_SPEC[1].base, 2: TIER_SPEC[2].base, 3: TIER_SPEC[3].base,
+};
+export const TIER_CONTAINERS: Record<Tier, number> = {
+  0: TIER_SPEC[0].containers, 1: TIER_SPEC[1].containers,
+  2: TIER_SPEC[2].containers, 3: TIER_SPEC[3].containers,
+};
+export const TIER_ROSTER: Record<Tier, readonly EnemyKind[]> = {
+  0: derived[0].roster, 1: derived[1].roster, 2: derived[2].roster, 3: derived[3].roster,
+};
+/** Запас провианта, который модель считает правильным для яруса. */
+export const TIER_FOOD: Record<Tier, number> = {
+  0: derived[0].food, 1: derived[1].food, 2: derived[2].food, 3: derived[3].food,
+};
+
+/**
+ * Кривая Кухни выведена, а не назначена: ярусы открываются последовательными
+ * уровнями, и запас на них обязан совпасть с модельным. Выведенные значения
+ * 49 / 75 / 102 / 131 ложатся на прямую с шагом 27 — это и есть формула.
+ */
+export const KITCHEN_FOOD_BASE = 22;
+export const KITCHEN_FOOD_STEP = 27;
+export const modelKitchenFood = (level: number): number =>
+  KITCHEN_FOOD_BASE + KITCHEN_FOOD_STEP * level;
+
+/** Ярус k открывается Кухней k+1: запас на этом уровне и есть модельный. */
+export const TIER_KITCHEN_GATE: Record<Tier, number> = { 0: 1, 1: 2, 2: 3, 3: 4 };

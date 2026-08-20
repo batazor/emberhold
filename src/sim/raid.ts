@@ -5,12 +5,13 @@ import {
   HERO_ATTACK_INTERVAL,
   HERO_REACH,
   HERO_SPEED,
-  HERO_WOUNDS,
   TIER_RISK,
   WEIGHT_SLOWDOWN,
   visionRadius,
 } from './config';
 import { ENEMY_STATS } from './enemies';
+import { DEFAULT_LOADOUT, FORAGE_FOOD, SKILLS, TRAIL_STEP_DISCOUNT } from './heroes';
+import type { HeroLoadout } from './heroes';
 import { generateLocation } from './generate';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
@@ -24,26 +25,39 @@ export interface RaidOptions {
   /** Уровни зданий лагеря: Кухня задаёт провиант, Склад — рюкзак (§2). */
   readonly kitchenLevel: number;
   readonly storageLevel: number;
+  /**
+   * Кем идём (§11.7). Не обязателен: замеры и старые прогоны продолжают
+   * работать на прежнем безымянном герое, иначе их результаты стали бы
+   * несравнимы с калибровкой §20.3.
+   */
+  readonly loadout?: HeroLoadout;
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
   const loc = generateLocation(opts.seed, opts.tier);
+  const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   return {
     loc,
+    loadout,
+    skillUsed: false,
+    skillLeft: 0,
     hero: {
       x: loc.evac.x,
       z: loc.evac.z,
       prevX: loc.evac.x,
       prevZ: loc.evac.z,
       facing: 0,
-      wounds: HERO_WOUNDS,
+      // Раны — от класса: у Ратника их четыре (§11.7).
+      wounds: loadout.wounds,
       cooldown: 0,
     },
     food: kitchenFood(opts.kitchenLevel),
     foodMax: kitchenFood(opts.kitchenLevel),
     bag: emptyResources(),
     bagTotal: 0,
-    capacity: storageCapacity(opts.storageLevel),
+    // Рюкзак класса: Следопыт −25%, Солевар +30% (§11.7). Не меньше единицы,
+    // иначе на Складе ур. 1 Следопыт не смог бы унести ничего.
+    capacity: Math.max(1, Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul)),
     path: [],
     status: 'running',
     steps: 0,
@@ -103,12 +117,41 @@ function heroSpeed(state: RaidState): number {
   // Вес добычи замедляет героя (§1) — цена жадности платится дорогой назад.
   const load = state.bagTotal / state.capacity;
   const starving = state.food <= 0 ? 0.6 : 1;
-  return HERO_SPEED * (1 - WEIGHT_SLOWDOWN * load) * starving;
+  return HERO_SPEED * state.loadout.speedMul * (1 - WEIGHT_SLOWDOWN * load) * starving;
+}
+
+/** Действует ли сейчас умение этого класса. */
+function skillActive(state: RaidState, id: RaidState['loadout']['skill']): boolean {
+  return state.skillLeft > 0 && state.loadout.skill === id;
+}
+
+/**
+ * §11.7 — «Тропа»: путь назад −25% на 30 секунд.
+ *
+ * Путь назад измеряется шагами (§11.1), а каждый шаг стоит провианта,
+ * поэтому «−25% пути» реализовано как −25% к цене шага, а не как срез
+ * маршрута: срезать нечего, локация уже сгенерирована, а телепорт к выходу
+ * обесценил бы эвакуацию. Проверяется телеметрией: если умение не меняет
+ * глубину эвакуации, читается оно неправильно.
+ */
+function stepFoodCost(state: RaidState): number {
+  return FOOD_COST.step * (skillActive(state, 'trail') ? 1 - TRAIL_STEP_DISCOUNT : 1);
+}
+
+/** Умение применяется один раз за вылазку, отката нет (§11.7). */
+export function useSkill(state: RaidState): boolean {
+  if (state.status !== 'running' || state.skillUsed) return false;
+  const def = SKILLS[state.loadout.skill];
+  state.skillUsed = true;
+  state.skillLeft = def.seconds;
+  if (state.loadout.skill === 'forage') state.food += FORAGE_FOOD;
+  state.events.push(`${def.name}: ${def.effect}`);
+  return true;
 }
 
 function arriveAt(state: RaidState, cell: Cell): void {
   state.steps += 1;
-  state.food -= FOOD_COST.step;
+  state.food -= stepFoodCost(state);
 
   const container = state.loc.containers.find(
     (c) => !c.opened && c.x === cell.x && c.z === cell.z,
@@ -196,10 +239,17 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
       if (enemy.telegraph > 0) {
         enemy.telegraph -= dt;
         if (enemy.telegraph <= 0) {
-          hero.wounds -= 1;
-          state.lastHitBy = enemy.kind;
+          // §11.7 «Заслон» — не получает урон 5 секунд. Замах при этом
+          // отыгрывается целиком: игрок должен видеть, что удар был отражён,
+          // а не что противник перестал бить.
+          if (skillActive(state, 'guard')) {
+            state.events.push('Заслон держит');
+          } else {
+            hero.wounds -= 1;
+            state.lastHitBy = enemy.kind;
+            state.events.push(`${stats.name} бьёт`);
+          }
           enemy.cooldown = stats.attackInterval;
-          state.events.push(`${stats.name} бьёт`);
         }
       } else if (enemy.cooldown <= 0) {
         enemy.telegraph = stats.telegraph;
@@ -247,6 +297,7 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   if (state.status !== 'running') return;
   state.events.length = 0;
   state.elapsed += dt;
+  if (state.skillLeft > 0) state.skillLeft = Math.max(0, state.skillLeft - dt);
   const back = backSteps(state);
   if (back > state.maxBack) state.maxBack = back;
 

@@ -1,3 +1,4 @@
+import type { HeroLoadout } from './heroes';
 import type { ResourceKind, Resources } from './resources';
 
 export type Tier = 0 | 1 | 2 | 3;
@@ -73,6 +74,12 @@ export type RaidStatus = 'running' | 'evacuated' | 'failed';
 export interface RaidState {
   readonly loc: GameLocation;
   readonly hero: Hero;
+  /** Кем идём (§11.7). Вылазка знает о герое ровно это и ничего про лечение. */
+  readonly loadout: HeroLoadout;
+  /** §11.7 — умение применяется один раз за вылазку, отката нет. */
+  skillUsed: boolean;
+  /** Сколько секунд умение ещё действует. 0 — не действует. */
+  skillLeft: number;
   food: number;
   /** Потолок провианта от Кухни — нужен полосе в HUD (§2). */
   readonly foodMax: number;

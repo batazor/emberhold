@@ -1,0 +1,525 @@
+<meta charset="utf-8">
+<title>Расходники</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  h3{font-family:var(--ff-display);font-weight:400;font-size:19px;margin:0 0 6px;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b,.key p b{color:var(--text);}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+  table{border-collapse:collapse;width:100%;font-size:14px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);font-weight:400;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .quote{border-left:2px solid var(--brass);padding:2px 0 2px 18px;margin:0;max-width:64ch;
+    font-family:var(--ff-display);font-size:17px;line-height:1.5;}
+  .quote cite{display:block;margin-top:8px;font-family:var(--ff-mono);font-size:11px;font-style:normal;color:var(--dim);}
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .key{background:var(--surface);border:1px solid var(--line);padding:18px;}
+  .key p{margin:0;font-size:14px;color:var(--dim);}
+  .lab{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:26px;align-items:start;}
+  @media(max-width:860px){.lab{grid-template-columns:1fr;}}
+  .screen{background:#11100c;border:1px solid var(--line);padding:12px;display:flex;justify-content:center;}
+  .screen canvas{width:100%;max-width:680px;height:auto;}
+  .panel{background:var(--surface);border:1px solid var(--line);padding:17px;display:flex;
+    flex-direction:column;gap:14px;}
+  .rows{display:flex;flex-direction:column;gap:5px;font-family:var(--ff-mono);font-size:11.5px;
+    font-variant-numeric:tabular-nums;color:var(--dim);}
+  .rows div{display:flex;justify-content:space-between;gap:10px;}
+  .rows b{color:var(--text);}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  input[type=range]{accent-color:var(--brass);width:150px;}
+  label{display:flex;align-items:center;justify-content:space-between;gap:9px;font-size:13.5px;}
+  .chk{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.05em;padding:4px 9px;border-radius:3px;
+    border:1px solid;display:inline-block;}
+  .chk.ok{color:var(--moss);border-color:var(--moss);}
+  .chk.no{color:var(--blood);border-color:var(--blood);background:rgba(142,56,56,.09);}
+  .slots{display:flex;gap:10px;flex-wrap:wrap;}
+  .slot{width:64px;height:64px;border:1px solid var(--line);background:var(--surface-2);
+    display:flex;align-items:center;justify-content:center;font-family:var(--ff-mono);font-size:10px;
+    color:var(--dim);text-align:center;padding:4px;}
+  .no-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;}
+  .no-list div{border-top:2px solid var(--blood);padding-top:10px;}
+  .no-list h3{color:var(--blood);}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Второй сток · без таймера</div>
+    <h1>Расходники <em>вылазки</em></h1>
+    <p class="lede">Экран возврата держится на правиле: после вылазки покупка доступна
+      в 60–80% случаев, и главная кнопка там — трата, а не повтор. Замер трёх сессий
+      по двадцать вылазок дал 15–25%. Причина не в ценах: один слот стройки закрыт
+      на три-десять вылазок подряд, а второй сток, которым §20.1 это чинит,
+      не построен. Этот документ — про него.</p>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Дыра, которую затыкаем</h2></div>
+    <p>Числа из §20.1.1. Вылазка идёт 15–30 секунд, таймер стройки — от трёх минут.
+      Игрок возвращается в лагерь, где ему нечего купить, и главной кнопкой становится
+      «ещё вылазка» — ровно то, чего раздел старается избежать.</p>
+    <table>
+      <thead><tr><th>Сессия</th><th>Покупка предлагалась</th><th>Слот занят</th><th>Нет ресурсов</th></tr></thead>
+      <tbody>
+        <tr><td class="num">сид 20260820</td><td class="num">15%</td><td class="num">6</td><td class="num">11</td></tr>
+        <tr><td class="num">сид 7</td><td class="num">25%</td><td class="num">13</td><td class="num">2</td></tr>
+        <tr><td class="num">сид 31</td><td class="num">25%</td><td class="num">11</td><td class="num">4</td></tr>
+        <tr><td><b>цель §20.1</b></td><td class="num"><b>60–80%</b></td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <p>Отсюда требование к расходнику, и оно одно: <b>покупаться мгновенно и всегда.</b>
+      Ни таймера, ни слота, ни здания. Всё остальное в этом документе — следствие.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Возражение документа — и ответ на него</h2></div>
+    <p>Расходники нельзя вводить, не разобравшись с тем, что дизайн уже сказал о них
+      в разделе про драфт сборов:</p>
+    <blockquote class="quote">Карты не копятся и не покупаются. Карта тратится на текущую
+      вылазку и не хранится. Это снимает главную беду расходников в мобильных играх —
+      их берегут для лучшего момента, который не наступает никогда.
+      <cite>§19.1</cite></blockquote>
+    <p>Возражение верное, и отвечать на него надо конструкцией, а не обещанием.
+      Беда возникает из инвентаря: пока предмет лежит в сумке, у игрока есть решение
+      «не сейчас», и оно всегда выигрывает. <b>Значит, инвентаря быть не должно.</b></p>
+    <div class="guard">
+      <div class="key">
+        <h3>Покупается перед входом, сгорает на выходе</h3>
+        <p>Расходник не переносится между вылазками. Купил — значит, взял в эту.
+          Не пригодился — деньги потрачены. Копить нечего: это не предмет,
+          а <b>платная страховка на один заход</b>.</p>
+      </div>
+      <div class="key">
+        <h3>Срабатывает сам, кнопки использования нет</h3>
+        <p>Повязка накладывается на последней ране, паёк вскрывается на нуле провианта.
+          Игрок не выбирает момент — <b>момент выбран правилом</b>, и «приберечь»
+          физически невозможно. Заодно это снимает кнопку с экрана, где обе руки заняты.</p>
+      </div>
+      <div class="key">
+        <h3>Не больше двух</h3>
+        <p>Два слота на вылазку. Купить всё нельзя, значит покупка остаётся выбором,
+          а не списком. Третий слот не продаётся ни за соль, ни за деньги —
+          это та же черта, что и второй слот стройки в §20.1.</p>
+      </div>
+    </div>
+    <p>Проверка на честность: если убрать из расходника автосрабатывание и разрешить
+      хранение, он немедленно превращается в то, против чего §19.1 возражает.
+      <b>Автосрабатывание — не удобство, а условие существования системы.</b></p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Что они делают: страхуют провал, а не усиливают вылазку</h2></div>
+    <p>Опасность номер два — превратить расходники во вторую колоду сборов. У карт
+      семь осей (провиант, дорога, вместимость, обзор, сведения, ставка, бой), и любая
+      прибавка к ним уже занята. Поэтому расходник берёт себе другую роль:
+      <b>он не делает вылазку сильнее, он снижает цену ошибки</b>. Карта отвечает
+      на вопрос «как я пойду», расходник — на вопрос «что будет, если не выйдет».</p>
+    <div class="lab">
+      <div class="screen"><canvas id="cv" width="680" height="330"></canvas></div>
+      <div class="panel">
+        <div class="bar">
+          <button id="spin" type="button" aria-pressed="true">Вращать</button>
+          <button id="wire" type="button" aria-pressed="false">Рёбра</button>
+        </div>
+        <label>Поворот <input type="range" id="rot" min="0" max="360" value="0"></label>
+        <div class="rows" id="tris"></div>
+        <div class="note">Блокинг, а не финальные модели: на этой стадии утверждается
+          силуэт. Бюджет реквизита — 120 треугольников, вдесятеро меньше здания:
+          расходник виден в слоте размером с ноготь.</div>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Расходник</th><th>Срабатывает</th><th>Что делает</th><th>Что страхует</th><th>Цена</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Повязка</b></td>
+          <td>когда осталась одна рана</td>
+          <td>возвращает одну рану</td>
+          <td>ошибку маршрута: прошёл там, где стояли двое</td>
+          <td class="num">6 соли</td>
+        </tr>
+        <tr>
+          <td><b>Дорожный паёк</b></td>
+          <td>когда провиант дошёл до нуля</td>
+          <td>даёт 15 провианта</td>
+          <td>жадность на один зал глубже, чем стоило</td>
+          <td class="num">4 соли</td>
+        </tr>
+        <tr>
+          <td><b>Дымовая шашка</b></td>
+          <td>когда проснулись двое и больше</td>
+          <td>разрывает контакт: все теряют героя</td>
+          <td>свалку, из которой не выйти живым</td>
+          <td class="num">5 соли · 1 железо</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Три — не «пока три». Каждый закрывает свою причину провала из телеметрии:
+      бой, провиант и свалку. Четвёртый добавляется только тогда, когда замер покажет
+      четвёртую причину; расходник, не отвечающий ни на одну строчку телеметрии,
+      вырезается по тому же фильтру, что здания в §2.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Цена: из неё выводится вся починка</h2></div>
+    <p>Соль по §13 — мягкая валюта, которой к концу дня в избытке, и у неё сознательно
+      слабые стоки. Расходники становятся её главным постоянным стоком. Но цена не
+      берётся с потолка: она обязана попадать в те самые 60–80%.</p>
+    <div class="lab">
+      <div class="screen" style="align-items:center"><canvas id="cv2" width="680" height="280"></canvas></div>
+      <div class="panel">
+        <label>Соли за вылазку <input type="range" id="inc" min="1" max="10" value="4"></label>
+        <label>Цена расходника <input type="range" id="price" min="2" max="14" value="6"></label>
+        <div class="rows" id="rows2"></div>
+        <div id="verdict2"></div>
+        <div class="note">Двести вылазок подряд: игрок покупает, когда хватает соли.
+          Доля возвратов, где покупка была доступна, — та самая метрика §20.1.</div>
+      </div>
+    </div>
+    <p>Отсюда правило цены: <b>расходник стоит примерно полторы вылазки своей валюты.</b>
+      Дешевле — покупка доступна всегда, и экран возврата превращается в торговый
+      автомат, где нечего решать. Дороже — возвращается та же дыра, только вместо
+      занятого слота её создаёт пустой кошелёк. При замеренных четырёх солях за
+      вылазку это 5–7 соли, откуда и взялась повязка за шесть.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Как это выглядит</h2></div>
+    <div class="guard">
+      <div class="key">
+        <h3>В лагере — строка, а не магазин</h3>
+        <p>Три позиции под панелью зданий, каждая с ценой и состоянием «взято».
+          Отдельного экрана магазина нет: он превращает лагерь в витрину,
+          а лагерь — это место, куда возвращаются смотреть на выросшие постройки.</p>
+      </div>
+      <div class="key">
+        <h3>В вылазке — два слота, и они молчат</h3>
+        <p>Два квадрата в углу панели. Пока расходник цел, слот тусклый.
+          Никаких счётчиков, кулдаунов и подсказок: игрок ничего с ними не делает,
+          и всё, что мигает, отнимает внимание у двух полос, ради которых панель есть.</p>
+      </div>
+      <div class="key">
+        <h3>Срабатывание — событие мира, а не окно</h3>
+        <p>Повязка: слот гаснет, пропавшая рана возвращается на панели, короткая
+          белая вспышка на герое (та же, что от урона, но в обратную сторону).
+          Пауз, попапов и подтверждений нет — они выбрасывают из вылазки
+          ровно в тот момент, когда напряжение максимально.</p>
+      </div>
+    </div>
+    <div class="slots">
+      <div class="slot">повязка<br>цела</div>
+      <div class="slot" style="opacity:.4">паёк<br>истрачен</div>
+      <div class="slot" style="border-style:dashed">пусто</div>
+    </div>
+    <p class="note">Слот 64×64 в макете 375 — на экране это примерно ноготь большого
+      пальца. Отсюда бюджет силуэта: три формы обязаны различаться на таком размере
+      в темноте, то есть очертанием, а не цветом. Свёрток, брикет, горшок.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">06</div><h2>Чего не делаем</h2></div>
+    <div class="no-list">
+      <div>
+        <h3>Кнопку «применить»</h3>
+        <p>Возвращает инвентарную логику и вместе с ней возражение §19.1.
+          Плюс требует руки на экране, где обе заняты дорогой.</p>
+      </div>
+      <div>
+        <h3>Стак и хранение на складе</h3>
+        <p>«У меня их двенадцать» — это уже не сток, а накопленный жир.
+          Соль обязана уходить, иначе §13.2 не выполняется.</p>
+      </div>
+      <div>
+        <h3>Расходники в локации</h3>
+        <p>Лежащий на полу флакон путается с контейнером и обесценивает покупку.
+          Всё, что подбирается в вылазке, — добыча, и только добыча.</p>
+      </div>
+      <div>
+        <h3>Лечение ран внутри вылазки по желанию</h3>
+        <p>§1: раны не лечатся внутри вылазки, только расходниками из лагеря.
+          Повязка не отменяет правило, а является его исключением —
+          одноразовым, купленным заранее и сработавшим без спроса.</p>
+      </div>
+      <div>
+        <h3>Обязательность</h3>
+        <p>§13.1: нехватка ресурса никогда не блокирует вход. Без расходников
+          игра остаётся играбельной, и ни один ярус не требует их наличия.</p>
+      </div>
+      <div>
+        <h3>Расходники за деньги</h3>
+        <p>Не в прототипе. Важно лишь, чтобы появление позже не потребовало
+          переделки: соль и деньги — разные входы в один расчёт, как в §20.5.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">07</div><h2>Что проверять замером после внедрения</h2></div>
+    <table>
+      <thead><tr><th>Вопрос</th><th>Метрика</th><th>Ожидание</th></tr></thead>
+      <tbody>
+        <tr><td>Починилась ли главная дыра</td><td class="num">покупка доступна</td><td class="num">60–80%</td></tr>
+        <tr><td>Не стал ли экран автоматом</td><td class="num">доля возвратов с покупкой расходника</td><td class="num">не выше 80%</td></tr>
+        <tr><td>Уходит ли соль</td><td class="num">остаток соли за 20 вылазок</td><td class="num">не растёт монотонно</td></tr>
+        <tr><td>Не сломалась ли ставка</td><td class="num">доля провалов</td><td class="num">меняется не более чем на 5 п.п.</td></tr>
+        <tr><td>Берут ли все три</td><td class="num">разброс покупок по видам</td><td class="num">ни один не ниже 15%</td></tr>
+      </tbody>
+    </table>
+    <p>Последняя строка — фильтр на вырезание. Расходник, который покупают реже,
+      чем в одной вылазке из семи, не нужен: он не отвечает ни на чью боль
+      и только удлиняет строку в лагере.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var PAL={
+    "Мрак":"#0e0d0a","Тень":"#1a1813","Камень тёмный":"#2b2a24","Камень":"#3f3d34",
+    "Соль тень":"#8a8a7e","Соль":"#a6a698","Соль свет":"#c6c6b6","Иней":"#e2e2d6",
+    "Земля":"#3f2c1d","Дерево":"#6f4d2c","Дерево свет":"#8f6a3f","Солома":"#b08f56",
+    "Металл тень":"#2b3138","Металл":"#474f58","Сталь":"#7d8892",
+    "Уголь":"#4d2a10","Жар":"#8e4a17","Пламя":"#c9722a","Латунь":"#dfa53c"
+  };
+
+  // Тот же отрисовщик, что в артбуке: плоское затенение, ортокамера 45°/30°,
+  // сортировка по глубине. Страница не зависит от библиотеки и показывает
+  // настоящие формы, а не картинки.
+  var AZ=45*Math.PI/180, EL=30*Math.PI/180;
+  var L=(function(){var v=[-0.55,0.78,-0.31],m=Math.hypot(v[0],v[1],v[2]);
+    return [v[0]/m,v[1]/m,v[2]/m];})();
+
+  function shade(hex,k){
+    var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    return "rgb("+Math.round(Math.min(255,r*k))+","+Math.round(Math.min(255,g*k))+","+
+      Math.round(Math.min(255,b*k))+")";
+  }
+  function rotY(p,a){var c=Math.cos(a),s=Math.sin(a);return [p[0]*c-p[2]*s,p[1],p[0]*s+p[2]*c];}
+  function view(p){var q=rotY(p,AZ),ce=Math.cos(EL),se=Math.sin(EL);
+    return [q[0],q[1]*ce-q[2]*se,q[1]*se+q[2]*ce];}
+  function normal(a,b,c){
+    var u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    var n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    var m=Math.hypot(n[0],n[1],n[2])||1;return [n[0]/m,n[1]/m,n[2]/m];
+  }
+  function box(cx,cy,cz,w,h,d,col){
+    var x=w/2,z=d/2;
+    var v=[[cx-x,cy,cz-z],[cx+x,cy,cz-z],[cx+x,cy,cz+z],[cx-x,cy,cz+z],
+           [cx-x,cy+h,cz-z],[cx+x,cy+h,cz-z],[cx+x,cy+h,cz+z],[cx-x,cy+h,cz+z]];
+    return {v:v,f:[[4,5,6,7],[0,3,2,1],[3,7,6,2],[0,1,5,4],[1,2,6,5],[0,4,7,3]],c:col};
+  }
+  function cyl(cx,cy,cz,r,h,n,col){
+    var v=[],i,a,f=[];
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy+h,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++)f.push([i,(i+1)%n,n+(i+1)%n,n+i]);
+    var top=[],bot=[];
+    for(i=0;i<n;i++){top.push(n+i);bot.push(n-1-i);}
+    f.push(top);f.push(bot);
+    return {v:v,f:f,c:col};
+  }
+  function cone(cx,cy,cz,r,h,n,col){
+    var v=[[cx,cy+h,cz]],i,a,f=[];
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++)f.push([0,1+i,1+(i+1)%n]);
+    var bot=[];for(i=0;i<n;i++)bot.push(n-i);
+    f.push(bot);
+    return {v:v,f:f,c:col};
+  }
+  function tris(ms){return ms.reduce(function(s,m){
+    return s+m.f.reduce(function(t,f){return t+(f.length-2);},0);},0);}
+
+  // ——— три расходника: свёрток, брикет, горшок ———
+  var ITEMS=[
+    {n:"Повязка",note:"свёрток холста",budget:120,build:function(){
+      return [cyl(0,0,0,0.52,0.62,10,PAL["Иней"]),
+              cyl(0,0.62,0,0.30,0.06,10,PAL["Соль свет"]),
+              box(0,0.10,0,1.14,0.14,0.24,PAL["Соль тень"]),
+              box(0,0.36,0,0.20,0.20,1.14,PAL["Соль"])];
+    }},
+    {n:"Дорожный паёк",note:"брикет в бечёвке",budget:120,build:function(){
+      return [box(0,0,0,0.92,0.54,0.66,PAL["Солома"]),
+              box(0,0.54,0,0.72,0.16,0.52,PAL["Дерево свет"]),
+              box(0,0,0,0.16,0.72,0.70,PAL["Дерево"]),
+              cone(0,0.70,0,0.14,0.22,5,PAL["Латунь"])];
+    }},
+    {n:"Дымовая шашка",note:"горшок с фитилём",budget:120,build:function(){
+      return [cyl(0,0,0,0.44,0.52,9,PAL["Металл"]),
+              cyl(0,0.52,0,0.30,0.12,9,PAL["Металл тень"]),
+              cyl(0,0.64,0,0.06,0.26,5,PAL["Уголь"]),
+              cone(0,0.90,0,0.13,0.20,6,PAL["Пламя"]),
+              box(0,0.16,0,0.94,0.10,0.10,PAL["Сталь"])];
+    }}
+  ];
+
+  var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+  var DPR=Math.min(2,window.devicePixelRatio||1);
+  var W=cv.width, H=cv.height;
+  cv.width=W*DPR; cv.height=H*DPR; ctx.scale(DPR,DPR);
+  var meshes=ITEMS.map(function(it){return it.build();});
+  var spin=0, spinning=true, wireOn=false;
+
+  function drawItem(ms,ox,scale){
+    var faces=[];
+    ms.forEach(function(m){
+      var wv=m.v.map(function(p){return rotY(p,spin);});
+      m.f.forEach(function(face){
+        var a=wv[face[0]],b=wv[face[1]],c=wv[face[2]];
+        var n=normal(a,b,c);
+        var pts=face.map(function(i){return view(wv[i]);});
+        var area=0,i,p1,p2;
+        for(i=0;i<pts.length;i++){p1=pts[i];p2=pts[(i+1)%pts.length];
+          area+=(p1[0]*(-p2[1])-p2[0]*(-p1[1]));}
+        if(area<=0)return;
+        var d=pts.reduce(function(s,p){return s+p[2];},0)/pts.length;
+        var lam=Math.max(0,n[0]*L[0]+n[1]*L[1]+n[2]*L[2]);
+        var sky=0.34+0.16*Math.max(0,n[1]);
+        faces.push({pts:pts,d:d,k:sky+lam*0.72,c:m.c});
+      });
+    });
+    faces.sort(function(a,b){return a.d-b.d;});
+    faces.forEach(function(f){
+      ctx.beginPath();
+      f.pts.forEach(function(p,i){
+        var sx=ox+p[0]*scale, sy=H*0.70-p[1]*scale;
+        if(i)ctx.lineTo(sx,sy); else ctx.moveTo(sx,sy);
+      });
+      ctx.closePath();
+      ctx.fillStyle=shade(f.c,f.k); ctx.fill();
+      ctx.strokeStyle=wireOn?"rgba(230,228,214,.35)":shade(f.c,f.k*0.94);
+      ctx.lineWidth=wireOn?0.6:0.5; ctx.stroke();
+    });
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    var step=W/ITEMS.length;
+    ITEMS.forEach(function(it,i){
+      drawItem(meshes[i], step*(i+0.5), 92);
+      ctx.fillStyle="#9A9285";
+      ctx.font="12px ui-monospace,Menlo,monospace";
+      ctx.textAlign="center";
+      ctx.fillText(it.n, step*(i+0.5), H-26);
+      ctx.fillText(it.note, step*(i+0.5), H-10);
+    });
+  }
+
+  function syncTris(){
+    document.getElementById("tris").innerHTML=ITEMS.map(function(it,i){
+      var t=tris(meshes[i]);
+      return "<div><span>"+it.n+"</span><b>"+t+" / "+it.budget+"</b></div>";
+    }).join("");
+  }
+
+  document.getElementById("spin").addEventListener("click",function(){
+    spinning=!spinning; this.setAttribute("aria-pressed",String(spinning));
+  });
+  document.getElementById("wire").addEventListener("click",function(){
+    wireOn=!wireOn; this.setAttribute("aria-pressed",String(wireOn)); draw();
+  });
+  document.getElementById("rot").addEventListener("input",function(){
+    spinning=false;
+    document.getElementById("spin").setAttribute("aria-pressed","false");
+    spin=Number(this.value)*Math.PI/180; draw();
+  });
+
+  (function loop(){
+    if(spinning){spin+=0.006; draw();}
+    requestAnimationFrame(loop);
+  })();
+  syncTris(); draw();
+
+  // ——— 04: цена против доли доступных покупок ———
+  var cv2=document.getElementById("cv2"), c2=cv2.getContext("2d");
+  var W2=cv2.width,H2=cv2.height;
+  cv2.width=W2*DPR; cv2.height=H2*DPR; c2.scale(DPR,DPR);
+
+  function simulate(income,price){
+    var salt=0, offers=0, buys=0, N=200, left=[];
+    for(var i=0;i<N;i++){
+      salt+=income;
+      if(salt>=price){offers++; salt-=price; buys++;}
+      left.push(salt);
+    }
+    return {rate:offers/N, buys:buys, salt:salt, left:left};
+  }
+
+  function drawChart(res,price){
+    c2.clearRect(0,0,W2,H2);
+    var pad=34, w=W2-pad*2, h=H2-pad*2;
+    // целевой коридор 60–80%
+    var y1=pad+h*(1-0.8), y2=pad+h*(1-0.6);
+    c2.fillStyle="rgba(76,107,58,.18)"; c2.fillRect(pad,y1,w,y2-y1);
+    c2.strokeStyle="rgba(230,228,214,.18)"; c2.lineWidth=1;
+    c2.beginPath(); c2.moveTo(pad,pad); c2.lineTo(pad,pad+h); c2.lineTo(pad+w,pad+h); c2.stroke();
+    c2.fillStyle="#9A9285"; c2.font="11px ui-monospace,Menlo,monospace";
+    c2.textAlign="right"; c2.fillText("100%",pad-6,pad+4); c2.fillText("0",pad-6,pad+h+4);
+    c2.textAlign="left"; c2.fillText("цель 60–80%",pad+6,y1+13);
+    // кривая: доля доступных покупок против цены
+    c2.beginPath();
+    for(var p=2;p<=14;p++){
+      var r=simulate(res.income,p).rate;
+      var x=pad+w*((p-2)/12), y=pad+h*(1-r);
+      if(p===2)c2.moveTo(x,y); else c2.lineTo(x,y);
+    }
+    c2.strokeStyle="#D3A93A"; c2.lineWidth=2; c2.stroke();
+    var xp=pad+w*((price-2)/12), yp=pad+h*(1-res.rate);
+    c2.beginPath(); c2.arc(xp,yp,5,0,Math.PI*2); c2.fillStyle="#D2662F"; c2.fill();
+    c2.fillStyle="#9A9285"; c2.textAlign="center";
+    c2.fillText("цена расходника, соли",pad+w/2,H2-6);
+  }
+
+  function syncPrice(){
+    var income=Number(document.getElementById("inc").value);
+    var price=Number(document.getElementById("price").value);
+    var res=simulate(income,price); res.income=income;
+    document.getElementById("rows2").innerHTML=
+      "<div><span>покупка доступна</span><b>"+Math.round(res.rate*100)+"%</b></div>"+
+      "<div><span>куплено за 200 вылазок</span><b>"+res.buys+"</b></div>"+
+      "<div><span>цена в вылазках соли</span><b>"+(price/income).toFixed(1)+"</b></div>"+
+      "<div><span>соли осталось</span><b>"+res.salt+"</b></div>";
+    var ok=res.rate>=0.6&&res.rate<=0.8;
+    document.getElementById("verdict2").innerHTML=ok
+      ? '<span class="chk ok">попадает в 60–80%</span>'
+      : '<span class="chk no">'+(res.rate>0.8?"торговый автомат":"дыра §20.1 остаётся")+'</span>';
+    drawChart(res,price);
+  }
+  document.getElementById("inc").addEventListener("input",syncPrice);
+  document.getElementById("price").addEventListener("input",syncPrice);
+  syncPrice();
+})();
+</script>
