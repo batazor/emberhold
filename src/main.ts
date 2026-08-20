@@ -70,6 +70,8 @@ import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
 import { bindCampInput } from './features/campInput';
 import { createDirector } from './features/onboarding';
+import { panelsFor, soundFor } from './features/scene';
+import type { Scene } from './features/scene';
 import { createRaidEar } from './features/raidAudio';
 
 const app = document.getElementById('app');
@@ -480,6 +482,36 @@ function finishRaidForHero(
 const ear = createRaidEar();
 
 /* ---------- переходы между сценами ---------- */
+
+/**
+ * Показать сцену: панели и звук берутся из таблицы (features/scene), а не
+ * раскладываются в каждом переходе заново. Переход после этого говорит
+ * только то, что относится к нему одному, — что построить, куда навести
+ * камеру и что записать.
+ */
+function showScene(scene: Scene, tier: Tier = 0): void {
+  // Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
+  const quiet = onboarding.step === 'build' || onboarding.step === 'tier';
+  const panels = panelsFor(scene, quiet);
+  hud.setVisible(panels.hud);
+  campHud.setVisible(panels.campHud);
+  rosterPanel.setVisible(panels.roster);
+  statsPanel.setVisible(panels.stats);
+  startScreen.setVisible(panels.startScreen);
+  campPrompt.setVisible(panels.campPrompt);
+  if (!panels.returnScreen) returnScreen.hide();
+
+  const sound = soundFor(scene, tier);
+  if (sound.ambient === null) stopAmbient();
+  else startAmbient(sound.ambient);
+  if (sound.campTune) startCampTune();
+  else stopCampTune();
+  if (sound.pulse) startPulse();
+  else stopPulse();
+
+  mode = scene;
+}
+
 function toRaid(tier: Tier): boolean {
   leaveTitle();
   inGlade = false;
@@ -530,16 +562,8 @@ function toRaid(tier: Tier): boolean {
   rig.setZoom(18, true);
   rig.night = 1;
   resultShown = false;
-  stopCampTune();
-  startAmbient(tier);
   ear.reset(raid);
-  startPulse();
-  mode = 'raid';
-  hud.setVisible(true);
-  campHud.setVisible(false);
-  rosterPanel.setVisible(false);
-  statsPanel.setVisible(false);
-  returnScreen.hide();
+  showScene('raid', tier);
   // Счётчики первой вылазки обнуляются вместе с ней: перезапуск возвращает
   // игрока к первому кадру, а не к середине раскадровки.
   onboarding.enterRaid(raid);
@@ -562,18 +586,8 @@ function toTitle(): void {
   rig.setZoom(21, true);
   // Ранний вечер: тени от букв уже длинные, но поле ещё зелёное, а не серое.
   rig.night = 0.08;
-  mode = 'title';
-  stopPulse();
-  stopAmbient();
-  stopCampTune();
   inGlade = false;
-  campPrompt.setVisible(false);
-  hud.setVisible(false);
-  campHud.setVisible(false);
-  rosterPanel.setVisible(false);
-  statsPanel.setVisible(false);
-  returnScreen.hide();
-  startScreen.setVisible(true);
+  showScene('title');
 }
 
 /**
@@ -677,21 +691,12 @@ function toGlade(): void {
   rig.night = 0.12;
   resultShown = false;
   inGlade = true;
-  // Поляна на поверхности — подложка «Подступы», светлая (§18.4).
-  stopCampTune();
-  startAmbient(0);
   ear.reset(raid);
-  startPulse();
   placing = null;
   pitched.length = 0;
   raidView.hideSite();
-  mode = 'raid';
-  hud.setVisible(true);
-  campHud.setVisible(false);
-  rosterPanel.setVisible(false);
-  statsPanel.setVisible(false);
-  returnScreen.hide();
-  campPrompt.setVisible(false);
+  // Поляна на поверхности — подложка «Подступы», светлая (§18.4).
+  showScene('raid', 0);
   onboarding.apply();
   track({ t: 'raid_start', at: clock.now(), tier: 0, food: raid.foodMax, capacity: raid.capacity });
 }
@@ -700,12 +705,8 @@ function toCamp(): void {
   leaveTitle();
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
   // в лагере провиант ничего не отсчитывает. Взамен — единственная
-  // мелодия игры, и звучит она только здесь.
-  stopPulse();
-  stopAmbient();
-  startCampTune();
+  // мелодия игры, и звучит она только здесь: всё это в таблице сцены.
   inGlade = false;
-  campPrompt.setVisible(false);
   raidView?.dispose();
   raidView = null;
   raid = null;
@@ -725,14 +726,8 @@ function toCamp(): void {
   // Лагерь — вечер, а не полдень: тёплый свет и длинные тени читаются лучше
   // на плоском затенении, чем прямое солнце.
   rig.night = 0.22;
-  mode = 'camp';
+  showScene('camp');
   idleSeconds = 0;
-  hud.setVisible(false);
-  campHud.setVisible(true);
-  // Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
-  const quiet = onboarding.step === 'build' || onboarding.step === 'tier';
-  rosterPanel.setVisible(!quiet);
-  statsPanel.setVisible(!quiet);
   onboarding.apply();
   persist();
 }
