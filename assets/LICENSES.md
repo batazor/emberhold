@@ -21,10 +21,12 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-adventurers/characters/*.glb` — 6 моделей персонажей: рыцарь, варвар, маг, следопыт, разбойник (и он же в капюшоне) | [kaylousberg.itch.io/kaykit-adventurers](https://kaylousberg.itch.io/kaykit-adventurers), тариф FREE, версия 2.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-adventurers/gltf/*.gltf`, `*.bin` — 31 предмет в руки: мечи, топоры, луки, арбалеты, стрелы, щиты, посохи, книги, кружки | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-adventurers/*_texture.png` — пять атласов, свой на каждого персонажа | там же | CC0 1.0 | Kay Lousberg |
+| `kaykit-resources/gltf/*.gltf`, `*.bin` — 76 моделей: слитки, самородки, брёвна, доски, тюки, поддоны, бочки, груды деталей | [kaylousberg.itch.io/resource-bits](https://kaylousberg.itch.io/resource-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
+| `kaykit-resources/resource_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
-`kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`
-и `kaykit-adventurers/License.txt` — файлы
+`kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
+`kaykit-adventurers/License.txt` и `kaykit-resources/License.txt` — файлы
 лицензий как они пришли в архивах,
 без правок.
 
@@ -51,7 +53,8 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 и пишет геометрию в `src/render/*.data.ts`.
 В сборку едут только эти файлы; исходные наборы остаются здесь как источник,
 из которого их можно пересобрать. Каталоги наборов с числами и цветами —
-`forestart.html`, `dungeonart.html`, `enemyart.html` и `heroart.html`
+`forestart.html`, `dungeonart.html`, `enemyart.html`, `heroart.html`
+и `resourceart.html`
 (только на dev-сервере: страницы читают файлы отсюда).
 
 Набор анимаций устроен иначе: запекать в нём нечего — в клипе нет ни цвета,
@@ -79,6 +82,18 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 а клипы игра пока не проигрывает вовсе. Реестру это всё равно —
 файлы в репозитории есть, значит запись обязана быть, — но при чтении
 «чужие ассеты в игре» эти наборы считать не нужно: в игру они не попали (§6.1.2).
+
+## Ресурсы лежат, но не едут
+
+`kaykit-resources/` измерен целиком, и в бандле от него ноль байт: список
+принятых моделей пуст, `.data.ts` под него не пишется. Добыча в вылазке —
+значок над контейнером, и пока это так, брать из набора нечего (§6.1.5).
+Реестру это всё равно — файлы в репозитории есть, значит запись обязана быть.
+
+Из архива взято не всё: `.fbx`, `.fbx(unity)` и `.obj` выброшены целиком —
+обмер и запекание идут по `.gltf`, а второй формат тех же моделей это только
+вес. По той же причине нет обзорной картинки набора. Атлас лежит один раз,
+в корне набора: своя копия внутри `gltf/` пришла побайтно та же и удалена.
 
 ## Из персонажей едет один
 
