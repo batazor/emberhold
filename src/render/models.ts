@@ -298,17 +298,6 @@ function salter(): Piece[] {
   ];
 }
 
-/** Житель лагеря (`buildart.html`). Тот же силуэт, что у героя, но проще. */
-function villager(): Piece[] {
-  return [
-    box(-0.1, 0, 0, 0.12, 0.36, 0.13, C.metT),
-    box(0.1, 0, 0, 0.12, 0.36, 0.13, C.metT),
-    box(0, 0.36, 0, 0.36, 0.44, 0.24, RANGER_CLOTH),
-    box(0, 0.54, 0, 0.38, 0.05, 0.26, C.travS),
-    cone(0, 0.8, 0, 0.24, 0.3, 5, RANGER_CLOTH),
-  ];
-}
-
 /* ---------- сборка ---------- */
 
 const BUILDING_STAGES: Record<BuildingId, [() => Piece[], () => Piece[], () => Piece[]]> = {
@@ -393,4 +382,3 @@ export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
 
-export const villagerGeometry = (): THREE.BufferGeometry => merge(villager());
