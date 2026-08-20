@@ -58,7 +58,7 @@ export type TelemetryEvent =
   /** §21.5 — берут ли все три и уходит ли соль. */
   | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' };
 
-const KEY = 'new-world/telemetry';
+const KEY = 'emberhold/telemetry';
 const LIMIT = 500;
 
 let buffer: TelemetryEvent[] = [];

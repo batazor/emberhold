@@ -13,7 +13,13 @@ import type { ResourceKind } from './resources';
  * Серверной валидации в v0 нет, но структура сразу пригодна к переносу:
  * ни одного поля, которое нельзя проверить на сервере.
  */
-const KEY = 'new-world/save';
+const KEY = 'emberhold/save';
+/**
+ * Ключ до переименования игры. Читается, пока не перезаписан: игра сменила
+ * имя — это не повод отнимать у игрока лагерь. Первое же сохранение ляжет
+ * под новый ключ, старый останется мусором в хранилище и никому не мешает.
+ */
+const LEGACY_KEY = 'new-world/save';
 const VERSION = 1;
 
 interface SaveV1 {
@@ -87,7 +93,7 @@ export function load(): LoadResult {
   const roster = createRoster();
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(KEY);
+    raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
   } catch {
     raw = null;
   }
