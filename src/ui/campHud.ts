@@ -7,8 +7,6 @@ import {
   gearBlock,
   itemCap,
   speedupCost,
-  TIER_KITCHEN_GATE,
-  tierBlock,
   upgradeBlock,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
@@ -25,7 +23,7 @@ import { ONB_HINT } from '../sim/onboarding';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
-import { RAID_NODES } from '../sim/world';
+import { dayAt, regionAt } from '../sim/world';
 import type { WorldNode } from '../sim/world';
 import { WorldMap } from './worldMap';
 
@@ -82,14 +80,13 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['salt', 'wood', 'iron', 'crysta
 const mapOpen = (camp: CampState, onb: OnbStep): boolean => onb === 'done' && camp.raids >= 2;
 
 /**
- * Назначенное место: самое дальнее из тех, куда пускает Кухня. Кадр 10
- * онбординга — «выросшая Кухня зовёт дальше», и звать она обязана туда,
- * что этой Кухней и открылось.
+ * Назначенное место первой вылазки: самое дешёвое по ставке из тех, что
+ * выпали сегодня. Первый поход не выбирают — его показывают, и он обязан
+ * быть самым щадящим из возможных.
  */
-function assignedNode(camp: CampState): WorldNode {
-  const open = RAID_NODES.filter((n) => tierBlock(camp, n.tier) === 'ok');
-  const pool = open.length > 0 ? open : RAID_NODES;
-  return [...pool].sort((a, b) => b.tier - a.tier)[0]!;
+function assignedNode(now: number): WorldNode {
+  const nodes = regionAt(dayAt(now)).nodes;
+  return [...nodes].sort((a, b) => a.tier - b.tier)[0]!;
 }
 
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь. */
@@ -253,7 +250,7 @@ export class CampHud {
     // (`world.html`, часть I; `onboarding.html` — карта после второй вылазки).
     this.firstRaid = document.createElement('button');
     this.firstRaid.addEventListener('click', () => {
-      if (this.last !== null) this.cb.onRaid(assignedNode(this.last.camp).id);
+      if (this.last !== null) this.cb.onRaid(assignedNode(this.last.now).id);
     });
     this.map = new WorldMap({ onRaid: (node) => this.cb.onRaid(node) });
     tiers.append(this.tierCard, this.firstRaid, this.map.root);
@@ -448,15 +445,12 @@ export class CampHud {
     }
     // Назначенное место: та же карточка, что раньше называла ярус. Ставка
     // и здесь объявлена до входа — молчащая кнопка читается как поломка.
-    const node = assignedNode(camp);
-    const blocked = tierBlock(camp, node.tier) !== 'ok';
+    const node = assignedNode(now);
     this.tierCard.innerHTML =
       `<div class="t"><b>${node.name}</b><span class="dim">${TIER_NAME[node.tier]}</span></div>` +
       `<p class="dim">При провале теряется ${Math.round(TIER_RISK[node.tier] * 100)}% добычи</p>`;
-    this.firstRaid.textContent = blocked
-      ? `Нужна Кухня ур. ${TIER_KITCHEN_GATE[node.tier]}`
-      : 'В вылазку';
-    this.firstRaid.disabled = blocked;
+    this.firstRaid.textContent = 'В вылазку';
+    this.firstRaid.disabled = false;
   }
 
   private syncShop(camp: CampState): void {

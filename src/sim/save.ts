@@ -8,7 +8,7 @@ import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
 import { ONB_ORDER, restartStep } from './onboarding';
 import type { OnbStep } from './onboarding';
 import { emptyResources } from './resources';
-import { WORLD_NODES, liveVisits } from './world';
+import { liveVisits } from './world';
 import type { ResourceKind } from './resources';
 
 /**
@@ -167,8 +167,7 @@ export function load(): LoadResult {
             v != null &&
             typeof v.n === 'number' &&
             typeof v.s === 'number' &&
-            v.n >= 0 &&
-            v.n < WORLD_NODES,
+            v.n >= 0,
         )
         .map((v) => ({ node: Math.floor(v.n), shift: Math.floor(v.s) }));
     }

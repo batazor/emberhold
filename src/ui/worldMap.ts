@@ -11,21 +11,11 @@
  * живёт внутри локации; здесь — сравнение. Ставка, ярус и богатство названы
  * до входа (§1, §11.6), потому что сюрприз после входа читается как обман.
  */
-import { TIER_KITCHEN_GATE, tierBlock } from '../sim/camp';
 import type { CampState } from '../sim/camp';
 import { TIER_NAME, TIER_RISK } from '../sim/config';
 import { formatDuration } from '../core/clock';
-import {
-  CAMP_NODE,
-  CLANS,
-  NODES,
-  RICH_MAX,
-  SHIFT_SEC,
-  lootMul,
-  nodeOf,
-  worldAt,
-} from '../sim/world';
-import type { NodeState } from '../sim/world';
+import { CLANS, RICH_MAX, SHIFT_SEC, dayAt, lootMul, regionAt, worldAt } from '../sim/world';
+import type { NodeState, Region, WorldNode } from '../sim/world';
 
 /** Цвет узла по богатству: от выработанной к полной жиле. */
 const RICH_COLOR: readonly string[] = ['#d4543a', '#c07a3a', '#c8a24a', '#7fb069'];
@@ -45,7 +35,9 @@ export class WorldMap {
 
   /** Выбранный узел. Карта открывается с выбранным местом, а не пустой:
    *  пустая карточка вынуждает тапнуть дважды, чтобы вообще что-то узнать. */
-  private focus: number;
+  private focus = 0;
+  /** Регион сегодняшнего дня: завтра здесь будут другие точки (§4). */
+  private region: Region = regionAt(0);
   private world: NodeState[] = [];
   private camp: CampState | null = null;
   private now = 0;
@@ -69,29 +61,31 @@ export class WorldMap {
 
     this.go = document.createElement('button');
     this.go.className = 'primary';
-    this.go.addEventListener('click', () => this.cb.onRaid(this.focus));
+    this.go.addEventListener('click', () => this.cb.onRaid(this.node().id));
 
     this.root.append(this.canvas, this.card, this.note, this.go);
-    this.focus = NODES.find((n) => n.id !== CAMP_NODE)?.id ?? 0;
   }
 
-  /** Ближайшее место, куда пускает Кухня, — с него карта и открывается. */
-  private defaultFocus(camp: CampState): number {
-    const open = NODES.filter((n) => n.id !== CAMP_NODE && tierBlock(camp, n.tier) === 'ok');
-    if (open.length === 0) return this.focus;
-    const best = [...open].sort((a, b) => {
-      const rich = (this.world[b.id]?.rich ?? 0) - (this.world[a.id]?.rich ?? 0);
-      return rich !== 0 ? rich : a.tier - b.tier;
-    })[0]!;
-    return best.id;
+  /** Место, с которого карта открывается: самое богатое из тех, что есть.
+   *  Это подсказка, а не выбор за игрока, — рядом видно всё остальное. */
+  private defaultFocus(): number {
+    const best = [...this.region.nodes].sort(
+      (a, b) => (this.world[b.id]?.rich ?? 0) - (this.world[a.id]?.rich ?? 0),
+    )[0];
+    return best?.id ?? 0;
+  }
+
+  private node(): WorldNode {
+    return this.region.nodes[this.focus] ?? this.region.nodes[0]!;
   }
 
   /** Карта открылась: пересчитать мир и встать на разумное место. */
   open(camp: CampState, now: number): void {
     this.camp = camp;
     this.now = now;
+    this.region = regionAt(dayAt(now));
     this.world = worldAt(now, camp.visits);
-    if (tierBlock(camp, nodeOf(this.focus).tier) !== 'ok') this.focus = this.defaultFocus(camp);
+    this.focus = this.defaultFocus();
     this.paint();
   }
 
@@ -100,7 +94,9 @@ export class WorldMap {
     // Мир меняется сменами по 40 минут — пересчитывать его каждый кадр
     // незачем, а вот срок восстановления в карточке идёт вживую.
     if (Math.floor(now / SHIFT_SEC) !== Math.floor(this.now / SHIFT_SEC)) {
+      this.region = regionAt(dayAt(now));
       this.world = worldAt(now, camp.visits);
+      if (this.focus >= this.region.nodes.length) this.focus = this.defaultFocus();
     }
     this.now = now;
     this.paint();
@@ -112,8 +108,7 @@ export class WorldMap {
     const py = (e.clientY - box.top) / box.height;
     let best = -1;
     let bestDist = Infinity;
-    for (const node of NODES) {
-      if (node.id === CAMP_NODE) continue;
+    for (const node of this.region.nodes) {
       const d = Math.hypot((node.x - px) * box.width, (node.y - py) * box.height);
       if (d < bestDist) {
         bestDist = d;
@@ -129,9 +124,9 @@ export class WorldMap {
   }
 
   private paint(): void {
-    if (this.camp === null) return;
+    if (this.camp === null || this.region.nodes.length === 0) return;
     this.draw();
-    this.paintCard(this.camp);
+    this.paintCard();
   }
 
   /* ---------- карта ---------- */
@@ -153,10 +148,11 @@ export class WorldMap {
     // а не как местность, и «дальше» перестаёт значить «дороже».
     ctx.strokeStyle = 'rgba(232, 226, 212, 0.10)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < NODES.length; i++) {
-      for (let j = i + 1; j < NODES.length; j++) {
-        const a = NODES[i]!;
-        const b = NODES[j]!;
+    const spots = [...this.region.nodes, { ...this.region.camp, id: -1 }];
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        const a = spots[i]!;
+        const b = spots[j]!;
         if (Math.hypot((a.x - b.x) * w, (a.y - b.y) * h) > w * 0.24) continue;
         ctx.beginPath();
         ctx.moveTo(a.x * w, a.y * h);
@@ -166,15 +162,27 @@ export class WorldMap {
     }
 
     const r = Math.max(5, w * 0.026);
-    for (const node of NODES) {
+    // Лагерь — такая же точка карты, только в него не ходят.
+    const camp = this.region.camp;
+    ctx.beginPath();
+    ctx.arc(camp.x * w, camp.y * h, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(200, 162, 74, 0.22)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#c8a24a';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(camp.x * w, camp.y * h, r * 0.42, 0, Math.PI * 2);
+    ctx.fillStyle = '#c8a24a';
+    ctx.fill();
+
+    for (const node of this.region.nodes) {
       const x = node.x * w;
       const y = node.y * h;
       const state = this.world[node.id];
-      const isCamp = node.id === CAMP_NODE;
-      const locked = this.camp !== null && tierBlock(this.camp, node.tier) !== 'ok';
-      const color = isCamp ? '#c8a24a' : (RICH_COLOR[state?.rich ?? RICH_MAX] ?? '#c8a24a');
+      const color = RICH_COLOR[state?.rich ?? RICH_MAX] ?? '#c8a24a';
 
-      if (this.focus === node.id && !isCamp) {
+      if (this.focus === node.id) {
         ctx.beginPath();
         ctx.arc(x, y, r * 2, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(200, 162, 74, 0.85)';
@@ -184,22 +192,13 @@ export class WorldMap {
 
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = isCamp ? 'rgba(200, 162, 74, 0.22)' : 'rgba(11, 10, 9, 0.85)';
+      ctx.fillStyle = 'rgba(11, 10, 9, 0.85)';
       ctx.fill();
       // Толщина кольца — ярус: цена места видна раньше подписи.
       ctx.lineWidth = 1 + node.tier * 0.9;
-      ctx.globalAlpha = locked ? 0.35 : 1;
       ctx.strokeStyle = color;
       ctx.stroke();
-      ctx.globalAlpha = 1;
 
-      if (isCamp) {
-        ctx.beginPath();
-        ctx.arc(x, y, r * 0.42, 0, Math.PI * 2);
-        ctx.fillStyle = '#c8a24a';
-        ctx.fill();
-        continue;
-      }
       // Выработанная — крест. Цифру «0 из 3» на карте не прочитать, а решение
       // «сюда не иду» принимается взглядом.
       if ((state?.rich ?? RICH_MAX) === 0) {
@@ -222,10 +221,9 @@ export class WorldMap {
 
   /* ---------- карточка ---------- */
 
-  private paintCard(camp: CampState): void {
-    const node = nodeOf(this.focus);
-    const state = this.world[this.focus] ?? { rich: RICH_MAX, clan: null, restShifts: 0 };
-    const locked = tierBlock(camp, node.tier) !== 'ok';
+  private paintCard(): void {
+    const node = this.node();
+    const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0 };
     const mul = lootMul(state.rich);
     const clan = state.clan === null ? null : CLANS[state.clan % CLANS.length]!;
 
@@ -249,15 +247,13 @@ export class WorldMap {
 
     // Срок восстановления — вместо запрета. Локация не закрыта, она просто
     // невыгодна, и игрок должен видеть, когда сюда снова стоит идти.
-    this.note.textContent = locked
-      ? `Нужна Кухня ур. ${TIER_KITCHEN_GATE[node.tier]}`
-      : state.restShifts > 0
+    this.note.textContent =
+      state.restShifts > 0
         ? `Ещё один заход вернётся через ${formatDuration(state.restShifts * SHIFT_SEC)}`
         : 'Полная жила: три захода';
 
     // Кнопка называется действием, а не местом: имя локации склоняется,
     // а имена в прототипе рабочие (§0.1) и меняются без предупреждения.
-    this.go.textContent = locked ? 'Закрыто' : 'Войти';
-    this.go.disabled = locked;
+    this.go.textContent = 'Войти';
   }
 }
