@@ -208,7 +208,7 @@ try{
   palette = (await import('/src/render/palette.ts')).FOREST_PALETTE;
   cat = await (await fetch(CATALOG)).json();
 }catch(e){
-  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /forest.html. ' + e);
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /forestart.html. ' + e);
   throw e;
 }
 

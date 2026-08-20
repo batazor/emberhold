@@ -532,7 +532,7 @@ if (!write) {
 
 writeFileSync(join(ROOT, 'src/render/forest.data.ts'), writeData(models), 'utf8');
 
-// Каталог для forest.html: страница берёт геометрию из самих .gltf, а отсюда —
+// Каталог для forestart.html: страница берёт геометрию из самих .gltf, а отсюда —
 // числа и разметку цветов, чтобы не повторять запекание вторым кодом.
 const catalog = {
   pack: 'KayKit Forest Nature Pack 1.0 FREE',
