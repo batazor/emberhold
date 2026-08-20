@@ -89,7 +89,16 @@ canvas { display: block; touch-action: none; }
 .ok { color: var(--good); }
 
 .bottom { display: flex; flex-direction: column; gap: 8px; }
-.hint { min-height: 17px; font-size: 12px; color: var(--dim); text-align: center; text-shadow: 0 1px 3px #000; }
+/* Подсказка тоже стоит поверх сцены, и на светлой поляне пролога тень
+   её не спасала. Подложка появляется только у непустой строки: пустая
+   плашка читалась бы как пропавший текст. */
+.hint { min-height: 17px; font-size: 12px; color: var(--dim); text-align: center; }
+.hint:not(:empty) {
+  color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px 10px; align-self: center;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
 .night { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 .night input { flex: 1; accent-color: #c8a24a; }
 .ctl { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
@@ -274,5 +283,32 @@ button[disabled] { opacity: 0.4; cursor: default; }
   pointer-events: none;
 }
 #start button {
+  pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
+}
+
+/* Дев-меню. Верхний левый угол: панель HUD стоит по центру, экран возврата
+   и заставка — внизу, и только сюда кнопка не перекрывает игру. */
+#dev {
+  position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 8px;
+  z-index: 50; opacity: 0.55;
+}
+#dev:hover { opacity: 1; }
+#dev button {
+  font-size: 11px; padding: 5px 10px; letter-spacing: 0.04em;
+}
+
+/* Конец пролога. Стоит там же, где кнопка заставки: одно решение внизу экрана. */
+#pitch {
+  position: fixed; inset: auto 0 0 0; display: flex; flex-direction: column;
+  align-items: center; gap: 12px;
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+#pitch p {
+  margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  /* Не приглушённый: это не фоновая подсказка, а объявление конца кадра. */
+  color: var(--ink);
+}
+#pitch button {
   pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
 }
