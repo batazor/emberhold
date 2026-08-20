@@ -283,9 +283,9 @@ export class RaidView {
    *
    * Трава на клетке выкашивается: под зданием её быть не должно.
    */
-  place(id: BuildingId, x: number, z: number): void {
+  place(id: BuildingId, x: number, z: number, level = 1): void {
     if (this.placed.has(id)) return;
-    const mesh = new THREE.Mesh(this.track(buildingGeometry(id, 1)), this.blocking);
+    const mesh = new THREE.Mesh(this.track(buildingGeometry(id, level)), this.blocking);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.scale.setScalar(BUILDING_SCALE);
@@ -301,6 +301,25 @@ export class RaidView {
       this.group.add(this.fire.group);
     }
     this.grass?.clearCell(x, z);
+  }
+
+  /**
+   * Здание выросло на уровень. Геометрия пересобирается той же функцией,
+   * что и в лагере: стадия роста — свойство модели, а не сцены (§6.1).
+   *
+   * На уровнях 1–2 стадия одна и та же (`stageOf`), и палатка ур. 2 выглядит
+   * как палатка ур. 1. Это не забытая модель, а решение §6.1 «три стадии на
+   * шесть уровней»: подделывать рост масштабом здесь было бы враньём.
+   */
+  setLevel(id: BuildingId, level: number): void {
+    const mesh = this.placed.get(id);
+    if (mesh === undefined) return;
+    mesh.geometry = this.track(buildingGeometry(id, level));
+    // Огонь переезжает вместе со стадией: у кухни он на разных стадиях
+    // стоит в разных местах, а на каменной уходит под трубу.
+    if (fireOf(id, level) !== null) {
+      this.fire.set(id, level, mesh.position.x, mesh.position.z, BUILDING_SCALE);
+    }
   }
 
   /**

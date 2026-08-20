@@ -30,6 +30,12 @@ export type OnbStep =
    * ей есть что показать — в сумке лежит то, из чего сейчас встанет палатка.
    */
   | 'gather'
+  /**
+   * Лагерь разбит, и палатка просит второй уровень: за деревом идут снова.
+   * Кадр нужен затем, что первый акт учит «здание стоит принесённого» один
+   * раз, а один раз читается как обряд постановки лагеря, а не как правило.
+   */
+  | 'upgrade'
   /** 0:00 — герой в локации, одна подсвеченная точка на полу. */
   | 'move'
   /** 0:20 — первый скелет, бой идёт сам собой. */
@@ -55,7 +61,7 @@ export type OnbStep =
   | 'done';
 
 export const ONB_ORDER: readonly OnbStep[] = [
-  'glade', 'gather',
+  'glade', 'gather', 'upgrade',
   'move', 'approach', 'wound', 'loot', 'back', 'bait', 'evac',
   'return', 'build', 'tier', 'done',
 ];
@@ -74,7 +80,7 @@ export const isRaidStep = (step: OnbStep): boolean =>
  * открывался вылазкой, и кнопка «Играть» вела мимо него.
  */
 export const restartStep = (step: OnbStep): OnbStep =>
-  step === 'glade' || step === 'gather'
+  step === 'glade' || step === 'gather' || step === 'upgrade'
     ? 'glade'
     : isRaidStep(step)
       ? 'move'
@@ -120,6 +126,7 @@ export function reveal(step: OnbStep): Reveal {
 export const ONB_HINT: Partial<Record<OnbStep, string>> = {
   glade: 'Коснитесь земли, чтобы идти',
   gather: 'Соберите бруски',
+  upgrade: 'Отнесите к палатке три бруска',
   move: 'Коснитесь земли, чтобы идти',
   approach: 'Подойдите ближе',
   bait: 'Дальше — ещё один сундук',
