@@ -374,9 +374,21 @@ function heroHeight(cls: HeroClassId): number {
   return height;
 }
 
+/**
+ * Что у героя в руке. Оружие §14 зовётся «Кайло»; кирки в наборе нет, поэтому
+ * взят одноручный топор — ближайшее по чтению. Это замена палке примитива:
+ * уровень предмета из Кузницы моделью пока не читается, и когда начнёт,
+ * здесь появится не строка, а таблица.
+ */
+const HERO_HELD: Partial<Record<HeroClassId, AdventurerModelName>> = {
+  ranger: 'axe_1handed',
+};
+
 export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
   const model = HERO_MODELS[cls];
-  return model === undefined ? merge(HERO_SHAPES[cls]()) : adventurerGeometry(model, heroHeight(cls));
+  return model === undefined
+    ? merge(HERO_SHAPES[cls]())
+    : adventurerGeometry(model, heroHeight(cls), HERO_HELD[cls]);
 };
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();

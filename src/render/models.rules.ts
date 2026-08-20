@@ -15,6 +15,8 @@ import { BUILDING_ORDER } from '../sim/camp';
 import { CLASS_ORDER } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
 import { C, triangles } from './blocking';
+import { ADVENTURERS_MODELS } from './adventurers.data';
+import { adventurerGeometry } from './adventurers';
 import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
 import { FOREST_SLOTS } from './forest.data';
 import { FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
@@ -44,6 +46,16 @@ const BUDGET = { building: 1500, hero: 900 } as const;
  * Сейчас занято 442 КБ из 600 — трое противников §15 с топором и посохом.
  */
 const PACK_KB = 600;
+
+/**
+ * Тот же потолок для набора героев, и посчитан он так же: **все, кто вообще
+ * может понадобиться**. Героев в ротации трое (§11.8), с оружием это 22 191
+ * треугольник и 552 КБ. Округлено вверх. Упереться можно ровно один раз:
+ * за потолком не «ещё один класс», а решение о втором наборе.
+ *
+ * Сейчас занято 184 КБ из 600 — варвар и топор в его руке.
+ */
+const HERO_PACK_KB = 600;
 
 /** По одному уровню на каждую стадию роста. */
 const LEVEL_OF_STAGE = [1, 3, 5] as const;
@@ -106,6 +118,29 @@ describe('Артбук: бюджет треугольников', () => {
     );
     const kb = Math.round(bytes / 1024);
     assert.ok(kb <= PACK_KB, `набор скелетов: ${kb} КБ > ${PACK_KB} КБ`);
+  });
+
+  test('готовый набор героя укладывается в свой потолок — килобайты', () => {
+    const bytes = Object.values(ADVENTURERS_MODELS).reduce(
+      (sum, m) => sum + m.pos.length + m.slot.length,
+      0,
+    );
+    const kb = Math.round(bytes / 1024);
+    assert.ok(kb <= HERO_PACK_KB, `набор героя: ${kb} КБ > ${HERO_PACK_KB} КБ`);
+  });
+
+  test('у героя в руке есть предмет, и он стоит на узле набора', () => {
+    // Не «геометрия непустая», а именно то, ради чего узел запекается:
+    // модель героя знает матрицу руки, и с предметом она тяжелее, чем без.
+    const bare = adventurerGeometry('Barbarian', 1);
+    const armed = heroGeometry('ranger');
+    assert.ok(ADVENTURERS_MODELS.Barbarian.hand !== undefined, 'у варвара нет узла руки');
+    assert.ok(
+      triangles(armed) > triangles(bare),
+      `герой с предметом ${triangles(armed)} не тяжелее безоружного ${triangles(bare)}`,
+    );
+    bare.dispose();
+    armed.dispose();
   });
 
   test('шесть уровней укладываются в три стадии', () => {
