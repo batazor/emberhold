@@ -12,17 +12,17 @@
   ],
   "raidsPerSession": 20,
   "metrics": {
-    "failRate": 0.0375,
-    "avgDepthShare": 0.7673,
-    "buyOfferRate": 0.2375,
-    "buyTakeRate": 1,
-    "avgCarried": 7.4,
-    "avgLost": 0.0875,
-    "avgFoodLeft": 16.6063,
-    "medianReturnMin": 330,
-    "hq": 2.75,
+    "failRate": 0.0438,
+    "avgDepthShare": 0.7826,
+    "buyOfferRate": 0.525,
+    "buyTakeRate": 0.7392,
+    "avgCarried": 7.5813,
+    "avgLost": 0.1125,
+    "avgFoodLeft": 16.2125,
+    "medianReturnMin": 331.6667,
+    "hq": 2.5,
     "kitchen": 2,
     "storage": 2,
-    "elapsedHours": 14.9006
+    "elapsedHours": 14.9053
   }
 }

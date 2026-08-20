@@ -24,7 +24,7 @@ const BUILDING_COLOR: Record<BuildingId, number> = {
   kitchen: 0x8d6a4a,
   storage: 0x6f6a58,
   // Кузница — единственная холодная постройка: сталь опознаётся раньше формы
-  // (buildart.html §05).
+  // (блокинг в buildart.html, раздел про Кузницу).
   forge: 0x5e5a52,
 };
 
