@@ -10,7 +10,14 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* Игровой интерфейс не выделяется: случайный протяг по панели не должен
    превращаться в выделение текста и съедать нажатие. */
-#hud, #camp, /* ---------- экран возврата (мокап 04) ---------- */
+#hud, #camp, #return, #result { user-select: none; -webkit-user-select: none; }
+
+/* ---------- экран возврата (мокап 04) ----------
+   Затемнение и размытие принадлежат ЭТОМУ экрану и только ему. Раньше
+   комментарий стоял внутри списка селекторов, и модальная заливка
+   rgba(8,7,6,.86) с blur(5px) доставалась заодно #hud и #camp: игра шла
+   под непрозрачной плёнкой поверх канваса. Отсюда и «темно и размыто» —
+   сцена рисовалась нормально, её закрывал интерфейс. */
 #return {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 6;
@@ -31,7 +38,6 @@
 #return .primary { background: #3c3320; border-color: #6d5a30; font-weight: 600; }
 #return .ghost { background: transparent; color: var(--dim); }
 
-#result { user-select: none; -webkit-user-select: none; }
 button { touch-action: manipulation; }
 html, body {
   margin: 0; height: 100%; overflow: hidden; background: #0b0a09; color: var(--ink);
