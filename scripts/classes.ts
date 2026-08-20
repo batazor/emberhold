@@ -10,8 +10,11 @@
  *
  * Метод. Один и тот же список сидов проходят все три класса: сравнение
  * парное, поэтому разброс локаций вычитается, а не подмешивается в результат.
- * Политика одна на всех — `balanced`: разные политики мерили бы игрока,
- * а не класс.
+ *
+ * Политик три, и это принципиально. Класс, проигрывающий у осторожного бота,
+ * может выигрывать у жадного — потому что обзор и скорость окупаются только
+ * там, где заходят глубоко. Вердикт по одной политике мерил бы не класс,
+ * а привычку игрока.
  *
  * Запуск: npx tsx scripts/classes.ts
  * (в package.json не прописан намеренно: файл сейчас правят соседние сессии,
@@ -19,6 +22,7 @@
  */
 import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';
+import type { PolicyName } from '../src/sim/bot';
 import { CLASS_ORDER, HERO_CLASSES, SKILLS, createHero, loadout } from '../src/sim/heroes';
 import type { HeroClassId } from '../src/sim/heroes';
 import { totalOf } from '../src/sim/resources';
@@ -53,7 +57,7 @@ interface Row {
 const mean = (xs: readonly number[]): number =>
   xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
 
-function measure(cls: HeroClassId, tier: Tier, useSkills: boolean): {
+function measure(cls: HeroClassId, tier: Tier, useSkills: boolean, policy: PolicyName): {
   success: number;
   carried: number;
   depth: number;
@@ -75,7 +79,7 @@ function measure(cls: HeroClassId, tier: Tier, useSkills: boolean): {
     const rng = mulberry32(seed ^ 0x5f3759df);
     const r = playRaid(
       { seed, tier, ...CAMP[tier], loadout: gear, useSkills },
-      POLICIES.balanced,
+      POLICIES[policy],
       rng,
     );
     if (r.status === 'evacuated') {
@@ -96,11 +100,20 @@ function measure(cls: HeroClassId, tier: Tier, useSkills: boolean): {
   };
 }
 
+const POLICY_LIST: readonly PolicyName[] = ['cautious', 'balanced', 'greedy'];
+const POLICY_NAME: Record<PolicyName, string> = {
+  cautious: 'осторожный',
+  balanced: 'средний',
+  greedy: 'жадный',
+  sloppy: 'небрежный',
+};
+
+function run(policy: PolicyName): Row[] {
 const rows: Row[] = [];
 for (const cls of CLASS_ORDER) {
   for (const tier of TIERS) {
-    const plain = measure(cls, tier, false);
-    const withSkill = measure(cls, tier, true);
+    const plain = measure(cls, tier, false, policy);
+    const withSkill = measure(cls, tier, true, policy);
     rows.push({
       cls,
       tier,
@@ -115,11 +128,16 @@ for (const cls of CLASS_ORDER) {
     });
   }
 }
+return rows;
+}
 
 const pct = (x: number): string => `${(x * 100).toFixed(0)}%`;
 const num = (x: number): string => x.toFixed(1);
 
-console.log(`Классы: ${RUNS} вылазок на ярус, политика balanced, локации общие\n`);
+/** Класс, который не первый нигде, вырожден ровно так же, как доминирующий, —
+ *  только вниз: его просто не выберут. §11.7 обещает каждому свою нишу. */
+function report(policy: PolicyName, rows: readonly Row[]): HeroClassId[] {
+console.log(`\n══ ${POLICY_NAME[policy]} бот ══`);
 console.log('ярус  класс      успех  добыча  глубина  сек   | с умением: добыча  успех');
 for (const tier of TIERS) {
   for (const cls of CLASS_ORDER) {
@@ -134,38 +152,24 @@ for (const tier of TIERS) {
   }
 }
 
-/* ---------- вырожденность ---------- */
-
-console.log('\nКто первый по добыче на каждом ярусе');
 const winners = new Set<HeroClassId>();
+const line: string[] = [];
 for (const tier of TIERS) {
   const here = rows.filter((r) => r.tier === tier);
   const best = here.reduce((a, b) => (b.carried > a.carried ? b : a));
   winners.add(best.cls);
-  const second = here
-    .filter((r) => r.cls !== best.cls)
-    .reduce((a, b) => (b.carried > a.carried ? b : a));
-  const gap = second.carried > 0 ? (best.carried / second.carried - 1) * 100 : 0;
-  console.log(
-    `  ярус ${tier}: ${HERO_CLASSES[best.cls].name} (+${gap.toFixed(0)}% ко второму — ` +
-      `${HERO_CLASSES[second.cls].name})`,
-  );
+  line.push(`ярус ${tier}: ${HERO_CLASSES[best.cls].name}`);
 }
+console.log(`  первые — ${line.join(' · ')}`);
 
-// Критерий строже, чем «победители разные»: класс, который не первый нигде,
-// не выбирают никогда, и он вырожден ровно так же, как доминирующий, —
-// только вниз. §11.7 обещает каждому свою нишу, и обещание проверяется здесь.
 const idle = CLASS_ORDER.filter((c) => !winners.has(c));
 console.log(
   idle.length === 0
-    ? '\n✓ Не вырождено: у каждого класса есть ярус, где он первый.'
-    : `\n⚠ ВЫРОЖДЕНО ВНИЗ: ${idle.map((c) => HERO_CLASSES[c].name).join(', ')} ` +
-        '— не первый ни на одном ярусе, значит его не выберут никогда.',
+    ? '  ✓ у каждого класса есть свой ярус'
+    : `  ⚠ не первый нигде: ${idle.map((c) => HERO_CLASSES[c].name).join(', ')}`,
 );
 
-/* ---------- читаются ли умения ---------- */
-
-console.log('\nЧто меняет умение');
+console.log('  умения:');
 for (const cls of CLASS_ORDER) {
   const mine = rows.filter((r) => r.cls === cls);
   const carriedGain = mean(mine.map((r) => r.skillCarried - r.carried));
@@ -174,10 +178,29 @@ for (const cls of CLASS_ORDER) {
   const skill = SKILLS[HERO_CLASSES[cls].skill];
   const fired = mean(mine.map((r) => r.skillFired));
   console.log(
-    `  ${HERO_CLASSES[cls].name.padEnd(10)} ${skill.name.padEnd(8)} ` +
-      `сработало ${(fired * 100).toFixed(0)}% вылазок · ` +
+    `    ${HERO_CLASSES[cls].name.padEnd(10)} ${skill.name.padEnd(8)} ` +
+      `сработало ${(fired * 100).toFixed(0)}% · ` +
       `добыча ${carriedGain >= 0 ? '+' : ''}${carriedGain.toFixed(2)} · ` +
       `глубина ${depthGain >= 0 ? '+' : ''}${(depthGain * 100).toFixed(1)} п.п. · ` +
       `успех ${successGain >= 0 ? '+' : ''}${(successGain * 100).toFixed(1)} п.п.`,
   );
 }
+return idle;
+}
+
+console.log(`Классы: ${RUNS} вылазок на ярус на политику, локации общие для всех классов`);
+
+const idleEverywhere = new Set<HeroClassId>(CLASS_ORDER);
+for (const policy of POLICY_LIST) {
+  const idle = report(policy, run(policy));
+  for (const cls of CLASS_ORDER) if (!idle.includes(cls)) idleEverywhere.delete(cls);
+}
+
+// Итог по всем политикам сразу: класс вырожден, только если он не находит
+// себе ниши ни у осторожного, ни у среднего, ни у жадного игрока.
+console.log(
+  idleEverywhere.size === 0
+    ? '\n✓ Не вырождено: каждый класс где-то первый — хотя бы при одной манере игры.'
+    : `\n⚠ ВЫРОЖДЕНО ВНИЗ: ${[...idleEverywhere].map((c) => HERO_CLASSES[c].name).join(', ')} ` +
+        '— не первый ни на одном ярусе ни при одной манере игры.',
+);
