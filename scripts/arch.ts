@@ -187,12 +187,55 @@ for (const [ref, where] of [...missing].sort()) {
   fail('ссылки', where.join(', '), `§${ref} — такого раздела в DESIGN.md нет`);
 }
 
+/* ---------- 5. оглавление артбуков ---------- */
+
+/**
+ * artbooks.html — единственный вход в артбуки, и список книг в нём написан
+ * руками. Такой список расходится с папкой молча: новый артбук просто не
+ * появляется в оглавлении, а переименованный заголовок остаётся старым —
+ * и оба раза страница выглядит исправной.
+ */
+const HUB = 'artbooks.html';
+const NOT_A_BOOK = new Set(['index.html', HUB]);
+
+const books = readdirSync(ROOT)
+  .filter((name) => name.endsWith('.html') && !NOT_A_BOOK.has(name))
+  .sort();
+
+const hub = readFileSync(join(ROOT, HUB), 'utf8');
+const shelves = new Set(
+  [...(/const SHELVES = \[([^\]]*)\]/.exec(hub)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]!),
+);
+
+const listed = new Map<string, { title: string; shelf: string }>();
+for (const m of hub.matchAll(/\{ file:'([^']+)', title:'([^']+)', shelf:'([^']+)' \}/g)) {
+  listed.set(m[1]!, { title: m[2]!, shelf: m[3]! });
+}
+
+for (const file of books) {
+  const entry = listed.get(file);
+  if (entry === undefined) {
+    fail('артбуки', HUB, `${file} не попал в оглавление`);
+    continue;
+  }
+  const title = /<title>([^<]*)<\/title>/.exec(readFileSync(join(ROOT, file), 'utf8'))?.[1]?.trim() ?? '';
+  if (entry.title !== title) {
+    fail('артбуки', HUB, `${file}: в оглавлении «${entry.title}», в книге «${title}»`);
+  }
+  if (!shelves.has(entry.shelf)) {
+    fail('артбуки', HUB, `${file}: полки «${entry.shelf}» нет в SHELVES`);
+  }
+}
+for (const file of listed.keys()) {
+  if (!books.includes(file)) fail('артбуки', HUB, `${file} есть в оглавлении, но не в папке`);
+}
+
 /* ---------- отчёт ---------- */
 
-const RULES = ['слои', 'headless', 'изоляция фич', 'ссылки'];
+const RULES = ['слои', 'headless', 'изоляция фич', 'ссылки', 'артбуки'];
 
 if (violations.length === 0) {
-  console.log(`Границы целы: ${source.size} файлов, ${RULES.length} правила.`);
+  console.log(`Границы целы: ${source.size} файлов, ${books.length} артбуков, ${RULES.length} правил.`);
   process.exit(0);
 }
 

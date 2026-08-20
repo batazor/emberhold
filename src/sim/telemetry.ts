@@ -11,6 +11,7 @@
 import type { BuildingId } from './camp';
 import type { ConsumableId } from './consumables';
 import type { HeroClassId, SkillId } from './heroes';
+import type { OnbStep } from './onboarding';
 import type { Tier } from './types';
 
 export type ExitPoint = 'raid' | 'camp' | 'return';
@@ -56,7 +57,14 @@ export type TelemetryEvent =
   | { t: 'train_start'; at: number; cls: HeroClassId; level: number }
   | { t: 'exit'; at: number; where: ExitPoint }
   /** §21.5 — берут ли все три и уходит ли соль. */
-  | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' };
+  | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' }
+  /**
+   * Кадры онбординга. Метрика раскадровки — доля дошедших до первой
+   * эвакуации, цель не ниже 85%: всё, что ниже, значит, что мы теряем людей
+   * до того, как они увидели саму игру. Вторая цифра — доля тех, кто пошёл
+   * за приманкой вместо немедленного выхода.
+   */
+  | { t: 'onboarding'; at: number; step: OnbStep };
 
 const KEY = 'emberhold/telemetry';
 const LIMIT = 500;

@@ -3,6 +3,7 @@ import { CONSUMABLES } from '../sim/consumables';
 import { HERO_CLASSES, SKILLS } from '../sim/heroes';
 import { atRisk, backSteps } from '../sim/raid';
 import type { RaidState } from '../sim/raid';
+import type { Reveal } from '../sim/onboarding';
 
 /**
  * §6: UI — DOM поверх канваса, не внутри сцены.
@@ -38,6 +39,9 @@ export class Hud {
   private readonly stats: HTMLElement;
   private readonly skill: HTMLButtonElement;
   private hintTimer = 0;
+  /** Подсказка онбординга. Живёт, пока кадр не сменится, — в отличие от
+   *  реплик вылазки, которые гаснут через пару секунд. */
+  private sticky = '';
   /** Число сегментов ран рисуется по классу героя: у Ратника их четыре. */
   private woundSlots = 0;
 
@@ -47,38 +51,38 @@ export class Hud {
     this.root.innerHTML = `
       <div class="panel top">
         <div class="stats">
-          <span class="lbl">Провиант</span>
-          <div class="bar"><i id="h-food-bar"></i></div>
-          <span class="num" id="h-food">0</span>
+          <span class="lbl" data-row="food">Провиант</span>
+          <div class="bar" data-row="food"><i id="h-food-bar"></i></div>
+          <span class="num" id="h-food" data-row="food">0</span>
 
-          <span class="lbl">Раны</span>
-          <div class="bar segmented" id="h-wounds"></div>
-          <span class="num" id="h-wounds-num">0</span>
+          <span class="lbl" data-row="wounds">Раны</span>
+          <div class="bar segmented" id="h-wounds" data-row="wounds"></div>
+          <span class="num" id="h-wounds-num" data-row="wounds">0</span>
 
-          <span class="lbl">Рюкзак</span>
-          <div class="bar"><i id="h-bag-bar"></i></div>
-          <span class="num" id="h-bag">0 / 0</span>
+          <span class="lbl" data-row="bag">Рюкзак</span>
+          <div class="bar" data-row="bag"><i id="h-bag-bar"></i></div>
+          <span class="num" id="h-bag" data-row="bag">0 / 0</span>
 
-          <span class="lbl">Путь назад</span>
-          <div class="bar back"><i id="h-back-bar"></i></div>
-          <span class="num" id="h-back">0 ш.</span>
+          <span class="lbl" data-row="back">Путь назад</span>
+          <div class="bar back" data-row="back"><i id="h-back-bar"></i></div>
+          <span class="num" id="h-back" data-row="back">0 ш.</span>
         </div>
-        <div class="risk"><span id="h-risk"></span> · <span id="h-tier"></span></div>
+        <div class="risk" data-row="risk"><span id="h-risk"></span> · <span id="h-tier"></span></div>
       </div>
       <div class="bottom">
         <div id="h-slots" class="raid-slots"></div>
         <div id="h-hint" class="hint"></div>
-        <div class="panel night">
+        <div class="panel night" data-row="controls">
           <span class="lbl">Ночь</span><input id="h-night" type="range" min="0" max="100" value="100">
           <span class="lbl">Трава</span><input id="h-grass" type="range" min="0" max="64" value="24">
         </div>
         <div class="ctl">
-          <button data-act="rot-l">⟲</button>
-          <button data-act="rot-r">⟳</button>
-          <button data-act="zoom-in">＋</button>
-          <button data-act="zoom-out">－</button>
-          <button data-act="skill" id="h-skill">Умение</button>
-          <button data-act="evac">К эвакуации</button>
+          <button data-act="rot-l" data-row="controls">⟲</button>
+          <button data-act="rot-r" data-row="controls">⟳</button>
+          <button data-act="zoom-in" data-row="controls">＋</button>
+          <button data-act="zoom-out" data-row="controls">－</button>
+          <button data-act="skill" id="h-skill" data-row="controls">Умение</button>
+          <button data-act="evac" data-row="evac">К эвакуации</button>
         </div>
       </div>`;
     parent.appendChild(this.root);
@@ -98,6 +102,9 @@ export class Hud {
     this.slots = this.q('h-slots');
     this.stats = document.createElement('div');
     this.stats.id = 'stats';
+    // Счётчик кадров — часть отладочного управления: в первой вылазке
+    // на экране только то, что игрок обязан прочитать.
+    this.stats.dataset['row'] = 'controls';
     // В потоке над подсказкой, а не поверх панели: панель меняет высоту
     // от длины строк, и абсолютно позиционированный счётчик её перекрывал.
     this.root.querySelector('.bottom')?.prepend(this.stats);
@@ -205,8 +212,30 @@ export class Hud {
       this.hintTimer = 2.5;
     } else if (this.hintTimer > 0) {
       this.hintTimer -= dt;
-      if (this.hintTimer <= 0) this.hint.textContent = '';
+      if (this.hintTimer <= 0) this.hint.textContent = this.sticky;
     }
+  }
+
+  /**
+   * Что из панели показано (`onboarding.html`). Полосы не гаснут по ходу
+   * онбординга, только зажигаются, поэтому метод вызывается на смене кадра,
+   * а не каждый тик.
+   */
+  setReveal(r: Reveal): void {
+    const show = (key: keyof Reveal): void => {
+      for (const el of this.root.querySelectorAll(`[data-row="${key}"]`)) {
+        (el as HTMLElement).style.display = r[key] ? '' : 'none';
+      }
+    };
+    for (const key of ['food', 'wounds', 'bag', 'back', 'risk', 'evac', 'controls'] as const) {
+      show(key);
+    }
+  }
+
+  /** Единственная строка обучения. Пустая строка снимает подсказку. */
+  setHint(text: string): void {
+    this.sticky = text;
+    if (this.hintTimer <= 0) this.hint.textContent = text;
   }
 
   setVisible(visible: boolean): void {

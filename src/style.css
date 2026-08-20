@@ -10,6 +10,8 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* Игровой интерфейс не выделяется: случайный протяг по панели не должен
    превращаться в выделение текста и съедать нажатие. */
+#hud, #camp, #return, #result { user-select: none; -webkit-user-select: none; }
+
 #hud, #camp, #return {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   padding: 18px; z-index: 6;
@@ -38,7 +40,6 @@
 #return .primary { background: #3c3320; border-color: #6d5a30; font-weight: 600; }
 #return .ghost { background: transparent; color: var(--dim); }
 
-#result { user-select: none; -webkit-user-select: none; }
 button { touch-action: manipulation; }
 html, body {
   margin: 0; height: 100%; overflow: hidden; background: #0b0a09; color: var(--ink);
@@ -143,13 +144,34 @@ button:active { background: rgba(255, 255, 255, 0.12); }
      и прятать его под панелью управления бессмысленно. */
   padding: calc(8px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
 }
-#camp .res { display: flex; justify-content: space-between; gap: 6px; }
+#camp .res { display: flex; justify-content: space-between; gap: 6px; align-self: stretch; }
 .res-item { display: flex; flex-direction: column; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
 .res-item b { font-size: 15px; }
-#camp .list {
+/* Лагерь: сцена первая. Постоянно на экране только ресурсы и нижняя строка,
+   всё остальное выезжает листом по тапу. На 360×780 прежние списки закрывали
+   поселение целиком — игрок видел набор карточек, а не свой лагерь. */
+.camp-space { flex: 1 1 auto; pointer-events: none; }
+#camp .sheet {
   display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
-  max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  align-self: stretch;
+  max-height: 62vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
+.sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.sheet-head b { font-size: 15px; }
+.sheet-x { font-size: 11px; padding: 4px 8px; background: transparent; color: var(--dim); }
+#camp .sec { display: flex; flex-direction: column; gap: 10px; }
+#camp .gear { display: flex; flex-direction: column; gap: 10px; margin-top: 4px;
+  padding-top: 10px; border-top: 1px solid var(--line); }
+#camp .tiers { gap: 6px; }
+#camp .tiers button { text-align: left; }
+/* Перестановка — второе действие карточки, поэтому тише главного. */
+#camp .b .move { align-self: flex-start; font-size: 11px; padding: 5px 9px; }
+/* Нижняя строка: три входа и ничего больше. Главный — вылазка.
+   align-self обязателен: #camp центрирует детей по горизонтали, и строка
+   без него сжималась по тексту, а «В вылазку» переносилось на две строки. */
+.camp-bar { display: flex; gap: 6px; pointer-events: auto; align-self: stretch; }
+.camp-bar button { flex: 1; padding: 11px 8px; }
+.camp-bar .primary { flex: 1.6; background: #3c3320; border-color: #6d5a30; font-weight: 600; }
 #camp .b { display: flex; flex-direction: column; gap: 5px; }
 #camp .b + .b { padding-top: 9px; border-top: 1px solid var(--line); }
 .b-top { display: flex; justify-content: space-between; align-items: baseline; }
@@ -214,6 +236,35 @@ button[disabled] { opacity: 0.4; cursor: default; }
 }
 .raid-slot.spent { opacity: 0.35; text-decoration: line-through; }
 
+/* ---------- онбординг: раскадровка первых трёх минут ---------- */
+/* Полоса обязана иметь тело. Ширину панели задаёт самая длинная строка внутри
+   неё, а онбординг прячет строку ставки — колонка 1fr схлопывалась в ноль,
+   и полоса провианта исчезала целиком, оставляя подпись и число. */
+#hud .stats > .bar { min-width: 108px; }
+/* Кадр 3: экран коротко дёргается на первой ране. Раны конечны и считаются
+   штуками (§11.3), и первая обязана быть замечена телом, а не только глазом. */
+@keyframes onb-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-5px, 2px, 0); }
+  45% { transform: translate3d(4px, -3px, 0); }
+  70% { transform: translate3d(-3px, 1px, 0); }
+}
+#app canvas.shake { animation: onb-shake 260ms ease-out; }
+/* Подсказка онбординга ярче реплик вылазки: она называет жест, а не событие. */
+#hud .hint.onb { color: var(--ink); font-size: 13px; }
+#hud .hint.onb s { text-decoration: none; color: var(--warn); }
+/* Кадр 10: карточка яруса. Ставка объявляется до входа (§11.6).
+   Во всю ширину панели: сетка вылазки — четыре колонки под ярусы, и карточка,
+   зажатая в одну из них, переносила цену провала на три строки. */
+.tier-card {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.tier-card .t { display: flex; justify-content: space-between; align-items: baseline; }
+.tier-card b { font-size: 14px; }
+.tier-card span { font-size: 11px; }
+.tier-card p { margin: 4px 0 0; font-size: 12px; }
 /* ---------- стартовый экран ---------- */
 /* Заголовок стоит в сцене буквами, поэтому здесь только вход в игру.
    Кнопка крупнее прочих: это единственное, что на экране можно нажать. */
