@@ -898,7 +898,7 @@ if (debugParams.has('bench')) {
         rig.renderWith(titleView.camera);
         return;
       } else if (mode === 'raid' && raid !== null && raidView !== null) {
-        raidView.sync(raid, 0, 1 / 60, performance.now());
+        raidView.sync(raid, 0, 1 / 60, performance.now(), rig.dayFactor);
         rig.update(1 / 60, raid.hero.x, raid.hero.z, visionRadius(raid.loadout.knowledge, rig.night > 0.5, true));
       }
       rig.render();
@@ -1010,7 +1010,7 @@ startLoop({
     }
 
     if (mode === 'raid' && raid !== null && raidView !== null) {
-      raidView.sync(raid, alpha, dt, now);
+      raidView.sync(raid, alpha, dt, now, rig.dayFactor);
       rig.lookAt(raid.hero.x, raid.hero.z);
       rig.update(
         dt,

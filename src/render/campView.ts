@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
 import { buildingGeometry, heroGeometry } from './models';
+import { Fire } from './fire';
 import { BUILDING_ORDER, builtBuildings, campArea } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { FluffyGrass } from './fluffyGrass';
@@ -44,6 +45,7 @@ const CAMP_ROCKS: readonly ForestModelName[] = ['Rock_1_G_Color1', 'Rock_3_H_Col
 /** Уровень земли вокруг площадки: луг из buildMeadow, на нём же стоит лес. */
 const MEADOW_Y = -0.02;
 
+
 /** Насколько далеко за поляну уходит лес, в клетках. */
 const FOREST_DEPTH = 5;
 /** Полоса между поляной и первым деревом: иначе лес закрывает крайние здания. */
@@ -59,6 +61,8 @@ export class CampView {
   private readonly disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
   private hero!: THREE.Mesh;
   private site: THREE.Mesh | null = null;
+  /** Свет костра. Один на лагерь: горит тот огонь, что стоит у кухни. */
+  private readonly fire = new Fire();
   private area = 6;
   private builtLevels = '';
 
@@ -69,6 +73,7 @@ export class CampView {
     this.buildGround();
     this.buildMeadow();
     this.buildHero();
+    this.group.add(this.fire.group);
     this.rebuildBuildings();
   }
 
@@ -327,6 +332,17 @@ export class CampView {
     this.hero.position.set(hqPos.x + 1.9, 0.55, hqPos.z + 0.5);
 
     this.syncSite(now);
+    this.syncFire(now, day);
+  }
+
+  /**
+   * Кухня и есть костёр лагеря: где у неё горит огонь, решает модель,
+   * а `FireLight` ставит туда свет и гасит его на стадии без открытого огня.
+   */
+  private syncFire(now: number, day: number): void {
+    const pos = this.camp.layout.kitchen;
+    this.fire.set('kitchen', this.camp.levels.kitchen, pos.x + 0.5, pos.z + 0.5, BUILDING_SCALE);
+    this.fire.update(now, day);
   }
 
   /** Площадка стройки — единственное, что мигает в лагере всегда. */
@@ -376,6 +392,7 @@ export class CampView {
   dispose(): void {
     this.group.removeFromParent();
     this.meadow?.dispose();
+    this.fire.dispose();
     this.meadow = null;
     this.groundMesh.dispose();
     // Геометрия леса общая на страницу (кэш forest.ts) — освобождаются только
