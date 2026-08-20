@@ -13,6 +13,7 @@ import type { HeroClassId } from '../sim/heroes';
 import { forestGeometry, forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
 import type { Gust } from './cursorWind';
+import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { PALETTE } from './palette';
@@ -57,6 +58,13 @@ export type RaidFlavor = 'mine' | 'glade';
  * выглядеть по-разному в двух сценах, иначе это два разных здания.
  */
 const BUILDING_SCALE = 0.55;
+
+/**
+ * Высота добычи на клетке. Октаэдр, которым она рисовалась до набора, был
+ * 0,52 в поперечнике, и модели приведены к нему же: подмена не должна сдвинуть
+ * ни тень, ни то, с какого расстояния добыча читается.
+ */
+const CONTAINER_HEIGHT = 0.52;
 
 /**
  * Замеры клипов (`npm run clips`, каталог набора анимаций) — по ним клип
@@ -366,15 +374,32 @@ export class RaidView {
     this.group.add(this.evacRing, beam);
   }
 
+  /**
+   * Контейнеры — добыча набора KayKit Resource Bits (§6.1.5). Что лежит внутри,
+   * видно до вскрытия: соль — белые обломки, дерево — бревно, железо — штабель
+   * слитков. Вид выпадает по ярусу при генерации (§13), поэтому показать его —
+   * значит показать уже решённое, а не подсказать будущее.
+   *
+   * Кристалла в наборе нет — самоцветы автор оставил платному тарифу, — и у него
+   * остаётся октаэдр, которым до этого рисовались все четыре. Заглушкой он при
+   * этом быть перестал: кристалл и есть октаэдр.
+   *
+   * Геометрия и материал общие на вид, а не на контейнер: на ярусе 3 их пять,
+   * и пять одинаковых материалов — это пять лишних состояний GPU.
+   */
   private buildContainers(): void {
-    const geo = this.track(new THREE.OctahedronGeometry(0.26, 0));
-    const mat = this.track(
+    const gem = this.track(new THREE.OctahedronGeometry(0.26, 0));
+    const gemMat = this.track(
       // Без emissive: светящаяся добыча видна за пределами круга света и
       // обесценивает обзор из §11.4. Подсветку жилы даёт карта «Чутьё на жилу».
       new THREE.MeshLambertMaterial({ color: PALETTE.loot, flatShading: true }),
     );
+    const baked = this.track(resourceMaterial());
     for (const c of this.loc.containers) {
-      const mesh = new THREE.Mesh(geo, mat);
+      const name = RESOURCE_MODEL[c.kind];
+      const mesh = name === null
+        ? new THREE.Mesh(gem, gemMat)
+        : new THREE.Mesh(this.track(resourceGeometry(name, CONTAINER_HEIGHT)), baked);
       mesh.castShadow = true;
       mesh.position.set(c.x, 0.45, c.z);
       this.group.add(mesh);

@@ -556,11 +556,21 @@ const RESOURCES: Pack = {
   grey: 0.02,
   categoryOf: (name) => RESOURCE_CATEGORIES[name.split('_')[0]!.toLowerCase()] ?? 'Прочее',
   /**
-   * Пусто, как у подземелья, и по той же причине: добыча в игре — значок,
-   * а не предмет на земле. Набор измерен и ждёт дня, когда ресурс придётся
-   * показать вещью.
+   * Три модели — по одной на ресурс §13, который набор умеет показать.
+   * Контейнер вылазки перестал быть октаэдром: что в нём лежит, читается
+   * силуэтом до вскрытия.
+   *
+   * Соль — `Silver_Nuggets`, и это не подмена: набор красит их клеткой,
+   * которая в нашей палитре и есть соль — иней, соль, сталь. На экране
+   * это белые обломки, а не металл, и звать их солью честнее, чем звать
+   * серебром то, чего в игре нет.
+   *
+   * Кристалла в бесплатном тарифе нет вовсе — самоцветы автор оставил
+   * платному. Октаэдр у кристалла и остаётся, и впервые он не заглушка:
+   * кристалл и есть октаэдр.
    */
-  adopted: [],
+  adopted: ['Wood_Log_A', 'Iron_Bars_Stack_Small', 'Silver_Nuggets'],
+  data: { file: 'src/render/resources.data.ts', prefix: 'RESOURCES', type: 'Resource' },
 };
 
 const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES];
@@ -2065,12 +2075,16 @@ function report(pack: Pack, write: boolean): void {
     const adopted = models.filter((m) => pack.adopted.includes(m.name));
     const adoptedTris = adopted.reduce((s, m) => s + m.tris, 0);
     const b64 = (n: number): number => Math.ceil(n / 3) * 4;
+    // Кости и веса считаются только у набора со скелетом: у остальных они
+    // посчитаны запеканием, но в файл не пишутся, и в отчёте им взяться неоткуда.
     const part = {
       'позиции': adopted.reduce((s, m) => s + b64(m.index.pos.byteLength), 0),
       'индексы': adopted.reduce((s, m) => s + b64(m.index.idx.byteLength), 0),
       'слоты': adopted.reduce((s, m) => s + b64(m.index.slot.byteLength), 0),
-      'кости': adopted.reduce((s, m) => s + b64(m.index.bone.byteLength), 0),
-      'веса': adopted.reduce((s, m) => s + b64(m.index.weight.byteLength), 0),
+      ...(rig === null ? {} : {
+        'кости': adopted.reduce((s, m) => s + b64(m.index.bone.byteLength), 0),
+        'веса': adopted.reduce((s, m) => s + b64(m.index.weight.byteLength), 0),
+      }),
     };
     const verts = adopted.reduce((s, m) => s + m.index.verts, 0);
     const flat = adopted.reduce((s, m) => s + b64(m.pos.byteLength) + b64(m.slot.byteLength), 0);
