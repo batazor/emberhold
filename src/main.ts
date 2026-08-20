@@ -4,7 +4,6 @@ import { startLoop } from './core/loop';
 import {
   bindPageAudio,
   play,
-  setFoodShare,
   startAmbient,
   startCampTune,
   startPulse,
@@ -58,7 +57,7 @@ import {
 import type { OnbStep } from './sim/onboarding';
 import { firstGladeCell, generateGlade, gladeFood, siteBlock } from './sim/prologue';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
-import type { RaidState, RaidStatus } from './sim/raid';
+import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { addResources } from './sim/resources';
@@ -77,6 +76,8 @@ import { CampPrompt } from './ui/campPrompt';
 import { DevMenu } from './ui/devMenu';
 import { Hud } from './ui/hud';
 import { StartScreen } from './ui/startScreen';
+import { installBench } from './features/bench';
+import { createRaidEar } from './features/raidAudio';
 
 const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
@@ -489,66 +490,10 @@ function finishRaidForHero(
 /* ---------- звук (§18) ---------- */
 
 /**
- * Что уже прозвучало. Симуляция о звуке не знает и событий для него не
- * выдаёт — main сравнивает состояние с прошлым тиком и озвучивает разницу.
- * Так звук остаётся вторым каналом для тех же данных (§18.1), а не второй
- * их копией внутри правил.
+ * Ухо вылазки (features/raidAudio): симуляция событий для звука не выдаёт,
+ * ухо само сравнивает состояние с прошлым тиком и озвучивает разницу.
  */
-const heard = {
-  steps: 0,
-  wounds: 0,
-  bag: 0,
-  enemyWounds: 0,
-  alive: 0,
-  ticks: 0,
-  cooldown: 0,
-  status: 'running' as RaidStatus,
-};
-
-const enemyWoundsOf = (state: RaidState): number =>
-  state.loc.enemies.reduce((sum, e) => sum + Math.max(0, e.wounds), 0);
-
-/** Живых противников. Смерть слышна по убыли их числа, а не по наличию
- *  мёртвого: мёртвый остаётся мёртвым, и проверка «есть труп» звучала бы
- *  на каждом следующем попадании. */
-const aliveOf = (state: RaidState): number =>
-  state.loc.enemies.reduce((n, e) => n + (e.wounds > 0 ? 1 : 0), 0);
-
-/** Сколько десятых запаса уже потрачено: тик расхода звучит на каждой. */
-const foodTicksOf = (state: RaidState): number =>
-  Math.floor(((state.foodMax - state.food) / state.foodMax) * 10);
-
-function listenFrom(state: RaidState): void {
-  heard.steps = state.steps;
-  heard.wounds = state.hero.wounds;
-  heard.bag = state.bagTotal;
-  heard.enemyWounds = enemyWoundsOf(state);
-  heard.alive = aliveOf(state);
-  heard.ticks = foodTicksOf(state);
-  heard.cooldown = state.hero.cooldown;
-  heard.status = state.status;
-}
-
-function hearRaid(state: RaidState): void {
-  if (state.steps > heard.steps) play('step');
-  // Замах слышен до результата (§18.3): откат прыгает вверх в момент удара.
-  if (state.hero.cooldown > heard.cooldown + 0.01) play('swing');
-  const enemyWounds = enemyWoundsOf(state);
-  const alive = aliveOf(state);
-  // Попадание — только по живому: последний удар звучит смертью, а не оба
-  // разом. §18.3 — попадание не громче ранения, и подавно не поверх смерти.
-  if (enemyWounds < heard.enemyWounds && alive === heard.alive) play('hit');
-  if (alive < heard.alive) play('kill');
-  if (state.hero.wounds < heard.wounds) play('wound');
-  if (state.bagTotal > heard.bag) play('chest');
-  const ticks = foodTicksOf(state);
-  if (ticks > heard.ticks) play('tick');
-  if (state.status !== heard.status && state.status !== 'running') {
-    play(state.status === 'evacuated' ? 'evac' : 'fail');
-  }
-  setFoodShare(state.foodMax > 0 ? Math.max(0, state.food) / state.foodMax : 0);
-  listenFrom(state);
-}
+const ear = createRaidEar();
 
 /* ---------- переходы между сценами ---------- */
 function toRaid(tier: Tier): boolean {
@@ -603,7 +548,7 @@ function toRaid(tier: Tier): boolean {
   resultShown = false;
   stopCampTune();
   startAmbient(tier);
-  listenFrom(raid);
+  ear.reset(raid);
   startPulse();
   mode = 'raid';
   hud.setVisible(true);
@@ -757,7 +702,7 @@ function toGlade(): void {
   // Поляна на поверхности — подложка «Подступы», светлая (§18.4).
   stopCampTune();
   startAmbient(0);
-  listenFrom(raid);
+  ear.reset(raid);
   startPulse();
   placing = null;
   pitched.length = 0;
@@ -1101,99 +1046,30 @@ if (debugTier !== null) {
   if (t >= 0 && t <= 3) toRaid(t as Tier);
 }
 
-/**
- * Замерный вход (?bench=1). Кадры гонятся синхронно, без requestAnimationFrame,
- * по двум причинам: fps упирается в частоту экрана и прячет запас, а
- * миллисекунды на кадр — нет; и скрытая вкладка кадров вообще не рисует,
- * поэтому замер из панели предпросмотра иначе меряет замерший кадр.
- *
- * Это отладочный орган, как ?tier и ползунок «Ночь», — не механика.
- */
 if (debugParams.has('bench')) {
-  const gl = rig.renderer.getContext();
-  const draw = (): void => {
-    if (mode === 'title' && titleView !== null) {
-      titleView.update(performance.now() / 1000);
-      rig.lookAt(titleView.center.x, titleView.center.z);
-      rig.update(1 / 60, titleView.center.x, titleView.center.z, 12);
-      rig.renderWith(titleView.camera);
-      return;
-    } else if (mode === 'raid' && raid !== null && raidView !== null) {
-      raidView.sync(raid, 0, 1 / 60, performance.now());
-      rig.update(1 / 60, raid.hero.x, raid.hero.z, visionRadius(raid.loadout.knowledge, rig.night > 0.5, true));
-    }
-    rig.render();
-  };
-  (window as unknown as Record<string, unknown>)['bench'] = {
-    /** Нарисовать один кадр: скриншот скрытой вкладки иначе показывает старый. */
-    frame: draw,
+  installBench({
     rig,
-    state: (): unknown => ({ mode, night: rig.night, sun: rig.sunIntensity, bg: rig.backgroundHex }),
-    /**
-     * Яркость кадра сеткой cols×rows, 0–255. Скрытая вкладка не отдаёт
-     * скриншот, а буфер отдаёт: «темно» становится числом.
-     */
-    luma(cols = 24, rows = 14): number[][] {
-      draw();
-      const w = gl.drawingBufferWidth;
-      const h = gl.drawingBufferHeight;
-      const px = new Uint8Array(w * h * 4);
-      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
-      const out: number[][] = [];
-      for (let r = 0; r < rows; r++) {
-        const line: number[] = [];
-        for (let c = 0; c < cols; c++) {
-          let sum = 0;
-          let n = 0;
-          const x0 = Math.floor((c * w) / cols);
-          const x1 = Math.floor(((c + 1) * w) / cols);
-          // Строки буфера идут снизу вверх — переворачиваем, чтобы сетка
-          // читалась так же, как экран.
-          const y0 = Math.floor(((rows - 1 - r) * h) / rows);
-          const y1 = Math.floor(((rows - r) * h) / rows);
-          for (let y = y0; y < y1; y += 4) {
-            for (let x = x0; x < x1; x += 4) {
-              const i = (y * w + x) * 4;
-              sum += 0.2126 * px[i]! + 0.7152 * px[i + 1]! + 0.0722 * px[i + 2]!;
-              n++;
-            }
-          }
-          line.push(n === 0 ? 0 : Math.round(sum / n));
-        }
-        out.push(line);
+    // Кадр текущего режима, синхронно: тот же путь, что и в render ниже.
+    draw: () => {
+      if (mode === 'title' && titleView !== null) {
+        titleView.update(performance.now() / 1000);
+        rig.lookAt(titleView.center.x, titleView.center.z);
+        rig.update(1 / 60, titleView.center.x, titleView.center.z, 12);
+        rig.renderWith(titleView.camera);
+        return;
+      } else if (mode === 'raid' && raid !== null && raidView !== null) {
+        raidView.sync(raid, 0, 1 / 60, performance.now());
+        rig.update(1 / 60, raid.hero.x, raid.hero.z, visionRadius(raid.loadout.knowledge, rig.night > 0.5, true));
       }
-      return out;
+      rig.render();
     },
-    night(value: number): void {
-      rig.night = value;
-      draw();
-    },
-    /** Средние миллисекунды на кадр при данной плотности травы. */
-    run(perTile: number, frames = 120): unknown {
+    state: () => ({ mode, night: rig.night, sun: rig.sunIntensity, bg: rig.backgroundHex }),
+    setGrass: (perTile) => {
       raidView?.setGrassDensity(perTile);
       hud.setGrass(perTile);
-      // Барьер — чтение пикселя, а не gl.finish: finish в браузере не ждёт
-      // конца кадра, и замер вырождается во время выдачи команд.
-      const sync = new Uint8Array(4);
-      const wait = (): void => {
-        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, sync);
-      };
-      for (let i = 0; i < 20; i++) draw(); // прогрев: шейдер компилируется один раз
-      wait();
-      const t0 = performance.now();
-      for (let i = 0; i < frames; i++) {
-        draw();
-        wait();
-      }
-      const ms = (performance.now() - t0) / frames;
-      return {
-        perTile,
-        blades: raidView?.grassBlades ?? 0,
-        ms: Number(ms.toFixed(3)),
-        draw: rig.drawCalls,
-      };
     },
-  };
+    blades: () => raidView?.grassBlades ?? 0,
+  });
 }
 
 startLoop({
@@ -1204,7 +1080,7 @@ startLoop({
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
-      hearRaid(raid);
+      ear.hear(raid);
       if (inGlade) {
         hud.sync(raid, dt);
         // Кадр кончается ровно на нуле провианта. Голод, который в вылазке
