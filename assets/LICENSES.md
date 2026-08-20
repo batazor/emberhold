@@ -14,9 +14,12 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-forest/forest_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-dungeon/gltf/*.gltf`, `*.bin` — 211 моделей: стены, полы, лестницы, мебель, тара, утварь, знамёна | [kaylousberg.itch.io/kaykit-dungeon-pack](https://kaylousberg.itch.io/kaykit-dungeon-pack), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
 | `kaykit-dungeon/dungeon_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
+| `kaykit-animations/gltf/*.glb` — 159 скелетных клипов: ход, бой, работа, быт | [kaylousberg.itch.io/kaykit-character-animations](https://kaylousberg.itch.io/kaykit-character-animations), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
+| `kaykit-animations/rig/*.glb`, `mannequin_texture.png` — два манекена набора и их текстура | там же | CC0 1.0 | Kay Lousberg |
 
-`kaykit-forest/License.txt` и `kaykit-dungeon/License.txt` — файлы лицензий
-как они пришли в архивах, без правок.
+`kaykit-forest/License.txt`, `kaykit-dungeon/License.txt` и
+`kaykit-animations/License.txt` — файлы лицензий как они пришли в архивах,
+без правок.
 
 ## Apache 2.0 и что она требует
 
@@ -43,15 +46,21 @@ CC0» уходит на тот же экран «О игре», что и стр
 Каталоги наборов с числами и цветами — `forestart.html` и `dungeonart.html`
 (только на dev-сервере: страницы читают файлы отсюда).
 
+Набор анимаций устроен иначе: запекать в нём нечего — в клипе нет ни цвета,
+ни геометрии, только дорожки костей. Его меряет `scripts/clips.ts`
+(`npm run clips`), а `charart.html` читает `.glb` целиком и проигрывает их
+в браузере. В бандл не едет и он.
+
 Лес закрывает окружение и только его. Герои, противники и здания делаются
 своими руками — §6.1 это и предполагал.
 
-## Подземелье лежит, но не едет
+## Подземелье и анимации лежат, но не едут
 
-`kaykit-dungeon/` измерен целиком, и в бандле от него нет ни байта: список
-принятых моделей пуст, `.data.ts` под него не пишется. Реестру это всё равно —
+`kaykit-dungeon/` и `kaykit-animations/` измерены целиком, и в бандле от них
+нет ни байта: список принятых моделей пуст, `.data.ts` под них не пишется,
+а клипы игра пока не проигрывает вовсе. Реестру это всё равно —
 файлы в репозитории есть, значит запись обязана быть, — но при чтении
-«чужие ассеты в игре» набор считать не нужно: в игру он не попал (§6.1.2).
+«чужие ассеты в игре» эти наборы считать не нужно: в игру они не попали (§6.1.2).
 
 ## Чего здесь нет и почему
 
