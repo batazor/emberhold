@@ -175,6 +175,7 @@ export function merge(parts: readonly Piece[]): THREE.BufferGeometry {
 export const blockingMaterial = (): THREE.MeshLambertMaterial =>
   new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 
-/** Треугольники модели — тем же счётом, каким артбук меряет бюджет. */
+/** Треугольники модели — тем же счётом, каким артбук меряет бюджет.
+ *  У индексированной геометрии их считают индексы, а не вершины. */
 export const triangles = (geo: THREE.BufferGeometry): number =>
-  geo.getAttribute('position').count / 3;
+  (geo.index?.count ?? geo.getAttribute('position').count) / 3;

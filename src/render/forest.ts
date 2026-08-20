@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { bakedGeometry, bakedMaterial } from './baked';
+import { bakedGeometry, bakedMaterial, fitOf } from './baked';
 import { FOREST_MODELS, FOREST_SLOTS } from './forest.data';
 import type { ForestModelName } from './forest.data';
 import { FOREST_PALETTE } from './palette';
@@ -25,7 +25,8 @@ export function forestGeometry(name: ForestModelName, height: number): THREE.Buf
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
 
-  const geometry = bakedGeometry([{ model: FOREST_MODELS[name], palette: FOREST_PALETTE }], height);
+  const model = FOREST_MODELS[name];
+  const geometry = bakedGeometry([{ model, palette: FOREST_PALETTE }], fitOf(model, height));
   cache.set(key, geometry);
   return geometry;
 }

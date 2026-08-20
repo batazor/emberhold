@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ADVENTURERS_MODELS, ADVENTURERS_SLOTS } from './adventurers.data';
 import type { AdventurerModel, AdventurerModelName } from './adventurers.data';
-import { bakedGeometry } from './baked';
+import { bakedGeometry, fitOf } from './baked';
 import type { Part } from './baked';
 import { ADVENTURERS_PALETTE } from './palette';
 
@@ -49,7 +49,7 @@ export function adventurerGeometry(
     parts.push({ model: ADVENTURERS_MODELS[holds], palette: ADVENTURERS_PALETTE, matrix: model.hand });
   }
 
-  const geometry = bakedGeometry(parts, height);
+  const geometry = bakedGeometry(parts, fitOf(model, height));
   cache.set(key, geometry);
   return geometry;
 }
