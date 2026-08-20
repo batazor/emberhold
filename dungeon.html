@@ -1,0 +1,630 @@
+<meta charset="utf-8">
+<title>Набор моделей: подземелье</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;
+    background:var(--ground);padding:12px 0;border-bottom:1px solid var(--line);}
+  .bar hr{border:0;border-left:1px solid var(--line);height:20px;margin:0 4px;}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+
+  .models{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;}
+  .m{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
+  .m .stage{background:#12100c;display:flex;justify-content:center;padding:8px 0;}
+  .m b{font-family:var(--ff-display);font-weight:400;font-size:14px;padding:8px 11px 1px;
+    overflow-wrap:anywhere;}
+  .m u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
+    padding:0 11px 10px;display:flex;justify-content:space-between;gap:8px;}
+  .m u s{text-decoration:none;}
+  .m u s.over{color:var(--blood);}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.miss{color:var(--ember);}
+  tr.new td{background:color-mix(in srgb, var(--brass) 9%, transparent);}
+  .chip{display:inline-flex;align-items:center;gap:8px;}
+  .chip i{width:30px;height:16px;border:1px solid var(--line);display:block;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+  .fail{color:var(--blood);}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Артбук · готовый набор</div>
+  <h1>Подземелье, <em>примеренное к палитре</em></h1>
+  <p class="lede">KayKit Dungeon Pack 1.1, бесплатный тариф, лицензия CC0: стены, полы,
+    лестницы, мебель, тара, утварь и знамёна. Страница показывает не витрину, а сами
+    файлы из <code>assets/kaykit-dungeon</code>: геометрия читается из <code>.gltf</code>,
+    числа считает <code>npm run models</code>, цвет берётся из палитры игры.</p>
+  <p class="lede"><b>В бандл из этого набора не едет ничего</b> — и это решение, а не
+    пропуск. Набор взвешен; что из него стоит килобайтов у всех игроков, решается
+    в тот день, когда вылазке понадобится не камень, а предмет. Страница —
+    и есть взвешивание.</p>
+  <p class="lede fail" id="warn" style="display:none"></p>
+</header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что в наборе</h2>
+    <p>Категории — по первому слову имени файла. Треугольники посчитаны по индексам
+      примитивов, габарит — по позициям вершин, уже сложенным с трансформом узлов;
+      ни то, ни другое не взято с витрины.</p>
+  </div>
+  <table id="cats"><thead><tr>
+    <th>Категория</th><th class="num">Моделей</th><th class="num">Треугольников</th>
+    <th class="num">В среднем</th><th class="num">Самая тяжёлая</th><th>Она же</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="total"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Клетка набора — не наша клетка</h2>
+    <p>Набор нарисован под сетку в четыре единицы: стена — четыре в ширину, большая
+      плитка пола — 4×4, малая — 2×2. Наша клетка — <b>одна единица</b> (§17.4 задаёт
+      скорость 1,67 клетки в секунду именно в ней). Отсюда деление, которое проходит
+      прямо по набору: <b>архитектура приходит в чужом масштабе</b>, а предметы —
+      в почти нашем.</p>
+    <p>Стены, полы и лестницы пришлось бы либо резать, либо перестраивать под них
+      генератор (§11.1: сторона локации 8–20 клеток). Предметы приводятся высотой —
+      ровно так, как <code>forestGeometry(name, height)</code> приводит дерево:
+      основание на нуле, центр по осям, заданная высота. Множителям по коду
+      взяться неоткуда.</p>
+  </div>
+  <table id="scale"><thead><tr>
+    <th>Модель</th><th>Габарит набора, ед.</th><th class="num">Треугольников</th><th>Что это у нас</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="scaleNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Атлас, который не градиент</h2>
+    <p>У леса атлас был тремя градиентами по четыре ступени — запекание просто читало
+      ступень. Здесь картинка раскрашена целиком: под треугольниками оказывается
+      <span id="touched">…</span>. §6.1 запрещает текстурные ассеты, и разрешается это
+      так же, как в лесу: <code>scripts/models.ts</code> снимает цвет с атласа один раз
+      и заменяет его <b>слотом палитры</b>. В игру поехало бы число, картинка осталась
+      бы здесь.</p>
+    <p>Разница с лесом одна и она в шкале. Яркость ступени считается <b>не по всей
+      картинке, а по задетому</b>: незанятые углы атласа растянули бы шкалу так, что
+      настоящее дерево ушло бы в самую тёмную ступень. Это не рассуждение — так и было,
+      пока шкалу считали по картинке.</p>
+  </div>
+  <table id="slots"><thead><tr>
+    <th>Градиент</th><th>Слот</th><th>Было в атласе</th><th>Стало в игре</th>
+    <th class="num">Треугольников</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="slotNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Каталог</h2>
+    <p>Камера та же, что в игре: азимут 45°, наклон 30°, плоское затенение, один
+      источник света. Переключатель меняет только цвет — <b>как нарисовано в наборе</b>
+      против <b>как выглядело бы в игре</b>. Это и есть цена вопроса, показанная
+      целиком, а не таблицей.</p>
+  </div>
+  <div class="bar" id="filters"></div>
+  <div class="models" id="grid"></div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что набор стоит палитре</h2>
+    <p>Палитра — один список на игру, и второй набор обязан ложиться в неё, а не
+      заводить свою. Замер отвечает, во что это обойдётся.</p>
+  </div>
+  <div class="guard">
+    <div>
+      <h3>Ложится почти целиком</h3>
+      <p><b><span id="fitShare">…</span> треугольников</b> набора укладывается в те же
+        двенадцать слотов, что и лес: камень, дерево, зелень. Ради второго набора
+        палитру не пришлось бы трогать.</p>
+    </div>
+    <div class="key">
+      <h3>Не хватает одного слота</h3>
+      <p>Золото — <b><span id="goldShare">…</span> треугольников</b>: монеты, оковка
+        сундука, пламя факела. Слота под него в списке моделей нет, но <b>цвет
+        у игры есть</b> — <code>PALETTE.loot</code>, тот самый, которым помечена добыча
+        в вылазке.</p>
+    </div>
+    <div class="key">
+      <h3>Знамёна не читаются</h3>
+      <p><span id="banners">…</span>. Синее сукно становится серым камнем, алое —
+        коричневым деревом: <b>цвет знамени пропадает целиком</b>. Это ответ,
+        а не дефект набора — цветов геральдики в палитре нет, потому что геральдики
+        нет в игре.</p>
+    </div>
+    <div>
+      <h3>Тяжелее бюджета</h3>
+      <p><span id="over">…</span> при потолке здания в 1500 треугольников (§6.1).
+        Все — украшенные столы, лестницы и составные ящики: набор рисовался
+        для комнаты от первого лица, а не для фигурки в сантиметр экрана.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Решения, которые это потребовало</h2>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Список принятого пуст</h3>
+      <p>Каждая запечённая модель — килобайты у всех игроков, а не файл на диске.
+        Пока вылазке хватает камней, <b>брать из подземелья нечего</b>; страница
+        и каталог стоят ноль байт в бандле и остаются готовым ответом на будущий вопрос.</p>
+    </div>
+    <div class="key">
+      <h3>Обмер ходит по сцене</h3>
+      <p>У четырёх моделей крышка сундука и створка двери вынесены отдельными узлами
+        с собственным сдвигом — их так анимируют. Читать меши подряд, как читался лес,
+        значит <b>собрать сундук с крышкой внутри ящика</b>. Теперь обмер идёт
+        по дереву узлов и складывает трансформы.</p>
+    </div>
+    <div>
+      <h3>Шкала — по задетому</h3>
+      <p>Две трети атласа не попадают ни под один треугольник. Диапазон яркости
+        градиента считается по тем цветам, которые набор действительно взял, —
+        иначе ступени раздаёт пустота.</p>
+    </div>
+    <div>
+      <h3>Золото и огонь — один слот</h3>
+      <p>Пламя факела в атласе отличается от монеты только яркостью, и оба сидят
+        в одном оранжевом углу. Разделять их значило бы <b>завести два слота там,
+        где игра различает один</b>.</p>
+    </div>
+    <div>
+      <h3>Стены остаются камнем</h3>
+      <p>Стена вылазки — камни набора Forest, выбранные по координате клетки. Стены
+        подземелья это не улучшают: они прямые, модульные и предполагают комнаты,
+        которых генератор (§11.1) не строит.</p>
+    </div>
+    <div>
+      <h3>Атлас лежит в assets, а не в public</h3>
+      <p>Текстура нужна только этой странице и запеканию. В <code>public/</code> она
+        поехала бы в сборку, а §6.1 запрещает текстурные ассеты в игре —
+        запрет остаётся целым ровно потому, что картинка не покидает
+        <code>assets/</code>.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script type="module">
+const PACK = './assets/kaykit-dungeon/';
+const CATALOG = PACK + 'catalog.json';
+const GLTF = PACK + 'gltf/';
+const ATLAS = PACK + 'dungeon_texture.png';
+
+function fail(text){
+  const w = document.getElementById('warn');
+  w.textContent = text;
+  w.style.display = '';
+}
+
+let palette, slotNames, loot, cat;
+try{
+  // Палитра и список слотов берутся из самих модулей игры: две копии одного
+  // списка разошлись бы молча, а страница именно про то, что список один.
+  const p = await import('/src/render/palette.ts');
+  palette = p.FOREST_PALETTE;
+  loot = p.PALETTE.loot;
+  slotNames = (await import('/src/render/forest.data.ts')).FOREST_SLOTS;
+  cat = await (await fetch(CATALOG)).json();
+}catch(e){
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /dungeon.html. ' + e);
+  throw e;
+}
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const pct = (n, of) => (n / of * 100).toFixed(1) + '%';
+
+/* Русский счёт: «1 модель», «2 модели», «5 моделей». Числа здесь считаются
+   из каталога, поэтому склонение тоже обязано считаться, а не угадываться. */
+const plural = (n, one, few, many) => {
+  const t = Math.abs(n) % 100, u = t % 10;
+  if (t > 10 && t < 20) return many;
+  if (u > 1 && u < 5) return few;
+  return u === 1 ? one : many;
+};
+const models = (n) => n + ' ' + plural(n, 'модель', 'модели', 'моделей');
+
+/* ---------- атлас: он нужен только чтобы показать «как в наборе» ---------- */
+
+/**
+ * Картинка грузится по требованию, а не при входе: числа и таблицы к ней
+ * не относятся, и ждать мегапиксель ради них — значит показывать пустую
+ * страницу тем дольше, чем медленнее канал.
+ */
+let atlas = null, atlasWaiting = null;
+const ensureAtlas = () => (atlasWaiting ??= loadAtlas().then((a) => { atlas = a; return a; }));
+
+async function loadAtlas(){
+  const img = new Image();
+  img.src = ATLAS;
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const ctx = c.getContext('2d', {willReadFrequently:true});
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, img.width, img.height).data;
+  return {
+    width:img.width, height:img.height,
+    // UV в glTF считаются от верхнего края — это и есть порядок строк в PNG.
+    at(u, v){
+      const x = Math.min(img.width - 1, Math.max(0, Math.floor(u * img.width)));
+      const y = Math.min(img.height - 1, Math.max(0, Math.floor(v * img.height)));
+      const o = (y * img.width + x) * 4;
+      return 'rgb(' + data[o] + ',' + data[o+1] + ',' + data[o+2] + ')';
+    },
+  };
+}
+
+/* ---------- сводка по категориям ---------- */
+const totalTris = cat.models.reduce((s, m) => s + m.tris, 0);
+const cats = new Map();
+for(const m of cat.models){
+  const c = cats.get(m.category) ?? {n:0, tris:0, worst:m};
+  c.n++; c.tris += m.tris;
+  if(m.tris > c.worst.tris) c.worst = m;
+  cats.set(m.category, c);
+}
+const catsBody = document.querySelector('#cats tbody');
+for(const [key, c] of [...cats].sort((a, b) => b[1].tris - a[1].tris)){
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + key + '</td><td class="num">' + c.n + '</td><td class="num">' + c.tris +
+    '</td><td class="num">' + Math.round(c.tris / c.n) + '</td><td class="num">' + c.worst.tris +
+    '</td><td class="mono">' + c.worst.name + '</td>';
+  catsBody.appendChild(tr);
+}
+document.getElementById('total').textContent =
+  cat.models.length + ' моделей · ' + totalTris + ' треугольников · атлас ' +
+  cat.atlas.width + '×' + cat.atlas.height + ' · ' + cat.pack + ' · лицензия ' + cat.license;
+
+/* ---------- масштаб ---------- */
+const SCALE_ROWS = [
+  ['wall', 'стена в четыре клетки — резать или строить генератор под неё'],
+  ['floor_tile_large', 'плитка пола 4×4 — шестнадцать наших клеток'],
+  ['floor_tile_small', 'плитка пола 2×2 — четыре наших'],
+  ['chest', 'сундук — контейнер вылазки, если приводить высотой'],
+  ['box_small', 'ящик ровно в клетку — единственный, кто пришёл в масштабе'],
+  ['coin_stack_medium', 'горсть монет — добыча, которую сейчас рисует октаэдр'],
+];
+const scaleBody = document.querySelector('#scale tbody');
+for(const [name, what] of SCALE_ROWS){
+  const m = cat.models.find(x => x.name === name);
+  if(m === undefined) continue;
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="mono">' + m.name + '</td><td class="mono">' + m.size.join('×') +
+    '</td><td class="num">' + m.tris + '</td><td>' + what + '</td>';
+  scaleBody.appendChild(tr);
+}
+const big = cat.models.filter(m => Math.max(...m.size) >= 3.9).length;
+const fits = cat.models.filter(m => Math.max(...m.size) <= 1.2).length;
+document.getElementById('scaleNote').textContent =
+  models(big) + ' из ' + cat.models.length + ' не меньше четырёх единиц по габариту; ' +
+  'в нашу клетку без приведения помещаются ' + fits + '.';
+
+/* ---------- слоты: было → стало ---------- */
+const slots = new Map();
+const slotTris = new Array(cat.slots.length).fill(0);
+for(const m of cat.models){
+  const raw = atob(m.slot);
+  const list = new Uint8Array(raw.length);
+  for(let i = 0; i < raw.length; i++){ list[i] = raw.charCodeAt(i); slotTris[list[i]]++; }
+  slots.set(m.name, list);
+}
+// Цвет слота в игре: из палитры моделей, а золоту — цвет добычи из вылазки.
+const EXTRA = {'золото':loot};
+const colorOfSlot = (name) => {
+  const at = slotNames.indexOf(name);
+  return at >= 0 ? palette[at] : EXTRA[name];
+};
+const slotsBody = document.querySelector('#slots tbody');
+cat.slots.forEach((name, at) => {
+  const ramp = cat.ramps.find(r => r.slots.includes(name));
+  const first = ramp.slots[0] === name;
+  const source = ramp.source[ramp.slots.indexOf(name)];
+  const own = slotNames.indexOf(name) >= 0;
+  const color = colorOfSlot(name);
+  const tr = document.createElement('tr');
+  if(!own) tr.className = 'new';
+  const was = slotTris[at] === 0
+    ? '<td class="miss">не задет ни одним треугольником</td>'
+    : '<td><span class="chip"><i style="background:' + source + '"></i>' + source + '</span></td>';
+  tr.innerHTML =
+    '<td>' + (first ? ramp.title : '') + '</td>' +
+    '<td class="mono">' + name + '</td>' + was +
+    '<td><span class="chip"><i style="background:' + hex(color) + '"></i>' + hex(color) +
+      (own ? '' : ' · нет в слотах моделей') + '</span></td>' +
+    '<td class="num">' + slotTris[at] + ' · ' + pct(slotTris[at], totalTris) + '</td>';
+  slotsBody.appendChild(tr);
+});
+document.getElementById('touched').textContent =
+  cat.touched.colors + ' цветов из ' + cat.touched.atlasColors + ', а сами эти цвета занимают ' +
+  Math.round(cat.touched.share * 100) + '% картинки';
+document.getElementById('slotNote').textContent =
+  'Строка с подсветкой — слот, которого в списке моделей нет: его цвет взят из игровой ' +
+  'палитры вылазки. Пустая ступень — не ошибка, а свойство набора: такого цвета в нём нет.';
+
+/* ---------- отрисовщик: ортокамера 45°/30°, плоское затенение ---------- */
+const AZ = 45 * Math.PI / 180, EL = 30 * Math.PI / 180;
+const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map(c => c / l); })();
+
+function project(p){
+  const ca = Math.cos(AZ), sa = Math.sin(AZ), ce = Math.cos(EL), se = Math.sin(EL);
+  const x = p[0] * ca - p[2] * sa, y = p[1], z = p[0] * sa + p[2] * ca;
+  return [x, y * ce - z * se, y * se + z * ce];
+}
+function shade(color, k){
+  const rgb = color.startsWith('#')
+    ? [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16))
+    : color.slice(4, -1).split(',').map(Number);
+  return 'rgb(' + rgb.map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
+}
+
+function draw(canvas, tris, colors){
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const view = tris.map(t => t.map(project));
+
+  let min = [Infinity, Infinity], max = [-Infinity, -Infinity];
+  for(const t of view) for(const p of t){
+    if(p[0] < min[0]) min[0] = p[0];
+    if(p[0] > max[0]) max[0] = p[0];
+    if(p[1] < min[1]) min[1] = p[1];
+    if(p[1] > max[1]) max[1] = p[1];
+  }
+  const scale = Math.min((w - 16) / (max[0] - min[0] || 1), (h - 16) / (max[1] - min[1] || 1));
+  const ox = w / 2 - (min[0] + max[0]) / 2 * scale, oy = h / 2 + (min[1] + max[1]) / 2 * scale;
+
+  // Художник: дальние треугольники первыми. Z-буфера здесь нет и не нужно.
+  const order = view.map((t, i) => [i, (t[0][2] + t[1][2] + t[2][2]) / 3]).sort((a, b) => b[1] - a[1]);
+  for(const [i] of order){
+    const t = tris[i];
+    const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+    const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+    const n = [u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0]];
+    const len = Math.hypot(...n) || 1;
+    const lit = Math.max(0, (n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]) / len);
+    ctx.fillStyle = shade(colors[i], 0.42 + lit * 0.85);
+    ctx.beginPath();
+    const p = view[i];
+    ctx.moveTo(ox + p[0][0]*scale, oy - p[0][1]*scale);
+    ctx.lineTo(ox + p[1][0]*scale, oy - p[1][1]*scale);
+    ctx.lineTo(ox + p[2][0]*scale, oy - p[2][1]*scale);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/* ---------- чтение .gltf: позиции, UV и трансформы узлов ---------- */
+const SIZE = {SCALAR:1, VEC2:2, VEC3:3, VEC4:4};
+const READER = {5121:'getUint8', 5123:'getUint16', 5125:'getUint32', 5126:'getFloat32'};
+const BYTES = {5121:1, 5123:2, 5125:4, 5126:4};
+const IDENT = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+
+function mul(a, b){
+  const out = new Array(16).fill(0);
+  for(let c = 0; c < 4; c++) for(let r = 0; r < 4; r++){
+    let s = 0;
+    for(let k = 0; k < 4; k++) s += a[k*4 + r] * b[c*4 + k];
+    out[c*4 + r] = s;
+  }
+  return out;
+}
+/** Собственный трансформ узла: у сундука так вынесена крышка, у двери — створка. */
+function local(node){
+  if(node.matrix) return node.matrix;
+  const [x, y, z, w] = node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = node.scale ?? [1, 1, 1];
+  const [tx, ty, tz] = node.translation ?? [0, 0, 0];
+  const r = [
+    1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+    2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+    2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y),
+  ];
+  return [r[0]*sx, r[1]*sx, r[2]*sx, 0, r[3]*sy, r[4]*sy, r[5]*sy, 0,
+          r[6]*sz, r[7]*sz, r[8]*sz, 0, tx, ty, tz, 1];
+}
+const apply = (m, p) => [0, 1, 2].map(c => m[c]*p[0] + m[4+c]*p[1] + m[8+c]*p[2] + m[12+c]);
+
+async function loadModel(name){
+  const gltf = await (await fetch(GLTF + name + '.gltf')).json();
+  const bin = await (await fetch(GLTF + gltf.buffers[0].uri)).arrayBuffer();
+  const dv = new DataView(bin);
+  const read = (index) => {
+    const acc = gltf.accessors[index], bv = gltf.bufferViews[acc.bufferView];
+    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
+    const stride = bv.byteStride ?? size * bytes;
+    const start = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = [];
+    for(let i = 0; i < acc.count; i++){
+      const row = [];
+      for(let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
+      out.push(size === 1 ? row[0] : row);
+    }
+    return out;
+  };
+  const tris = [], uvs = [];
+  const walk = (at, parent) => {
+    const node = gltf.nodes[at];
+    const world = mul(parent, local(node));
+    if(node.mesh !== undefined) for(const prim of gltf.meshes[node.mesh].primitives){
+      const pos = read(prim.attributes.POSITION), uv = read(prim.attributes.TEXCOORD_0), idx = read(prim.indices);
+      for(let i = 0; i < idx.length; i += 3){
+        tris.push([0, 1, 2].map(k => apply(world, pos[idx[i+k]])));
+        uvs.push([
+          (uv[idx[i]][0] + uv[idx[i+1]][0] + uv[idx[i+2]][0]) / 3,
+          (uv[idx[i]][1] + uv[idx[i+1]][1] + uv[idx[i+2]][1]) / 3,
+        ]);
+      }
+    }
+    for(const child of node.children ?? []) walk(child, world);
+  };
+  for(const root of gltf.scenes[gltf.scene ?? 0].nodes) walk(root, IDENT);
+  return {tris, uvs};
+}
+
+/* ---------- сетка карточек ---------- */
+const BUDGET = 1500;
+const grid = document.getElementById('grid');
+const cards = [];
+let mode = 'palette';
+
+for(const m of cat.models){
+  const card = document.createElement('div');
+  card.className = 'm';
+  card.dataset.category = m.category;
+  const canvas = document.createElement('canvas');
+  canvas.width = 168; canvas.height = 148;
+  const stage = document.createElement('div');
+  stage.className = 'stage';
+  stage.appendChild(canvas);
+  card.innerHTML = '<b>' + m.name.replace(/_/g, ' ') + '</b>' +
+    '<u><s' + (m.tris > BUDGET ? ' class="over"' : '') + '>' + m.tris + ' тр.</s>' +
+    '<s>' + m.size.join('×') + '</s></u>';
+  card.prepend(stage);
+  grid.appendChild(card);
+  cards.push({model:m, card, canvas, loaded:null});
+}
+
+function paint(item){
+  if(item.loaded === null) return;
+  const {tris, uvs} = item.loaded;
+  const list = slots.get(item.model.name);
+  // Пока картинка не пришла, карточка остаётся в палитре: пустая рамка врала бы
+  // сильнее, чем цвет, который через мгновение сменится.
+  const colors = mode === 'pack' && atlas !== null
+    ? tris.map((_, i) => atlas.at(uvs[i][0], uvs[i][1]))
+    : tris.map((_, i) => hex(colorOfSlot(cat.slots[list[i]])));
+  draw(item.canvas, tris, colors);
+}
+
+const repaint = () => { for(const c of cards) paint(c); };
+
+const seen = new IntersectionObserver((entries) => {
+  for(const entry of entries){
+    if(!entry.isIntersecting) continue;
+    const item = cards.find(c => c.card === entry.target);
+    seen.unobserve(entry.target);
+    if(item.loaded !== null) continue;
+    loadModel(item.model.name).then((data) => {
+      item.loaded = data;
+      paint(item);
+      if(mode === 'pack') ensureAtlas().then(() => paint(item));
+    }).catch(() => { item.card.querySelector('.stage').textContent = '—'; });
+  }
+}, {rootMargin:'400px'});
+for(const c of cards) seen.observe(c.card);
+
+/* ---------- фильтр и переключатель цвета ---------- */
+const bar = document.getElementById('filters');
+const press = (group, on) => { for(const b of group) b.setAttribute('aria-pressed', b === on ? 'true' : 'false'); };
+
+const filters = [];
+for(const key of ['Всё', ...cats.keys()]){
+  const b = document.createElement('button');
+  b.textContent = key;
+  b.setAttribute('aria-pressed', key === 'Всё' ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(filters, b);
+    for(const c of cards) c.card.style.display = (key === 'Всё' || c.model.category === key) ? '' : 'none';
+  });
+  filters.push(b);
+  bar.appendChild(b);
+}
+bar.appendChild(document.createElement('hr'));
+
+const modes = [];
+for(const [key, label] of [['palette', 'В нашей палитре'], ['pack', 'В цветах набора']]){
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.setAttribute('aria-pressed', key === mode ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(modes, b);
+    mode = key;
+    if(key === 'pack') ensureAtlas().then(repaint);
+    else repaint();
+  });
+  modes.push(b);
+  bar.appendChild(b);
+}
+
+/* ---------- выводы ---------- */
+const own = cat.slots.reduce((s, name, at) => s + (slotNames.indexOf(name) >= 0 ? slotTris[at] : 0), 0);
+document.getElementById('fitShare').textContent = pct(own, totalTris);
+document.getElementById('goldShare').textContent = pct(slotTris[cat.slots.indexOf('золото')], totalTris);
+const ban = cat.models.filter(m => m.category === 'Знамёна');
+const banTris = ban.reduce((s, m) => s + m.tris, 0);
+// Куда уходит сукно: это и есть ответ про геральдику, и он считается, а не пишется.
+const banStone = ban.reduce((s, m) => {
+  const list = slots.get(m.name);
+  let n = 0;
+  for(const at of list) if(cat.ramps.find(r => r.slots.includes(cat.slots[at])).id === 'stone') n++;
+  return s + n;
+}, 0);
+document.getElementById('banners').textContent =
+  models(ban.length) + ' знамён — ' + pct(banTris, totalTris) + ' треугольников набора, ' +
+  'и ' + pct(banStone, banTris) + ' из них уходит в камень';
+const over = cat.models.filter(m => m.tris > BUDGET);
+document.getElementById('over').textContent =
+  models(over.length) + ' тяжелее ' + BUDGET + ' треугольников, самая тяжёлая — ' +
+  over.reduce((a, b) => (a.tris > b.tris ? a : b)).tris;
+</script>

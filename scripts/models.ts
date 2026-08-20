@@ -41,7 +41,7 @@ interface Ramp {
   readonly slots: readonly string[];
   /** Окно оттенка в градусах, [от, до); `от > до` — окно через ноль. */
   readonly hue: readonly [number, number];
-  /** Окно насыщенности, [от, до] включительно; спор решает порядок объявления. */
+  /** Окно насыщенности, [от, до] включительно. */
   readonly sat: readonly [number, number];
 }
 
@@ -51,8 +51,18 @@ interface Pack {
   readonly title: string;
   readonly dir: string;
   readonly atlas: string;
-  /** Порядок важен: слоты нумеруются подряд, ramps[0].slots идут с нуля. */
+  /** Порядок объявления — очерёдность примерки окон: первое подошедшее и берут. */
   readonly ramps: readonly Ramp[];
+  /** Нумерация слотов. Отдельно от градиентов: очерёдность примерки и порядок
+   *  в палитре — разные вещи, и у подземелья они разошлись. */
+  readonly slots: readonly string[];
+  /**
+   * Откуда берётся шкала яркости градиента: `atlas` — вся картинка, `used` —
+   * только те цвета, которые действительно оказались под треугольниками.
+   * У леса атлас и есть градиент, у подземелья три четверти картинки не задето
+   * ни одной моделью, и шкала по всей картинке врёт.
+   */
+  readonly range: 'atlas' | 'used';
   /** Куда падает всё, что не попало ни в одно окно, — включая серое. */
   readonly fallback: string;
   readonly categoryOf: (name: string) => string;
@@ -82,6 +92,12 @@ const FOREST: Pack = {
     { id: 'bark', title: 'кора', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [330, 60], sat: [GREY, 1] },
     { id: 'stone', title: 'камень', slots: ['камень', 'камень-свет', 'скол', 'соль-тень'], hue: [170, 330], sat: [GREY, 1] },
   ],
+  slots: [
+    'хвоя-тень', 'хвоя', 'мох', 'трава',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'камень', 'камень-свет', 'скол', 'соль-тень',
+  ],
+  range: 'atlas',
   fallback: 'stone',
   categoryOf: (name) => name.split('_')[0]!,
   /**
@@ -141,15 +157,19 @@ const DUNGEON_CATEGORIES: Record<string, string> = {
 };
 
 /**
- * Атлас подземелья устроен иначе, чем лесной: это не три градиента, а
- * раскрашенная картинка — 1148 разных цветов попадает под треугольники.
+ * Атлас подземелья устроен иначе, чем лесной: это не три ровных градиента,
+ * а раскрашенная картинка — 1148 разных цветов оказывается под треугольниками.
  * Поэтому окна заданы и по оттенку, и по насыщенности: золото отличается
- * от дерева не тоном, а тем, что оно втрое насыщеннее.
+ * от дерева не тоном (и то и другое — оранжевое), а тем, что оно вдвое
+ * насыщеннее. По той же причине окна пересекаются, и порядок примерки решает:
+ * золото раньше дерева, иначе дерево забирает его целиком.
  *
- * Первые двенадцать слотов — те же, что у леса, и в том же порядке: палитра
- * одна на игру, и второй набор обязан ложиться в неё, а не заводить свою.
- * Последние четыре — то, чего в палитре нет; сколько это стоит, считает
- * отчёт и показывает dungeon.html.
+ * Слоты — те же двенадцать, что у леса, и в том же порядке: палитра одна
+ * на игру, и второй набор обязан ложиться в неё, а не заводить свою.
+ * Тринадцатый, «золото», — единственное, чего в списке слотов нет; цвет для
+ * него у игры уже есть (PALETTE.loot), не заведён только слот моделей.
+ * Синее и алое сукно знамён в такую палитру не ложится вовсе и уходит
+ * в камень — это ответ про геральдику, а не дефект набора.
  */
 const DUNGEON: Pack = {
   id: 'dungeon',
@@ -157,12 +177,18 @@ const DUNGEON: Pack = {
   dir: 'assets/kaykit-dungeon',
   atlas: 'dungeon_texture.png',
   ramps: [
-    { id: 'moss', title: 'зелень', slots: ['хвоя-тень', 'хвоя', 'мох', 'трава'], hue: [70, 200], sat: [0.3, 1] },
-    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [330, 50], sat: [GREY, 0.62] },
-    { id: 'stone', title: 'камень', slots: ['камень', 'камень-свет', 'скол', 'соль-тень'], hue: [200, 330], sat: [GREY, 0.62] },
-    { id: 'gold', title: 'золото', slots: ['золото-тень', 'золото'], hue: [20, 70], sat: [0.62, 1] },
-    { id: 'cloth', title: 'ткань', slots: ['ткань-тень', 'ткань'], hue: [200, 20], sat: [0.62, 1] },
+    { id: 'gold', title: 'золото', slots: ['золото'], hue: [20, 60], sat: [0.62, 1] },
+    { id: 'moss', title: 'зелень', slots: ['хвоя-тень', 'хвоя', 'мох', 'трава'], hue: [60, 200], sat: [0.3, 1] },
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [330, 60], sat: [0.3, 1] },
+    { id: 'stone', title: 'камень', slots: ['камень', 'камень-свет', 'скол', 'соль-тень'], hue: [150, 330], sat: [GREY, 0.62] },
   ],
+  slots: [
+    'хвоя-тень', 'хвоя', 'мох', 'трава',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'камень', 'камень-свет', 'скол', 'соль-тень',
+    'золото',
+  ],
+  range: 'used',
   fallback: 'stone',
   categoryOf: (name) => DUNGEON_CATEGORIES[name.split('_')[0]!] ?? 'Прочее',
   /**
@@ -466,56 +492,87 @@ function rampOf(pack: Pack, r: number, g: number, b: number): string {
   return pack.fallback;
 }
 
-/** Диапазон яркости каждого градиента — свойство самого атласа, не моделей. */
-function rampRanges(pack: Pack, atlas: Image): Record<string, { min: number; max: number }> {
+/** Цвет атласа в точке UV. В glTF v считается от верхнего края — как строки
+ *  в PNG, поэтому переворачивать её не нужно. */
+function colorOf(atlas: Image, u: number, v: number): [number, number, number] {
+  const x = Math.min(atlas.width - 1, Math.max(0, Math.floor(u * atlas.width)));
+  const y = Math.min(atlas.height - 1, Math.max(0, Math.floor(v * atlas.height)));
+  const o = (y * atlas.width + x) * 4;
+  return [atlas.rgba[o]!, atlas.rgba[o + 1]!, atlas.rgba[o + 2]!];
+}
+
+/** Сколько треугольников набора пришлось на каждый цвет атласа. */
+type Usage = ReadonlyMap<number, number>;
+
+function usageOf(atlas: Image, meshes: readonly Mesh[]): Usage {
+  const out = new Map<number, number>();
+  for (const mesh of meshes) {
+    for (let t = 0; t < mesh.tris; t++) {
+      const [r, g, b] = colorOf(atlas, mesh.uvs[t * 2]!, mesh.uvs[t * 2 + 1]!);
+      const key = (r << 16) | (g << 8) | b;
+      out.set(key, (out.get(key) ?? 0) + 1);
+    }
+  }
+  return out;
+}
+
+/**
+ * Диапазон яркости каждого градиента. Считается либо по всей картинке, либо
+ * по одним задетым цветам: у леса атлас и есть градиент, у подземелья это
+ * раскрашенная текстура, и незадетые углы растянули бы шкалу так, что
+ * настоящее дерево оказалось бы в самой тёмной ступени.
+ */
+function rampRanges(
+  pack: Pack,
+  atlas: Image,
+  usage: Usage | undefined,
+): Record<string, { min: number; max: number }> {
   const out: Record<string, { min: number; max: number }> = {};
   for (const r of pack.ramps) out[r.id] = { min: 1, max: 0 };
-  for (let i = 0; i < atlas.width * atlas.height; i++) {
-    const r = atlas.rgba[i * 4]!;
-    const g = atlas.rgba[i * 4 + 1]!;
-    const b = atlas.rgba[i * 4 + 2]!;
-    if (hueSat(r, g, b).sat < GREY) continue;
+  const take = (r: number, g: number, b: number): void => {
+    if (hueSat(r, g, b).sat < GREY) return;
     const band = out[rampOf(pack, r, g, b)]!;
     const l = luminance(r, g, b);
     if (l < band.min) band.min = l;
     if (l > band.max) band.max = l;
+  };
+  if (usage === undefined) {
+    for (let i = 0; i < atlas.width * atlas.height; i++) {
+      take(atlas.rgba[i * 4]!, atlas.rgba[i * 4 + 1]!, atlas.rgba[i * 4 + 2]!);
+    }
+  } else {
+    for (const key of usage.keys()) take((key >> 16) & 255, (key >> 8) & 255, key & 255);
   }
   return out;
 }
 
 interface Sampler {
+  /** Слот по точке атласа — так спрашивает запекание. */
   slotOf(u: number, v: number): number;
+  /** Слот по цвету — так спрашивает каталог, у которого UV уже нет. */
+  slotOfColor(r: number, g: number, b: number): number;
   colorAt(u: number, v: number): [number, number, number];
 }
 
-function makeSampler(pack: Pack, atlas: Image): Sampler {
-  const ranges = rampRanges(pack, atlas);
-  const base = new Map<string, number>();
-  let at = 0;
-  for (const r of pack.ramps) {
-    base.set(r.id, at);
-    at += r.slots.length;
-  }
+function makeSampler(pack: Pack, atlas: Image, usage: Usage | undefined): Sampler {
+  const ranges = rampRanges(pack, atlas, usage);
+  const index = new Map(pack.slots.map((s, i) => [s, i]));
 
-  const colorAt = (u: number, v: number): [number, number, number] => {
-    // UV в glTF считаются от левого верхнего угла — это и есть порядок строк
-    // в PNG, поэтому v не переворачивается.
-    const x = Math.min(atlas.width - 1, Math.max(0, Math.floor(u * atlas.width)));
-    const y = Math.min(atlas.height - 1, Math.max(0, Math.floor(v * atlas.height)));
-    const o = (y * atlas.width + x) * 4;
-    return [atlas.rgba[o]!, atlas.rgba[o + 1]!, atlas.rgba[o + 2]!];
+  const slotOfColor = (r: number, g: number, b: number): number => {
+    const ramp = pack.ramps.find((x) => x.id === rampOf(pack, r, g, b))!;
+    const steps = ramp.slots.length;
+    const { min, max } = ranges[ramp.id]!;
+    const t = max > min ? (luminance(r, g, b) - min) / (max - min) : 0;
+    const step = Math.min(steps - 1, Math.max(0, Math.round(t * (steps - 1))));
+    return index.get(ramp.slots[step]!)!;
   };
 
   return {
-    colorAt,
+    colorAt: (u, v) => colorOf(atlas, u, v),
+    slotOfColor,
     slotOf(u, v) {
-      const [r, g, b] = colorAt(u, v);
-      const ramp = rampOf(pack, r, g, b);
-      const steps = pack.ramps.find((x) => x.id === ramp)!.slots.length;
-      const { min, max } = ranges[ramp]!;
-      const t = max > min ? (luminance(r, g, b) - min) / (max - min) : 0;
-      const step = Math.min(steps - 1, Math.max(0, Math.round(t * (steps - 1))));
-      return base.get(ramp)! + step;
+      const [r, g, b] = colorOf(atlas, u, v);
+      return slotOfColor(r, g, b);
     },
   };
 }
@@ -539,9 +596,7 @@ interface Baked {
   readonly moved: number;
 }
 
-function bake(pack: Pack, file: string, sampler: Sampler): Baked {
-  const name = basename(file, '.gltf');
-  const mesh = loadMesh(file);
+function bake(pack: Pack, name: string, mesh: Mesh, sampler: Sampler): Baked {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -591,7 +646,6 @@ const b64 = (data: Int16Array | Uint8Array): string =>
 
 function writeData(pack: Pack, models: Baked[]): string {
   const data = pack.data!;
-  const slots = pack.ramps.flatMap((r) => r.slots);
   const chosen = pack.adopted.map((name) => {
     const m = models.find((x) => x.name === name);
     if (m === undefined) throw new Error(`в наборе нет модели ${name}`);
@@ -631,7 +685,7 @@ export interface ${data.type}Model {
 
 /** Порядок слотов — контракт с render/palette.ts. */
 export const ${data.prefix}_SLOTS = [
-${slots.map((s) => `  '${s}',`).join('\n')}
+${pack.slots.map((s) => `  '${s}',`).join('\n')}
 ] as const;
 
 export const ${data.prefix}_MODELS = {
@@ -646,44 +700,82 @@ export type ${data.type}ModelName = keyof typeof ${data.prefix}_MODELS;
  * Каталог для страницы артбука: геометрию она берёт из самих .gltf, а отсюда —
  * числа и разметку цветов, чтобы не повторять запекание вторым кодом.
  */
-function writeCatalog(pack: Pack, atlas: Image, sampler: Sampler, models: Baked[]): string {
-  const slots = pack.ramps.flatMap((r) => r.slots);
+function writeCatalog(
+  pack: Pack,
+  atlas: Image,
+  sampler: Sampler,
+  models: Baked[],
+  usage: Usage | undefined,
+): string {
   return JSON.stringify({
     pack: pack.title,
     license: 'CC0',
     atlas: { width: atlas.width, height: atlas.height },
-    slots,
+    slots: pack.slots,
     ramps: pack.ramps.map((r) => ({
       id: r.id,
       title: r.title,
       slots: r.slots,
       // Цвет из атласа, который лёг в каждую ступень: это и есть «было → стало».
+      // Голоса считаются там же, где и шкала: по картинке или по задетому.
       source: r.slots.map((_, i) => {
+        const target = pack.slots.indexOf(r.slots[i]!);
         let best: [number, number, number] = [0, 0, 0];
         let bestCount = 0;
         const counts = new Map<string, number>();
-        for (let y = 0; y < atlas.height; y += 2) {
-          for (let x = 0; x < atlas.width; x += 2) {
-            const u = (x + 0.5) / atlas.width;
-            const v = (y + 0.5) / atlas.height;
-            const c = sampler.colorAt(u, v);
-            // Серое поле не участвует: большинством голосов оно выиграло бы
-            // у настоящих цветов градиента.
-            if (hueSat(c[0], c[1], c[2]).sat < GREY) continue;
-            if (sampler.slotOf(u, v) !== slots.indexOf(r.slots[i]!)) continue;
-            const key = c.join(',');
-            const n = (counts.get(key) ?? 0) + 1;
-            counts.set(key, n);
-            if (n > bestCount) {
-              bestCount = n;
-              best = c;
+        const vote = (c: [number, number, number], weight: number): void => {
+          // Серое поле не участвует: большинством голосов оно выиграло бы
+          // у настоящих цветов градиента.
+          if (hueSat(c[0], c[1], c[2]).sat < GREY) return;
+          if (rampOf(pack, c[0], c[1], c[2]) !== r.id) return;
+          const key = c.join(',');
+          const n = (counts.get(key) ?? 0) + weight;
+          counts.set(key, n);
+          if (n > bestCount) {
+            bestCount = n;
+            best = c;
+          }
+        };
+        if (usage === undefined) {
+          for (let y = 0; y < atlas.height; y += 2) {
+            for (let x = 0; x < atlas.width; x += 2) {
+              const u = (x + 0.5) / atlas.width;
+              const v = (y + 0.5) / atlas.height;
+              if (sampler.slotOf(u, v) !== target) continue;
+              vote(sampler.colorAt(u, v), 1);
             }
+          }
+        } else {
+          for (const [key, tris] of usage) {
+            const c: [number, number, number] = [(key >> 16) & 255, (key >> 8) & 255, key & 255];
+            if (sampler.slotOfColor(c[0], c[1], c[2]) !== target) continue;
+            vote(c, tris);
           }
         }
         return `#${best.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
       }),
     })),
     adopted: pack.adopted,
+    // Сколько картинки набор вообще трогает: страница объясняет этим, почему
+    // шкала градиента считается по задетому, а не по атласу.
+    ...(usage === undefined
+      ? {}
+      : {
+          touched: (() => {
+            const all = new Map<number, number>();
+            for (let i = 0; i < atlas.width * atlas.height; i++) {
+              const key = (atlas.rgba[i * 4]! << 16) | (atlas.rgba[i * 4 + 1]! << 8) | atlas.rgba[i * 4 + 2]!;
+              all.set(key, (all.get(key) ?? 0) + 1);
+            }
+            let pixels = 0;
+            for (const [key, n] of all) if (usage.has(key)) pixels += n;
+            return {
+              colors: usage.size,
+              atlasColors: all.size,
+              share: Math.round((pixels / (atlas.width * atlas.height)) * 1000) / 1000,
+            };
+          })(),
+        }),
     models: models.map((m) => ({
       name: m.name,
       category: m.category,
@@ -707,7 +799,6 @@ function report(pack: Pack, write: boolean): void {
   const dir = join(ROOT, pack.dir);
   const gltfDir = join(dir, 'gltf');
   const atlas = decodePng(join(dir, pack.atlas));
-  const sampler = makeSampler(pack, atlas);
   const files = readdirSync(gltfDir)
     .filter((f) => f.endsWith('.gltf'))
     .sort()
@@ -718,8 +809,14 @@ function report(pack: Pack, write: boolean): void {
     process.exit(1);
   }
 
-  const models = files.map((f) => bake(pack, f, sampler));
-  const slots = pack.ramps.flatMap((r) => r.slots);
+  // Два прохода: сначала геометрия, потом цвет. Шкала градиента может зависеть
+  // от того, что набор задел, а это известно только после чтения всех моделей.
+  const meshes = files.map((f) => ({ name: basename(f, '.gltf'), mesh: loadMesh(f) }));
+  const usage = pack.range === 'used' ? usageOf(atlas, meshes.map((m) => m.mesh)) : undefined;
+  const sampler = makeSampler(pack, atlas, usage);
+  const models = meshes.map((m) => bake(pack, m.name, m.mesh, sampler));
+  const slots = pack.slots;
+
 
   const byCategory = new Map<string, Baked[]>();
   for (const m of models) {
@@ -746,14 +843,12 @@ function report(pack: Pack, write: boolean): void {
   const perSlot = new Array<number>(slots.length).fill(0);
   for (const m of models) for (const s of m.slot) perSlot[s] = perSlot[s]! + 1;
   console.log('\nтреугольников по слотам палитры:');
-  let at = 0;
   for (const ramp of pack.ramps) {
-    const parts = ramp.slots.map((name, i) => {
-      const share = ((perSlot[at + i]! / totalTris) * 100).toFixed(1);
+    const parts = ramp.slots.map((name) => {
+      const share = ((perSlot[slots.indexOf(name)]! / totalTris) * 100).toFixed(1);
       return `${name} ${share}%`;
     });
     console.log(`  ${ramp.title.padEnd(8)} ${parts.join(' · ')}`);
-    at += ramp.slots.length;
   }
 
   const grey = models.reduce((s, m) => s + m.grey, 0);
@@ -794,7 +889,7 @@ function report(pack: Pack, write: boolean): void {
     written.push(pack.data.file);
   }
   const catalog = join(pack.dir, 'catalog.json');
-  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlas, sampler, models), 'utf8');
+  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlas, sampler, models, usage), 'utf8');
   written.push(catalog);
   console.log(`\nзаписано: ${written.join(', ')}`);
 }
