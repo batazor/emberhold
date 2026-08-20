@@ -1,0 +1,1529 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Доска заданий</title>
+<style>
+  :root{
+    --ground:#E3E7E5; --surface:#F3F6F3; --surface-2:#DBE2DD; --line:#C2CCC6;
+    --text:#131C1B; --dim:#54625F; --brass:#8A6A12; --ember:#AC4C1D; --moss:#4B6C3D; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(12,26,24,.45);
+    --g-bg:#0B1113; --g-panel:#162226; --g-panel-2:#1E2C31; --g-line:#2C3D42; --g-text:#E8EEEA;
+    --g-dim:#8CA09D; --g-brass:#C9A227; --g-ember:#D2662F; --g-moss:#7DA163; --g-blood:#A33B3B;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+      --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+    --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;margin:0;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  /* Свой интерлиньяж: h2 наследовал 1.55 от body, и при кегле 28px строка
+     выходила 43 пикселя. У h1 свой 1.05 прописан явно — h2 забыли. */
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;line-height:1.15;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);margin:0;}
+
+  button{font-family:var(--ff-ui);font-size:13px;padding:6px 12px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .bar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;}
+  .scroll{overflow-x:auto;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard div.warn{border-left-color:var(--blood);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard div.warn h3{color:var(--blood);}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+
+  .metric{border-left:2px solid var(--brass);padding:2px 0 2px 18px;font-size:15px;max-width:66ch;color:var(--dim);}
+  .metric b{color:var(--text);font-weight:600;}
+
+  /* ---------- рамка телефона ---------- */
+  .lab{display:grid;grid-template-columns:300px minmax(0,1fr);gap:32px;align-items:start;}
+  @media(max-width:820px){.lab{grid-template-columns:1fr;justify-items:center;}
+    .lab .side{justify-self:stretch;}}
+  .dev{width:300px;height:616px;border-radius:24px;overflow:hidden;position:relative;flex:none;
+    border:1px solid var(--g-line);background:var(--g-bg);color:var(--g-text);box-shadow:var(--shadow);
+    user-select:none;}
+  .dev canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;}
+  .sb{position:relative;display:flex;justify-content:space-between;padding:9px 16px 3px;font-size:11px;
+    color:var(--g-dim);font-family:var(--ff-mono);}
+  .side{display:flex;flex-direction:column;gap:18px;}
+  .side h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0 0 6px;color:var(--brass);font-weight:600;}
+  .side p{margin:0;font-size:14px;color:var(--dim);}
+  .side p b{color:var(--text);font-weight:600;}
+
+  /* ---------- доска ---------- */
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--g-panel);border-top:1px solid var(--g-line);
+    border-radius:16px 16px 0 0;padding:9px 14px 16px;display:flex;flex-direction:column;gap:11px;
+    box-shadow:0 -18px 40px -22px #000;}
+  .grip{width:34px;height:4px;border-radius:2px;background:var(--g-line);align-self:center;}
+  .sheet .cap{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
+  .sheet .cap b{font-family:var(--ff-display);font-weight:400;font-size:17px;}
+  .sheet .cap i{font-style:normal;font-family:var(--ff-mono);font-size:10px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--g-dim);}
+  .grp{font-family:var(--ff-mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--g-dim);
+    margin:3px 0 -4px;}
+
+  .note-card{position:relative;background:var(--g-panel-2);border:1px solid var(--g-line);border-radius:7px;
+    border-left:2px solid var(--g-line);padding:9px 11px;display:flex;flex-direction:column;gap:7px;}
+  .note-card .t{display:flex;align-items:baseline;gap:9px;}
+  .note-card .t em{font-style:normal;flex:1;font-size:14px;line-height:1.3;}
+  .note-card.lead{border-left-color:var(--g-brass);background:#20291F00;}
+  .note-card.lead .t em{font-family:var(--ff-display);font-size:16.5px;}
+  .note-card .rw{font-family:var(--ff-mono);font-size:12px;color:var(--g-brass);white-space:nowrap;
+    display:flex;align-items:center;gap:4px;}
+  .note-card .rw s{text-decoration:none;font-size:10px;}
+  .track{height:5px;border-radius:3px;background:#0E1618;border:1px solid var(--g-line);overflow:hidden;}
+  .track i{display:block;height:100%;background:var(--g-moss);}
+  .note-card .n{font-family:var(--ff-mono);font-size:10.5px;color:var(--g-dim);font-variant-numeric:tabular-nums;}
+  .note-card.done{border-left-color:var(--g-brass);}
+  .note-card.done .t em{color:var(--g-brass);}
+  .note-card.paid{opacity:.42;}
+  .note-card.paid .t em{text-decoration:line-through;}
+  .stamp{font-family:var(--ff-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--g-brass);border:1px solid var(--g-brass);border-radius:3px;padding:1px 5px;}
+  .note-card.paid .stamp{color:var(--g-dim);border-color:var(--g-line);}
+  .foot-line{font-family:var(--ff-mono);font-size:10.5px;color:var(--g-dim);display:flex;
+    justify-content:space-between;gap:8px;padding-top:2px;border-top:1px solid var(--g-line);}
+  .allset{text-align:center;font-family:var(--ff-display);font-size:15px;color:var(--g-dim);padding:4px 0 2px;}
+
+  /* подсветка разбора */
+  .note-card [data-part]{transition:box-shadow .12s linear;}
+  .note-card [data-part].hi{box-shadow:0 0 0 2px var(--g-brass);border-radius:3px;}
+  .parts{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);}
+  .parts button{all:unset;box-sizing:border-box;cursor:pointer;background:var(--surface);padding:10px 13px;
+    display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;align-items:start;}
+  .parts button:hover,.parts button[aria-pressed="true"]{background:var(--surface-2);}
+  .parts button:focus-visible{outline:2px solid var(--brass);outline-offset:-2px;}
+  .parts button b{font-family:var(--ff-mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--brass);font-weight:600;padding-top:3px;}
+  .parts button span{font-size:13.5px;color:var(--dim);}
+  .parts button[aria-pressed="true"] span{color:var(--text);}
+
+  /* ---------- HUD вылазки ---------- */
+  .hud{position:absolute;left:12px;right:12px;top:34px;display:flex;flex-direction:column;gap:7px;}
+  .meter{display:flex;align-items:center;gap:8px;}
+  .meter em{font-style:normal;font-family:var(--ff-mono);font-size:10px;letter-spacing:.1em;
+    color:var(--g-dim);width:58px;text-transform:uppercase;}
+  .meter .b{flex:1;height:7px;background:rgba(10,16,18,.85);border:1px solid var(--g-line);
+    border-radius:3px;overflow:hidden;}
+  .meter .b i{display:block;height:100%;background:var(--g-ember);}
+  .meter .b.pack i{background:var(--g-moss);}
+  .meter s{text-decoration:none;font-family:var(--ff-mono);font-size:11px;font-variant-numeric:tabular-nums;
+    width:46px;text-align:right;}
+  .tick{position:absolute;left:14px;right:14px;top:86px;display:flex;align-items:center;gap:9px;
+    background:rgba(11,17,19,.9);border:1px solid var(--g-line);border-left:2px solid var(--g-brass);
+    border-radius:6px;padding:8px 10px;opacity:0;transform:translateY(8px);}
+  .tick u{text-decoration:none;color:var(--g-brass);font-size:13px;}
+  .tick em{font-style:normal;font-size:12.5px;line-height:1.25;}
+  .tick i{font-style:normal;font-family:var(--ff-mono);font-size:10px;color:var(--g-dim);margin-left:auto;}
+  .cta{position:absolute;left:14px;right:14px;bottom:16px;text-align:center;padding:11px 18px;border-radius:9px;
+    border:1px solid #E0BC3C;background:linear-gradient(180deg,#D5AC2C,#A8811A);color:#140F02;
+    font-family:var(--ff-display);font-size:16px;}
+  .cta.ghost{background:transparent;border-color:var(--g-line);color:var(--g-text);}
+  .fightline{position:absolute;left:14px;right:14px;bottom:64px;text-align:center;font-family:var(--ff-mono);
+    font-size:11px;color:var(--g-blood);opacity:0;}
+
+  /* ---------- экран возврата ---------- */
+  .ret{position:absolute;inset:0;display:flex;flex-direction:column;padding:34px 16px 16px;gap:12px;}
+  .ret .ttl{font-family:var(--ff-display);font-size:23px;}
+  .ret .sub{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--g-dim);margin-top:-8px;}
+  .ret .rows{display:flex;flex-direction:column;gap:9px;margin-top:4px;}
+  .ret .r{display:flex;align-items:center;gap:10px;font-size:14px;opacity:0;transform:translateY(6px);}
+  .ret .r u{text-decoration:none;width:16px;text-align:center;}
+  .ret .r em{font-style:normal;flex:1;}
+  .ret .r b{font-family:var(--ff-mono);font-weight:400;color:var(--g-brass);font-variant-numeric:tabular-nums;}
+  .ret .r.lost b{color:var(--g-blood);}
+  .ret .qrow{margin-top:auto;border-top:1px solid var(--g-line);padding-top:11px;display:flex;
+    flex-direction:column;gap:8px;opacity:0;transform:translateY(6px);}
+
+  /* ---------- сравнение ---------- */
+  .vs{display:grid;grid-template-columns:repeat(auto-fit,minmax(288px,1fr));gap:26px;align-items:start;}
+  .vs>div{display:flex;flex-direction:column;gap:12px;}
+  .vs h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;font-weight:600;}
+  .vs .bad h3{color:var(--blood);} .vs .good h3{color:var(--brass);}
+  .panel{background:var(--g-panel);border:1px solid var(--g-line);border-radius:10px;padding:12px;
+    color:var(--g-text);display:flex;flex-direction:column;gap:9px;}
+  .tabs{display:flex;gap:6px;font-family:var(--ff-mono);font-size:10px;text-transform:uppercase;
+    letter-spacing:.1em;color:var(--g-dim);}
+  .tabs s{text-decoration:none;padding:3px 8px;border:1px solid var(--g-line);border-radius:4px;}
+  .tabs s.on{color:var(--g-brass);border-color:var(--g-brass);}
+  .badge{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;
+    border-radius:9px;background:var(--g-blood);color:#fff;font-family:var(--ff-mono);font-size:10px;
+    padding:0 5px;}
+  .row2{display:flex;align-items:center;gap:9px;font-size:13px;border:1px solid var(--g-line);
+    border-radius:6px;padding:7px 9px;background:var(--g-panel-2);}
+  .row2 em{font-style:normal;flex:1;}
+  .row2 .go{font-family:var(--ff-ui);font-size:11px;border:1px solid var(--g-brass);color:var(--g-brass);
+    border-radius:4px;padding:2px 8px;}
+  .row2.off{opacity:.4;}
+  .row2 .lock{font-size:11px;color:var(--g-dim);}
+  .cut{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:7px;font-size:14px;color:var(--dim);}
+  .cut b{color:var(--text);font-weight:600;}
+
+  /* ---------- движение и свет ---------- */
+  .subhead{font-family:var(--ff-display);font-size:21px;line-height:1.2;margin:14px 0 -8px;letter-spacing:-.01em;}
+  .lab2{display:flex;gap:20px;flex-wrap:wrap;}
+  .depthline{font-family:var(--ff-mono);font-size:11px;letter-spacing:.04em;color:var(--g-dim);
+    padding-top:3px;transition:color .12s linear;}
+  .depthline.on{color:var(--g-brass);}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Артбук · доска заданий</div>
+  <h1>Доска, к которой <em>приходят сами</em></h1>
+  <p class="lede">Панель заданий — самый заезженный элемент мобильной игры и самый быстрый способ
+    превратить её в список дел с красными счётчиками. Этот артбук проектирует её так, чтобы она
+    отвечала на один вопрос — <b>«что делать дальше»</b> — и давала повод зайти завтра,
+    не становясь при этом третьим занятием рядом с вылазкой и лагерем.</p>
+  <p class="lede">Здесь решается интерфейс и реакция: <b>что игрок видит, в каком порядке,
+    сколько миллисекунд и где стоит его палец.</b> Награда на всех макетах нарисована слотом —
+    ромбом с прочерком. Чем и сколько наполнить этот слот, решает баланс (§13, §20.3),
+    и подставить туда число раньше замера значит выдать выдумку за решение.</p>
+  <p class="lede">Задания не входят в вертикальный срез (§7) и живут на пятом этапе (§8).
+    Артбук пишется раньше кода намеренно: панель дешевле отменить на странице, чем в игре, —
+    и одна механика в нём уже отменена (§10).</p>
+</header>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">01</div><h2>Две роли и один запрет</h2></div>
+  <p>У доски ровно две работы. <b>Направление</b> — продолжение онбординга за пределы первых трёх
+    минут: кривая §16 вводит системы в момент, когда игрок на них напоролся, но между сессиями
+    он забывает, на чём остановился. <b>Дневной лист</b> — повод вернуться, тот же по функции,
+    что подмога альянса в §10.1. Всё остальное, чем обычно набивают такие панели — вехи,
+    коллекции, боевой пропуск, сезон, — сюда не входит.</p>
+  <div class="scroll">
+    <table>
+      <tr><th>Роль</th><th>Сколько записей</th><th>Где видна</th><th>Чем заканчивается</th></tr>
+      <tr><td><b>Направление</b></td><td class="num">всегда ровно 1</td>
+          <td>верх доски; строка на экране возврата</td>
+          <td>Следующей записью — очередь задана кривой §16, а не игроком</td></tr>
+      <tr><td><b>Дневной лист</b></td><td class="num">3</td>
+          <td>под направляющей, мельче</td>
+          <td>Обновляется целиком, не по одной записи</td></tr>
+      <tr><td>Вехи, коллекции, сезон</td><td class="num">0</td><td>—</td>
+          <td>Не проектируются: каждая добавляет свой экран и свою валюту</td></tr>
+    </table>
+  </div>
+  <div class="guard">
+    <div class="warn">
+      <h3>Запрет: панель — не третье занятие</h3>
+      <p>В игре два занятия: вылазка и лагерь. Список дел становится третьим незаметно —
+        игрок открывает его, выбирает, планирует и <b>играет в список вместо игры</b>.
+        Отсюда все ограничения ниже: одна ведущая запись, три дневных, ни одной вкладки.</p>
+    </div>
+    <div class="key">
+      <h3>Дневные описывают то, что и так делается</h3>
+      <p>«Сходи в две вылазки», «вынеси добычу», «доведи стройку» — записи, которые
+        <b>закрываются обычной игрой</b>. Задание, ради которого нужно играть иначе,
+        не пишется: оно подменяет решение §1 «уйти или пройти ещё комнату» на «дособрать галочку».</p>
+    </div>
+    <div>
+      <h3>Почему направляющая одна</h3>
+      <p>Две одновременные цели — это уже выбор, и он конкурирует с настоящим выбором игры.
+        Одна запись не спрашивает, а отвечает: игрок закрыл её и получил следующую.</p>
+    </div>
+    <div>
+      <h3>Что делает панель, когда вести некуда</h3>
+      <p>После дня 7 кривая §16 заканчивается, и направляющая исчезает совсем, а не подменяется
+        бесконечным «сходи ещё раз». Доска остаётся дневной, её верхняя строка — пустая.
+        Пустое место честнее заглушки.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">02</div><h2>Анатомия записки</h2>
+    <p>Четыре элемента, больше нельзя. Нажмите строку в списке справа — часть подсветится
+      на макете.</p></div>
+  <div class="lab">
+    <div class="dev" style="height:auto;padding:22px 16px;">
+      <div class="sheet" style="position:static;box-shadow:none;border-radius:10px;">
+        <div class="note-card lead" id="anaCard">
+          <div class="t">
+            <em data-part="goal">Спустись на ярус 1 и эвакуируйся</em>
+            <span class="rw" data-part="rw"><s>◆</s>—</span>
+          </div>
+          <div class="track" data-part="prog"><i style="width:34%"></i></div>
+          <div class="n" data-part="prog">0 / 1 · глубже нуля</div>
+        </div>
+        <div class="note-card" style="margin-top:10px">
+          <div class="t"><em>Сходи в две вылазки</em><span class="rw"><s>◆</s>—</span></div>
+          <div class="track"><i style="width:50%"></i></div>
+          <div class="n">1 / 2</div>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="parts" id="parts">
+        <button type="button" data-p="goal"><b>Цель</b><span>Глагол и объект, одна строка, до 34 знаков. Формулируется тем, что игрок видит на экране, — по правилу §0.1 имён здесь нет вообще.</span></button>
+        <button type="button" data-p="prog"><b>Прогресс</b><span>Полоса и «сделано из скольких». Появляется <b>только у счётных целей</b>: у однократной («построй Склад») полосы нет вовсе — полоса 0/1 не сообщает ничего, кроме шума.</span></button>
+        <button type="button" data-p="rw"><b>Слот награды</b><span>Ромб и значение. На макетах прочерк: чем наполнить, решает баланс. Место фиксировано справа от цели, чтобы взгляд не искал его в разных строках.</span></button>
+        <button type="button" data-p="state"><b>Состояние</b><span>Левый кант: серый — идёт, медный — выполнено и ждёт выдачи, полупрозрачный с зачёркиванием — выдано. Состояние читается цветом канта, а не значком: значков в записке нет.</span></button>
+      </div>
+      <div>
+        <h3>Состояний три, а доска видит два</h3>
+        <p>Среднее — «выполнено, ждёт выдачи» — живёт от момента выполнения до ближайшей выдачи,
+          а доска стоит в лагере: пока игрок до неё дошёл, выдача уже случилась (§06).
+          <b>Медный кант застаёт только экран возврата.</b> Это не изъян, а следствие:
+          состояние ожидания нельзя увидеть там, где ждать не приходится.</p>
+      </div>
+      <div>
+        <h3>Чего в записке нет</h3>
+        <p><b>Описания и лорной строки</b> — задание объясняется целью или не объясняется вовсе.
+          <b>Кнопки «перейти»</b> — в игре два экрана, и оба на расстоянии одного тапа;
+          кнопка превратила бы доску в навигацию. <b>Таймера истечения</b> — он один на весь
+          дневной лист и стоит внизу доски, а не в каждой строке. <b>Уровня и редкости</b> —
+          нечего ранжировать.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">03</div><h2>Доска: три состояния дня</h2>
+    <p>Доска — шторка на 72% высоты, а не экран: лагерь виден за ней и продолжает гореть.
+      Игрок не уходит из игры, чтобы посмотреть задания, — он опускает на неё взгляд.</p></div>
+  <div class="bar" id="dayBar"></div>
+  <div class="lab">
+    <div class="dev" id="boardDev">
+      <canvas id="campCv" width="300" height="616"></canvas>
+      <div class="sb"><span>9:41</span><span>Лагерь</span></div>
+      <div class="sheet" id="boardSheet"></div>
+    </div>
+    <div class="side">
+      <div id="dayNote"></div>
+      <div>
+        <h3>Порядок, который не меняется</h3>
+        <p>Направляющая всегда первая и всегда крупнее. Дневные — под ней, в порядке появления,
+          <b>без сортировки по готовности</b>: выполненная запись остаётся на своём месте.
+          Прыгающие строки лишают доску памяти о том, где что лежало.</p>
+      </div>
+      <div>
+        <h3>Выполненное не исчезает до конца дня</h3>
+        <p>Записи гасятся, но остаются. Это единственный способ, которым «на сегодня всё»
+          читается как <b>сделанная работа</b>, а не как пустая доска и повод для тревоги,
+          что задания кончились.</p>
+      </div>
+      <div>
+        <h3>Нижняя строка</h3>
+        <p>Одна на всю доску: когда обновится дневной лист. Это же единственный таймер
+          во всей панели — по одному на строку их было бы четыре, и доска стала бы часами.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">04</div><h2>Как её открывают и как о ней узнают</h2></div>
+  <p>Доска стоит у костра предметом лагеря, и открывается тапом по ней — как здание,
+    а не как иконка интерфейса. Диегетическая точка входа стоит дороже угловой кнопки ровно
+    одну модель, а взамен снимает с постоянного HUD ещё один значок: в вылазке доски нет совсем,
+    и это осознанно — §1 оставляет там одно решение.</p>
+  <div class="scroll">
+    <table>
+      <tr><th>Событие</th><th>Что происходит</th><th>Почему так</th></tr>
+      <tr><td><b>Появилась новая запись</b></td>
+          <td>На доске в лагере тлеет уголёк — тот же свет, что у костра, без числа и без красного</td>
+          <td>Счётчик «3» превращает записи в долг. Свет сообщает «есть новое» и ничего не требует</td></tr>
+      <tr><td><b>Игрок открыл доску</b></td><td>Уголёк гаснет, даже если игрок ничего не тронул</td>
+          <td>Забирать нечего: награда уже выдана на возврате (§06). Значок сообщает о новизне, а не о долге</td></tr>
+      <tr><td><b>Открытие</b></td><td>Шторка выезжает снизу за 220 мс, лагерь за ней темнеет на 35%</td>
+          <td>Затемнение вместо подмены экрана: игрок видит, что не ушёл из лагеря</td></tr>
+      <tr><td><b>Закрытие</b></td><td>Свайп вниз, тап мимо шторки, системная «назад»</td>
+          <td>Три выхода, ни одной кнопки «Закрыть» в углу</td></tr>
+      <tr><td><b>Первое открытие</b></td><td>Шторка открыта сама — один раз, в тот момент, когда появилась первая запись</td>
+          <td>По правилу §16: система показывается там, где в ней появился смысл, и ровно один раз</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">05</div><h2>Реакция, такт первый: отметка</h2>
+    <p>Задание засчитывается там, где выполнено, — часто посреди вылазки. Отметка обязана
+      подтвердить это и не более: <b>она не показывает награду и не останавливает игру.</b>
+      Нажмите «Проиграть».</p></div>
+  <div class="bar" id="tickBar"></div>
+  <div class="lab">
+    <div class="dev" id="tickDev">
+      <canvas id="raidCv" width="300" height="616"></canvas>
+      <div class="sb"><span>9:41</span><span>Ярус 1 · глубина 4</span></div>
+      <div class="hud">
+        <div class="meter"><em>провиант</em><div class="b"><i style="width:46%"></i></div><s>23/50</s></div>
+        <div class="meter"><em>рюкзак</em><div class="b pack"><i style="width:63%"></i></div><s>12/19</s></div>
+      </div>
+      <div class="tick" id="tickEl"><u>◈</u><em>Ярус 1 — пройден</em><i>задание</i></div>
+      <div class="fightline" id="fightEl">бой · отметка ждёт</div>
+      <div class="cta ghost">Идти к выходу · 11 шагов</div>
+    </div>
+    <div class="side">
+      <div id="tickLog" class="note">—</div>
+      <div>
+        <h3>Отметка не показывает награду</h3>
+        <p>Число награды посреди вылазки конкурирует с единственным решением игры —
+          «уйти или пройти ещё комнату». Оно способно перевесить и ставку, и рюкзак,
+          хотя не имеет к ним отношения. <b>Отметка сообщает факт, награда ждёт возврата.</b></p>
+      </div>
+      <div>
+        <h3>В бою отметка ждёт</h3>
+        <p>Во время боя внимание принадлежит замаху врага (§17.3): 250–500 мс на реакцию —
+          это ровно тот интервал, который отметка и съедает. Она встаёт в очередь и выходит
+          после боя, но <b>не дольше 6 секунд</b>: длинный бой не должен съесть подтверждение совсем.</p>
+      </div>
+      <div class="guard" style="grid-template-columns:1fr">
+        <div class="key">
+          <h3>Показанное не отбирается</h3>
+          <p>Провал вылазки отнимает долю добычи (§1), но <b>никогда не отнимает отметку</b>.
+            Задание — про сделанное действие, а не про вынесенное. Отобранная галочка —
+            единственная ошибка этой панели, которую игрок запомнит навсегда.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">06</div><h2>Реакция, такт второй: выдача</h2>
+    <p>Награда приходит туда, где игрок уже стоит и уже радуется, — в анимацию добычи на экране
+      возврата. <b>Одна точка радости вместо двух.</b> Переключите «провал», чтобы увидеть
+      разницу.</p></div>
+  <div class="bar" id="retBar"></div>
+  <div class="lab">
+    <div class="dev" id="retDev">
+      <div class="ret">
+        <div class="ttl" id="retTtl">Вернулся</div>
+        <div class="sub" id="retSub">ярус 1 · 2 мин 40 с</div>
+        <div class="rows" id="retRows"></div>
+        <div class="qrow" id="retQ">
+          <div class="note-card done" style="background:transparent">
+            <div class="t"><em>Ярус 1 — пройден</em><span class="rw"><s>◆</s>—</span></div>
+            <div class="n" id="retQn">выполнено · награда на складе</div>
+          </div>
+          <div class="note-card lead" id="retNext" style="background:transparent">
+            <div class="t"><em>Дальше: надень вещь в Кузнице</em></div>
+          </div>
+        </div>
+        <div class="cta" style="position:static;margin-top:12px">В лагерь</div>
+      </div>
+    </div>
+    <div class="side">
+      <div id="retLog" class="note">—</div>
+      <div>
+        <h3>Строка задания идёт после добычи</h3>
+        <p>Сначала считается то, ради чего игрок рисковал, и только потом — то, что дала доска.
+          Обратный порядок делает вылазку приложением к заданию.</p>
+      </div>
+      <div>
+        <h3>Следующая цель выдаётся здесь же</h3>
+        <p>Единственное место, где направляющая показывается вне доски: игрок закрыл одну цель
+          и в ту же секунду видит следующую, <b>не открывая ничего</b>. Это и есть роль
+          «направление» — она работает даже у игрока, который доску никогда не откроет.</p>
+      </div>
+      <div>
+        <h3>Выдача не строит своей сцены</h3>
+        <p>Правило шире экрана возврата: <b>награда прицепляется к ближайшей сцене, где игрок
+          и так смотрит на числа.</b> Выполнено в вылазке — экран возврата; выполнено в лагере
+          («заверши стройку») — та же секунда, что и готовая постройка, в её собственной анимации.
+          Своего окна «получено!» у доски нет ни в одном случае.</p>
+      </div>
+      <div>
+        <h3>Провал: строка остаётся</h3>
+        <p>Доля добычи потеряна, счётчики красные, <b>задание выдано полностью</b>.
+          Так провал остаётся ценой одной вылазки, а не откатом прогресса, —
+          ровно как записано в §1.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">07</div><h2>Тайминги и звук</h2></div>
+  <p>Числа взяты не из головы: 120 мс — смешивание клипов из §17.6, за ним же выровнены
+    появления; верхние частоты интерфейса и потолок в три слоя — правила §18.1.</p>
+  <div class="scroll">
+    <table>
+      <tr><th>Такт</th><th>Что делает</th><th>Время</th><th>Из чего</th></tr>
+      <tr><td class="mono">отметка · вход</td><td>сдвиг на 8 px вверх и проявление</td><td class="num">120 мс</td>
+          <td>Общий порог §17.6: короче читается как сбой</td></tr>
+      <tr><td class="mono">отметка · держится</td><td>стоит под полосами HUD</td><td class="num">1600 мс</td>
+          <td>Два шага героя (§17.6, шаг 600 мс) плюс запас на перевод взгляда</td></tr>
+      <tr><td class="mono">отметка · уход</td><td>проявление в обратную сторону</td><td class="num">200 мс</td>
+          <td>Уход не несёт информации и не должен её задерживать</td></tr>
+      <tr><td class="mono">отметка · очередь</td><td>пауза между двумя подряд</td><td class="num">400 мс</td>
+          <td>Две отметки внахлёст читаются как одна</td></tr>
+      <tr><td class="mono">отметка · бой</td><td>ждёт конца боя, но не дольше</td><td class="num">6000 мс</td>
+          <td>Дольше — и подтверждение теряет связь с действием</td></tr>
+      <tr><td class="mono">шторка</td><td>выезд снизу, затемнение лагеря до 35%</td><td class="num">220 мс</td>
+          <td>Быстрее ощущается как подмена экрана</td></tr>
+      <tr><td class="mono">возврат · строка</td><td>пауза после последней строки добычи</td><td class="num">350 мс</td>
+          <td>Пауза отделяет «добыто» от «начислено»</td></tr>
+      <tr><td class="mono">возврат · счётчик</td><td>добег числа награды</td><td class="num">600 мс</td>
+          <td>Тот же добег, что у строк добычи: одна анимация, а не своя</td></tr>
+      <tr><td class="mono">возврат · следующая цель</td><td>появление направляющей</td><td class="num">+500 мс</td>
+          <td>После того как счётчики замерли: цель не конкурирует с наградой</td></tr>
+    </table>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Звук: одна нота, верхний слой</h3>
+      <p>У отметки — короткий верхний тон, тот же слой интерфейса, что у тапа (§18.1).
+        Ни фанфар, ни аккорда: фанфара в вылазке перебивает нижний пульс провианта,
+        а он несёт настоящую информацию.</p>
+    </div>
+    <div>
+      <h3>Приоритет при переполнении</h3>
+      <p>Урон по герою → интерфейс → остальное. Отметка живёт во втором слое и <b>уступает удару</b>:
+        совпали — сначала урон, отметка сдвигается на 400 мс.</p>
+    </div>
+    <div class="warn">
+      <h3>Ни одна из этих цифр не проверена</h3>
+      <p>Все девять выведены из соседних разделов и <b>подлежат замеру</b>, как провиант в §11.1,
+        разошедшийся с рассуждением вчетверо. Первый же прогон на живой вылазке
+        имеет право отменить любую.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">08</div><h2>Движение и свет</h2></div>
+  <p>Эффекты не сочиняются под панель. В лагере уже горит костёр — шейдерное пламя
+    и точечный свет, которые ставятся по одной записи (<code>src/render/fire.ts</code>),
+    и весь язык доски выводится из него. Записки — бумага, а бумага на этом костре горит.
+    Три демо ниже — три следствия одного этого решения.</p>
+
+  <div class="subhead">Записка сгорает, а не зачёркивается</div>
+  <div class="lab">
+    <div class="side" style="order:2">
+      <div id="burnLog" class="note">—</div>
+      <div>
+        <h3>Почему не зачёркивание</h3>
+        <p>Перечёркнутая строка — штамп из списка дел, взятый из ниоткуда: в мире игры
+          ничего не перечёркивают. <b>Сгорание — то же сообщение той же длины</b>,
+          сказанное материалом, который на экране уже есть.</p>
+      </div>
+      <div>
+        <h3>Пепел остаётся до конца дня</h3>
+        <p>Записка исчезает, её место — нет. Так держится правило §03: погашенные
+          не уезжают вниз и не пропадают, доска помнит, где что лежало,
+          а «на сегодня всё» читается как сделанная работа.</p>
+      </div>
+      <div>
+        <h3>Чем платим</h3>
+        <p>Порог по шуму с тлеющей кромкой — <b>тот же градиент от угля к латуни</b>,
+          что у пламени (<code>ugol → zhar → plam → lat</code>, <code>blocking.ts</code>).
+          Новых техник ноль; в вёрстке доски эффект вырождается в затухание и ничего
+          не ломает.</p>
+      </div>
+    </div>
+    <div style="order:1">
+      <div class="panel" style="width:300px">
+        <div class="note-card" style="padding:0;border:0;background:transparent">
+          <canvas id="burnCv" width="536" height="152" style="width:268px;height:76px;display:block"></canvas>
+        </div>
+        <div class="foot-line" style="border-top:0;padding-top:0"><span>◈ выдано</span><span>400 мс</span></div>
+      </div>
+      <div class="bar" id="burnBar" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div class="subhead">Уголёк дышит в такт костру</div>
+  <div class="lab">
+    <div style="order:1">
+      <canvas id="emberCv" width="600" height="360" style="width:300px;height:180px;display:block;
+        border:1px solid var(--g-line);border-radius:10px"></canvas>
+      <div class="bar" id="emberBar" style="margin-top:12px"></div>
+    </div>
+    <div class="side" style="order:2">
+      <div>
+        <h3>Формула не своя, а огня</h3>
+        <p>Яркость уголька считается тем же дыханием, что высота пламени:
+          <code>1 + sin(t·6,1)·0,11 + sin(t·11,3)·0,05</code> — дословно <code>fBreath</code>
+          из <code>fire.ts</code>, только амплитуда вдвое меньше. <b>Две несоразмерные волны
+          не дают ритму стать метрономом</b>, и уголёк с костром не расходятся никогда.</p>
+      </div>
+      <div>
+        <h3>Что это заменяет</h3>
+        <div class="panel" style="flex-direction:row;align-items:center;gap:9px;padding:9px 11px">
+          <span style="font-size:13px">Задания</span><span class="badge">3</span>
+          <span style="font-size:11px;color:var(--g-dim);margin-left:auto">как обычно</span>
+        </div>
+        <p style="margin-top:9px">Красный счётчик сообщает число несделанного, то есть долг,
+          и не гаснет, пока долг не закрыт. Уголёк сообщает <b>«есть новое»</b> и гаснет
+          от одного взгляда (§04). Информации в нём меньше ровно на ту, которая была вредной.</p>
+      </div>
+      <div>
+        <h3>Чем платим</h3>
+        <p>Точечный источник и эмиссия на доске — одна запись рядом с записью костра.
+          В HUD не добавляется ничего: в вылазке доски нет, там и уголька нет.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="subhead">Отметка: карточка или строка HUD</div>
+  <p>Слева — вариант из §05: карточка поверх сцены. Справа — та же отметка, занявшая
+    <b>уже существующую строку глубины</b>. Тайминги одинаковые, разница только в том,
+    появляется ли на экране новый предмет.</p>
+  <div class="bar" id="abBar"></div>
+  <div class="lab2">
+    <div>
+      <div class="dev" id="devA">
+        <canvas id="raidCvA" width="300" height="616"></canvas>
+        <div class="sb"><span>9:41</span><span>Ярус 1 · глубина 4</span></div>
+        <div class="hud">
+          <div class="meter"><em>провиант</em><div class="b"><i style="width:46%"></i></div><s>23/50</s></div>
+          <div class="meter"><em>рюкзак</em><div class="b pack"><i style="width:63%"></i></div><s>12/19</s></div>
+        </div>
+        <div class="tick" id="tickA"><u>◈</u><em>Ярус 1 — пройден</em><i>задание</i></div>
+        <div class="cta ghost">Идти к выходу · 11 шагов</div>
+      </div>
+      <p class="note" style="margin-top:9px">А · карточка: +1 предмет на экране</p>
+    </div>
+    <div>
+      <div class="dev" id="devB">
+        <canvas id="raidCvB" width="300" height="616"></canvas>
+        <div class="sb"><span>9:41</span><span id="sbB">Ярус 1 · глубина 4</span></div>
+        <div class="hud">
+          <div class="meter"><em>провиант</em><div class="b"><i style="width:46%"></i></div><s>23/50</s></div>
+          <div class="meter"><em>рюкзак</em><div class="b pack"><i style="width:63%"></i></div><s>12/19</s></div>
+          <div class="depthline" id="lineB">ярус 1 · глубина 4</div>
+        </div>
+        <div class="cta ghost">Идти к выходу · 11 шагов</div>
+      </div>
+      <p class="note" style="margin-top:9px">Б · строка: ноль новых предметов</p>
+    </div>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Выбор — Б, и вот цена</h3>
+      <p>Строка не перекрывает палец, не спорит с замахом врага и не требует места,
+        которого в портретной вылазке нет. <b>Взамен теряется ромб награды</b> — но
+        в §05 его и так не показывали, а слово «задание» уходит: строка опознаётся
+        цветом и тем, что она сменилась.</p>
+    </div>
+    <div class="warn">
+      <h3>Чего лишается вариант Б</h3>
+      <p>Отметка, севшая в строку, <b>не переживает две подряд</b>: вторая затрёт первую.
+        Отсюда очередь §05 с паузой 400 мс становится не улучшением, а обязательным
+        условием — на карточках её можно было бы обойти стопкой.</p>
+    </div>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <tr><th>Правило движения</th><th>Что запрещает</th><th>Почему</th></tr>
+      <tr><td><b>Свет вместо движения</b></td><td>пружины, отскоки, масштабирование карточек</td>
+          <td>Решение принимается по двум полосам вверху; движение рядом с ними — шум в канале, который несёт данные</td></tr>
+      <tr><td><b>Анимируется только присутствие</b></td><td>театр событий, случившихся без игрока</td>
+          <td>Лист обновился ночью — утром он просто новый. Спектакль перед пустым залом ворует секунды на входе в сессию</td></tr>
+      <tr><td><b>Шторка — это камера</b></td><td>выезжающие панели поверх статичной сцены</td>
+          <td>Лагерь опускается на 6–8° и подходит на полшага: читается как «посмотрел на доску», а не «открыл меню»</td></tr>
+      <tr><td><b>Одно событие — одна анимация</b></td><td>вспышку, тряску и звук на одно и то же</td>
+          <td>Три носителя одного факта не усиливают его, а забивают три слоя из трёх (§18.1)</td></tr>
+      <tr><td><b>Системное «меньше движения» уважается</b></td><td>обязательность любого эффекта</td>
+          <td>При <code>prefers-reduced-motion</code> сгорание и отметка происходят мгновенно. <b>Информация не теряется ни одна</b> — теряется только время</td></tr>
+    </table>
+  </div>
+  <div class="guard">
+    <div class="warn">
+      <h3>Отброшено: дым вместо строки таймера</h3>
+      <p>Густота дыма над доской взамен «обновится через 6 ч» выглядела лучше строки
+        и не читалась вовсе: <b>по дыму нельзя назвать время</b>. Эффект, который нельзя
+        прочитать, — это украшение, а украшение в информационном слое стоит дороже,
+        чем весит.</p>
+    </div>
+    <div>
+      <h3>Отброшено: вспышка на выдаче</h3>
+      <p>Свет по всему экрану в момент начисления. Убран по правилу «одно событие —
+        одна анимация»: сгорание уже сказало то же самое, а вспышка накрывает
+        счётчики добычи ровно тогда, когда игрок их читает.</p>
+    </div>
+    <div class="key">
+      <h3>Что из этого проверяемо</h3>
+      <p>Ничего из раздела не является вкусовым: <b>сгорание обязано укладываться в 400 мс</b>,
+        уголёк — не расходиться с костром по фазе, отметка — не пересекаться со второй.
+        Первые два проверяются замером кадров, третье — правилом в коде, как таймеры §07.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">09</div><h2>Доска: блокинг</h2></div>
+  <p>§04 обещал предмет в лагере вместо иконки в углу — вот он, и это не картинка.
+    Модель собрана <b>примитивами самой игры</b> (<code>src/render/blocking.ts</code>):
+    те же шесть форм, та же палитра из 32 цветов, то же соглашение «cy — низ фигуры».
+    Рядом горит <b>настоящий костёр движка</b> — шейдерное пламя и точечный свет
+    класса <code>Fire</code>, без единой копии. Камера — ортографическая, 30° над землёй,
+    поворот на четверть, как в игре.</p>
+  <div class="bar" id="glBar"></div>
+  <div class="lab">
+    <div style="order:1">
+      <div class="dev" style="height:360px"><canvas id="boardGl"></canvas></div>
+      <div id="glStat" class="note" style="margin-top:10px">—</div>
+    </div>
+    <div class="side" style="order:2">
+      <div>
+        <h3>Почему записки — отдельные меши</h3>
+        <p>Всё, что не меняется — столбы, полотно, козырёк, гвозди, — склеено
+          в <b>одну геометрию и один вызов отрисовки</b>. Записки остались тремя
+          отдельными мешами именно потому, что они снимаются и горят: тот же размен,
+          из-за которого запечённому персонажу нельзя снять шлем (§6.1.4).</p>
+      </div>
+      <div>
+        <h3>Уголёк — свет, а не значок</h3>
+        <p>Он светит точечным источником и дышит формулой пламени из §08.
+          Днём его не видно вовсе, и это не изъян: <b>лагерь ночью — то состояние,
+          в котором игрок его чаще всего застаёт</b>, возвращаясь из вылазки.</p>
+      </div>
+      <div>
+        <h3>Козырёк — единственная деталь «просто так»</h3>
+        <p>Он ничего не сообщает механикой и стоит 12 треугольников. Держится
+          на одном: <b>под дождём бумага не живёт</b>, и без него доска читается
+          как забытая, а не как рабочее место.</p>
+      </div>
+      <div class="guard" style="grid-template-columns:1fr">
+        <div class="key">
+          <h3>Это блокинг, а не модель</h3>
+          <p>По правилу §6.1 силуэт утверждается примитивами <b>до</b> моделирования.
+            Здесь он и утверждается: если доска не читается доской с трёх шагов
+            и на повороте — её не спасёт ни одна текстура, и делать её незачем.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">10</div><h2>Механика, которую отменил макет</h2>
+    <p>Слева — панель, которая получается сама собой, если не запрещать. Справа — та же доска
+      после одного решения: <b>награда выдаётся на возврате, а не собирается вручную.</b></p></div>
+  <div class="vs">
+    <div class="bad">
+      <h3>Как получается само</h3>
+      <div class="panel">
+        <div class="tabs"><s class="on">Ежедневные <span class="badge">3</span></s><s>Недельные</s><s>Достижения</s><s>Сезон</s></div>
+        <div class="row2"><em>Сходи в две вылазки</em><s class="rw" style="color:var(--g-brass);font-family:var(--ff-mono);font-size:12px">◆ —</s><span class="go">Забрать</span></div>
+        <div class="row2"><em>Вынеси добычу</em><s style="font-family:var(--ff-mono);font-size:11px;color:var(--g-dim)">14/40</s><span class="go">Перейти</span></div>
+        <div class="row2 off"><em>Победи 5 врагов</em><span class="lock">🔒 с 4 уровня</span></div>
+        <div class="row2 off"><em>Открой сундук альянса</em><span class="lock">🔒 нет альянса</span></div>
+        <div class="row2"><em>Заверши стройку</em><s style="font-family:var(--ff-mono);font-size:11px;color:var(--g-dim)">0/1</s><span class="go">Перейти</span></div>
+        <div class="row2"><em>Собери всё</em><span class="go">Забрать всё</span></div>
+      </div>
+      <p class="note">четыре вкладки · счётчик долга · две кнопки на строку · два запертых пункта</p>
+    </div>
+    <div class="good">
+      <h3>Как здесь</h3>
+      <div class="panel">
+        <div class="note-card lead" style="background:transparent">
+          <div class="t"><em>Спустись на ярус 1</em><span class="rw"><s>◆</s>—</span></div>
+        </div>
+        <div class="grp">на сегодня</div>
+        <div class="note-card"><div class="t"><em>Сходи в две вылазки</em><span class="rw"><s>◆</s>—</span></div>
+          <div class="track"><i style="width:50%"></i></div><div class="n">1 / 2</div></div>
+        <div class="note-card paid"><div class="t"><em>Вынеси добычу</em><span class="stamp">выдано</span></div></div>
+        <div class="note-card"><div class="t"><em>Заверши стройку</em><span class="rw"><s>◆</s>—</span></div></div>
+        <div class="foot-line"><span>обновится через 6 ч</span><span>◈ 1 из 3</span></div>
+      </div>
+      <p class="note">ни одной вкладки · ни одной кнопки · ни одного запертого пункта</p>
+    </div>
+  </div>
+  <p>Отмена сбора вручную выглядит мелкой правкой, но за неё уходит <b>четыре элемента разом</b>,
+    и это не совпадение: они существовали только ради неё.</p>
+  <ul class="cut">
+    <li><b>Кнопка «Забрать»</b> — забирать нечего, награда уже на складе.</li>
+    <li><b>Состояние «готово к сбору»</b> — состояний остаётся три вместо четырёх,
+      и ни одно из них не требует действия.</li>
+    <li><b>Сортировка по готовности</b> — записи перестают прыгать, доска сохраняет память
+      о том, где что лежало.</li>
+    <li><b>Красный счётчик</b> — он был счётчиком несобранного, то есть долга.
+      Без сбора остаётся уголёк новизны, который гаснет от одного взгляда (§04).</li>
+  </ul>
+  <div class="guard">
+    <div class="warn">
+      <h3>Что мы за это платим</h3>
+      <p>Ручной сбор — известный способ добавить лишнее касание и лишний заход в игру.
+        Мы от него отказываемся <b>сознательно</b> и лишаемся этой ручки.
+        Если удержание потребует её обратно, вернётся она вместе со всеми четырьмя элементами:
+        поштучно они не работают.</p>
+    </div>
+    <div class="key">
+      <h3>Запертые пункты не показываются вовсе</h3>
+      <p>Серая строка «🔒 с 4 уровня» учит одному: <b>в эту панель можно не смотреть</b>.
+        Игра и без того вводит системы по мере надобности (§16) — доска показывает
+        только то, что можно сделать сейчас.</p>
+    </div>
+    <div>
+      <h3>Вкладки</h3>
+      <p>Вкладка — это признание, что записей больше, чем помещается. Их четыре.
+        Как только понадобится пятая вкладка, ошибка не во вкладках, а в количестве записей.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">11</div><h2>Что проверяем замером</h2></div>
+  <p>Панель заданий легко считается успешной по ложной метрике: «её открывают» и «её выполняют».
+    Обе растут и тогда, когда доска съела игру. Поэтому меряем обратное.</p>
+  <div class="scroll">
+    <table>
+      <tr><th>Метрика</th><th>Цель</th><th>Что означает провал</th></tr>
+      <tr><td><b>Доля дневных, закрытых до того, как игрок их прочитал</b></td><td class="num">≥ 60%</td>
+          <td>Записи просят не того, что игрок делает сам. Задания переписываются, а не панель</td></tr>
+      <tr><td><b>Доля отметок, показанных вне боя</b></td><td class="num">≥ 90%</td>
+          <td>Очередь §05 настроена плохо, подтверждение теряется в замахах</td></tr>
+      <tr><td><b>Открытий доски за сессию</b></td><td class="num">≤ 1,3</td>
+          <td>Доска стала местом, куда ходят. Она — не занятие, а справка</td></tr>
+      <tr><td><b>Сдвиг возврата на второй день</b></td><td class="num">за дневной лист</td>
+          <td>Дневной лист не окупается и вырезается целиком, направление остаётся</td></tr>
+      <tr><td><b>Доля направляющих, закрытых в ту же сессию</b></td><td class="num">≥ 70%</td>
+          <td>Цель ставится не по кривой §16: игрок к ней не готов или уже прошёл мимо</td></tr>
+      <tr><td><b>Длина сессии</b></td><td class="num">не растёт</td>
+          <td>Рост здесь — не победа: время ушло в список, а не в вылазку</td></tr>
+    </table>
+  </div>
+  <p class="metric"><b>Правило остановки.</b> Дневной лист существует ради одной цифры —
+    возврата на второй день. Если за две недели живых данных он её не сдвинул,
+    лист вырезается целиком, вместе с нижней строкой, угольком и половиной этого артбука.
+    Направление остаётся: оно оправдано не удержанием, а тем, что игрок помнит,
+    на чём остановился.</p>
+</div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">12</div><h2>Границы артбука</h2></div>
+  <div class="guard">
+    <div>
+      <h3>Не решено здесь: чем платят</h3>
+      <p>Ромб с прочерком — слот. Ресурс, количество и то, попадает ли в награды кристалл
+        (§13 говорит, что не должен), назначаются балансом по замеру добычи, как в §20.3.1.
+        Число, поставленное сюда сейчас, было бы выдумкой в макете.</p>
+    </div>
+    <div>
+      <h3>Не решено здесь: содержание пула</h3>
+      <p>На макетах — четыре записи-образца, выведенные из уже принятых систем.
+        Сам пул, ротация и правила неповторения — отдельная работа,
+        и она бессмысленна раньше, чем панель подтверждена.</p>
+    </div>
+    <div>
+      <h3>Не решено здесь: имена</h3>
+      <p>«Доска» — рабочая подпись по §0.1. Ни «контрактов», ни «поручений», ни ордена
+        с гербом: имя не аргумент и меняется правкой одной строки.</p>
+    </div>
+    <div class="warn">
+      <h3>Ничего из этого не входит в срез</h3>
+      <p>§7 выносит задания за пределы вертикального среза, §8 ставит их на пятый этап —
+        после подтверждения петли «вылазка → лагерь». <b>Артбук написан раньше кода намеренно</b>:
+        отменить кнопку «Забрать» на странице стоило одного абзаца.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<style>
+  .note-card.histate{box-shadow:-5px 0 0 -1px var(--g-brass);}
+</style>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+
+  /* ================= 02 · разбор записки ================= */
+  (function(){
+    var card = $('anaCard'), box = $('parts');
+    if(!card || !box) return;
+    var btns = [].slice.call(box.querySelectorAll('button'));
+    function show(p){
+      btns.forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.p === p ? 'true' : 'false'); });
+      [].forEach.call(card.querySelectorAll('[data-part]'), function(n){
+        n.classList.toggle('hi', n.dataset.part === p);
+      });
+      /* у состояния нет своего узла: оно и есть левый кант карточки */
+      card.classList.toggle('histate', p === 'state');
+    }
+    btns.forEach(function(b){
+      b.addEventListener('click', function(){ show(b.dataset.p); });
+      b.addEventListener('mouseenter', function(){ show(b.dataset.p); });
+    });
+    show('goal');
+  })();
+
+  /* ================= рисование ================= */
+  var MRAK='#0b1113', TEN='#141c1e', ZEM='#37271c', ZEMT='#241a14', TRA='#5c7a4a', HVO='#2f4128',
+      DER='#6b4e33', DERT='#4d3826', DERS='#8a6a45', SOL='#8fa3a3', KAM='#2b3a3d', KAMT='#1f2a2c',
+      PLAM='#c9722a', LAT='#e0a13c', SVET='#f0d27a', ZHAR='#8e4a17', TKAN='#5a5347', TKANS='#7d7566';
+  function R(c,x,y,w,h,col){ c.fillStyle=col; c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h)); }
+  function plate(c,cx,cy,w,col){                       /* ромб основания, как в лагере */
+    var h=w/2, k=w/h;
+    for(var i=0;i<h;i++){ var hw=(i<h/2)?(i+1)*k:(h-i)*k; R(c,cx-hw,cy-h/2+i,hw*2,1,col); }
+  }
+  function hash(x,y,s){
+    var h=(x*374761393+y*668265263+s*2246822519)>>>0; h=(h^(h>>>13))*1274126177>>>0;
+    return ((h>>>8)%1000)/1000;
+  }
+
+  /* ---- лагерь ночью: то, что видно над шторкой ---- */
+  (function(){
+    var cv = $('campCv'); if(!cv) return;
+    var c = cv.getContext('2d'), W = cv.width, H = cv.height;
+    function draw(ember){
+      R(c,0,0,W,H,MRAK);
+      for(var i=0;i<26;i++){                                   /* трава пятнами */
+        var x=hash(i,3,7)*W, y=40+hash(i,9,11)*130, w=10+hash(i,4,5)*26;
+        plate(c,x,y,w, hash(i,1,2)>.5?HVO:ZEMT);
+      }
+      plate(c,150,132,210,ZEM);
+      plate(c,150,132,150,ZEMT);
+      var g=c.createRadialGradient(196,120,4,196,120,86);       /* свет костра */
+      g.addColorStop(0,'rgba(224,161,60,.42)'); g.addColorStop(1,'rgba(224,161,60,0)');
+      c.fillStyle=g; c.fillRect(110,44,180,150);
+      /* палатка */
+      c.fillStyle=TKAN; c.beginPath(); c.moveTo(96,64); c.lineTo(126,116); c.lineTo(66,116); c.closePath(); c.fill();
+      c.fillStyle=TKANS; c.beginPath(); c.moveTo(96,64); c.lineTo(126,116); c.lineTo(112,116); c.closePath(); c.fill();
+      R(c,92,100,9,16,MRAK);
+      /* костёр */
+      R(c,188,116,16,3,ZHAR); R(c,190,110,4,7,PLAM); R(c,196,108,4,9,LAT); R(c,194,104,3,5,SVET);
+      /* доска: два столба и полотно с записками */
+      R(c,132,104,3,28,DERT); R(c,176,104,3,28,DERT);
+      R(c,130,86,51,22,DER); R(c,130,86,51,3,DERS);
+      R(c,136,92,12,11,'#cfc7b4'); R(c,151,92,12,11,'#c4bca9'); R(c,166,92,10,9,'#bdb5a2');
+      if(ember){ R(c,178,84,4,4,LAT); R(c,177,83,6,6,'rgba(224,161,60,.28)'); }
+      c.fillStyle='rgba(11,17,19,.35)'; c.fillRect(0,0,W,H);    /* затемнение под шторкой */
+    }
+    draw(true);
+  })();
+
+  /* ---- пол вылазки: один и тот же на всех трёх макетах ---- */
+  function drawRaid(id){
+    var cv = $(id); if(!cv) return;
+    var c = cv.getContext('2d'), W = cv.width, H = cv.height;
+    R(c,0,0,W,H,MRAK);
+    for(var y=0;y<12;y++) for(var x=0;x<9;x++){
+      var cx=26+x*32+(y%2?16:0), cy=150+y*26, t=hash(x,y,13);
+      plate(c,cx,cy,34, t>.72?KAM:KAMT);
+    }
+    for(var i=0;i<7;i++){ var bx=hash(i,21,3)*W, by=170+hash(i,22,4)*260; plate(c,bx,by,18,'#243033'); }
+    R(c,146,300,8,13,'#0b1113'); R(c,147,301,6,12,'#35454e'); R(c,147,306,6,1,TRA);
+    R(c,147,294,6,6,'#0b1113'); R(c,148,295,4,4,'#c8a184');
+    R(c,146,294,8,3,'#35454e'); R(c,154,296,1,4,'#35454e');
+    plate(c,150,315,16,'rgba(11,17,19,.5)');
+  }
+  ['raidCv','raidCvA','raidCvB'].forEach(drawRaid);
+
+  /* ================= 03 · доска ================= */
+  (function(){
+    var sheet = $('boardSheet'), bar = $('dayBar'), noteBox = $('dayNote');
+    if(!sheet) return;
+
+    var DAYS = [
+      { k:'Первый день',
+        lead:{ t:'Спустись на ярус 1 и эвакуируйся', n:'глубже нуля' },
+        daily:[], foot:['дневные записи — со второго дня',''],
+        note:'<h3>День 1: доска почти пустая</h3><p>Дневной лист ещё не включён: в первую сессию ' +
+             'у игрока и без него полно новых систем. Видна одна запись — та, ради которой доска ' +
+             'вообще появилась. <b>Пустая доска в первый день лучше полной.</b></p>' },
+      { k:'Третий день',
+        lead:{ t:'Надень вещь в Кузнице', n:'' },
+        daily:[ { t:'Сходи в две вылазки', cur:1, max:2 },
+                { t:'Вынеси добычу', paid:true },
+                { t:'Заверши стройку', cur:0, max:1 } ],
+        foot:['обновится через 6 ч','◈ 1 из 3'],
+        note:'<h3>День 3: рабочее состояние</h3><p>Одна направляющая, три дневных, одна уже выдана. ' +
+             'Обратите внимание, чего здесь нет: <b>ни одной кнопки</b>. Выданная запись осталась ' +
+             'на своём месте и не уехала вниз списка.</p>' },
+      { k:'Всё сделано',
+        lead:{ t:'Дождись, пока достроится Склад', n:'осталось 12 мин' },
+        daily:[ { t:'Сходи в две вылазки', paid:true },
+                { t:'Вынеси добычу', paid:true },
+                { t:'Заверши стройку', paid:true } ],
+        foot:['обновится через 6 ч','◈ 3 из 3'], allset:'На сегодня всё',
+        note:'<h3>Всё сделано: записи не исчезают</h3><p>Три погашенные строки остаются на доске ' +
+             'до обновления листа. Если убрать их, «на сегодня всё» читается как поломка. ' +
+             '<b>Видимая сделанная работа — вся награда этого состояния</b>, кроме той, что уже ' +
+             'на складе.</p>' },
+      { k:'После дня 7',
+        lead:null,
+        daily:[ { t:'Сходи в две вылазки', cur:1, max:2 },
+                { t:'Вынеси добычу', cur:22, max:40 },
+                { t:'Заверши стройку', cur:0, max:1 } ],
+        foot:['обновится через 6 ч','◈ 0 из 3'],
+        note:'<h3>После дня 7: направляющей нет</h3><p>Кривая §16 кончилась, вести некуда — ' +
+             'и верх доски просто пуст. Заглушка вроде «сходи ещё раз» вернула бы строку, ' +
+             'но обесценила бы все предыдущие: <b>направляющая перестала бы означать «дальше».</b></p>' }
+    ];
+
+    function card(d, lead){
+      var n = document.createElement('div');
+      n.className = 'note-card' + (lead ? ' lead' : '') + (d.paid ? ' paid' : '');
+      var head = '<div class="t"><em>' + d.t + '</em>' +
+        (d.paid ? '<span class="stamp">выдано</span>' : '<span class="rw"><s>◆</s>—</span>') + '</div>';
+      var body = '';
+      /* полоса только у счётных целей и только пока они идут */
+      if(!d.paid && d.max > 1) body += '<div class="track"><i style="width:' +
+        Math.round(d.cur / d.max * 100) + '%"></i></div><div class="n">' + d.cur + ' / ' + d.max + '</div>';
+      else if(!d.paid && d.n) body += '<div class="n">' + d.n + '</div>';
+      n.innerHTML = head + body;
+      return n;
+    }
+
+    function render(i){
+      var D = DAYS[i];
+      sheet.innerHTML = '';
+      sheet.appendChild(Object.assign(document.createElement('div'), { className:'grip' }));
+      var cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.innerHTML = '<b>Доска</b><i>' + (D.lead ? 'дальше' : 'на сегодня') + '</i>';
+      sheet.appendChild(cap);
+      if(D.lead) sheet.appendChild(card(D.lead, true));
+      if(D.daily.length){
+        var g = document.createElement('div'); g.className = 'grp'; g.textContent = 'на сегодня';
+        sheet.appendChild(g);
+        D.daily.forEach(function(d){ sheet.appendChild(card(d, false)); });
+      }
+      if(D.allset){
+        var a = document.createElement('div'); a.className = 'allset'; a.textContent = D.allset;
+        sheet.appendChild(a);
+      }
+      var f = document.createElement('div'); f.className = 'foot-line';
+      f.innerHTML = '<span>' + D.foot[0] + '</span><span>' + D.foot[1] + '</span>';
+      sheet.appendChild(f);
+      noteBox.innerHTML = D.note;
+      [].forEach.call(bar.children, function(b, j){ b.setAttribute('aria-pressed', j === i ? 'true' : 'false'); });
+    }
+
+    DAYS.forEach(function(D, i){
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = D.k;
+      b.addEventListener('click', function(){ render(i); });
+      bar.appendChild(b);
+    });
+    render(1);
+  })();
+
+  /* ================= 05 · отметка ================= */
+  (function(){
+    var tick = $('tickEl'), fight = $('fightEl'), bar = $('tickBar'), log = $('tickLog');
+    if(!tick) return;
+    var inFight = false, timers = [], t0 = 0;
+
+    function stop(){ timers.forEach(clearTimeout); timers = []; }
+    function at(ms, fn){ timers.push(setTimeout(fn, ms)); }
+    function say(line){
+      var t = String(Math.round(performance.now() - t0)).padStart(4, ' ');
+      log.innerHTML += (log.innerHTML === '—' || log.innerHTML === '' ? '' : '<br>') + t + ' мс · ' + line;
+    }
+
+    function play(){
+      stop();
+      tick.style.transition = 'none'; tick.style.opacity = 0; tick.style.transform = 'translateY(8px)';
+      fight.style.transition = 'none'; fight.style.opacity = 0;
+      log.innerHTML = ''; t0 = performance.now();
+      say('условие задания выполнено');
+      var start = 0;
+      if(inFight){
+        fight.style.opacity = 1;
+        say('идёт бой — отметка в очереди, потолок ожидания 6000 мс');
+        start = 2200;
+        at(start, function(){ fight.style.transition = 'opacity .2s linear'; fight.style.opacity = 0;
+          say('бой кончился'); });
+      }
+      at(start, function(){
+        tick.style.transition = 'opacity .12s linear, transform .12s ease-out';
+        tick.style.opacity = 1; tick.style.transform = 'translateY(0)';
+        say('отметка · вход 120 мс, одна верхняя нота');
+      });
+      at(start + 120, function(){ say('держится 1600 мс, награда не показана'); });
+      at(start + 1720, function(){
+        tick.style.transition = 'opacity .2s linear';
+        tick.style.opacity = 0;
+        say('уход 200 мс');
+      });
+      at(start + 1920, function(){ say('всё · награда ждёт экрана возврата'); });
+    }
+
+    var b1 = document.createElement('button'); b1.type = 'button'; b1.textContent = 'Проиграть';
+    b1.addEventListener('click', play);
+    var b2 = document.createElement('button'); b2.type = 'button'; b2.textContent = 'В бою';
+    b2.setAttribute('aria-pressed', 'false');
+    b2.addEventListener('click', function(){
+      inFight = !inFight; b2.setAttribute('aria-pressed', inFight ? 'true' : 'false'); play();
+    });
+    bar.appendChild(b1); bar.appendChild(b2);
+  })();
+
+  /* ================= 06 · выдача на возврате ================= */
+  (function(){
+    var rows = $('retRows'), q = $('retQ'), bar = $('retBar'), log = $('retLog'),
+        ttl = $('retTtl'), sub = $('retSub'), qn = $('retQn'), next = $('retNext');
+    if(!rows) return;
+    var failed = false, timers = [], t0 = 0;
+
+    var LOOT = [ { i:'◆', n:'соль', v:34 }, { i:'▲', n:'дерево', v:12 }, { i:'■', n:'железо', v:4 } ];
+
+    function stop(){ timers.forEach(clearTimeout); timers = []; }
+    function at(ms, fn){ timers.push(setTimeout(fn, ms)); }
+    function say(line){
+      var t = String(Math.round(performance.now() - t0)).padStart(4, ' ');
+      log.innerHTML += (log.innerHTML === '—' || log.innerHTML === '' ? '' : '<br>') + t + ' мс · ' + line;
+    }
+    function countTo(el, to, ms, sign){
+      var s = performance.now();
+      (function step(){
+        var k = Math.min(1, (performance.now() - s) / ms);
+        el.textContent = sign + Math.round(to * (1 - Math.pow(1 - k, 3)));
+        if(k < 1) requestAnimationFrame(step);
+      })();
+      /* кадры не идут в фоновой вкладке — итог доводится таймером, а не анимацией */
+      at(ms + 40, function(){ el.textContent = sign + to; });
+    }
+
+    function play(){
+      stop(); rows.innerHTML = ''; log.innerHTML = ''; t0 = performance.now();
+      q.style.transition = 'none'; q.style.opacity = 0; q.style.transform = 'translateY(6px)';
+      next.style.transition = 'none'; next.style.opacity = 0;
+      ttl.textContent = failed ? 'Не дошёл' : 'Вернулся';
+      sub.textContent = failed ? 'ярус 1 · под угрозой было 30%' : 'ярус 1 · 2 мин 40 с';
+      qn.textContent = failed ? 'выполнено · награда на складе, несмотря на провал'
+                              : 'выполнено · награда на складе';
+      say(failed ? 'провал: доля добычи потеряна (§1)' : 'эвакуация удалась');
+
+      LOOT.forEach(function(L, i){
+        var kept = failed ? Math.round(L.v * 0.7) : L.v;
+        var r = document.createElement('div');
+        r.className = 'r' + (failed ? ' lost' : '');
+        r.innerHTML = '<u>' + L.i + '</u><em>' + L.n + '</em><b>+0</b>';
+        rows.appendChild(r);
+        at(300 + i * 260, function(){
+          r.style.transition = 'opacity .18s linear, transform .18s ease-out';
+          r.style.opacity = 1; r.style.transform = 'translateY(0)';
+          countTo(r.querySelector('b'), kept, 600, '+');
+          if(i === LOOT.length - 1) say('последняя строка добычи · счётчик 600 мс');
+        });
+      });
+
+      var after = 300 + (LOOT.length - 1) * 260 + 600;
+      at(after + 350, function(){
+        q.style.transition = 'opacity .18s linear, transform .18s ease-out';
+        q.style.opacity = 1; q.style.transform = 'translateY(0)';
+        say('пауза 350 мс · строка задания, награда начислена');
+      });
+      at(after + 850, function(){
+        next.style.transition = 'opacity .18s linear';
+        next.style.opacity = 1;
+        say('+500 мс · следующая цель, без открытия доски');
+      });
+    }
+
+    var b1 = document.createElement('button'); b1.type = 'button'; b1.textContent = 'Проиграть';
+    b1.addEventListener('click', play);
+    var b2 = document.createElement('button'); b2.type = 'button'; b2.textContent = 'Провал';
+    b2.setAttribute('aria-pressed', 'false');
+    b2.addEventListener('click', function(){
+      failed = !failed; b2.setAttribute('aria-pressed', failed ? 'true' : 'false'); play();
+    });
+    bar.appendChild(b1); bar.appendChild(b2);
+    play();
+  })();
+  /* ================= 08 · движение и свет ================= */
+  var REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- 08.1 · записка сгорает ---- */
+  (function(){
+    var cv = $('burnCv'); if(!cv) return;
+    var c = cv.getContext('2d'), W = cv.width, H = cv.height, bar = $('burnBar'), log = $('burnLog');
+    var ash = true, slow = false, raf = 0, fall = 0;
+
+    /* бумага рисуется один раз: дальше кадры строятся из неё, а не поверх */
+    function paper(){
+      c.clearRect(0,0,W,H);
+      R(c,8,8,W-16,H-16,'#cfc7b4');
+      R(c,8,8,W-16,4,'#e0dac8');
+      R(c,8,H-14,W-16,6,'#b0a894');
+      R(c,28,38,300,13,'#4a4438');                      /* строка цели */
+      R(c,28,66,180,8,'#8b8474');                       /* подпись прогресса */
+      R(c,28,92,300,10,'#b0a894'); R(c,28,92,150,10,'#7d8f6a');
+      c.save(); c.translate(474,48); c.rotate(Math.PI/4);
+      R(c,-11,-11,22,22,'#8a6a12'); c.restore();        /* слот награды */
+      return c.getImageData(0,0,W,H);
+    }
+    var base = paper(), out = c.createImageData(W,H);
+
+    /* шум с наклоном: порог идёт от нижнего левого угла, как от поднесённого уголька */
+    var field = new Float32Array(W*H), CELL = 22;
+    (function(){
+      for(var y=0;y<H;y++) for(var x=0;x<W;x++){
+        var gx = x/CELL, gy = y/CELL, ix = Math.floor(gx), iy = Math.floor(gy);
+        var fx = gx-ix, fy = gy-iy;
+        fx = fx*fx*(3-2*fx); fy = fy*fy*(3-2*fy);
+        var a = hash(ix,iy,5), b = hash(ix+1,iy,5), d = hash(ix,iy+1,5), e = hash(ix+1,iy+1,5);
+        var n = (a+(b-a)*fx) + ((d+(e-d)*fx) - (a+(b-a)*fx))*fy;
+        var g = (x/W)*0.55 + (1-y/H)*0.45;              /* уклон: левый низ раньше */
+        field[y*W+x] = n*0.6 + g*0.4;
+      }
+    })();
+
+    var LAT_C=[223,165,60], ZHAR_C=[142,74,23], UGOL_C=[77,42,16], ASH_C=[42,36,29];
+    function frame(p){
+      var T = p*1.2 - 0.1, o = out.data, b = base.data;
+      for(var i=0, n=W*H; i<n; i++){
+        var v = field[i], j = i*4;
+        if(v < T-0.05){                                  /* прогорело */
+          if(ash && hash(i%W, (i/W)|0, 17) < 0.09){
+            o[j]=ASH_C[0]; o[j+1]=ASH_C[1]; o[j+2]=ASH_C[2]; o[j+3]=150;
+          } else { o[j+3]=0; }
+        } else if(v < T){                                /* тлеющая кромка */
+          var k = (T-v)/0.05;
+          o[j]   = LAT_C[0] + (ZHAR_C[0]-LAT_C[0])*k;
+          o[j+1] = LAT_C[1] + (ZHAR_C[1]-LAT_C[1])*k;
+          o[j+2] = LAT_C[2] + (ZHAR_C[2]-LAT_C[2])*k;
+          o[j+3] = 255;
+        } else if(v < T+0.03){                           /* подпалина перед кромкой */
+          o[j]=UGOL_C[0]; o[j+1]=UGOL_C[1]; o[j+2]=UGOL_C[2]; o[j+3]=b[j+3];
+        } else {
+          o[j]=b[j]; o[j+1]=b[j+1]; o[j+2]=b[j+2]; o[j+3]=b[j+3];
+        }
+      }
+      c.putImageData(out,0,0);
+    }
+
+    function play(){
+      cancelAnimationFrame(raf); clearTimeout(fall);
+      var ms = slow ? 1600 : 400;
+      if(REDUCED){
+        frame(1);
+        log.textContent = 'мгновенно · включено системное «меньше движения», информация та же';
+        return;
+      }
+      log.textContent = 'горит ' + ms + ' мс' + (ash ? ' · пепел остаётся' : ' · без пепла');
+      var t0 = performance.now();
+      (function step(){
+        var p = Math.min(1, (performance.now()-t0)/ms);
+        frame(p);
+        if(p < 1) raf = requestAnimationFrame(step);
+        else log.textContent += ' · готово';
+      })();
+      /* кадры не идут в свёрнутой вкладке: итог доводится таймером, как счётчик в §06 */
+      fall = setTimeout(function(){ frame(1); }, ms + 60);
+    }
+
+    function mk(txt, fn, pressed){
+      var b = document.createElement('button'); b.type='button'; b.textContent=txt;
+      if(pressed !== undefined) b.setAttribute('aria-pressed', pressed ? 'true':'false');
+      b.addEventListener('click', function(){ fn(b); }); bar.appendChild(b); return b;
+    }
+    mk('Проиграть', play);
+    mk('Медленно ×4', function(b){ slow=!slow; b.setAttribute('aria-pressed', slow?'true':'false'); play(); }, false);
+    mk('Пепел', function(b){ ash=!ash; b.setAttribute('aria-pressed', ash?'true':'false'); play(); }, true);
+    frame(0);
+  })();
+
+  /* ---- 08.2 · уголёк дышит в такт костру ---- */
+  (function(){
+    var cv = $('emberCv'); if(!cv) return;
+    var c = cv.getContext('2d'), W = cv.width, H = cv.height, bar = $('emberBar');
+    var fresh = true, live = true, raf = 0;
+
+    function draw(t){
+      /* дыхание пламени — дословно fBreath из fire.ts, две несоразмерные волны */
+      var breath = 1 + Math.sin(t*6.1)*0.11 + Math.sin(t*11.3)*0.05;
+      var bright = 1 + Math.sin(t*9.3)*0.09;
+      R(c,0,0,W,H,MRAK);
+      for(var i=0;i<22;i++) plate(c, hash(i,3,7)*W, 120+hash(i,9,11)*200, 24+hash(i,4,5)*40,
+        hash(i,1,2)>.5 ? HVO : ZEMT);
+      plate(c,300,300,460,ZEM); plate(c,300,300,320,ZEMT);
+
+      var g = c.createRadialGradient(430,262,6,430,262,180*breath);   /* свет костра */
+      g.addColorStop(0,'rgba(223,165,60,'+(0.5*bright).toFixed(3)+')');
+      g.addColorStop(1,'rgba(223,165,60,0)');
+      c.fillStyle=g; c.fillRect(230,90,400,290);
+
+      R(c,236,168,7,116,DERT); R(c,352,168,7,116,DERT);              /* доска */
+      R(c,230,120,136,54,DER); R(c,230,120,136,7,DERS);
+      R(c,246,134,30,28,'#cfc7b4'); R(c,284,134,30,28,'#c4bca9'); R(c,322,136,26,24,'#bdb5a2');
+
+      var hgt = 46*breath, wid = 26*(1-(breath-1)*0.5);              /* пламя */
+      R(c,412,278,36,8,ZHAR);
+      c.fillStyle=PLAM; c.beginPath(); c.moveTo(430,278-hgt); c.lineTo(430+wid/2,280); c.lineTo(430-wid/2,280); c.closePath(); c.fill();
+      c.fillStyle=LAT; c.beginPath(); c.moveTo(430,278-hgt*0.66); c.lineTo(430+wid/4,280); c.lineTo(430-wid/4,280); c.closePath(); c.fill();
+      R(c,427,262,6,10,SVET);
+
+      if(fresh){                                                     /* уголёк на доске */
+        var k = Math.max(0, Math.min(1, 0.5 + (breath-1)/0.16*0.5));
+        var eg = c.createRadialGradient(364,116,1,364,116,16+6*k);
+        eg.addColorStop(0,'rgba(223,165,60,'+(0.55+0.35*k).toFixed(3)+')');
+        eg.addColorStop(1,'rgba(223,165,60,0)');
+        c.fillStyle=eg; c.fillRect(338,90,52,52);
+        R(c,361,113,7,7, k>0.5 ? LAT : PLAM);
+      }
+    }
+
+    function loop(){
+      if(!live){ raf = 0; return; }
+      draw(performance.now()/1000);
+      raf = requestAnimationFrame(loop);
+    }
+    /* кадры идут только когда демо на экране: страница длинная, костёр один */
+    if(window.IntersectionObserver){
+      new IntersectionObserver(function(es){
+        live = es[0].isIntersecting && !REDUCED;
+        if(live && !raf) loop(); else if(!live) draw(0);
+      },{threshold:0.15}).observe(cv);
+    } else loop();
+    draw(0);
+
+    var b1 = document.createElement('button'); b1.type='button'; b1.textContent='Есть новое';
+    b1.setAttribute('aria-pressed','true');
+    b1.addEventListener('click', function(){
+      fresh = !fresh; b1.setAttribute('aria-pressed', fresh?'true':'false'); draw(performance.now()/1000);
+    });
+    bar.appendChild(b1);
+    if(REDUCED){
+      var n = document.createElement('span'); n.className='note';
+      n.textContent = 'системное «меньше движения» — кадр стоит';
+      bar.appendChild(n);
+    }
+  })();
+
+  /* ---- 08.3 · карточка против строки ---- */
+  (function(){
+    var A = $('tickA'), B = $('lineB'), bar = $('abBar'); if(!A || !B) return;
+    var timers = [];
+    function play(){
+      timers.forEach(clearTimeout); timers = [];
+      A.style.transition='none'; A.style.opacity=0; A.style.transform='translateY(8px)';
+      B.classList.remove('on'); B.textContent='ярус 1 · глубина 4';
+      var enter = REDUCED ? 0 : 120, hold = 1600, leave = REDUCED ? 0 : 200;
+      timers.push(setTimeout(function(){
+        A.style.transition = 'opacity '+enter+'ms linear, transform '+enter+'ms ease-out';
+        A.style.opacity = 1; A.style.transform = 'translateY(0)';
+        B.classList.add('on'); B.textContent = '◈ ярус 1 — пройден';
+      }, 0));
+      timers.push(setTimeout(function(){
+        A.style.transition = 'opacity '+leave+'ms linear'; A.style.opacity = 0;
+        B.classList.remove('on'); B.textContent = 'ярус 1 · глубина 4';
+      }, enter + hold));
+    }
+    var b = document.createElement('button'); b.type='button'; b.textContent='Проиграть обе';
+    b.addEventListener('click', play); bar.appendChild(b);
+  })();
+
+})();
+</script>
+
+<script type="module">
+/* ============================================================================
+   09 · Доска: блокинг
+
+   Модель собрана примитивами игры, а не срисована с них: `box`, `rod`, `wedge`,
+   `cyl` и палитра `C` берутся из `src/render/blocking.ts`, костёр — класс `Fire`
+   из `src/render/fire.ts`. Поэтому страница не может разойтись с игрой молча:
+   разойдётся — сломается здесь.
+============================================================================ */
+import * as THREE from 'three';
+import { box, cyl, wedge, rod, put, merge, triangles, blockingMaterial, C }
+  from '/src/render/blocking.ts';
+import { Fire } from '/src/render/fire.ts';
+import { PALETTE } from '/src/render/palette.ts';
+
+const cv = document.getElementById('boardGl');
+if(cv){
+  const ELEV = (30 * Math.PI) / 180, DIST = 12, SCALE = 0.55;
+  const stat = document.getElementById('glStat'), bar = document.getElementById('glBar');
+
+  /* ---- модель: переносится в `models.ts` построчно, без правок ---- */
+  const frameParts = () => [
+    cyl(0, -0.05, 0, 2.6, 0.06, 20, C.zem),                       // площадка
+    cyl(0, 0.01, 0, 1.5, 0.02, 16, C.zemT),                       // притоптано
+    rod([-0.95, 0, 0], [-0.95, 1.5, 0], 0.075, 6, C.derT),        // столбы
+    rod([0.95, 0, 0], [0.95, 1.5, 0], 0.075, 6, C.derT),
+    box(0, 0.62, 0, 2.1, 0.78, 0.09, C.der),                      // полотно
+    box(0, 0.58, 0, 2.05, 0.06, 0.11, C.derS),                    // поперечина
+    box(0, 1.36, 0, 2.16, 0.07, 0.12, C.derS),                    // верхняя планка
+    wedge(0, 1.43, 0.02, 2.3, 0.16, 0.42, C.solom),               // козырёк
+    box(-0.62, 0.06, 0.02, 0.34, 0.06, 0.3, C.derT),              // приступок
+  ];
+  const NOTES = [
+    { x: -0.6, y: 0.86, rot: 0.05, w: 0.5, h: 0.42, col: C.solS },
+    { x: 0.0, y: 0.82, rot: -0.03, w: 0.48, h: 0.46, col: C.sol },
+    { x: 0.6, y: 0.88, rot: 0.07, w: 0.46, h: 0.4, col: C.solS },
+  ];
+  const noteParts = (n) => [
+    put(box(0, 0, 0, n.w, n.h, 0.015, n.col), 0, n.x, n.y, 0.05),
+    put(cyl(0, 0, 0, 0.018, 0.03, 5, C.stal), 0, n.x, n.y + n.h - 0.05, 0.06),
+  ];
+
+  /* ---- сцена ---- */
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.25;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 60);
+  const hemi = new THREE.HemisphereLight(0xbcd2e8, 0x2b2519, 1);
+  const sun = new THREE.DirectionalLight(PALETTE.sun, 2);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left:-4, right:4, top:4, bottom:-4, near:1, far:30 });
+  sun.shadow.bias = -0.0011; sun.shadow.normalBias = 0.035;
+  sun.position.set(3.4, 6, 3.2);
+  scene.add(hemi, sun, sun.target);
+
+  const material = blockingMaterial();
+  const frameGeo = merge(frameParts());
+  const frame = new THREE.Mesh(frameGeo, material);
+  frame.castShadow = true; frame.receiveShadow = true;
+  scene.add(frame);
+
+  /* Записки — свои меши: их снимают и жгут, склеить их с полотном нельзя. */
+  const notes = NOTES.map((n) => {
+    const mesh = new THREE.Mesh(merge(noteParts(n)), material.clone());
+    mesh.castShadow = true;
+    scene.add(mesh);
+    return { mesh, base: n, alive: true, char: null };
+  });
+
+  const fire = new Fire();
+  fire.set('kitchen', 1, 1.55, 1.15, SCALE);
+  scene.add(fire.group);
+
+  /* Уголёк: свет и метка ходят вместе — то же правило, что у костра (§6). */
+  const emberLight = new THREE.PointLight(PALETTE.torch, 0, 2.4, 1.3);
+  emberLight.position.set(1.06, 1.42, 0.14);
+  const ember = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 8, 6),
+    new THREE.MeshBasicMaterial({ color: C.lat }),
+  );
+  ember.position.copy(emberLight.position);
+  scene.add(emberLight, ember);
+
+  const tris = triangles(frameGeo) + notes.reduce((s, n) => s + triangles(n.mesh.geometry), 0);
+  const colors = new Set(frameParts().map((p) => p.color).concat(NOTES.map((n) => n.col)));
+  stat.innerHTML = tris + ' треугольников · ' + (frameParts().length + notes.length * 2) +
+    ' примитивов · ' + colors.size + ' цвета палитры<br>бюджет здания §6.1 — 1500';
+
+  /* ---- состояние и управление ---- */
+  let azimuth = Math.PI / 4, azimuthGoal = azimuth, night = true, fresh = true, live = true, raf = 0;
+  const CHAR = new THREE.Color(C.ugol), PAPER = new THREE.Color(C.solS), FLAME = new THREE.Color(C.lat);
+  let burning = null;
+
+  function burn(){
+    const n = notes.find((x) => x.alive);
+    if(!n) return;
+    n.alive = false;
+    burning = { n, t0: performance.now() };
+  }
+  function restore(){
+    notes.forEach((n) => {
+      n.alive = true; n.mesh.visible = true;
+      n.mesh.scale.set(1, 1, 1); n.mesh.position.y = 0;
+      n.mesh.material.color.set(n.base.col);
+    });
+    burning = null;
+  }
+
+  function resize(){
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if(!w || !h) return;
+    renderer.setSize(w, h, false);
+    const fh = 3.4, fw = fh * (w / h);
+    camera.left = -fw/2; camera.right = fw/2; camera.top = fh/2; camera.bottom = -fh/2;
+    camera.updateProjectionMatrix();
+  }
+
+  function draw(now){
+    const day = night ? 0 : 1;
+    azimuth += (azimuthGoal - azimuth) * 0.12;
+    const ce = Math.cos(ELEV);
+    camera.position.set(Math.cos(azimuth) * ce * DIST, Math.sin(ELEV) * DIST, Math.sin(azimuth) * ce * DIST);
+    camera.lookAt(0, 0.7, 0);
+
+    sun.intensity = 0.25 + day * 1.75;
+    hemi.intensity = 0.35 + day * 0.65;
+    renderer.setClearColor(night ? PALETTE.night : PALETTE.day, 1);
+    fire.update(now, day);
+
+    /* дыхание уголька — fBreath из fire.ts, амплитуда вдвое меньше */
+    const t = now / 1000;
+    const breath = 1 + Math.sin(t*6.1)*0.055 + Math.sin(t*11.3)*0.025;
+    const k = Math.max(0, Math.min(1, 0.5 + (breath - 1) / 0.08 * 0.5));
+    const on = fresh && night;
+    emberLight.intensity = on ? (0.7 + 0.5*k) : 0;
+    ember.visible = on;
+    ember.scale.setScalar(on ? 0.8 + 0.4*k : 0.001);
+    ember.material.color.copy(FLAME).lerp(new THREE.Color(C.plam), 1 - k);
+
+    if(burning){
+      const p = Math.min(1, (performance.now() - burning.t0) / 400);
+      const m = burning.n.mesh;
+      m.scale.y = 1 - p;
+      m.position.y = -burning.n.base.h * p * 0.5;
+      m.material.color.copy(PAPER).lerp(FLAME, Math.sin(p * Math.PI)).lerp(CHAR, p * p);
+      if(p >= 1){ m.visible = false; burning = null; }
+    }
+    renderer.render(scene, camera);
+  }
+
+  function loop(){
+    if(!live){ raf = 0; return; }
+    resize(); draw(performance.now());
+    raf = requestAnimationFrame(loop);
+  }
+  const mk = (txt, fn, pressed) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = txt;
+    if(pressed !== undefined) b.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    b.addEventListener('click', () => fn(b)); bar.appendChild(b); return b;
+  };
+  mk('Повернуть', () => { azimuthGoal += Math.PI / 2; });
+  mk('Ночь', (b) => { night = !night; b.setAttribute('aria-pressed', night ? 'true':'false'); }, true);
+  mk('Есть новое', (b) => { fresh = !fresh; b.setAttribute('aria-pressed', fresh ? 'true':'false'); }, true);
+  mk('Сжечь записку', burn);
+  mk('Прибить заново', restore);
+
+  /* Кадры идут только когда доска на экране: страница длинная, костёр один. */
+  if(window.IntersectionObserver){
+    new IntersectionObserver((es) => {
+      live = es[0].isIntersecting;
+      if(live && !raf) loop();
+    }, { threshold: 0.1 }).observe(cv);
+  } else loop();
+  resize(); draw(0);
+}
+</script>
