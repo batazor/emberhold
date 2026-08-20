@@ -25,9 +25,15 @@ import {
   STRAIGHT,
   WALK,
   WALL_TOP,
+  CAP,
+  TOWER,
+  TOWER_MAX,
+  buildTower,
   buildWall,
+  keyOf,
   generateCastle,
   jointOf,
+  towerHeight,
   turnDir,
   type Castle,
   type Joint,
@@ -177,6 +183,108 @@ describe('Конструктор: любые клетки — те же прав
         WALL_TOP,
         `«${part.model}» другой высоты — стена вышла бы ступенькой`,
       );
+    }
+  });
+});
+
+describe('Башня: апгрейд идёт только вверх', () => {
+  const LEVELS = [1, 2, 3];
+
+  test('уровень — это число этажей, и каждый добавляет ровно один', () => {
+    for (const level of LEVELS) {
+      const tower = buildTower({ x: 4, z: 4 }, level);
+      const floors = tower.filter((p) => p.model === TOWER.base || TOWER.body.includes(p.model as never));
+      assert.equal(floors.length, level, `уровень ${level}: этажей ${floors.length}`);
+      const cap = tower[tower.length - 1]!;
+      assert.ok(
+        cap.model === TOWER.cap || TOWER.roofs.includes(cap.model as never),
+        `уровень ${level}: башня без завершения`,
+      );
+      // Этажи стоят друг на друге по измеренной высоте, а не через один.
+      for (let i = 0; i < tower.length; i++) {
+        assert.equal(
+          Math.round(tower[i]!.y * 100) / 100,
+          Math.round(FLOOR * i * 100) / 100,
+          `уровень ${level}: ярус ${i} висит на ${tower[i]!.y}`,
+        );
+      }
+    }
+  });
+
+  test('след на земле не растёт: надстройка не задевает соседей', () => {
+    const spot = { x: 4, z: 4 };
+    const feet = LEVELS.map((level) =>
+      new Set(buildTower(spot, level).map((p) => `${p.x}:${p.z}`)));
+    for (const set of feet) {
+      assert.equal(set.size, 1, 'башня заняла больше одной клетки');
+      assert.ok(set.has('4:4'), 'башня уехала с своей клетки');
+    }
+  });
+
+  test('первый уровень вровень со стеной — это совпадение замеров, а не подгонка', () => {
+    assert.equal(measured.get(TOWER.base)!.size[1], FLOOR, 'этаж');
+    assert.equal(measured.get(TOWER.cap)!.size[1], CAP, 'зубцы');
+    assert.equal(Math.round(towerHeight(1) * 100) / 100, WALL_TOP, 'этаж + зубцы = высота стены');
+  });
+
+  test('каждый уровень выше предыдущего ровно на этаж', () => {
+    for (let level = 2; level <= TOWER_MAX; level++) {
+      const step = Math.round((towerHeight(level) - towerHeight(level - 1)) * 100) / 100;
+      assert.equal(step, FLOOR, `с ${level - 1} на ${level} прибавилось ${step}`);
+    }
+  });
+
+  test('выше потолка башня не растёт, ниже первого не падает', () => {
+    assert.equal(buildTower({ x: 0, z: 0 }, TOWER_MAX + 4).length, TOWER_MAX + 1);
+    assert.equal(buildTower({ x: 0, z: 0 }, 0).length, 2, 'нулевой уровень — это первый');
+    assert.equal(buildTower({ x: 0, z: 0 }, -3).length, 2);
+  });
+
+  test('башню ставят где просят, и апгрейд не трогает стену вокруг', () => {
+    const line = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: 2, z: 0 },
+      { x: 3, z: 0 },
+      { x: 4, z: 0 },
+    ];
+    const wallOnly = buildWall(line).pieces.filter((p) => p.x !== 2);
+    for (const level of [1, 2, 3]) {
+      const towers = new Map([[keyOf({ x: 2, z: 0 }), level]]);
+      const built = buildWall(line, undefined, towers);
+      const here = built.pieces.filter((p) => p.x === 2 && p.z === 0);
+      assert.equal(here.length, level + 1, `уровень ${level}: деталей ${here.length}`);
+      assert.ok(here.every((p) => p.role === 'башня'), `уровень ${level}: на клетке не башня`);
+      // Соседние клетки не шелохнулись: апгрейд идёт вверх и только вверх.
+      assert.deepEqual(
+        built.pieces.filter((p) => p.x !== 2),
+        wallOnly,
+        `уровень ${level}: стена вокруг башни пересобралась`,
+      );
+      assert.equal(built.joints.find((j) => j.spot.x === 2)!.tower, level);
+    }
+  });
+
+  test('на перекрёстке стоит башня первого уровня', () => {
+    const cross = [
+      { x: 1, z: 0 },
+      { x: 0, z: 1 },
+      { x: 1, z: 1 },
+      { x: 2, z: 1 },
+      { x: 1, z: 2 },
+    ];
+    const middle = buildWall(cross).pieces.filter((p) => p.x === 1 && p.z === 1);
+    assert.deepEqual(middle.map((p) => p.model), [TOWER.base, TOWER.cap]);
+    assert.equal(Math.round((middle[1]!.y + CAP) * 100) / 100, WALL_TOP, 'башня не вровень со стеной');
+  });
+
+  test('донжон выше стены: в один ярус он перестал бы быть донжоном', () => {
+    for (const c of castles) {
+      const tower = c.pieces.filter((p) => p.role === 'башня');
+      if (tower.length === 0) continue;
+      const top = Math.max(...tower.map((p) => p.y));
+      assert.ok(top >= FLOOR, `сид ${c.seed}: донжон в один ярус`);
+      assert.ok(top <= FLOOR * TOWER_MAX + 0.001, `сид ${c.seed}: донжон выше потолка`);
     }
   });
 });

@@ -117,13 +117,75 @@ export const CORNER = PARTS['угол'];
 /** Лестница со двора на стену: ход у неё выходит одним ребром, −z. */
 export const STAIRS = part('wall-narrow-stairs', 2);
 
-/** Башня на перекрёстке и во дворе: этаж, ярусы и шапка. */
+/**
+ * Башня: нижний этаж, ярусы над ним и завершение. Ярусов два вида — глухой
+ * и с окнами; выбор между ними ничего не значит и делается сидом, чтобы
+ * две башни рядом не были близнецами.
+ */
 export const TOWER = {
   base: 'tower-square-base',
   body: ['tower-square-mid', 'tower-square-mid-windows'],
   cap: 'tower-square-top',
   roofs: ['tower-square-top-roof', 'tower-square-top-roof-high', 'tower-square-top-roof-rounded'],
 } as const;
+
+/** Высота зубцов над последним этажом. Измерена, как и всё остальное. */
+export const CAP = 0.3;
+
+/**
+ * Потолок роста башни — три яруса, и это не круглое число.
+ *
+ * Апгрейд башни здесь **только вверх**: след на земле не меняется никогда,
+ * поэтому надстройка не может ни задеть соседнюю стену, ни перегородить двор.
+ * Всё, что растёт, — высота, и она же единственное, чем уровень читается:
+ * ярус — это 1,01 в единицах набора, то есть 2,02 в клетках локации,
+ * полтора роста героя. Подписи уровню не нужно.
+ *
+ * Ограничивает рост камера. Она смотрит с 30°, и башня высотой H прячет
+ * за собой H · ctg 30° ≈ 1,73H клеток земли. На третьем ярусе башня
+ * закрывает двор самого большого замка целиком; четвёртый закрывал бы двор
+ * **любого**. Считает это правило в `models.rules.ts`, а не глаз.
+ */
+export const TOWER_MAX = 3;
+
+/** Высота башни в ярусах — в единицах набора. */
+export const towerHeight = (level: number): number => FLOOR * level + CAP;
+
+/**
+ * Башня в `level` ярусов. Ярусы складываются по измеренной высоте этажа,
+ * завершение встаёт поверх последнего. Крыша — для донжона: он не боевая
+ * площадка, и зубцы ему ни к чему.
+ */
+export function buildTower(
+  spot: Spot,
+  level: number,
+  rng: Rng = mulberry32(1),
+  roof = false,
+): Piece[] {
+  const floors = Math.max(1, Math.min(TOWER_MAX, Math.round(level)));
+  const out: Piece[] = [
+    { model: TOWER.base, x: spot.x, z: spot.z, y: 0, turn: 0, role: 'башня' },
+  ];
+  for (let i = 1; i < floors; i++) {
+    out.push({
+      model: TOWER.body[randInt(rng, TOWER.body.length)]!,
+      x: spot.x,
+      z: spot.z,
+      y: FLOOR * i,
+      turn: randInt(rng, 4),
+      role: 'башня',
+    });
+  }
+  out.push({
+    model: roof ? TOWER.roofs[randInt(rng, TOWER.roofs.length)]! : TOWER.cap,
+    x: spot.x,
+    z: spot.z,
+    y: FLOOR * floors,
+    turn: 0,
+    role: 'башня',
+  });
+  return out;
+}
 
 /** Форма стыка по направлениям на соседей. */
 export function jointOf(dirs: readonly number[]): Joint {
@@ -415,8 +477,17 @@ function shuffled<T>(rng: Rng, list: readonly T[]): T[] {
 export interface Built {
   readonly pieces: readonly Piece[];
   /** Клетка, форма стыка и деталь, которая на неё встала. */
-  readonly joints: readonly { readonly spot: Spot; readonly joint: Joint; readonly model: string }[];
+  readonly joints: readonly {
+    readonly spot: Spot;
+    readonly joint: Joint;
+    readonly model: string;
+    /** Ярусов, если на клетке башня. */
+    readonly tower?: number;
+  }[];
 }
+
+/** Ключ клетки в наборе башен: башни задаются местом, а не порядком. */
+export const keyOf = (spot: Spot): string => `${spot.x}:${spot.z}`;
 
 /**
  * **Конструктор стен.** Вход — любые клетки, хоть кольцо генератора, хоть
@@ -432,10 +503,15 @@ export interface Built {
  * которой ход шёл бы на все четыре стороны, в нём нет. Там встаёт башня,
  * и это не заглушка, а то, что на перекрёстке стен и стоит.
  */
-export function buildWall(cells: readonly Spot[], rng: Rng = mulberry32(1)): Built {
-  const set = new Set(cells.map((s) => `${s.x}:${s.z}`));
+export function buildWall(
+  cells: readonly Spot[],
+  rng: Rng = mulberry32(1),
+  /** Клетки с башнями: ключ `keyOf`, значение — ярусы. */
+  towers: ReadonlyMap<string, number> = new Map(),
+): Built {
+  const set = new Set(cells.map(keyOf));
   const pieces: Piece[] = [];
-  const joints: { spot: Spot; joint: Joint; model: string }[] = [];
+  const joints: { spot: Spot; joint: Joint; model: string; tower?: number }[] = [];
 
   for (const spot of cells) {
     const dirs = DIRS.map((d, i) => (set.has(`${spot.x + d[0]}:${spot.z + d[1]}`) ? i : -1))
@@ -443,11 +519,14 @@ export function buildWall(cells: readonly Spot[], rng: Rng = mulberry32(1)): Bui
     const joint = jointOf(dirs);
     const bag = PARTS[joint];
 
-    if (bag.length === 0) {
-      // Перекрёсток: башня в один этаж и шапка — вровень со стеной.
-      pieces.push({ model: TOWER.base, x: spot.x, z: spot.z, y: 0, turn: 0, role: 'башня' });
-      pieces.push({ model: TOWER.cap, x: spot.x, z: spot.z, y: FLOOR, turn: 0, role: 'башня' });
-      joints.push({ spot, joint, model: TOWER.base });
+    // Башня ставится там, где её поставили, — и на перекрёстке, где иначе
+    // ставить нечего. Ход по стене на ней кончается: у шапки зубцы по всем
+    // четырём рёбрам, и это измерено, а не решено.
+    const level = towers.get(keyOf(spot));
+    if (level !== undefined || bag.length === 0) {
+      const floors = level ?? 1;
+      pieces.push(...buildTower(spot, floors, rng));
+      joints.push({ spot, joint, model: TOWER.base, tower: Math.max(1, Math.min(TOWER_MAX, floors)) });
       continue;
     }
 
@@ -565,28 +644,10 @@ export function generateCastle(seed: number): Castle {
     .find((s) => !taken.some((t) => t.x === s.x && t.z === s.z)
       && yardPassable(width, yard, [...taken, s])) ?? null;
   if (keep !== null) {
-    const floors = 2 + randInt(rng, 2);
-    const body = TOWER.body;
-    pieces.push({ model: 'tower-square-base', x: keep.x, z: keep.z, y: 0, turn: 0, role: 'башня' });
-    for (let i = 1; i < floors; i++) {
-      pieces.push({
-        model: body[randInt(rng, body.length)]!,
-        x: keep.x,
-        z: keep.z,
-        y: FLOOR * i,
-        turn: randInt(rng, 4),
-        role: 'башня',
-      });
-    }
-    const roof = ['tower-square-top-roof', 'tower-square-top-roof-high', 'tower-square-top-roof-rounded'];
-    pieces.push({
-      model: roof[randInt(rng, roof.length)]!,
-      x: keep.x,
-      z: keep.z,
-      y: FLOOR * floors,
-      turn: 0,
-      role: 'башня',
-    });
+    // Донжон выше стены всегда: в один ярус он с ней сравнялся бы и перестал
+    // быть донжоном. Крыша вместо зубцов — он не боевая площадка.
+    const floors = 2 + randInt(rng, TOWER_MAX - 1);
+    pieces.push(...buildTower(keep, floors, rng, true));
     pieces.push({
       model: 'flag',
       x: keep.x,
