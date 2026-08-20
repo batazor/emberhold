@@ -4,7 +4,6 @@ import {
   gearAction,
   suggestGear,
   suggestUpgrade,
-  tierBlock,
   upgradeProgress,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
@@ -16,7 +15,7 @@ import type { ConsumableId } from '../sim/consumables';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
-import { RAID_NODES, nodeOf, worldAt } from '../sim/world';
+import { dayAt, regionAt, worldAt } from '../sim/world';
 
 /**
  * Экран возврата (мокап 04). Самый важный экран для удержания: здесь игрок
@@ -54,9 +53,9 @@ export interface ReturnCallbacks {
 function nextPlace(camp: CampState, node: number, now: number): number {
   const world = worldAt(now, camp.visits);
   if ((world[node]?.rich ?? 0) >= 2) return node;
-  const open = RAID_NODES.filter((n) => tierBlock(camp, n.tier) === 'ok');
-  if (open.length === 0) return node;
-  return [...open].sort((a, b) => (world[b.id]?.rich ?? 0) - (world[a.id]?.rich ?? 0))[0]!.id;
+  const nodes = regionAt(dayAt(now)).nodes;
+  if (nodes.length === 0) return node;
+  return [...nodes].sort((a, b) => (world[b.id]?.rich ?? 0) - (world[a.id]?.rich ?? 0))[0]!.id;
 }
 
 export class ReturnScreen {
@@ -87,6 +86,8 @@ export class ReturnScreen {
    * молча ведёт в выработанную жилу.
    */
   private raidNode = 0;
+  /** Когда показан экран: регион меняется днями, и имя места берётся из дня. */
+  private at = 0;
   /**
    * Кадр 8 раскадровки: в первый раз выбора нет. Кнопки «Ещё вылазка» здесь
    * не существует — иначе игрок не увидит лагерь, ради которого играл.
@@ -195,6 +196,7 @@ export class ReturnScreen {
     this.reported = false;
     this.shownAt = performance.now();
     this.skipped = false;
+    this.at = now;
     this.raidNode = nextPlace(camp, node, now);
     this.suggestion = suggestUpgrade(camp);
     // Три ветки одной главной кнопки, и они не бывают главными одновременно.
@@ -284,7 +286,8 @@ export class ReturnScreen {
    * вылазки места перестают быть одинаковыми, и кнопка обязана это признавать.
    */
   private raidLabel(): string {
-    return `Ещё вылазка · ${nodeOf(this.raidNode).name}`;
+    const node = regionAt(dayAt(this.at)).nodes[this.raidNode];
+    return node === undefined ? 'Ещё вылазка' : `Ещё вылазка · ${node.name}`;
   }
 
   /** Полоса прогресса к следующему улучшению — то, ради чего играли. */

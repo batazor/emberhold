@@ -1,19 +1,22 @@
 /**
- * Мир: карта локаций (§4, §5). Вход в вылазку идёт отсюда, а не из списка
- * ярусов: список кнопок сравнивать не с чем, а карта существует ровно затем,
- * чтобы у похода была причина выбирать место (`world.html`, часть I).
+ * Мир: карта локаций (§4). Вход в вылазку идёт отсюда, а не из списка ярусов:
+ * список кнопок сравнивать не с чем, а карта существует ровно затем, чтобы
+ * у похода была причина выбирать место (`world.html`, часть I).
  *
- * Модель — та, что уже отработана в артбуке `world.html` и записана в §4:
- * **кланы не тикают.** Состояние клана и богатство локации — чистые функции
- * от сида и часов; в сохранении живут только дельты игрока (куда ходил и
- * когда). Фонового процесса нет, истории нет, прыжок на пятый день стоит
- * столько же, сколько шаг на минуту вперёд.
+ * Модель — из артбука `world.html` и §4: **ничего не тикает.** Раскладка
+ * точек, кланы и богатство локации — чистые функции от сида и часов;
+ * в сохранении живут только дельты игрока (куда ходил и когда).
+ *
+ * **Регион пересобирается каждый день.** Точки, их число и ярусы выпадают
+ * заново: постоянного соотношения нет, и день на день не приходится. Отсюда
+ * же причина открыть карту утром — вчерашняя расстановка ничего не говорит
+ * о сегодняшней.
+ *
+ * Кухня на карту не влияет вовсе: она задаёт потолок провианта (§2), а куда
+ * идти — решает игрок по объявленной ставке. Ярус ничего не запирает.
  *
  * Сети в v0 нет, и это ничего здесь не меняет: та же функция считается на
  * клиенте, а когда появится сервер (§6), он повторит её и сверит результат.
- *
- * Числа истощения — предложение `world.html`, а не решение DESIGN.md.
- * Проверяются условием из `world.rules.ts`, а не рассуждением.
  */
 import { mulberry32 } from '../core/rng';
 import type { Tier } from './types';
@@ -22,17 +25,17 @@ import type { Tier } from './types';
 const SEED = 20260820;
 
 /**
- * Начало отсчёта мира — 20 августа 2026. Кланы растут от него, а не от
- * установки игры: мир был до запуска, и лагерь игрока не его центр.
+ * Начало отсчёта мира — 20 августа 2026. От него растут кланы: мир был
+ * до запуска, и лагерь игрока не его центр.
  */
 export const WORLD_EPOCH = 1787184000;
 
-export const WORLD_NODES = 20;
-/** Лагерь игрока — такой же узел карты, только в него не ходят. */
-export const CAMP_NODE = 7;
-
 /** Смена: клан переезжает раз в 40 минут (быстрее сессии, медленнее суток). */
 export const SHIFT_SEC = 40 * 60;
+export const DAY_SEC = 24 * 60 * 60;
+/** Ровно 36 смен в сутках — день начинается на границе смены, а не поперёк. */
+export const SHIFTS_PER_DAY = DAY_SEC / SHIFT_SEC;
+
 /** Окно богатства: 9 смен по 40 минут = 6 часов. */
 export const RICH_WINDOW = 9;
 /** Три захода — и локация выработана. */
@@ -45,8 +48,8 @@ export const RICH_REST = 1 / 3;
  * сделка** (`world.html`, часть III): запрет вынуждает ждать вне игры, плохая
  * сделка оставляет решение игроку.
  *
- * Крайние значения взяты из артбука (0 из 3 → ×0,4; 3 из 3 → ×1,0),
- * середина — ровная лестница между ними. Все четыре числа подлежат замеру.
+ * Крайние значения из артбука (0 из 3 → ×0,4; 3 из 3 → ×1,0), середина —
+ * ровная лестница между ними. Все четыре числа подлежат замеру.
  */
 export const RICH_LOOT: readonly number[] = [0.4, 0.6, 0.8, 1];
 
@@ -70,7 +73,7 @@ export const CLANS: readonly Clan[] = [
   { name: 'Клан Отвала', color: '#C9A227' },
 ];
 
-/** Имена узлов — рабочие подписи по местности, а не лор (§0.1). */
+/** Подписи по местности — рабочие, а не лор (§0.1). Раздаются на день. */
 const NAMES: readonly string[] = [
   'Низина',
   'Обвал у брода',
@@ -79,7 +82,6 @@ const NAMES: readonly string[] = [
   'Крайние ямы',
   'Гарь',
   'Осыпь',
-  'Лагерь',
   'Кривой отвал',
   'Провал',
   'Просевший тракт',
@@ -92,15 +94,20 @@ const NAMES: readonly string[] = [
   'Белая пустошь',
   'Глухая штольня',
   'Волчья яма',
+  'Старый спуск',
+  'Косой лог',
+  'Битый камень',
+  'Тихий брод',
+  'Овражья пасть',
 ];
 
-/**
- * Сколько узлов в каждом кольце. Ровные пятёрки отменил замер: Кухня ур. 1
- * открывает только нулевой ярус, и при пяти узлах любая сессия оставляла
- * меньше трёх богатых локаций — то есть карта первого дня учила ждать.
- * Семь — минимум, при котором условие держится (`world.rules.ts`).
- */
-const TIER_RING: readonly number[] = [7, 5, 4, 3];
+/** Сколько точек бывает на карте: день на день не приходится. */
+const NODES_MIN = 16;
+const NODES_MAX = 22;
+
+/** Сетка раздачи мест: 6×4 клетки, из них и выбираются точки дня. */
+const GRID_X = 6;
+const GRID_Y = 4;
 
 export interface WorldNode {
   readonly id: number;
@@ -109,6 +116,13 @@ export interface WorldNode {
   readonly x: number;
   readonly y: number;
   readonly tier: Tier;
+}
+
+export interface Region {
+  readonly day: number;
+  readonly nodes: readonly WorldNode[];
+  /** Лагерь стоит на своём месте и в раздаче не участвует. */
+  readonly camp: { readonly x: number; readonly y: number };
 }
 
 /** Сид + идентификаторы → 32 бита. Тот же FNV, что в артбуке. */
@@ -124,65 +138,62 @@ function hash(...parts: readonly number[]): number {
   return h >>> 0;
 }
 
-/**
- * Раскладка узлов и ярусы. Положение — из сида, а не из файла карты;
- * ярус — от удалённости от лагеря, потому что «дальше» обязано значить
- * «дороже» без единой подписи.
- */
-export const NODES: readonly WorldNode[] = (() => {
-  const rng = mulberry32(hash(SEED, 1));
-  const spots: { x: number; y: number }[] = [];
-  for (let i = 0; i < WORLD_NODES; i++) {
-    const col = i % 5;
-    const row = (i / 5) | 0;
-    spots.push({
-      x: 0.11 + col * 0.195 + (rng() - 0.5) * 0.07,
-      y: 0.15 + row * 0.235 + (rng() - 0.5) * 0.07,
-    });
-  }
-  const camp = spots[CAMP_NODE]!;
-  const dist = spots.map((s) => Math.hypot(s.x - camp.x, (s.y - camp.y) * 0.8));
-  // Ярус — по месту в порядке удалённости, а не по доле от самой дальней
-  // точки: доля зависит от того, как легли точки, и первый же прогон отдал
-  // регион вовсе без нулевого яруса — то есть без места для первой вылазки.
-  const order = dist.map((d, i) => ({ d, i })).sort((a, b) => a.d - b.d);
-  const tiers = new Array<Tier>(WORLD_NODES).fill(0);
-  let rank = 0;
-  for (const { i } of order) {
-    if (i === CAMP_NODE) continue;
-    let tier: Tier = 0;
-    let edge = 0;
-    for (let k = 0; k < TIER_RING.length; k++) {
-      edge += TIER_RING[k]!;
-      if (rank < edge) {
-        tier = k as Tier;
-        break;
-      }
-      tier = Math.min(3, k + 1) as Tier;
-    }
-    tiers[i] = tier;
-    rank++;
-  }
-  return spots.map((s, i) => ({
-    id: i,
-    name: NAMES[i] ?? `Локация ${i}`,
-    x: s.x,
-    y: s.y,
-    tier: tiers[i]!,
-  }));
-})();
+export const dayAt = (t: number): number => Math.floor(t / DAY_SEC);
+export const shiftAt = (t: number): number => Math.floor(t / SHIFT_SEC);
+/** Первая смена суток: с неё начинается и день, и отсчёт богатства. */
+export const dayStartShift = (day: number): number => day * SHIFTS_PER_DAY;
 
-/** Локации, в которые ходят: лагерь из списка выпадает. */
-export const RAID_NODES: readonly WorldNode[] = NODES.filter((n) => n.id !== CAMP_NODE);
+/** Лагерь: место постоянное, оно не переезжает вместе с картой. */
+const CAMP_SPOT = { x: 0.5, y: 0.9 };
+
+/** Регион последнего спрошенного дня. Раздача стоит одинаково, а карта
+ *  перерисовывается кадрами — считать её каждый кадр незачем. */
+let cached: Region | null = null;
 
 /**
- * Сид локации. Место имеет форму: один и тот же узел собирается одной и той
- * же пещерой, иначе карта сравнивает не места, а ярлыки, и «сходить сюда ещё
- * раз» перестаёт быть решением.
+ * Регион на день. Точки, их число и ярусы выпадают заново — постоянного
+ * соотношения ярусов нет намеренно: день, в котором рядом только третий
+ * ярус, обязан быть возможен, иначе карта снова станет расписанием.
  */
-export const nodeSeed = (node: number): number => hash(SEED, node, 3);
+export function regionAt(day: number): Region {
+  if (cached !== null && cached.day === day) return cached;
+  const rng = mulberry32(hash(SEED, day, 1));
+  const count = NODES_MIN + Math.floor(rng() * (NODES_MAX - NODES_MIN + 1));
 
-export const nodeOf = (id: number): WorldNode => NODES[id] ?? NODES[0]!;
+  // Клетки сетки перемешиваются и разбираются по одной: две точки не
+  // садятся в одно место, а раздача при этом остаётся случайной.
+  const cells: number[] = [];
+  for (let i = 0; i < GRID_X * GRID_Y; i++) cells.push(i);
+  for (let i = cells.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const swap = cells[i]!;
+    cells[i] = cells[j]!;
+    cells[j] = swap;
+  }
+
+  const names = [...NAMES];
+  const nodes: WorldNode[] = [];
+  for (let i = 0; i < Math.min(count, cells.length); i++) {
+    const cell = cells[i]!;
+    const col = cell % GRID_X;
+    const row = (cell / GRID_X) | 0;
+    const x = (col + 0.5) / GRID_X + (rng() - 0.5) / GRID_X / 2.2;
+    // Нижняя полоса оставлена лагерю: точка поверх лагеря сделала бы
+    // нечитаемыми обе.
+    const y = 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6;
+    const name = names.splice(Math.floor(rng() * names.length), 1)[0] ?? `Место ${i}`;
+    nodes.push({ id: i, name, x, y, tier: Math.floor(rng() * 4) as Tier });
+  }
+  cached = { day, nodes, camp: CAMP_SPOT };
+  return cached;
+}
+
+/**
+ * Сид локации. Место держит форму сутки: в течение дня одна и та же точка
+ * собирается одной и той же пещерой — иначе «сходить сюда ещё раз»
+ * перестаёт быть решением. Завтра этого региона уже нет, и сида тоже.
+ */
+export const nodeSeed = (day: number, node: number): number => hash(SEED, day, node, 3);
 
 /** Дельта игрока: единственное, что попадает в сохранение. */
 export interface Visit {
@@ -191,8 +202,6 @@ export interface Visit {
   readonly shift: number;
 }
 
-export const shiftAt = (t: number): number => Math.floor(t / SHIFT_SEC);
-
 export interface ClanState {
   readonly level: number;
   readonly nodes: readonly number[];
@@ -200,7 +209,7 @@ export interface ClanState {
 
 /**
  * Состояние клана в момент наблюдения. Ни таймера, ни записи: характер
- * клана — из сида, уровень — из прошедших часов, занятые узлы — из номера
+ * клана — из сида, уровень — из прошедших часов, занятая точка — из номера
  * смены.
  */
 export function clanState(id: number, t: number): ClanState {
@@ -208,20 +217,14 @@ export function clanState(id: number, t: number): ClanState {
   const pace = 0.7 + rng() * 0.6; // характер: медленный / жадный
   const age = Math.max(0, t - WORLD_EPOCH);
   const level = 1 + Math.floor(Math.log2(1 + (age / (90 * 60)) * pace));
+  const region = regionAt(dayAt(t));
+  if (region.nodes.length === 0) return { level, nodes: [] };
   // Артбук предлагал «одну-две локации», и замер это отменил: вторая
-  // локация у каждого клана — это 8 занятых узлов из 19 в каждой смене,
-  // то есть 42% региона. При такой занятости условие «три богатых локации
-  // всегда доступны» рушится от одной обычной сессии (`world.rules.ts`).
-  // Клан держит одну — вторая вернётся, когда регион вырастет.
-  const slots = 1;
+  // локация у каждого клана занимает почти половину региона, и условие
+  // «три богатых локации всегда доступны» рушится от одной сессии
+  // (`world.rules.ts`). Клан держит одну.
   const rr = mulberry32(hash(SEED, id, shiftAt(t)));
-  const nodes: number[] = [];
-  // Узлов больше, чем слотов у всех кланов вместе, — цикл конечен.
-  while (nodes.length < slots) {
-    const n = Math.floor(rr() * WORLD_NODES);
-    if (n !== CAMP_NODE && !nodes.includes(n)) nodes.push(n);
-  }
-  return { level, nodes };
+  return { level, nodes: [Math.floor(rr() * region.nodes.length)] };
 }
 
 export interface NodeState {
@@ -237,17 +240,22 @@ export interface NodeState {
  * Весь регион в момент t. Богатство тратит любое посещение — чужое или
  * своё, — и восстанавливается покоем: конкуренция без единого удара по
  * чужому лагерю.
+ *
+ * Окно упирается в начало суток: за границей дня стоял другой регион,
+ * и его заходы к сегодняшним точкам отношения не имеют.
  */
 export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
+  const day = dayAt(t);
+  const region = regionAt(day);
   const now = shiftAt(t);
-  const used: boolean[][] = [];
-  for (let i = 0; i < WORLD_NODES; i++) used.push(new Array<boolean>(RICH_WINDOW).fill(false));
+  const window = Math.max(1, Math.min(RICH_WINDOW, now - dayStartShift(day) + 1));
 
-  const clan = new Array<number | null>(WORLD_NODES).fill(null);
+  const used: boolean[][] = region.nodes.map(() => new Array<boolean>(window).fill(false));
+  const clan = new Array<number | null>(region.nodes.length).fill(null);
   for (let k = 0; k < CLANS.length; k++) {
-    for (let s = 0; s < RICH_WINDOW; s++) {
-      const at = (now - s) * SHIFT_SEC;
-      for (const node of clanState(k, at).nodes) {
+    for (let s = 0; s < window; s++) {
+      for (const node of clanState(k, (now - s) * SHIFT_SEC).nodes) {
+        if (used[node] === undefined) continue;
         used[node]![s] = true;
         if (s === 0 && clan[node] === null) clan[node] = k;
       }
@@ -255,14 +263,13 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
   }
   for (const visit of visits) {
     const s = now - visit.shift;
-    if (s >= 0 && s < RICH_WINDOW) used[visit.node]![s] = true;
+    if (s >= 0 && s < window && used[visit.node] !== undefined) used[visit.node]![s] = true;
   }
 
-  const out: NodeState[] = [];
-  for (let i = 0; i < WORLD_NODES; i++) {
+  return region.nodes.map((_, i) => {
     // От старой смены к новой: −1 за заход, +1/3 за смену покоя.
     let v = RICH_MAX;
-    for (let s = RICH_WINDOW - 1; s >= 0; s--) {
+    for (let s = window - 1; s >= 0; s--) {
       v += used[i]![s] ? -1 : RICH_REST;
       v = Math.max(0, Math.min(RICH_MAX, v));
     }
@@ -270,15 +277,14 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
     // Сколько смен покоя до следующего целого — цифра, которую игрок
     // читает как «через сколько сюда снова стоит идти».
     const restShifts = rich >= RICH_MAX ? 0 : Math.max(1, Math.ceil((rich + 1 - v) / RICH_REST));
-    out.push({ rich, clan: clan[i], restShifts });
-  }
-  return out;
+    return { rich, clan: clan[i]!, restShifts };
+  });
 }
 
 /**
- * Сохранённые дельты старше окна на богатство не влияют — они выбрасываются
- * при записи. Это единственная чистка: сохранение обязано оставаться
- * ограниченным по размеру, сколько бы игрок ни играл.
+ * Заходы прошлых суток не относятся ни к одной сегодняшней точке — регион
+ * пересобран. Чистка при записи держит сохранение ограниченным по размеру,
+ * сколько бы игрок ни играл.
  */
 export const liveVisits = (visits: readonly Visit[], t: number): Visit[] =>
-  visits.filter((v) => shiftAt(t) - v.shift < RICH_WINDOW);
+  visits.filter((v) => v.shift >= dayStartShift(dayAt(t)) && shiftAt(t) - v.shift < RICH_WINDOW);

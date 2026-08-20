@@ -7,36 +7,38 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { TIER_KITCHEN_GATE } from './camp';
 import {
-  CAMP_NODE,
   CLANS,
-  NODES,
-  RAID_NODES,
+  DAY_SEC,
   RICH_MAX,
   RICH_WINDOW,
+  SHIFTS_PER_DAY,
   SHIFT_SEC,
   WORLD_EPOCH,
-  WORLD_NODES,
   clanState,
+  dayAt,
+  dayStartShift,
   liveVisits,
   lootMul,
   nodeSeed,
+  regionAt,
   shiftAt,
   worldAt,
 } from './world';
 import type { Visit } from './world';
 
-const DAY = 24 * 60 * 60;
 /** Третий день мира: кланы уже расселились, а игрок только пришёл. */
-const T0 = WORLD_EPOCH + 3 * DAY;
+const DAY0 = dayAt(WORLD_EPOCH) + 3;
+/** Полдень: окно богатства к этому часу успело раскрыться целиком. */
+const T0 = (dayStartShift(DAY0) + RICH_WINDOW) * SHIFT_SEC;
 
-/** Момент и узел, которых кланы не касались всё окно, — чистый стенд. */
+/** Момент и точка, которых кланы не касались всё окно, — чистый стенд. */
 function quietNode(): { t: number; node: number } {
   for (let s = 0; s < 500; s++) {
     const t = T0 + s * SHIFT_SEC;
     const now = shiftAt(t);
-    for (const node of RAID_NODES) {
+    if (now - dayStartShift(dayAt(t)) < RICH_WINDOW) continue; // окно ещё не полное
+    for (const node of regionAt(dayAt(t)).nodes) {
       let free = true;
       for (let back = 0; back < RICH_WINDOW && free; back++) {
         for (let k = 0; k < CLANS.length; k++) {
@@ -49,40 +51,74 @@ function quietNode(): { t: number; node: number } {
       if (free) return { t, node: node.id };
     }
   }
-  throw new Error('в регионе не нашлось узла без кланов на всё окно');
+  throw new Error('в регионе не нашлось точки без кланов на всё окно');
 }
 
 describe('Мир: карта локаций', () => {
-  test('§4 — регион это один экран: 20 узлов, лагерь среди них', () => {
-    assert.equal(NODES.length, WORLD_NODES);
-    assert.equal(NODES[CAMP_NODE]!.tier, 0, 'лагерь не бывает опасным местом');
-    assert.equal(RAID_NODES.length, WORLD_NODES - 1);
-    for (const node of NODES) {
-      assert.ok(node.x > 0 && node.x < 1, `${node.name}: за экраном по x`);
-      assert.ok(node.y > 0 && node.y < 1, `${node.name}: за экраном по y`);
+  test('§4 — регион это один экран: точки не налезают друг на друга', () => {
+    for (let day = DAY0; day < DAY0 + 60; day++) {
+      const region = regionAt(day);
+      assert.ok(region.nodes.length >= 16, `день ${day}: точек ${region.nodes.length}`);
+      for (const node of region.nodes) {
+        assert.ok(node.x > 0.02 && node.x < 0.98, `${node.name}: за экраном по x`);
+        assert.ok(node.y > 0.02 && node.y < 0.98, `${node.name}: за экраном по y`);
+      }
+      const seen = new Set(region.nodes.map((n) => n.name));
+      assert.equal(seen.size, region.nodes.length, `день ${day}: имя повторилось`);
+      for (const a of region.nodes) {
+        for (const b of region.nodes) {
+          if (a.id >= b.id) continue;
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          assert.ok(d > 0.05, `день ${day}: ${a.name} и ${b.name} слились в одну точку`);
+        }
+      }
     }
-    // Ярусы обязаны быть все четыре, иначе карта не заменяет список ярусов.
-    const tiers = new Set(RAID_NODES.map((n) => n.tier));
-    assert.deepEqual([...tiers].sort(), [0, 1, 2, 3], 'на карте есть все ярусы');
   });
 
-  test('§0.1 — место имеет форму: сид узла не меняется со временем', () => {
-    const first = RAID_NODES.map((n) => nodeSeed(n.id));
-    const again = RAID_NODES.map((n) => nodeSeed(n.id));
-    assert.deepEqual(first, again);
-    assert.equal(new Set(first).size, first.length, 'два узла не собирают одну пещеру');
+  test('§4 — регион пересобирается каждый день и постоянного расклада не держит', () => {
+    const shape = (day: number): string =>
+      regionAt(day)
+        .nodes.map((n) => `${n.tier}:${n.x.toFixed(3)}`)
+        .join(',');
+    let same = 0;
+    const tiers = new Set<number>();
+    const counts = new Set<number>();
+    for (let day = DAY0; day < DAY0 + 60; day++) {
+      if (shape(day) === shape(day + 1)) same++;
+      counts.add(regionAt(day).nodes.length);
+      for (const node of regionAt(day).nodes) tiers.add(node.tier);
+    }
+    assert.equal(same, 0, 'два дня подряд с одинаковой картой');
+    assert.ok(counts.size > 1, 'число точек не меняется — раздача не случайна');
+    assert.deepEqual([...tiers].sort(), [0, 1, 2, 3], 'за два месяца встречаются все ярусы');
+    // Дни, где рядом только дорогие места, обязаны быть возможны: постоянного
+    // соотношения ярусов нет намеренно.
+    let lopsided = 0;
+    for (let day = DAY0; day < DAY0 + 200; day++) {
+      const cheap = regionAt(day).nodes.filter((n) => n.tier === 0).length;
+      if (cheap <= 2) lopsided++;
+    }
+    assert.ok(lopsided > 0, 'нулевой ярус всегда представлен поровну — это расписание');
+  });
+
+  test('§4 — день держит форму: сид точки не меняется до утра', () => {
+    const first = regionAt(DAY0).nodes.map((n) => nodeSeed(DAY0, n.id));
+    const again = regionAt(DAY0).nodes.map((n) => nodeSeed(DAY0, n.id));
+    assert.deepEqual(first, again, 'внутри дня пещера у места одна');
+    assert.equal(new Set(first).size, first.length, 'две точки не собирают одну пещеру');
+    const tomorrow = regionAt(DAY0 + 1).nodes.map((n) => nodeSeed(DAY0 + 1, n.id));
+    assert.notDeepEqual(first, tomorrow, 'наутро регион другой');
   });
 
   test('§4 — кланы не тикают: состояние это функция от сида и часов', () => {
     for (let k = 0; k < CLANS.length; k++) {
-      const t = T0 + 3 * DAY;
-      assert.deepEqual(clanState(k, t), clanState(k, t), 'один и тот же момент — один ответ');
-      assert.ok(!clanState(k, t).nodes.includes(CAMP_NODE), 'клан не селится в лагере игрока');
+      assert.deepEqual(clanState(k, T0), clanState(k, T0), 'один и тот же момент — один ответ');
+      assert.equal(clanState(k, T0).nodes.length, 1, 'клан держит одну точку (замер ниже)');
       assert.ok(
-        clanState(k, WORLD_EPOCH + 30 * DAY).level > clanState(k, WORLD_EPOCH + DAY).level,
+        clanState(k, WORLD_EPOCH + 30 * DAY_SEC).level >
+          clanState(k, WORLD_EPOCH + DAY_SEC).level,
         'мир растёт без игрока',
       );
-      assert.equal(clanState(k, t).nodes.length, 1, 'клан держит одну локацию (замер ниже)');
     }
   });
 
@@ -102,6 +138,15 @@ describe('Мир: карта локаций', () => {
     assert.equal(worldAt(later, three)[node]!.rich, RICH_MAX, 'через 6 часов жила снова полна');
   });
 
+  test('§4 — утро отменяет вчерашние заходы: региона того больше нет', () => {
+    const evening = (dayStartShift(DAY0 + 1) - 1) * SHIFT_SEC;
+    const visits: Visit[] = [0, 1, 2].map((i) => ({ node: 0, shift: shiftAt(evening) - i }));
+    assert.ok(worldAt(evening, visits)[0]!.rich < RICH_MAX, 'вечером место просело');
+    const morning = dayStartShift(DAY0 + 1) * SHIFT_SEC;
+    assert.equal(worldAt(morning, visits)[0]!.rich, RICH_MAX, 'наутро жила полна');
+    assert.equal(liveVisits(visits, morning).length, 0, 'вчерашние заходы не хранятся');
+  });
+
   test('§4 — выработанная локация это плохая сделка, а не запрет', () => {
     assert.equal(lootMul(0), 0.4, 'артбук: 0 из 3 — добыча ×0,4');
     assert.equal(lootMul(RICH_MAX), 1, 'артбук: 3 из 3 — полная жила');
@@ -113,45 +158,43 @@ describe('Мир: карта локаций', () => {
 
   test('§4 — карта учит выбирать, а не ждать: три богатых всегда доступны', () => {
     // Условие артбука: в любой момент у игрока есть минимум три локации
-    // с богатством ≥ 2 на доступных ему ярусах. Если оно нарушается, карта
-    // отправляет игрока ждать, а ждёт он вне игры.
+    // с богатством ≥ 2. Если оно нарушается, карта отправляет игрока ждать,
+    // а ждёт он вне игры.
     //
     // Нагрузка — верхняя граница сессии по §21: пять вылазок подряд, четыре
-    // сессии в сутки, и каждый раз в самое богатое доступное место, то есть
-    // игрок выжигает карту так быстро, как позволяют правила.
-    for (let kitchen = 1; kitchen <= 3; kitchen++) {
-      const open = RAID_NODES.filter((n) => TIER_KITCHEN_GATE[n.tier] <= kitchen);
+    // сессии в сутки, и каждый раз в самое богатое место, то есть игрок
+    // выжигает карту так быстро, как позволяют правила.
+    for (let day = DAY0; day < DAY0 + 30; day++) {
+      const nodes = regionAt(day).nodes;
       const visits: Visit[] = [];
-      let worst = { shift: 0, count: open.length };
-      for (let s = 0; s < DAY / SHIFT_SEC; s++) {
-        const t = T0 + s * SHIFT_SEC;
+      let worst = { shift: 0, count: nodes.length };
+      for (let s = 0; s < SHIFTS_PER_DAY; s++) {
+        const t = (dayStartShift(day) + s) * SHIFT_SEC;
         if (s % RICH_WINDOW === 0) {
           for (let raid = 0; raid < 5; raid++) {
             const world = worldAt(t, visits);
-            const best = [...open].sort((a, b) => world[b.id]!.rich - world[a.id]!.rich)[0]!;
+            const best = [...nodes].sort((a, b) => world[b.id]!.rich - world[a.id]!.rich)[0]!;
             visits.push({ node: best.id, shift: shiftAt(t) });
           }
         }
         const world = worldAt(t, visits);
-        const count = open.filter((n) => world[n.id]!.rich >= 2).length;
+        const count = nodes.filter((n) => world[n.id]!.rich >= 2).length;
         if (count < worst.count) worst = { shift: s, count };
       }
       assert.ok(
         worst.count >= 3,
-        `Кухня ур. ${kitchen}: на смене ${worst.shift} осталось ${worst.count} ` +
-          `богатых локаций из ${open.length} — карта учит ждать, а не выбирать`,
+        `день ${day}: на смене ${worst.shift} осталось ${worst.count} богатых ` +
+          `локаций из ${nodes.length} — карта учит ждать, а не выбирать`,
       );
     }
   });
 
   test('§6 — в сохранении живут только дельты, и их число ограничено', () => {
     const visits: Visit[] = [];
-    for (let s = 0; s < 200; s++) {
-      visits.push({ node: RAID_NODES[s % RAID_NODES.length]!.id, shift: shiftAt(T0) + s });
-    }
+    for (let s = 0; s < 200; s++) visits.push({ node: s % 16, shift: shiftAt(T0) + s });
     const t = T0 + 200 * SHIFT_SEC;
     const live = liveVisits(visits, t);
-    assert.ok(live.length < RICH_WINDOW * WORLD_NODES, 'старые заходы выброшены');
+    assert.ok(live.length <= RICH_WINDOW, 'старые заходы выброшены');
     assert.deepEqual(
       worldAt(t, live).map((n) => n.rich),
       worldAt(t, visits).map((n) => n.rich),

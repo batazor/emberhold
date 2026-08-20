@@ -24,8 +24,6 @@ import {
   speedup,
   speedupCost,
   startUpgrade,
-  TIER_KITCHEN_GATE,
-  tierBlock,
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
@@ -62,7 +60,7 @@ import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables'
 import type { ConsumableId } from './sim/consumables';
 import { addResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
-import { RAID_NODES, lootMul, nodeOf, nodeSeed, shiftAt, worldAt } from './sim/world';
+import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
@@ -540,12 +538,12 @@ function showScene(scene: Scene, tier: Tier = 0): void {
 }
 
 /**
- * Место, куда пускает нынешняя Кухня. Нужно там, где место не выбирают:
- * перезапуск посреди кадра вылазки и отладочный вход.
+ * Самое щадящее место сегодняшнего региона. Нужно там, где место не
+ * выбирают: перезапуск посреди кадра вылазки и отладочный вход.
  */
-function firstOpenNode(): number {
-  const open = RAID_NODES.filter((n) => tierBlock(camp, n.tier) === 'ok');
-  return (open.length > 0 ? open : RAID_NODES)[0]!.id;
+function safestNode(now: number): number {
+  const nodes = regionAt(dayAt(now)).nodes;
+  return [...nodes].sort((a, b) => a.tier - b.tier)[0]?.id ?? 0;
 }
 
 /**
@@ -553,18 +551,20 @@ function firstOpenNode(): number {
  * карточкой карты — сюда приходит уже принятое решение.
  */
 function toRaid(node: number): boolean {
-  const place = nodeOf(node);
-  const tier = place.tier;
+  // Место и его богатство берутся на момент входа, а не на момент открытия
+  // панели: панель могла провисеть полчаса, а смена мира — сорок минут.
+  const now = clock.now();
+  const day = dayAt(now);
+  const place = regionAt(day).nodes[node];
   leaveTitle();
   inGlade = false;
   campPrompt.setVisible(false);
-  // Кнопка уже заблокирована, но вход закрыт и здесь: ярус не должен
-  // открываться в обход Кухни ни через отладку, ни через сохранение
-  // от прежней сборки.
-  if (tierBlock(camp, tier) !== 'ok') {
-    campHud.notify(`${place.name}: нужна Кухня ур. ${TIER_KITCHEN_GATE[tier]}`);
+  // Регион пересобрался, пока панель была открыта, — идти некуда.
+  if (place === undefined) {
+    campHud.notify('Регион пересобрался — выберите место заново');
     return false;
   }
+  const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
   if (hero === null) {
@@ -577,9 +577,6 @@ function toRaid(node: number): boolean {
   hero.status = 'raid';
   raidHero = hero;
 
-  // Богатство места на момент входа. Считается здесь, а не в панели: панель
-  // могла быть открыта полчаса назад, а смена мира — сорок минут.
-  const now = clock.now();
   const rich = worldAt(now, camp.visits)[node]?.rich ?? 0;
   const mul = lootMul(rich);
 
@@ -587,7 +584,7 @@ function toRaid(node: number): boolean {
   raid = createRaid({
     // Сид у места свой и не меняется: пещера — свойство места, а не захода.
     // ?seed=N по-прежнему перебивает его: §6 — воспроизводимость багов.
-    seed: debugSeed ?? nodeSeed(node),
+    seed: debugSeed ?? nodeSeed(day, node),
     tier,
     // §4 — истощение множит добычу, а не запирает вход: плохая сделка
     // оставляет решение игроку, запрет отправляет его ждать вне игры.
@@ -1029,25 +1026,26 @@ let lastRender = performance.now();
 // переживают, и заставка посреди раскадровки уводила бы игрока из неё.
 if (onboarding.step === 'glade' || onboarding.step === 'done') {
   toTitle();
-} else if (!onboarding.inRaid || !toRaid(firstOpenNode())) {
+} else if (!onboarding.inRaid || !toRaid(safestNode(clock.now()))) {
   // Вход мог не открыться (сейв от прежних правил) — тогда честно в лагерь,
   // а не в пустой экран.
   toCamp();
 }
 
 // Отладочный вход: ?tier=N открывает игру сразу в вылазке нужного яруса,
-// ?node=N — в конкретное место карты. Нужен, чтобы проверять вылазку и экран
-// возврата, не проходя лагерь заново.
+// ?node=N — в конкретное место сегодняшнего региона. Нужен, чтобы проверять
+// вылазку и экран возврата, не проходя лагерь заново.
+const today = regionAt(dayAt(clock.now())).nodes;
 const debugTier = debugParams.get('tier');
 if (debugTier !== null) {
   const t = Number(debugTier);
-  const place = RAID_NODES.find((n) => n.tier === t);
+  const place = today.find((n) => n.tier === t);
   if (place !== undefined) toRaid(place.id);
 }
 const debugNode = debugParams.get('node');
 if (debugNode !== null) {
   const n = Number(debugNode);
-  if (RAID_NODES.some((place) => place.id === n)) toRaid(n);
+  if (today.some((place) => place.id === n)) toRaid(n);
 }
 
 if (debugParams.has('bench')) {
