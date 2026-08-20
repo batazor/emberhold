@@ -15,7 +15,7 @@ import { BUILDING_ORDER } from '../sim/camp';
 import { CLASS_ORDER } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
 import { C, triangles } from './blocking';
-import { buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
+import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
 import { FOREST_SLOTS } from './forest.data';
 import { FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
 import { SKELETON_MODELS, SKELETON_SLOTS } from './skeleton.data';
@@ -62,8 +62,16 @@ describe('Артбук: бюджет треугольников', () => {
     }
   });
 
-  test('герой укладывается в 900, житель тоже', () => {
+  /**
+   * Девятьсот считались, когда героев в кадре предполагалось много. Их один —
+   * и в лагере, и в вылазке, — поэтому классу с моделью набора (§6.1.4) этот
+   * потолок не подходит и не должен: его цена не в кадре, а в бандле, и её
+   * меряет потолок принятого набора выше. Примитивам девятьсот остаются:
+   * жителей в лагере до десяти, и они по-прежнему свои.
+   */
+  test('герой-примитив укладывается в 900, житель тоже', () => {
     for (const cls of CLASS_ORDER) {
+      if (HERO_MODELS[cls] !== undefined) continue;
       const geo = heroGeometry(cls);
       const t = triangles(geo);
       geo.dispose();
@@ -129,8 +137,21 @@ describe('Артбук: палитра', () => {
     assert.deepEqual([...new Set(stray)], [], 'цвет мимо 28 из артбука');
   });
 
-  test('палитра — ровно 28 цветов', () => {
-    assert.equal(Object.keys(C).length, 28);
+  test('палитра — ровно 32 цвета', () => {
+    assert.equal(Object.keys(C).length, 32);
+  });
+
+  /**
+   * Тот же список третьей копией — образцами в `artbook.html`, где он и есть
+   * арт-байбл. Сверяются значения, а не подписи: подписи на странице
+   * человеческие, в коде короткие, и приводить их друг к другу значило бы
+   * завести четвёртый список.
+   */
+  test('палитра артбука и палитра кода — один список', () => {
+    const src = readFileSync(new URL('../../artbook.html', import.meta.url), 'utf8');
+    const shown = [...src.matchAll(/\["[^"]+","(#[0-9a-f]{6})"\]/g)].map((m) => m[1]!);
+    const code = Object.values(C).map((c) => c.toLowerCase());
+    assert.deepEqual([...shown].sort(), [...code].sort(), 'artbook.html и blocking.ts разошлись');
   });
 
   /**

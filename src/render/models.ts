@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
+import { adventurerGeometry } from './adventurers';
+import type { AdventurerModelName } from './adventurers.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import { skeletonGeometry } from './skeleton';
@@ -341,7 +343,41 @@ const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
 export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry =>
   merge(BUILDING_STAGES[id][stageOf(level)]());
 
-export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => merge(HERO_SHAPES[cls]());
+/**
+ * Классы, которым модель набора уже нарисована (§6.1.3). Вписан один — тот,
+ * которым играют с первой вылазки; остальные пять персонажей набора измерены
+ * и ждут своей строки, потому что каждый стоит килобайтов у всех игроков.
+ *
+ * Правило §6.1 «силуэт утверждается на примитивах до моделирования» этим
+ * не нарушено, а исполнено: примитив был утверждён и стоит рядом — модель
+ * приводится к его росту, а не наоборот.
+ */
+export const HERO_MODELS: Partial<Record<HeroClassId, AdventurerModelName>> = {
+  ranger: 'Barbarian',
+};
+
+/**
+ * Рост примитива, которого модель заменяет. Берётся у него же, а не числом
+ * в коде: подмена модели не должна сдвинуть ни камеру, ни тень, ни привязку
+ * интерфейса, а два записанных порознь роста разъезжаются молча.
+ */
+const heroHeights = new Map<HeroClassId, number>();
+function heroHeight(cls: HeroClassId): number {
+  const known = heroHeights.get(cls);
+  if (known !== undefined) return known;
+  const geo = merge(HERO_SHAPES[cls]());
+  geo.computeBoundingBox();
+  const box3 = geo.boundingBox!;
+  const height = box3.max.y - box3.min.y;
+  geo.dispose();
+  heroHeights.set(cls, height);
+  return height;
+}
+
+export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
+  const model = HERO_MODELS[cls];
+  return model === undefined ? merge(HERO_SHAPES[cls]()) : adventurerGeometry(model, heroHeight(cls));
+};
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
 

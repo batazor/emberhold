@@ -1,0 +1,874 @@
+<meta charset="utf-8">
+<title>Набор моделей: герой</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;
+    background:var(--ground);padding:12px 0;border-bottom:1px solid var(--line);}
+  .bar hr{border:0;border-left:1px solid var(--line);height:20px;margin:0 4px;}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+
+  .models{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;}
+  .m{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
+  .m .stage{background:#12100c;display:flex;justify-content:center;padding:8px 0;}
+  .m b{font-family:var(--ff-display);font-weight:400;font-size:14px;padding:8px 11px 1px;
+    overflow-wrap:anywhere;}
+  .m u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
+    padding:0 11px 10px;display:flex;justify-content:space-between;gap:8px;}
+  .m u s{text-decoration:none;}
+  .m u s.over{color:var(--blood);}
+
+  .scroll{overflow-x:auto;}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.miss{color:var(--ember);}
+  td.bad{color:var(--blood);font-weight:600;}
+  td.good{color:var(--moss);}
+  tr.new td{background:color-mix(in srgb, var(--brass) 9%, transparent);}
+  tr.gap td{background:color-mix(in srgb, var(--blood) 11%, transparent);}
+  .chip{display:inline-flex;align-items:center;gap:8px;}
+  .chip i{width:30px;height:16px;border:1px solid var(--line);display:block;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard div.warn{border-left-color:var(--blood);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard div.warn h3{color:var(--blood);}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+  .fail{color:var(--blood);}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Артбук · готовый набор</div>
+  <h1>Персонажи, <em>примеренные к бюджету</em></h1>
+  <p class="lede">KayKit Adventurers 2.0, бесплатный тариф, лицензия CC0: пять героев
+    (шесть моделей — у разбойника есть капюшон), тридцать один предмет в руки и две
+    библиотеки клипов на общий скелет. Страница показывает не витрину, а сами файлы
+    из <code>assets/kaykit-adventurers</code>: геометрия читается из <code>.gltf</code>
+    и <code>.glb</code>, числа считает <code>npm run models</code>, цвет берётся
+    из палитры игры.</p>
+  <p class="lede">Первые два набора закрывали окружение, и вопрос к ним был один:
+    влезает ли чужой цвет в нашу палитру. Здесь вопрос другой. §6.1 записал решение
+    прямо: <b>героев, противников и здания делаем сами</b> — это лицо игры. Набор
+    героев спорит с этой строчкой, и спор решается не вкусом, а тремя числами:
+    бюджетом героя, числом вызовов отрисовки и списком клипов из артбука
+    «Скелетные клипы».</p>
+  <p class="lede"><b>Из набора взят один персонаж</b> — тот, которым играют
+    с первой вылазки. Остальные пять измерены и ждут: каждый стоит килобайтов
+    у всех игроков. Страница — и есть то взвешивание, на котором это решилось,
+    и она же показывает, чего оно стоило: <b>бюджет героя пришлось переписать</b>.</p>
+  <p class="lede fail" id="warn" style="display:none"></p>
+</header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что в наборе</h2>
+    <p>Категории — по первому слову имени файла. Треугольники посчитаны по индексам
+      примитивов, габарит — по позициям вершин. У персонажа вершины ставит не узел,
+      а скелет: по glTF трансформ скиннованного меша не значит ничего. Поза,
+      в которой он посчитан и нарисован ниже, — <b><span id="poseName">…</span></b>,
+      а не поза привязки: в файле персонаж стоит руки в стороны, и в таком виде
+      его нельзя ни мерить габаритом, ни ставить в игру.</p>
+  </div>
+  <div class="scroll">
+    <table id="cats"><thead><tr>
+      <th>Категория</th><th class="num">Моделей</th><th class="num">Треугольников</th>
+      <th class="num">В среднем</th><th class="num">Самая тяжёлая</th><th>Она же</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+  <p class="note" id="total"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Герой стоил девятьсот</h2>
+    <p>Это единственный бюджет, который меряет не нас, а набор: у окружения потолка
+      в §6.1 не было и его пришлось выводить из первого набора, а вот
+      <b>«герой ≤ 900 треугольников»</b> записан до всякого KayKit. Ниже — та же
+      строчка против шести моделей, и не проходит ни одна.</p>
+    <p>Строчку переписали, и вот на каком основании. Девятьсот считались, когда
+      героев в кадре предполагалось много. Их <b>один</b>: в лагере — один
+      у Штаба, в вылазке — один. Одна фигура не упирается в кадр, она упирается
+      в бандл, который скачивает каждый игрок. Поэтому бюджет героя переехал
+      из треугольников в килобайты: <b>запечённый персонаж ≤ 200 КБ</b>,
+      и это проверяет <code>npm run check</code>. Девятьсот остались в силе там,
+      где фигур много, — у жителей, противников и у самих примитивов.</p>
+  </div>
+  <div class="scroll">
+    <table id="heroes"><thead><tr>
+      <th>Модель</th><th class="num">Треугольников</th><th class="num">Был бюджет</th>
+      <th class="num">Во сколько раз</th><th>Габарит в позе, ед.</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+  <p class="note" id="heroNote"></p>
+  <div class="guard">
+    <div class="warn">
+      <h3>Ни одна модель не проходит</h3>
+      <p>Разрыв не в полтора раза и не в два — <span id="heroWorst">…</span>. Это не
+        «чуть тяжелее»: это <b>другой класс детализации</b>. Набор нарисован под
+        камеру, которая смотрит персонажу в лицо, а наша ортокамера 45°/30° держит
+        его высотой в пять сантиметров экрана.</p>
+    </div>
+    <div class="key">
+      <h3>Что взято и почём</h3>
+      <p><span id="adoptedNote">…</span>. Рост берётся у примитива, которого модель
+        заменила, — <b>1,38 единицы</b>: подмена не должна сдвинуть ни камеру,
+        ни тень, ни привязку интерфейса, поэтому два роста нигде не записаны
+        порознь.</p>
+    </div>
+    <div>
+      <h3>Почему один, а не шесть</h3>
+      <p>Шесть персонажей — это <span id="allSix">…</span> в бандле. Каждый следующий
+        добавляется строкой в <code>HERO_MODELS</code> и стоит своих килобайтов
+        у всех игроков; «взять весь набор на всякий случай» здесь дороже,
+        чем в лесу, — персонаж тяжелее камня в тридцать раз.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Пять атласов, одна шкала</h2>
+    <p>Оба прежних набора красились одной картинкой на весь набор. Здесь их пять —
+      своя на каждого героя, — и модель называет свою сама: реквизит ссылкой
+      на соседний файл, персонаж куском внутри собственного <code>.glb</code>.
+      Шкала яркости при этом остаётся <b>одна на набор</b>: одинаковая кожа обязана
+      попасть в одну ступень, с картинки рыцаря она прочитана или с картинки мага.
+      Под треугольниками оказывается <span id="touched">…</span>.</p>
+    <p>Слотов стало <span id="slotTotal">…</span>. Одно золото досталось
+      от подземелья; остальное завёл этот набор, и завёл не по вкусу, а по замеру.
+      Первым — <b>кожа</b>: от дерева её не отделить ни тоном (оба оранжевые),
+      ни насыщенностью; отделяет яркость, отсюда третье окно в градиенте, которого
+      у первых двух наборов не было. Цвет для слота у игры уже был —
+      <code>PALETTE.heroBody</code>, которым покрашен герой-примитив.</p>
+    <p><b>Остальное пришлось добавить, потому что персонаж выходил каменным.</b>
+      Двенадцать слотов леса — все тёплые, от хвои до соли, и это не мешало,
+      пока в кадре стояли камни и деревья. На персонаже стало видно сразу:
+      <span id="wasStone">…</span> уходило в четыре почти одинаковых
+      серо-оливковых слота, потому что туда одинаково ложились и холодная сталь
+      набора, и тёплое сукно.</p>
+    <p>Разобрались эти два случая по-разному. <b>Стали не хватало не цвета,
+      а доступа</b>: <code>metT/met/stal</code> были в артбуке с самого начала —
+      ими покрашены ноги примитивов и оружие, — просто моделям доставалось одно
+      тёплое. А вот <b>сукна и кости не было вовсе</b>, и артбук пришлось
+      расширить с 28 цветов до 32.</p>
+    <p>Проверка не в том, что стало красивее, а в том, что <b>цвет начал
+      различать персонажей</b>: у каждого своя главная семья, и она совпадает
+      с тем, чем он должен читаться.</p>
+  </div>
+  <div class="scroll">
+    <table id="families"><thead><tr><th>Персонаж</th><th>Главная семья</th><th>Разложение</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="hd" style="margin-top:10px">
+    <p style="margin:0;max-width:66ch;color:var(--dim);font-size:15px">Ниже — все слоты
+      набора: слева цвет, снятый с атласа, справа цвет, которым его рисует игра.</p>
+  </div>
+  <div class="scroll">
+    <table id="slots"><thead><tr>
+      <th>Градиент</th><th>Слот</th><th>Цвет набора</th><th>Цвет игры</th><th class="num">Треугольников</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+  <p class="note" id="slotNote"></p>
+  <div class="guard">
+    <div class="warn">
+      <h3>Чего в палитре нет</h3>
+      <p>Самая тёмная ступень дерева заполнена не деревом:
+        <span id="accent">…</span>. Это тот же ответ, что дали знамёна
+        подземелья, — <b>акцентного цвета в палитре нет, потому что нет
+        в игре того, ради чего он нарисован</b>: герба, магической искры,
+        цветного варианта под отряд игрока.</p>
+    </div>
+    <div>
+      <h3>Ступени, которые держит одна модель</h3>
+      <p><span id="thin">…</span>. Такая ступень не ошибка и не повод её убирать:
+        она показывает, что набор до этого края шкалы почти не доходит,
+        и перекрасить его можно, не трогая соседние.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Масштаб: вдвое выше нашего героя</h2>
+    <p>Набор нарисован под ту же сетку в четыре единицы, что и подземелье, — и цена
+      этого у персонажей мягче, чем у стен. Стену пришлось бы резать; персонажа
+      приводит высота, ровно как <code>forestGeometry(name, height)</code> приводит
+      дерево. Приводить есть к чему: герой-примитив в игре <b>1,38 единицы</b>
+      вместе с посохом, наша клетка — одна, и <code>heroGeometry</code> берёт рост
+      у примитива, а не числом в коде: подмена модели не должна сдвинуть
+      ни камеру, ни тень, ни привязку интерфейса.</p>
+  </div>
+  <div class="scroll">
+    <table id="scale"><thead><tr>
+      <th>Модель</th><th>Габарит набора, ед.</th><th class="num">Треугольников</th><th>Что это у нас</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+  <p class="note" id="scaleNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Решение</h2>
+    <p>Набор измерен целиком, взят из него один персонаж — тот, которым играют
+      с первой вылазки. Подземелье в своё время осталось лежать целиком; здесь
+      решение другое, и стоило оно трёх изменений в том, что уже было записано.</p>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Бюджет героя переехал</h3>
+      <p>Из треугольников в килобайты. <b>Девятьсот считались, когда героев
+        в кадре предполагалось много</b>, а он один — и в лагере, и в вылазке.
+        Прежний потолок остался там, где фигур действительно много: у жителей,
+        противников и у самих примитивов.</p>
+    </div>
+    <div class="key">
+      <h3>Палитра расширилась</h3>
+      <p>С двенадцати слотов до <span id="slotTotal2">…</span>. Не ради набора,
+        а по его вине: он показал, что в палитре <b>нет холодного цвета вообще</b>
+        и нет тёплого ненасыщенного. Пока в кадре стояли камни, это было незаметно.</p>
+    </div>
+    <div>
+      <h3>Поза приезжает с запеканием</h3>
+      <p>Скелета в бандле нет и не будет, пока в игре нет анимации, — поэтому
+        <code>scripts/models.ts</code> применяет скиннинг на запекании
+        и кладёт в игру <b>один нарисованный кадр</b>, а не интерполяцию.
+        Риг при этом измерен и ждёт: 23 кости, 26 клипов, ноль корневого движения.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Весь набор</h2>
+    <p>Каждая карточка нарисована из своего файла: ортокамера 45°/30°, плоское
+      затенение, один источник света — те же правила, что в игре. Переключатель
+      меняет только цвет: слева цвет из палитры игры, справа — цвет, снятый
+      с атласа набора.</p>
+  </div>
+  <div class="bar" id="filters"></div>
+  <div class="models" id="grid"></div>
+</div>
+
+</div>
+
+<script type="module">
+const PACK = '/assets/kaykit-adventurers/';
+const CATALOG = PACK + 'catalog.json';
+
+function fail(text){
+  const w = document.getElementById('warn');
+  w.textContent = text;
+  w.style.display = '';
+}
+
+let palette, slotNames, cat;
+try{
+  // Палитра и список слотов берутся из самих модулей игры: две копии одного
+  // списка разошлись бы молча, а страница именно про то, что список один.
+  palette = (await import('/src/render/palette.ts')).ADVENTURERS_PALETTE;
+  // Слоты леса нужны только чтобы показать, что набор добавил сверх них.
+  slotNames = (await import('/src/render/forest.data.ts')).FOREST_SLOTS;
+  cat = await (await fetch(CATALOG)).json();
+}catch(e){
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /heroart.html. ' + e);
+  throw e;
+}
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const pct = (n, of) => (n / of * 100).toFixed(1).replace('.', ',') + '%';
+const kb = (n) => (n / 1024).toFixed(1).replace('.', ',') + ' КБ';
+const sec = (n) => n.toFixed(2).replace('.', ',') + ' с';
+
+/* Русский счёт: «1 модель», «2 модели», «5 моделей». Числа здесь считаются
+   из каталога, поэтому склонение тоже обязано считаться, а не угадываться. */
+const plural = (n, one, few, many) => {
+  const t = Math.abs(n) % 100, u = t % 10;
+  if (t > 10 && t < 20) return many;
+  if (u > 1 && u < 5) return few;
+  return u === 1 ? one : many;
+};
+const models = (n) => n + ' ' + plural(n, 'модель', 'модели', 'моделей');
+const clips = (n) => n + ' ' + plural(n, 'клип', 'клипа', 'клипов');
+const atlasCount = (n) => n + ' ' + plural(n, 'атлас', 'атласа', 'атласов');
+const slotCount = (n) => n + ' ' + plural(n, 'слот', 'слота', 'слотов');
+const calls = (n) => n + ' ' + plural(n, 'вызов', 'вызова', 'вызовов');
+
+const HEROES = cat.models.filter(m => m.category === 'Персонажи');
+const PROPS = cat.models.filter(m => m.category !== 'Персонажи');
+
+/* ---------- атласы: их пять, и грузятся они по требованию ---------- */
+
+/**
+ * Картинки нужны только чтобы показать «как в наборе»: числа и таблицы к ним
+ * не относятся, и ждать пять мегапикселей ради них — значит показывать пустую
+ * страницу тем дольше, чем медленнее канал. Атлас персонажа лежит и внутри
+ * его .glb, и отдельным файлом; берётся отдельный — байт в байт тот же.
+ */
+const atlases = new Map();
+function ensureAtlas(name){
+  let waiting = atlases.get(name);
+  if(waiting === undefined){
+    waiting = loadAtlas(PACK + name);
+    atlases.set(name, waiting);
+  }
+  return waiting;
+}
+
+async function loadAtlas(url){
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const ctx = c.getContext('2d', {willReadFrequently:true});
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, img.width, img.height).data;
+  return {
+    width:img.width, height:img.height,
+    // UV в glTF считаются от верхнего края — это и есть порядок строк в PNG.
+    at(u, v){
+      const x = Math.min(img.width - 1, Math.max(0, Math.floor(u * img.width)));
+      const y = Math.min(img.height - 1, Math.max(0, Math.floor(v * img.height)));
+      const o = (y * img.width + x) * 4;
+      return 'rgb(' + data[o] + ',' + data[o+1] + ',' + data[o+2] + ')';
+    },
+  };
+}
+
+/* ---------- сводка по категориям ---------- */
+const totalTris = cat.models.reduce((s, m) => s + m.tris, 0);
+const cats = new Map();
+for(const m of cat.models){
+  const c = cats.get(m.category) ?? {n:0, tris:0, worst:m};
+  c.n++; c.tris += m.tris;
+  if(m.tris > c.worst.tris) c.worst = m;
+  cats.set(m.category, c);
+}
+const catsBody = document.querySelector('#cats tbody');
+for(const [key, c] of [...cats].sort((a, b) => b[1].tris - a[1].tris)){
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + key + '</td><td class="num">' + c.n + '</td><td class="num">' + c.tris +
+    '</td><td class="num">' + Math.round(c.tris / c.n) + '</td><td class="num">' + c.worst.tris +
+    '</td><td class="mono">' + c.worst.name + '</td>';
+  catsBody.appendChild(tr);
+}
+document.getElementById('total').textContent =
+  cat.models.length + ' моделей · ' + totalTris + ' треугольников · ' +
+  atlasCount(cat.atlases.length) + ' по ' + cat.atlases[0].width + '×' + cat.atlases[0].height +
+  ' · ' + cat.pack + ' · лицензия ' + cat.license;
+
+/* ---------- бюджет героя ---------- */
+const HERO_BUDGET = cat.budgets.hero;
+const heroesBody = document.querySelector('#heroes tbody');
+for(const m of [...HEROES].sort((a, b) => b.tris - a.tris)){
+  const times = (m.tris / HERO_BUDGET).toFixed(1).replace('.', ',');
+  const tr = document.createElement('tr');
+  tr.className = 'gap';
+  tr.innerHTML = '<td class="mono">' + m.name + '</td><td class="num">' + m.tris +
+    '</td><td class="num">' + HERO_BUDGET + '</td><td class="num bad">' + times + '×' +
+    '</td><td class="mono">' + m.size.join('×') + '</td>';
+  heroesBody.appendChild(tr);
+}
+const heroTris = HEROES.reduce((s, m) => s + m.tris, 0);
+const worstHero = HEROES.reduce((a, b) => (a.tris > b.tris ? a : b));
+document.getElementById('heroNote').textContent =
+  models(HEROES.length) + ' — ' + pct(heroTris, totalTris) + ' треугольников набора; ' +
+  'в бюджет не проходит ни одна, средняя тяжелее его в ' +
+  (heroTris / HEROES.length / HERO_BUDGET).toFixed(1).replace('.', ',') + ' раза.';
+document.getElementById('heroWorst').textContent =
+  'самая тяжёлая, ' + worstHero.name + ', тяжелее бюджета в ' +
+  (worstHero.tris / HERO_BUDGET).toFixed(1).replace('.', ',') + ' раза';
+
+// Поза, в которой набор посчитан и нарисован: из каталога, не из головы.
+document.getElementById('poseName').textContent =
+  cat.pose === undefined ? 'поза привязки' : `ключ ${cat.pose.at} клипа ${cat.pose.clip}`;
+
+// Что взято и почём. Вес считается ровно так же, как его считает запекание:
+// девять чисел по два байта на треугольник плюс байт слота.
+const weight = (tris) => kb(tris * 19 * 4 / 3);
+const taken = cat.adopted.map(name => cat.models.find(m => m.name === name)).filter(Boolean);
+document.getElementById('adoptedNote').textContent = taken.length === 0
+  ? 'из набора не взято ничего'
+  : 'взят ' + taken.map(m => m.name).join(', ') + ' — ' +
+    taken.reduce((s, m) => s + m.tris, 0) + ' треугольников, ' +
+    weight(taken.reduce((s, m) => s + m.tris, 0)) + ' в бандле (base64)';
+document.getElementById('allSix').textContent = weight(heroTris);
+
+/* ---------- слоты: было → стало ---------- */
+const slots = new Map();
+const slotTris = new Array(cat.slots.length).fill(0);
+for(const m of cat.models){
+  const raw = atob(m.slot);
+  const list = new Uint8Array(raw.length);
+  for(let i = 0; i < raw.length; i++){ list[i] = raw.charCodeAt(i); slotTris[list[i]]++; }
+  slots.set(m.name, list);
+}
+/**
+ * Цвет слота — из палитры набора, а она в игре один список и в том же порядке,
+ * что слоты каталога. Второй таблицы соответствий на странице нет намеренно:
+ * она разошлась бы с игрой молча.
+ */
+const colorOfSlot = (name) => palette[cat.slots.indexOf(name)];
+
+// Семьи цвета: чем персонаж оказался покрашен и что у него главное.
+const familyOf = new Map();
+for(const r of cat.ramps) for(const name of r.slots) familyOf.set(name, r.title);
+const famBody = document.querySelector('#families tbody');
+for(const m of HEROES){
+  const per = new Map();
+  for(const at of slots.get(m.name)) {
+    const f = familyOf.get(cat.slots[at]);
+    per.set(f, (per.get(f) ?? 0) + 1);
+  }
+  const sorted = [...per].sort((a, b) => b[1] - a[1]);
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="mono">' + m.name + '</td>' +
+    '<td><b>' + sorted[0][0] + '</b> · ' + pct(sorted[0][1], m.tris) + '</td>' +
+    '<td class="mono">' + sorted.slice(1).filter(x => x[1] / m.tris >= 0.03)
+      .map(x => x[0] + ' ' + pct(x[1], m.tris)).join(' · ') + '</td>';
+  famBody.appendChild(tr);
+}
+
+document.getElementById('slotTotal').textContent = slotCount(cat.slots.length);
+document.getElementById('slotTotal2').textContent = slotCount(cat.slots.length);
+// Сколько фигуры уходило в камень до того, как палитру расширили: считается
+// по тем слотам, которые были у леса, чтобы число не пришлось помнить.
+const STONE = ['камень', 'камень-свет', 'скол', 'соль-тень'];
+const stoneNow = STONE.reduce((s, name) => s + slotTris[cat.slots.indexOf(name)], 0);
+const moved = ['металл-тень', 'металл', 'сталь', 'сукно-тень', 'сукно', 'сукно-свет', 'соль-свет']
+  .reduce((s, name) => s + (cat.slots.includes(name) ? slotTris[cat.slots.indexOf(name)] : 0), 0);
+document.getElementById('wasStone').textContent = pct(stoneNow + moved, totalTris) + ' набора';
+
+const slotsBody = document.querySelector('#slots tbody');
+cat.slots.forEach((name, at) => {
+  const ramp = cat.ramps.find(r => r.slots.includes(name));
+  const first = ramp.slots[0] === name;
+  const source = ramp.source[ramp.slots.indexOf(name)];
+  const own = slotNames.indexOf(name) >= 0;
+  const color = colorOfSlot(name);
+  const tr = document.createElement('tr');
+  if(!own) tr.className = 'new';
+  const was = slotTris[at] === 0
+    ? '<td class="miss">не задет ни одним треугольником</td>'
+    : '<td><span class="chip"><i style="background:' + source + '"></i>' + source + '</span></td>';
+  tr.innerHTML =
+    '<td>' + (first ? ramp.title : '') + '</td>' +
+    '<td class="mono">' + name + '</td>' + was +
+    '<td><span class="chip"><i style="background:' + hex(color) + '"></i>' + hex(color) +
+      (own ? '' : ' · не из слотов леса') + '</span></td>' +
+    '<td class="num">' + slotTris[at] + ' · ' + pct(slotTris[at], totalTris) + '</td>';
+  slotsBody.appendChild(tr);
+});
+
+document.getElementById('touched').textContent =
+  cat.touched.colors + ' цветов из ' + cat.touched.atlasColors + ', а сами эти цвета занимают ' +
+  Math.round(cat.touched.share * 100) + '% всех пяти картинок';
+const skinTris = slotTris[cat.slots.indexOf('кожа')];
+const ownTris = cat.slots.reduce((s, name, at) => s + (slotNames.indexOf(name) >= 0 ? slotTris[at] : 0), 0);
+document.getElementById('slotNote').textContent =
+  'Строки с подсветкой — слоты, которых у леса не было. В двенадцать прежних ' +
+  'ложится ' + pct(ownTris, totalTris) + ' треугольников, на кожу приходится ' +
+  pct(skinTris, totalTris) + '. Пустая ступень — не ошибка, а свойство набора: ' +
+  'такого цвета в нём нет.';
+
+// Куда уходит акцент: цвет ступени берётся из каталога, модели — из разметки
+// слотов. И то и другое посчитано, а не выбрано глазом.
+const feeders = (slot) => {
+  const at = cat.slots.indexOf(slot);
+  return cat.models
+    .map(m => ({name:m.name, n:[...slots.get(m.name)].filter(v => v === at).length}))
+    .filter(x => x.n > 0)
+    .sort((a, b) => b.n - a.n);
+};
+const earth = feeders('земля');
+const earthRamp = cat.ramps.find(r => r.slots.includes('земля'));
+document.getElementById('accent').textContent =
+  'её держит ' + earthRamp.source[earthRamp.slots.indexOf('земля')] + ' — цвет, который ' +
+  'в наборе носят ' + earth.slice(0, 3).map(x => x.name).join(', ') + ' и ещё ' +
+  models(earth.length - 3);
+const thin = cat.slots.map(name => ({name, list:feeders(name)}))
+  .filter(x => x.list.length > 0 && x.list.length <= 2);
+document.getElementById('thin').textContent =
+  thin.map(x => '«' + x.name + '» — ' + x.list.map(v => v.name).join(' и ')).join('; ') +
+  ' (' + slotCount(thin.length) + ' из ' + cat.slots.length + ')';
+
+/* ---------- масштаб ---------- */
+const SCALE_ROWS = [
+  ['Barbarian', 'взятый герой: в игре он приведён к росту примитива, 1,38'],
+  ['Mage', 'самая высокая модель набора: шляпа считается габаритом'],
+  ['sword_2handed', 'двуручный меч ростом с персонажа — сетка набора в четыре единицы'],
+  ['sword_1handed', 'одноручный — почти две наши клетки в длину'],
+  ['shield_round', 'щит: единственная категория, целиком влезающая в клетку'],
+  ['mug_full', 'кружка — предмет в масштабе, приводить нечего'],
+];
+const scaleBody = document.querySelector('#scale tbody');
+for(const [name, what] of SCALE_ROWS){
+  const m = cat.models.find(x => x.name === name);
+  if(m === undefined) continue;
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="mono">' + m.name + '</td><td class="mono">' + m.size.join('×') +
+    '</td><td class="num">' + m.tris + '</td><td>' + what + '</td>';
+  scaleBody.appendChild(tr);
+}
+const tall = HEROES.map(m => m.size[1]);
+const wide = HEROES.map(m => m.size[0]);
+document.getElementById('scaleNote').textContent =
+  'Персонажи ростом ' + Math.min(...tall).toFixed(2).replace('.', ',') + '–' +
+  Math.max(...tall).toFixed(2).replace('.', ',') + ' единицы при клетке в одну: ' +
+  'приведение высотой — множитель около ' + (1.38 / (tall.reduce((s, v) => s + v, 0) / tall.length)).toFixed(2).replace('.', ',') +
+  '. Ширина ' + Math.min(...wide).toFixed(2).replace('.', ',') + '–' +
+  Math.max(...wide).toFixed(2).replace('.', ',') + ' — это уже поза покоя; в позе привязки ' +
+  'она была бы 1,94 у всех шестерых, потому что там руки в стороны.';
+
+/* ---------- отрисовщик: ортокамера 45°/30°, плоское затенение ---------- */
+const AZ = 45 * Math.PI / 180, EL = 30 * Math.PI / 180;
+const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map(c => c / l); })();
+
+function project(p){
+  const ca = Math.cos(AZ), sa = Math.sin(AZ), ce = Math.cos(EL), se = Math.sin(EL);
+  const x = p[0] * ca - p[2] * sa, y = p[1], z = p[0] * sa + p[2] * ca;
+  return [x, y * ce - z * se, y * se + z * ce];
+}
+function shade(color, k){
+  const rgb = color.startsWith('#')
+    ? [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16))
+    : color.slice(4, -1).split(',').map(Number);
+  return 'rgb(' + rgb.map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
+}
+function draw(canvas, tris, colors){
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const view = tris.map(t => t.map(project));
+
+  let min = [Infinity, Infinity], max = [-Infinity, -Infinity];
+  for(const t of view) for(const p of t){
+    if(p[0] < min[0]) min[0] = p[0];
+    if(p[0] > max[0]) max[0] = p[0];
+    if(p[1] < min[1]) min[1] = p[1];
+    if(p[1] > max[1]) max[1] = p[1];
+  }
+  const scale = Math.min((w - 16) / (max[0] - min[0] || 1), (h - 16) / (max[1] - min[1] || 1));
+  const ox = w / 2 - (min[0] + max[0]) / 2 * scale, oy = h / 2 + (min[1] + max[1]) / 2 * scale;
+
+  // Художник: дальние треугольники первыми. Z-буфера здесь нет и не нужно.
+  const order = view.map((t, i) => [i, (t[0][2] + t[1][2] + t[2][2]) / 3]).sort((a, b) => b[1] - a[1]);
+  for(const [i] of order){
+    const t = tris[i];
+    const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+    const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+    const n = [u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0]];
+    const len = Math.hypot(...n) || 1;
+    const lit = Math.max(0, (n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]) / len);
+    ctx.fillStyle = shade(colors[i], 0.42 + lit * 0.85);
+    ctx.beginPath();
+    const p = view[i];
+    ctx.moveTo(ox + p[0][0]*scale, oy - p[0][1]*scale);
+    ctx.lineTo(ox + p[1][0]*scale, oy - p[1][1]*scale);
+    ctx.lineTo(ox + p[2][0]*scale, oy - p[2][1]*scale);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/* ---------- чтение .gltf и .glb ---------- */
+const SIZE = {SCALAR:1, VEC2:2, VEC3:3, VEC4:4, MAT4:16};
+const READER = {5121:'getUint8', 5123:'getUint16', 5125:'getUint32', 5126:'getFloat32'};
+const BYTES = {5121:1, 5123:2, 5125:4, 5126:4};
+const IDENT = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+
+function mul(a, b){
+  const out = new Array(16).fill(0);
+  for(let c = 0; c < 4; c++) for(let r = 0; r < 4; r++){
+    let s = 0;
+    for(let k = 0; k < 4; k++) s += a[k*4 + r] * b[c*4 + k];
+    out[c*4 + r] = s;
+  }
+  return out;
+}
+function local(node){
+  if(node.matrix) return node.matrix;
+  const [x, y, z, w] = node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = node.scale ?? [1, 1, 1];
+  const [tx, ty, tz] = node.translation ?? [0, 0, 0];
+  const r = [
+    1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+    2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+    2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y),
+  ];
+  return [r[0]*sx, r[1]*sx, r[2]*sx, 0, r[3]*sy, r[4]*sy, r[5]*sy, 0,
+          r[6]*sz, r[7]*sz, r[8]*sz, 0, tx, ty, tz, 1];
+}
+const apply = (m, p) => [0, 1, 2].map(c => m[c]*p[0] + m[4+c]*p[1] + m[8+c]*p[2] + m[12+c]);
+
+/** Чтение аксессора: одинаково нужно и модели, и позе, и обратной привязке. */
+function reader(gltf, dv){
+  return (index) => {
+    const acc = gltf.accessors[index], bv = gltf.bufferViews[acc.bufferView];
+    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
+    const stride = bv.byteStride ?? size * bytes;
+    const start = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = [];
+    for(let i = 0; i < acc.count; i++){
+      const row = [];
+      for(let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
+      out.push(size === 1 ? row[0] : row);
+    }
+    return out;
+  };
+}
+
+/** Реквизит приходит парой .gltf + .bin, персонаж — одним .glb: тот же JSON
+ *  и тот же буфер, только сложенные в один файл кусками. */
+async function loadDoc(url){
+  if(url.endsWith('.glb')){
+    const buf = await (await fetch(url)).arrayBuffer();
+    const head = new DataView(buf);
+    const total = head.getUint32(8, true);
+    let at = 12, gltf = null, dv = null;
+    while(at + 8 <= total){
+      const len = head.getUint32(at, true);
+      const type = String.fromCharCode(...new Uint8Array(buf, at + 4, 4)).replace(/\0/g, '');
+      if(type === 'JSON') gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, at + 8, len)));
+      else if(type === 'BIN') dv = new DataView(buf, at + 8, len);
+      at += 8 + len;
+    }
+    return {gltf, dv};
+  }
+  const gltf = await (await fetch(url)).json();
+  const bin = await (await fetch(new URL(gltf.buffers[0].uri, new URL(url, location.href)).href)).arrayBuffer();
+  return {gltf, dv: new DataView(bin)};
+}
+
+/**
+ * Поза запекания: ключ клипа из библиотеки, по имени узла. Страница обязана
+ * показывать модель ровно в той позе, в которой её посчитал `npm run models`, —
+ * иначе картинка и числа под ней разъедутся.
+ */
+let poseWaiting = null;
+const ensurePose = () => (poseWaiting ??= loadPose());
+
+async function loadPose(){
+  if(cat.pose === undefined) return null;
+  const {gltf, dv} = await loadDoc(PACK + 'clips/' + cat.pose.library + '.glb');
+  const anim = (gltf.animations ?? []).find(a => a.name === cat.pose.clip);
+  if(anim === undefined) return null;
+  const read = reader(gltf, dv);
+  const out = new Map();
+  for(const ch of anim.channels){
+    const path = ch.target.path;
+    if(path === 'weights' || ch.target.node === undefined) continue;
+    const name = gltf.nodes[ch.target.node]?.name;
+    if(name === undefined) continue;
+    const values = read(anim.samplers[ch.sampler].output);
+    const at = Math.min(cat.pose.key, values.length - 1);
+    const entry = out.get(name) ?? {};
+    entry[path] = values[at];
+    out.set(name, entry);
+  }
+  return out;
+}
+
+/** Матрицы суставов: мировая матрица в позе × обратная привязка. */
+function jointMatrices(gltf, read, pose){
+  const skin = gltf.skins[0];
+  const world = new Map();
+  const walk = (at, parent) => {
+    const node = gltf.nodes[at];
+    const posed = pose?.get(node.name);
+    const m = mul(parent, local(posed === undefined ? node : {
+      translation: posed.translation ?? node.translation,
+      rotation: posed.rotation ?? node.rotation,
+      scale: posed.scale ?? node.scale,
+    }));
+    world.set(at, m);
+    for(const child of node.children ?? []) walk(child, m);
+  };
+  for(const root of gltf.scenes[gltf.scene ?? 0].nodes) walk(root, IDENT);
+  const inv = skin.inverseBindMatrices === undefined ? null : read(skin.inverseBindMatrices);
+  return skin.joints.map((j, i) => {
+    const w = world.get(j) ?? IDENT;
+    return inv === null ? w : mul(w, inv[i]);
+  });
+}
+
+/** Линейный блендинг: четыре сустава с весами складываются матрицами. */
+function blended(mats, joints, weights, v){
+  const out = new Array(16).fill(0);
+  for(let k = 0; k < 4; k++){
+    const w = weights[v][k];
+    if(w === 0) continue;
+    const m = mats[joints[v][k]];
+    for(let c = 0; c < 16; c++) out[c] += m[c] * w;
+  }
+  return out;
+}
+
+async function loadModel(file){
+  const {gltf, dv} = await loadDoc(PACK + file);
+  const read = reader(gltf, dv);
+  const pose = gltf.skins === undefined ? null : await ensurePose();
+  const mats = gltf.skins === undefined ? null : jointMatrices(gltf, read, pose);
+  const tris = [], uvs = [];
+  const walk = (at, parent) => {
+    const node = gltf.nodes[at];
+    const world = mul(parent, local(node));
+    // Скиннованный меш стоит не там, где его узел: по glTF трансформ такого узла
+    // игнорируется, вершины ставит скелет. Рисуем позу привязки — как в файле.
+    const place = node.skin === undefined ? world : IDENT;
+    if(node.mesh !== undefined) for(const prim of gltf.meshes[node.mesh].primitives){
+      const pos = read(prim.attributes.POSITION), uv = read(prim.attributes.TEXCOORD_0), idx = read(prim.indices);
+      const joints = node.skin === undefined ? null : read(prim.attributes.JOINTS_0);
+      const weights = node.skin === undefined ? null : read(prim.attributes.WEIGHTS_0);
+      for(let i = 0; i < idx.length; i += 3){
+        tris.push([0, 1, 2].map(k => apply(
+          joints === null ? place : blended(mats, joints, weights, idx[i+k]),
+          pos[idx[i+k]],
+        )));
+        uvs.push([
+          (uv[idx[i]][0] + uv[idx[i+1]][0] + uv[idx[i+2]][0]) / 3,
+          (uv[idx[i]][1] + uv[idx[i+1]][1] + uv[idx[i+2]][1]) / 3,
+        ]);
+      }
+    }
+    for(const child of node.children ?? []) walk(child, world);
+  };
+  for(const root of gltf.scenes[gltf.scene ?? 0].nodes) walk(root, IDENT);
+  return {tris, uvs};
+}
+
+/* ---------- сетка карточек ---------- */
+const grid = document.getElementById('grid');
+const cards = [];
+let mode = 'palette';
+
+for(const m of cat.models){
+  const hero = m.category === 'Персонажи';
+  const card = document.createElement('div');
+  card.className = 'm';
+  card.dataset.category = m.category;
+  const canvas = document.createElement('canvas');
+  canvas.width = 168; canvas.height = hero ? 210 : 148;
+  const stage = document.createElement('div');
+  stage.className = 'stage';
+  stage.appendChild(canvas);
+  const budget = hero ? HERO_BUDGET : cat.budgets.model;
+  card.innerHTML = '<b>' + m.name.replace(/_/g, ' ') + '</b>' +
+    '<u><s' + (m.tris > budget ? ' class="over"' : '') + '>' + m.tris + ' тр.</s>' +
+    '<s>' + m.size.join('×') + '</s></u>';
+  card.prepend(stage);
+  grid.appendChild(card);
+  cards.push({model:m, card, canvas, loaded:null, atlas:null});
+}
+
+function paint(item){
+  if(item.loaded === null) return;
+  const {tris, uvs} = item.loaded;
+  const list = slots.get(item.model.name);
+  // Пока картинка не пришла, карточка остаётся в палитре: пустая рамка врала бы
+  // сильнее, чем цвет, который через мгновение сменится.
+  const colors = mode === 'pack' && item.atlas !== null
+    ? tris.map((_, i) => item.atlas.at(uvs[i][0], uvs[i][1]))
+    : tris.map((_, i) => hex(colorOfSlot(cat.slots[list[i]])));
+  draw(item.canvas, tris, colors);
+}
+
+const withAtlas = (item) => ensureAtlas(item.model.atlas).then((a) => { item.atlas = a; paint(item); });
+const repaint = () => { for(const c of cards) paint(c); };
+
+const seen = new IntersectionObserver((entries) => {
+  for(const entry of entries){
+    if(!entry.isIntersecting) continue;
+    const item = cards.find(c => c.card === entry.target);
+    seen.unobserve(entry.target);
+    if(item.loaded !== null) continue;
+    loadModel(item.model.file).then((data) => {
+      item.loaded = data;
+      paint(item);
+      if(mode === 'pack') withAtlas(item);
+    }).catch(() => { item.card.querySelector('.stage').textContent = '—'; });
+  }
+}, {rootMargin:'400px'});
+for(const c of cards) seen.observe(c.card);
+
+/* ---------- фильтр и переключатель цвета ---------- */
+const bar = document.getElementById('filters');
+const press = (group, on) => { for(const b of group) b.setAttribute('aria-pressed', b === on ? 'true' : 'false'); };
+
+const filters = [];
+for(const key of ['Всё', ...cats.keys()]){
+  const b = document.createElement('button');
+  b.textContent = key;
+  b.setAttribute('aria-pressed', key === 'Всё' ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(filters, b);
+    for(const c of cards) c.card.style.display = (key === 'Всё' || c.model.category === key) ? '' : 'none';
+  });
+  filters.push(b);
+  bar.appendChild(b);
+}
+bar.appendChild(document.createElement('hr'));
+
+const modes = [];
+for(const [key, label] of [['palette', 'В нашей палитре'], ['pack', 'В цветах набора']]){
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.setAttribute('aria-pressed', key === mode ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(modes, b);
+    mode = key;
+    if(key === 'pack') for(const c of cards){ if(c.loaded !== null) withAtlas(c); }
+    else repaint();
+  });
+  modes.push(b);
+  bar.appendChild(b);
+}
+</script>
