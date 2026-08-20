@@ -38,6 +38,28 @@
 
   button{font-family:var(--ff-ui);font-size:14px;padding:7px 14px;border:1px solid var(--brass);
     background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+
+  /* Демо панели стройки: сетка вместо сцены и живая панель рядом. */
+  .walls{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;}
+  .walls canvas{border:1px solid var(--line);background:var(--surface);image-rendering:auto;
+    touch-action:none;cursor:crosshair;}
+  .wall-panel{flex:1;min-width:280px;}
+  .wall-panel .panel{display:flex;flex-direction:column;gap:10px;background:var(--surface);
+    border:1px solid var(--line);border-radius:6px;padding:12px;}
+  .wall-panel .sheet-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+  .wall-panel .sheet-head b{font-size:15px;}
+  .wall-panel .build-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:6px;}
+  .wall-panel .build-pick{width:100%;display:flex;flex-direction:column;gap:4px;align-items:flex-start;
+    text-align:left;padding:9px 10px;line-height:1.3;font-size:12px;}
+  .wall-panel .build-pick b{font-size:13px;}
+  .wall-panel .build-gesture{font-size:10.5px;}
+  .wall-panel .build-bot{display:flex;justify-content:space-between;gap:8px;width:100%;font-size:10.5px;}
+  .wall-panel .build-pick[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  .wall-panel .build-pick[aria-pressed="true"] .dim{color:var(--ground);opacity:.8;}
+  .wall-panel .dim{color:var(--dim);}
+  .wall-panel .build-note{font-size:11.5px;color:var(--dim);}
+  .wall-panel .build-note.warn{color:var(--blood);}
+  .wall-panel .sheet-x{font-size:11px;padding:4px 8px;}
   button:hover{background:var(--brass);color:var(--ground);}
   button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
   button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
@@ -240,7 +262,198 @@
       </div>
     </div>
   </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">06</div><h2>Стены: панель, карточки и жест</h2></div>
+    <p>Здание ставится одним тапом в клетку, и для него хватает кнопки в листе.
+      Стена — это много клеток подряд, башня — та же клетка несколько раз, ворота —
+      клетка, которая обязана быть серединой прямой. <b>Жест у каждого свой</b>,
+      и карточка нужна ровно затем, чтобы игрок знал, каким жестом он сейчас работает.</p>
+    <p>Ниже — <b>та самая панель из игры</b>, а не её копия: страница монтирует
+      <code>src/ui/buildPanel.ts</code> и зовёт те же функции стройки, что и лагерь.
+      Сетка слева заменяет сцену. Ведите линию для стены, тапайте для остального.</p>
+    <div class="walls">
+      <canvas id="wallGrid" width="352" height="352"></canvas>
+      <div id="wallPanel" class="wall-panel"></div>
+    </div>
+    <p class="note" id="wallNote"></p>
+    <div class="guard">
+      <div class="key">
+        <h3>Сетка у стены своя</h3>
+        <p>Шаг — <b>две клетки лагеря</b>, и это не выбор, а следствие замера:
+          деталь набора вдвое крупнее клетки, потому что при масштабе один стена
+          выходит вровень с героем — забором, а не стеной. Поле стены растёт
+          со Штабом вместе с площадью: 3×3 на первом уровне, 5×5 на пятом.</p>
+      </div>
+      <div class="key">
+        <h3>Карточка вооружает палец</h3>
+        <p>Пока карточка выбрана, палец <b>строит, а не крутит камеру</b>. Рисовать
+          и возить камеру одним пальцем нельзя, и «Готово» возвращает камеру сразу.
+          Повторный тап по карточке снимает выбор — не приходится искать выход.</p>
+      </div>
+      <div class="key">
+        <h3>Отказ не молчит</h3>
+        <p>Каждое «нельзя» названо причиной: «занято зданием», «вне площади»,
+          «не прямая». Молчащий отказ читается как поломка интерфейса,
+          а не как правило игры.</p>
+      </div>
+      <div>
+        <h3>Границы: чего здесь нет</h3>
+        <p>Цена, время стройки и то, <b>что стена даёт</b>, не решены — в карточке
+          стоит прочерк. Это вопросы §12 и замера (<code>npm run measure</code>),
+          а не панели: назначенное наугад число выглядело бы решением
+          и спорить с ним пришлось бы как с решением.</p>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script type="module">
+/**
+ * Живая панель стройки. Страница монтирует настоящий компонент игры и зовёт
+ * настоящие функции стройки: копия панели рядом с оригиналом разошлась бы
+ * с ним молча, а смысл раздела ровно в том, чтобы показать оригинал.
+ *
+ * Работает только на dev-сервере: читаются файлы проекта.
+ */
+const box = document.getElementById('wallPanel');
+const note = document.getElementById('wallNote');
+let mod, walls, sim;
+try{
+  mod = await import('/src/ui/buildPanel.ts');
+  sim = await import('/src/sim/campWalls.ts');
+  walls = sim.emptyWalls();
+}catch(e){
+  note.textContent = 'Раздел читает файлы проекта и работает только на dev-сервере: npm run dev, затем /building.html. ' + e;
+  throw e;
+}
+
+// Штаб пятого уровня: площадь 10×10, поле стены 5×5. Здание одно —
+// чтобы «занято зданием» было видно, а не рассказано.
+const AREA = 10;
+const site = { area: AREA, layout: { hq: { x: 4, z: 4 } }, levels: { hq: 5 } };
+const GRID = sim.wallGrid(AREA);
+
+const panel = new mod.BuildPanel({
+  onTool: () => { stroke = null; paint(); },
+  onDone: () => { panel.select(null); paint(); },
+});
+box.appendChild(panel.root);
+panel.setVisible(true);
+panel.update(walls);
+
+const canvas = document.getElementById('wallGrid');
+const ctx = canvas.getContext('2d');
+let stroke = null;
+
+const css = getComputedStyle(document.body);
+const step = canvas.width / GRID;
+const spotAt = (e) => {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: Math.floor((e.clientX - r.left) / r.width * GRID),
+    z: Math.floor((e.clientY - r.top) / r.height * GRID),
+  };
+};
+
+function paint(){
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const cells = new Set(walls.cells);
+  for(let z = 0; z < GRID; z++) for(let x = 0; x < GRID; x++){
+    const spot = {x, z};
+    const key = sim.wallSpotOf(x * 2, z * 2);
+    const why = sim.wallBlock(site, spot);
+    const on = cells.has(x + ':' + z);
+    const tower = walls.towers[x + ':' + z];
+    const gate = walls.gates.includes(x + ':' + z);
+    const stairs = walls.stairs[x + ':' + z] !== undefined;
+    ctx.fillStyle = why === 'занято зданием'
+      ? css.getPropertyValue('--surface-2').trim()
+      : on ? (tower !== undefined ? css.getPropertyValue('--moss').trim()
+        : gate ? css.getPropertyValue('--brass').trim()
+        : css.getPropertyValue('--dim').trim())
+      : stairs ? css.getPropertyValue('--ember').trim()
+      : 'transparent';
+    ctx.fillRect(x * step + 1, z * step + 1, step - 2, step - 2);
+    if(tower !== undefined){
+      ctx.fillStyle = css.getPropertyValue('--ground').trim();
+      ctx.font = Math.round(step * 0.42) + 'px ' + css.getPropertyValue('--ff-mono');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(tower), (x + 0.5) * step, (z + 0.55) * step);
+    }
+    void key;
+  }
+  if(stroke !== null){
+    for(const spot of sim.strokeCells(stroke)){
+      if(spot.x < 0 || spot.z < 0 || spot.x >= GRID || spot.z >= GRID) continue;
+      ctx.fillStyle = sim.wallBlock(site, spot) === 'ok'
+        ? 'rgba(127,176,105,.5)' : 'rgba(212,84,58,.5)';
+      ctx.fillRect(spot.x * step + 1, spot.z * step + 1, step - 2, step - 2);
+    }
+  }
+  ctx.strokeStyle = css.getPropertyValue('--line').trim();
+  ctx.lineWidth = 1;
+  for(let i = 0; i <= GRID; i++){
+    ctx.beginPath(); ctx.moveTo(i * step, 0); ctx.lineTo(i * step, GRID * step); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i * step); ctx.lineTo(GRID * step, i * step); ctx.stroke();
+  }
+  const count = sim.wallCount(walls);
+  note.textContent = 'Поле стены ' + GRID + '×' + GRID + ' при площади ' + AREA + '×' + AREA +
+    '. Серая клетка — Штаб, туда стена не встанет. Стоит: стен ' + count['стена'] +
+    ', башен ' + count['башня'] + ', ворот ' + count['ворота'] + ', лестниц ' + count['лестница'] +
+    '. Деталей набора это ' + sim.wallPieces(walls).length + '.';
+  panel.update(walls);
+}
+
+function act(spot, finished){
+  const tool = panel.selected;
+  if(tool === null) return;
+  if(tool === 'стена'){
+    if(stroke === null) stroke = [];
+    const last = stroke[stroke.length - 1];
+    if(last === undefined || last.x !== spot.x || last.z !== spot.z) stroke.push(spot);
+    if(!finished){ paint(); return; }
+    const put = sim.raiseWall(walls, site, stroke);
+    stroke = null;
+    if(put === 0) panel.setNote('Здесь стене не встать: занято зданием или за площадью');
+    else panel.setNote(null);
+    paint();
+    return;
+  }
+  if(!finished) return;
+  const deny = (why) => { panel.setNote(why); paint(); };
+  if(tool === 'башня'){
+    const why = sim.wallBlock(site, spot);
+    if(why !== 'ok') return deny('Башня: ' + why);
+    sim.cycleTower(walls, site, spot);
+  } else if(tool === 'ворота'){
+    const why = sim.gateBlock(walls, spot);
+    if(why !== 'ok') return deny('Ворота: ' + why);
+    sim.toggleGate(walls, spot);
+  } else if(tool === 'лестница'){
+    const why = sim.stairsBlock(walls, site, spot);
+    if(why !== 'ok' && walls.stairs[spot.x + ':' + spot.z] === undefined) return deny('Лестница: ' + why);
+    sim.putStairs(walls, site, spot);
+  } else if(tool === 'снос'){
+    if(!sim.razeWall(walls, spot)) return deny('Здесь ничего не стоит');
+  }
+  panel.setNote(null);
+  paint();
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  act(spotAt(e), panel.selected !== 'стена');
+});
+canvas.addEventListener('pointermove', (e) => {
+  if(panel.selected !== 'стена' || stroke === null) return;
+  act(spotAt(e), false);
+});
+canvas.addEventListener('pointerup', (e) => {
+  if(panel.selected === 'стена' && stroke !== null) act(spotAt(e), true);
+});
+paint();
+</script>
 
 <script>
 (function(){

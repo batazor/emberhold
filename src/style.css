@@ -374,3 +374,19 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #pitch button {
   pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
 }
+
+/* ---------- панель стройки стен (§12, §6.1.6) ---------- */
+#camp .build { gap: 10px; align-self: stretch; }
+.build-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 6px; }
+.build-card { display: flex; }
+.build-pick {
+  flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  text-align: left; padding: 9px 10px; line-height: 1.3;
+}
+.build-pick b { font-size: 13px; }
+.build-gesture { font-size: 10.5px; }
+.build-bot { display: flex; justify-content: space-between; gap: 8px; width: 100%; font-size: 10.5px; }
+.build-pick[aria-pressed="true"] { background: #3c3320; border-color: #6d5a30; }
+.build-card.raze .build-pick[aria-pressed="true"] { background: #3a2320; border-color: #7a4038; }
+.build-note { font-size: 11.5px; }
+.build-note.warn { color: #d4543a; }

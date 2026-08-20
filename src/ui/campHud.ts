@@ -50,6 +50,8 @@ export interface CampCallbacks {
   onCraft(slot: GearSlot): void;
   /** §20.4 — перестановка: карточка вооружает режим, дальше тап по клетке. */
   onMove(id: BuildingId): void;
+  /** §6.1.6 — стройка стен: карточка открывает панель, дальше жест по земле. */
+  onWalls(): void;
 }
 
 const BLOCK_TEXT: Record<string, string> = {
@@ -241,8 +243,18 @@ export class CampHud {
     /* ---------- нижняя строка ---------- */
     this.bar = document.createElement('div');
     this.bar.className = 'camp-bar';
+    // «Стены» стоит рядом с «Отрядом», а не в листе здания: стройка стен —
+    // не улучшение постройки, а свой режим со своим жестом, и прятать её
+    // внутрь карточки Штаба значило бы соврать про то, чем она является.
+    const walls = document.createElement('button');
+    walls.textContent = 'Стены';
+    walls.addEventListener('click', () => {
+      this.close();
+      this.cb.onWalls();
+    });
     this.bar.append(
       this.makeBarButton('Отряд', 'roster'),
+      walls,
       this.makeBarButton('Припасы', 'shop'),
       this.makeBarButton('В мир', 'tiers', true),
     );

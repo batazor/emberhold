@@ -8,6 +8,10 @@ import type { Gust } from './cursorWind';
 import { FluffyGrass } from './fluffyGrass';
 import { forestGeometry, forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
+import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
+import type { CastlePartModelName } from './castle';
+import { CASTLE_CELL, type Piece, type Spot } from '../sim/castle';
+import { PALETTE } from './palette';
 
 /**
  * Сцена лагеря по camp.html: герой стоит у Жилья, стройка видна по площадке.
@@ -394,6 +398,97 @@ export class CampView {
     for (const [bid, g] of this.buildings) {
       g.position.y = bid === id ? 0.12 : 0;
     }
+  }
+
+  /* ---------- стены лагеря (§12, §6.1.6) ---------- */
+
+  /** Всё построенное игроком: одна группа, чтобы снести её одним движением. */
+  private readonly walls = new THREE.Group();
+  /** Призрак мазка: плоские пятна под пальцем, пока стену ведут. */
+  private readonly ghost = new THREE.Group();
+  private wallSignature = '';
+
+  /**
+   * Мировая точка клетки стены. Клетка стены — квадрат `CASTLE_CELL` клеток
+   * лагеря, и ноль детали стоит в его середине; поэтому к углу прибавляется
+   * половина клетки лагеря, а не половина клетки стены.
+   */
+  private static at(spot: Spot): { x: number; z: number } {
+    return { x: spot.x * CASTLE_CELL + 0.5, z: spot.z * CASTLE_CELL + 0.5 };
+  }
+
+  /**
+   * Перестроить стены. Детали приходят готовым списком из `campWalls.ts`:
+   * рендер не решает, что где стоит, — он ставит то, что решила симуляция.
+   *
+   * Подпись нужна, чтобы не пересобирать сцену на каждом кадре: стена меняется
+   * тапом игрока, а кадров между тапами шестьдесят в секунду.
+   */
+  setWalls(pieces: readonly Piece[]): void {
+    const signature = pieces.map((p) => `${p.model}${p.x},${p.z},${p.y},${p.turn}`).join('|');
+    if (signature === this.wallSignature) return;
+    this.wallSignature = signature;
+
+    this.walls.clear();
+    if (this.walls.parent === null) this.group.add(this.walls);
+    if (pieces.length === 0) return;
+
+    const byModel = new Map<string, Piece[]>();
+    for (const piece of pieces) {
+      const list = byModel.get(piece.model) ?? [];
+      list.push(piece);
+      byModel.set(piece.model, list);
+    }
+
+    const mat = this.track(castleMaterial());
+    const dummy = new THREE.Object3D();
+    for (const [model, list] of byModel) {
+      const mesh = new THREE.InstancedMesh(
+        castleGeometry(model as CastlePartModelName),
+        mat,
+        list.length,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i++) {
+        const piece = list[i]!;
+        const at = CampView.at(piece);
+        dummy.position.set(at.x, piece.y * CASTLE_SCALE, at.z);
+        dummy.rotation.set(0, (piece.turn * Math.PI) / 2, 0);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      this.walls.add(mesh);
+    }
+  }
+
+  /**
+   * Призрак стройки: плоские пятна на клетках, куда встанет стена. Зелёное —
+   * встанет, красное — нет. Те же два цвета, что у места под здание:
+   * «хорошо» и «плохо» обязаны говорить одним цветом во всей игре.
+   */
+  showWallGhost(cells: readonly { spot: Spot; ok: boolean }[]): void {
+    this.ghost.clear();
+    if (this.ghost.parent === null) this.group.add(this.ghost);
+    for (const { spot, ok } of cells) {
+      const plane = new THREE.Mesh(
+        this.track(new THREE.PlaneGeometry(CASTLE_CELL * 0.92, CASTLE_CELL * 0.92)),
+        this.track(new THREE.MeshBasicMaterial({
+          color: ok ? PALETTE.siteOk : PALETTE.siteNo,
+          transparent: true,
+          opacity: 0.34,
+          depthWrite: false,
+        })),
+      );
+      plane.rotation.x = -Math.PI / 2;
+      const at = CampView.at(spot);
+      plane.position.set(at.x, 0.07, at.z);
+      this.ghost.add(plane);
+    }
+  }
+
+  hideWallGhost(): void {
+    this.ghost.clear();
   }
 
   get center(): { x: number; z: number } {
