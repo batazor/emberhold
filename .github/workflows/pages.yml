@@ -1,0 +1,61 @@
+# Публикация сайта на GitHub Pages: игра в корне, артбуки рядом.
+#
+# Сборка (npm run build) — не только vite: она гоняет typecheck, правила,
+# npm run arch и baseline. Значит артбук, не попавший в оглавление
+# artbooks.html, роняет CI до публикации, а не оказывается ссылкой в 404
+# на живом сайте.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Токен нужен ровно на публикацию: читать репозиторий, писать Pages,
+# подписать деплой OIDC-идентификацией.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Публикация одна на весь репозиторий. Параллельные деплои затирают друг
+# друга, поэтому новый push отменяет предыдущий — но уже начавшийся
+# деплой доводится до конца, иначе Pages останется в промежуточном виде.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+
+      # ci, а не install: сборка должна падать на разъехавшемся lock-файле,
+      # а не молча ставить другие версии.
+      - run: npm ci
+
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  # Публикуется только main. На pull request остаётся проверка сборки выше —
+  # ветка не имеет права переписать живой сайт.
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
