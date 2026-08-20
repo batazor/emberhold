@@ -87,6 +87,24 @@
   .guard p b{color:var(--text);font-weight:600;}
   .fail{color:var(--blood);}
   .scroll{overflow-x:auto;}
+
+  .stand{display:grid;grid-template-columns:minmax(280px,1fr) minmax(240px,320px);gap:18px;
+    align-items:start;}
+  @media (max-width:760px){ .stand{grid-template-columns:1fr;} }
+  .stand .screen{background:#12100c;border:1px solid var(--line);display:flex;
+    justify-content:center;align-items:center;min-height:320px;}
+  .stand .screen canvas{max-width:100%;height:auto;}
+  .side{display:flex;flex-direction:column;gap:14px;}
+  .pick{display:flex;flex-wrap:wrap;gap:6px;}
+  .pick button{padding:5px 10px;font-size:12.5px;}
+  .pick select{font-family:var(--ff-ui);font-size:13px;padding:6px 8px;width:100%;
+    background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:4px;}
+  .side h4{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--dim);font-weight:600;margin:0;}
+  .side dl{display:grid;grid-template-columns:auto auto;gap:3px 10px;margin:0;font-size:12.5px;}
+  .side dt{color:var(--dim);}
+  .side dd{margin:0;font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  .side dd.warn{color:var(--ember);}
 </style>
 
 <div class="wrap">
@@ -110,6 +128,32 @@
     и придумана задним числом не будет. Менять их можно правкой строки.</p>
   <p class="lede fail" id="warn" style="display:none"></p>
 </header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Стенд</h2>
+    <p>Страница не показывает картинки набора — она его проигрывает. Скиннинг
+      считается здесь же, в браузере: кости из модели, дорожки из клипа,
+      четыре веса на вершину. Камера игровая, цвет — из палитры игры,
+      предмет держится в узле <code>handslot.r</code> и едет за рукой.</p>
+    <p>Клипы взяты из соседнего набора <code>kaykit-animations</code> — риг
+      у них общий, <code>Rig_Medium</code>, поэтому дорожки ложатся на скелета
+      по именам костей без всякой подгонки. Среди них есть и такие, что сделаны
+      прямо под этот набор: <b>подъём из земли и воскрешение</b>.</p>
+  </div>
+  <div class="stand">
+    <div class="screen"><canvas id="stage" width="560" height="470"></canvas></div>
+    <div class="side">
+      <h4>Кто</h4>
+      <div class="pick" id="pickWho"></div>
+      <h4>Что делает</h4>
+      <select id="pickClip"></select>
+      <div class="pick" id="stageBar"></div>
+      <dl id="stageInfo"></dl>
+      <p class="note" id="stageNote"></p>
+    </div>
+  </div>
+</div>
 
 <div class="sec">
   <div class="hd">
@@ -183,16 +227,18 @@
 <div class="sec">
   <div class="hd">
     <h2>Бюджет, который перестал быть треугольниками</h2>
-    <p>§6.1 задаёт противнику <b>700 треугольников</b>. В наборе нет ни одной
-      модели скелета дешевле пяти тысяч. Это не «набор плохой» — это бюджет,
-      обоснование которого сюда не переносится.</p>
-    <p>§6.1 объясняет потолок двумя вещами: чтобы модель <b>читалась на пяти
-      сантиметрах экрана</b> и <b>рисовалась за вечер</b>. Второе к готовому набору
-      не относится вовсе — рисовать нечего. Первое относится, но измеряется
-      силуэтом, а не числом треугольников: пятитысячный скелет на пяти сантиметрах
-      читается лучше семисоттреугольной коробки, потому что у него есть череп.</p>
+    <p>Раньше §6.1 отводил противнику <b>700 треугольников</b>. В наборе нет
+      ни одной модели скелета дешевле пяти тысяч, и правило снято совсем —
+      не смягчено, а убрано из документа.</p>
+    <p>Держалось оно на двух вещах: чтобы модель <b>читалась на пяти
+      сантиметрах экрана</b> и <b>рисовалась за вечер</b>. Второе к готовому
+      набору не относится вовсе — рисовать нечего. Первое относится,
+      но измеряется силуэтом, а не числом треугольников: пятитысячный скелет
+      на пяти сантиметрах читается лучше семисоттреугольной коробки, потому что
+      у него есть череп.</p>
     <p>Цена готовой модели одна и она другая — <b>килобайты в бандле у всех
-      игроков</b>. Её и меряем.</p>
+      игроков</b>. Её и меряем; потолок в треугольниках остался только у того,
+      что рисуют руками, — у здания и героя.</p>
   </div>
   <div class="scroll"><table id="cost"><thead><tr>
     <th>Что</th><th class="num">Было</th><th class="num">Стало</th><th class="num">Разница</th>
@@ -279,7 +325,7 @@
 
 <div class="sec">
   <div class="hd">
-    <h2>Двадцать шесть клипов, которые пока лежат</h2>
+    <h2>Сто двадцать шесть клипов, которые пока лежат</h2>
     <p>Набор пришёл с ригом на двадцать три кости и двумя файлами анимации.
       Раздел 17 просит пять состояний — покой, ходьба, удар, урон, падение;
       в наборе есть все, кроме удара, и по два варианта на состояние.</p>
@@ -491,7 +537,7 @@ function shade(color, k){
   return 'rgb(' + rgb.map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
 }
 
-function draw(canvas, tris, colors){
+function draw(canvas, tris, colors, fit){
   const w = canvas.width, h = canvas.height;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, w, h);
@@ -504,8 +550,11 @@ function draw(canvas, tris, colors){
     if(p[1] < min[1]) min[1] = p[1];
     if(p[1] > max[1]) max[1] = p[1];
   }
-  const scale = Math.min((w - 16) / (max[0] - min[0] || 1), (h - 16) / (max[1] - min[1] || 1));
-  const ox = w / 2 - (min[0] + max[0]) / 2 * scale, oy = h / 2 + (min[1] + max[1]) / 2 * scale;
+  // Рамка на кадр вычисляется по самому кадру — карточке этого хватает.
+  // Стенд передаёт свою: иначе модель меняет размер на каждом взмахе руки.
+  const scale = fit?.scale ?? Math.min((w - 16) / (max[0] - min[0] || 1), (h - 16) / (max[1] - min[1] || 1));
+  const ox = fit === undefined ? w / 2 - (min[0] + max[0]) / 2 * scale : fit.ox;
+  const oy = fit === undefined ? h / 2 + (min[1] + max[1]) / 2 * scale : fit.oy;
 
   // Художник: дальние треугольники первыми. Z-буфера здесь нет и не нужно.
   const order = view.map((t, i) => [i, (t[0][2] + t[1][2] + t[2][2]) / 3]).sort((a, b) => b[1] - a[1]);
@@ -544,7 +593,9 @@ function mul(a, b){
 }
 /** Собственный трансформ узла; кадр клипа, если он есть, его заменяет. */
 function local(node, pose){
-  const frame = pose?.get(node.name);
+  return localFrame(node, pose?.get(node.name));
+}
+function localFrame(node, frame){
   if(node.matrix && frame === undefined) return node.matrix;
   const [x, y, z, w] = frame?.r ?? node.rotation ?? [0, 0, 0, 1];
   const [sx, sy, sz] = frame?.s ?? node.scale ?? [1, 1, 1];
@@ -937,4 +988,359 @@ const lum = (h) => {
 document.getElementById('valley').textContent =
   'самой светлой кожей (' + lum(wood.source[wood.source.length - 1]).toFixed(2) +
   ') и самой тёмной костью (' + lum(bone.source[0]).toFixed(2) + ')';
+
+/* ---------- стенд: скиннинг покадрово ---------- */
+
+/**
+ * Модель, разобранная один раз и готовая позироваться каждый кадр.
+ * `loadModel` выше читает файл заново на каждый вызов — для карточки это
+ * нормально, для шестидесяти кадров в секунду нет: аккессоры разбираются
+ * один раз, дальше считаются только матрицы костей и вершины.
+ */
+class Rig {
+  constructor(doc){
+    const g = doc.gltf, read = reader(doc);
+    this.g = g;
+    this.parent = new Int32Array(g.nodes.length).fill(-1);
+    this.walk = [];
+    const order = (at) => {
+      this.walk.push(at);
+      for(const c of g.nodes[at].children ?? []){ this.parent[c] = at; order(c); }
+    };
+    for(const root of g.scenes[g.scene ?? 0].nodes) order(root);
+    this.world = new Float32Array(g.nodes.length * 16);
+    this.byName = new Map(g.nodes.map((n, i) => [n.name, i]));
+
+    // Примитивы в порядке обхода сцены — тот же, которым считался список слотов.
+    this.parts = [];
+    this.tris = 0;
+    const take = (at) => {
+      const node = g.nodes[at];
+      if(node.mesh !== undefined) for(const prim of g.meshes[node.mesh].primitives){
+        if(prim.attributes.TEXCOORD_0 === undefined || prim.indices === undefined) continue;
+        const skinned = node.skin !== undefined && prim.attributes.JOINTS_0 !== undefined;
+        const part = {
+          node: at,
+          pos: Float32Array.from(read(prim.attributes.POSITION).flat()),
+          idx: Uint32Array.from(read(prim.indices)),
+          jnt: skinned ? Uint16Array.from(read(prim.attributes.JOINTS_0).flat()) : null,
+          wgt: skinned ? Float32Array.from(read(prim.attributes.WEIGHTS_0).flat()) : null,
+          skin: skinned ? node.skin : -1,
+        };
+        part.out = new Float32Array(part.pos.length);
+        this.parts.push(part);
+        this.tris += part.idx.length / 3;
+      }
+      for(const c of node.children ?? []) take(c);
+    };
+    for(const root of g.scenes[g.scene ?? 0].nodes) take(root);
+
+    this.skins = (g.skins ?? []).map((skin) => ({
+      joints: skin.joints,
+      inverse: skin.inverseBindMatrices === undefined ? null : read(skin.inverseBindMatrices),
+      matrices: new Float32Array(skin.joints.length * 16),
+    }));
+  }
+
+  /** Мировые матрицы всех узлов в кадре `t` клипа (или в позе привязки). */
+  pose(clip, t){
+    const g = this.g;
+    for(const at of this.walk){
+      const node = g.nodes[at];
+      const m = localFrame(node, clip?.at(node.name, t));
+      const up = this.parent[at];
+      const world = up < 0 ? m : mul(this.worldOf(up), m);
+      this.world.set(world, at * 16);
+    }
+    for(const skin of this.skins){
+      for(let j = 0; j < skin.joints.length; j++){
+        const w = this.worldOf(skin.joints[j]);
+        const inv = skin.inverse === null ? IDENT : skin.inverse[j];
+        skin.matrices.set(mul(w, inv), j * 16);
+      }
+    }
+  }
+
+  worldOf(at){ return Array.from(this.world.subarray(at * 16, at * 16 + 16)); }
+
+  /** Треугольники в текущей позе. Порядок — тот же, что у списка слотов. */
+  triangles(matrix){
+    const out = [];
+    for(const part of this.parts){
+      const p = part.pos, o = part.out;
+      if(part.skin < 0){
+        const m = this.worldOf(part.node);
+        for(let v = 0; v < p.length; v += 3){
+          o[v]   = m[0]*p[v] + m[4]*p[v+1] + m[8]*p[v+2]  + m[12];
+          o[v+1] = m[1]*p[v] + m[5]*p[v+1] + m[9]*p[v+2]  + m[13];
+          o[v+2] = m[2]*p[v] + m[6]*p[v+1] + m[10]*p[v+2] + m[14];
+        }
+      }else{
+        // Четыре веса на вершину; собственный трансформ узла с мешем glTF
+        // велит игнорировать — положение задают кости.
+        const M = this.skins[part.skin].matrices, J = part.jnt, W = part.wgt;
+        for(let v = 0, n = p.length / 3; v < n; v++){
+          const x = p[v*3], y = p[v*3+1], z = p[v*3+2];
+          let ox = 0, oy = 0, oz = 0;
+          for(let k = 0; k < 4; k++){
+            const w = W[v*4 + k];
+            if(w === 0) continue;
+            const m = J[v*4 + k] * 16;
+            ox += w * (M[m]*x   + M[m+4]*y + M[m+8]*z  + M[m+12]);
+            oy += w * (M[m+1]*x + M[m+5]*y + M[m+9]*z  + M[m+13]);
+            oz += w * (M[m+2]*x + M[m+6]*y + M[m+10]*z + M[m+14]);
+          }
+          o[v*3] = ox; o[v*3+1] = oy; o[v*3+2] = oz;
+        }
+      }
+      for(let i = 0; i < part.idx.length; i += 3){
+        out.push([0, 1, 2].map((k) => {
+          const v = part.idx[i+k] * 3;
+          const q = [o[v], o[v+1], o[v+2]];
+          return matrix === undefined ? q : apply(matrix, q);
+        }));
+      }
+    }
+    return out;
+  }
+}
+
+/** Клип: дорожки по имени кости, выборка в произвольный момент. */
+class Clip {
+  constructor(doc, anim){
+    const read = reader(doc), g = doc.gltf;
+    this.name = anim.name;
+    this.duration = 0;
+    this.tracks = new Map();
+    for(const ch of anim.channels){
+      const node = g.nodes[ch.target.node]?.name;
+      if(node === undefined) continue;
+      const s = anim.samplers[ch.sampler];
+      const times = read(s.input), values = read(s.output);
+      this.duration = Math.max(this.duration, times[times.length - 1]);
+      const byPath = this.tracks.get(node) ?? {};
+      byPath[ch.target.path] = {times, values};
+      this.tracks.set(node, byPath);
+    }
+    this.joints = this.tracks.size;
+  }
+  at(node, t){
+    const byPath = this.tracks.get(node);
+    if(byPath === undefined) return undefined;
+    const pick = (track, quat) => {
+      const {times, values} = track;
+      let i = 0;
+      while(i + 1 < times.length && times[i + 1] <= t) i++;
+      const j = Math.min(i + 1, times.length - 1);
+      const span = times[j] - times[i];
+      const k = span > 0 ? Math.min(1, Math.max(0, (t - times[i]) / span)) : 0;
+      return quat ? slerp(values[i], values[j], k) : values[i].map((v, c) => lerp(v, values[j][c], k));
+    };
+    return {
+      t: byPath.translation ? pick(byPath.translation, false) : undefined,
+      r: byPath.rotation ? pick(byPath.rotation, true) : undefined,
+      s: byPath.scale ? pick(byPath.scale, false) : undefined,
+    };
+  }
+}
+
+/* Клипы лежат в соседнем наборе: риг общий, и дорожки ложатся по именам костей. */
+const CLIPS = './assets/kaykit-animations/gltf/';
+const CLIP_FILES = [
+  ['Rig_Medium_General.glb', 'Покой, урон, смерть'],
+  ['Rig_Medium_MovementBasic.glb', 'Ход и бег'],
+  ['Rig_Medium_CombatMelee.glb', 'Удары'],
+  ['Rig_Medium_Special.glb', 'Подъём и воскрешение'],
+];
+const WHO = [
+  ['Skeleton_Minion', 'Скелет', null],
+  ['Skeleton_Warrior', 'Скелет-воин', 'Skeleton_Axe'],
+  ['Skeleton_Mage', 'Скелет-маг', 'Skeleton_Staff'],
+  ['Skeleton_Rogue', 'Разбойник', 'Skeleton_Blade'],
+];
+
+const rigCache = new Map();
+const clipCache = new Map();
+const heldCache = new Map();
+
+const rigOf = (name) => {
+  if(!rigCache.has(name)) rigCache.set(name, loadDoc(GLTF + name + '.glb').then((d) => new Rig(d)));
+  return rigCache.get(name);
+};
+const clipsOf = (file) => {
+  if(!clipCache.has(file)){
+    clipCache.set(file, loadDoc(CLIPS + file).then((d) =>
+      (d.gltf.animations ?? []).map((a) => new Clip(d, a))));
+  }
+  return clipCache.get(file);
+};
+const heldOf = (name) => {
+  if(!heldCache.has(name)) heldCache.set(name, loadModel(name));
+  return heldCache.get(name);
+};
+
+const stage = {
+  who: WHO[1], clip: null, t: 0, playing: true, rate: 1, spin: 0, spinning: true,
+  rig: null, held: null, slots: null, heldSlots: null, fit: null,
+};
+
+async function stageLoad(){
+  const [name, , weapon] = stage.who;
+  stage.rig = await rigOf(name);
+  stage.slots = slots.get(name);
+  if(weapon === null){ stage.held = null; }
+  else{
+    stage.held = await heldOf(weapon);
+    stage.heldSlots = slots.get(weapon);
+  }
+  stage.t = 0;
+  stage.fit = null;
+  stageInfo();
+}
+
+/**
+ * Рамка стенда. Считается один раз по радиусу и высоте, а не по габариту
+ * кадра: модель вращается, и рамка по кадру заставляла бы её пульсировать.
+ */
+function stageFit(canvas, tris){
+  let radius = 0, low = Infinity, high = -Infinity;
+  for(const t of tris) for(const p of t){
+    radius = Math.max(radius, Math.hypot(p[0], p[2]));
+    low = Math.min(low, p[1]);
+    high = Math.max(high, p[1]);
+  }
+  const ce = Math.cos(EL), se = Math.sin(EL);
+  const halfX = radius, halfY = (high - low) / 2 * ce + radius * se;
+  const scale = Math.min((canvas.width - 24) / (halfX * 2), (canvas.height - 24) / (halfY * 2));
+  const mid = (low + high) / 2;
+  return {scale, ox: canvas.width / 2, oy: canvas.height / 2 + mid * ce * scale};
+}
+
+function stageInfo(){
+  if(stage.rig === null) return;
+  const [, label, weapon] = stage.who;
+  const model = cat.models.find((m) => m.name === stage.who[0]);
+  const arm = weapon === null ? null : cat.models.find((m) => m.name === weapon);
+  document.getElementById('stageInfo').innerHTML =
+    '<dt>Треугольников</dt><dd>' + (model.tris + (arm?.tris ?? 0)) + '</dd>' +
+    '<dt>Костей в риге</dt><dd>' + stage.rig.skins[0].joints.length + '</dd>' +
+    '<dt>Костей в клипе</dt><dd>' + (stage.clip?.joints ?? 0) + '</dd>' +
+    '<dt>Длина клипа</dt><dd>' + (stage.clip ? stage.clip.duration.toFixed(2) + ' с' : '—') + '</dd>';
+  document.getElementById('stageNote').textContent =
+    label + (weapon === null ? ' без предмета' : ' держит ' + weapon.replace('Skeleton_', '')) +
+    '. Скиннинг считается на каждом кадре здесь, в браузере.';
+}
+
+function stageFrame(dt){
+  const canvas = document.getElementById('stage');
+  if(stage.rig === null) return;
+  if(stage.playing && stage.clip !== null){
+    stage.t += dt * stage.rate;
+    if(stage.t > stage.clip.duration) stage.t -= stage.clip.duration;
+  }
+  if(stage.spinning) stage.spin += dt * 0.5;
+
+  stage.rig.pose(stage.clip, stage.t);
+  const turn = [
+    Math.cos(stage.spin), 0, -Math.sin(stage.spin), 0,
+    0, 1, 0, 0,
+    Math.sin(stage.spin), 0, Math.cos(stage.spin), 0,
+    0, 0, 0, 1,
+  ];
+  let tris = stage.rig.triangles(turn);
+  let list = Array.from(stage.slots);
+  if(stage.held !== null){
+    const hand = mul(turn, stage.rig.worldOf(stage.rig.byName.get('handslot.r')));
+    tris = tris.concat(stage.held.tris.map((t) => t.map((p) => apply(hand, p))));
+    list = list.concat(Array.from(stage.heldSlots));
+  }
+  if(stage.fit === null || stage.fit === undefined) stage.fit = stageFit(canvas, tris);
+  draw(canvas, tris, tris.map((_, i) => hex(colorOfSlot(cat.slots[list[i]]))), stage.fit);
+}
+
+/**
+ * Часы стенда. Видимой вкладке — кадры отрисовки, фоновой — редкий таймер:
+ * `requestAnimationFrame` в фоне не тикает вовсе, и страница, открытая
+ * в соседней вкладке или во встроенной панели, застывала бы на первом кадре
+ * навсегда. Десять кадров в секунду там ничего не стоят и снимают вопрос
+ * «почему не двигается».
+ */
+let last = 0;
+function loop(now){
+  const time = now ?? performance.now();
+  const dt = last === 0 ? 0 : Math.min(0.05, (time - last) / 1000);
+  last = time;
+  try{ stageFrame(dt); }catch(e){ /* модель ещё грузится */ }
+  if(document.hidden) setTimeout(loop, 100);
+  else requestAnimationFrame(loop);
+}
+document.addEventListener('visibilitychange', () => { last = 0; });
+
+/* ---------- органы управления стенда ---------- */
+const whoBar = document.getElementById('pickWho');
+const whoButtons = [];
+/** Выбор модели — одной дорогой и для клика, и для запуска: состояние стенда
+ *  не должно зависеть от того, что браузер восстановил в форме. */
+const chooseWho = (entry) => {
+  stage.who = entry;
+  press(whoButtons, whoButtons[WHO.indexOf(entry)]);
+  return stageLoad();
+};
+for(const entry of WHO){
+  const b = document.createElement('button');
+  b.textContent = entry[1];
+  b.setAttribute('aria-pressed', 'false');
+  b.addEventListener('click', () => chooseWho(entry));
+  whoButtons.push(b);
+  whoBar.appendChild(b);
+}
+
+const clipPick = document.getElementById('pickClip');
+const clipIndex = [];
+for(const [file, label] of CLIP_FILES){
+  const group = document.createElement('optgroup');
+  group.label = label;
+  const list = await clipsOf(file);
+  for(const clip of list){
+    if(clip.name.endsWith('_Pose') || clip.name === 'T-Pose') continue;
+    const option = document.createElement('option');
+    option.value = String(clipIndex.length);
+    option.textContent = clip.name.replace(/_/g, ' ');
+    clipIndex.push(clip);
+    group.appendChild(option);
+  }
+  clipPick.appendChild(group);
+}
+const chooseClip = (at) => {
+  clipPick.value = String(at);
+  stage.clip = clipIndex[at];
+  stage.t = 0;
+  stageInfo();
+};
+clipPick.addEventListener('change', () => chooseClip(Number(clipPick.value)));
+
+const stageBar = document.getElementById('stageBar');
+const toggle = (label, get, set) => {
+  const b = document.createElement('button');
+  const paint = () => {
+    b.textContent = label();
+    b.setAttribute('aria-pressed', get() ? 'true' : 'false');
+  };
+  b.addEventListener('click', () => { set(); paint(); });
+  paint();
+  stageBar.appendChild(b);
+};
+toggle(() => (stage.playing ? 'Пауза' : 'Играть'), () => stage.playing,
+  () => { stage.playing = !stage.playing; });
+toggle(() => '×' + stage.rate, () => stage.rate !== 1,
+  () => { stage.rate = stage.rate === 1 ? 0.25 : stage.rate === 0.25 ? 0.5 : 1; });
+toggle(() => 'Оборот', () => stage.spinning, () => { stage.spinning = !stage.spinning; });
+
+// Клип по умолчанию — покой: с него набор и запекается в игру. Ставится явно,
+// а не «как получилось»: браузер восстанавливает выбор в <select> после
+// перезагрузки, и стенд открывался бы на случайном клипе.
+await chooseWho(WHO[1]);
+chooseClip(Math.max(0, clipIndex.findIndex((c) => c.name === 'Idle_A')));
+loop();
+
 </script>
