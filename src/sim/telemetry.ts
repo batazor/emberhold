@@ -66,7 +66,7 @@ export type TelemetryEvent =
    */
   | { t: 'onboarding'; at: number; step: OnbStep };
 
-const KEY = 'new-world/telemetry';
+const KEY = 'emberhold/telemetry';
 const LIMIT = 500;
 
 let buffer: TelemetryEvent[] = [];

@@ -5,6 +5,8 @@ import { ENEMY_STATS } from '../sim/enemies';
 import { idx } from '../sim/grid';
 import type { Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
+import { Grass, tileNoise } from './grass';
+import type { Pusher } from './grass';
 import { PALETTE } from './palette';
 
 /**
@@ -29,6 +31,9 @@ export class RaidView {
    *  показывает жест вместо того, чтобы называть его словами. */
   private hintRing!: THREE.Mesh;
   private evacRing!: THREE.Mesh;
+  private grass: Grass | null = null;
+  /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
+  private readonly pushers: { x: number; z: number; strength: number }[] = [];
   private disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
 
   /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
@@ -37,8 +42,10 @@ export class RaidView {
   constructor(
     private readonly loc: GameLocation,
     private readonly heroClass: HeroClassId = 'ranger',
+    grassPerTile = 24,
   ) {
     this.buildGround();
+    this.buildGrass(grassPerTile);
     this.buildRocks();
     this.buildEvac();
     this.buildContainers();
@@ -68,8 +75,9 @@ export class RaidView {
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
         // Детерминированный шум по координате: без RNG, чтобы вид не зависел
-        // от порядка вызовов и совпадал при том же сиде.
-        const v = ((Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1 + 1) % 1;
+        // от порядка вызовов и совпадал при том же сиде. Тот же шум читает
+        // трава — иначе травинки повиснут над просевшими клетками.
+        const v = tileNoise(x, z);
         dummy.position.set(x, -0.25 - v * 0.04, z);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
@@ -89,6 +97,20 @@ export class RaidView {
     backdrop.rotation.x = -Math.PI / 2;
     backdrop.position.set(size / 2, -1.2, size / 2);
     this.group.add(backdrop);
+  }
+
+  private buildGrass(perTile: number): void {
+    this.grass = new Grass(this.loc, perTile);
+    this.group.add(this.grass.mesh);
+  }
+
+  /** Отладочный орган управления, как ползунок «Ночь»: это замер, не механика. */
+  setGrassDensity(perTile: number): void {
+    this.grass?.setDensity(perTile);
+  }
+
+  get grassBlades(): number {
+    return this.grass?.blades ?? 0;
   }
 
   private buildRocks(): void {
@@ -312,6 +334,8 @@ export class RaidView {
       mesh.position.y = 0.45 + Math.sin(time / 500 + c.id) * 0.08;
     }
 
+    this.syncGrass(hx, hz, time);
+
     const ringMat = this.evacRing.material as THREE.MeshBasicMaterial;
     ringMat.opacity = 0.5 + Math.sin(time / 400) * 0.25;
     this.evacRing.scale.setScalar(1 + Math.sin(time / 400) * 0.05);
@@ -323,6 +347,27 @@ export class RaidView {
     }
   }
 
+  /**
+   * Трава расступается под тем, кто рядом. Врагов берём ближних и живых:
+   * шейдер считает фиксированное число слотов, и тратить их на тех, кого
+   * не видно в круге света (§11.4), незачем.
+   */
+  private syncGrass(hx: number, hz: number, time: number): void {
+    if (this.grass === null) return;
+    const slots = this.pushers;
+    slots.length = 0;
+    slots.push({ x: hx, z: hz, strength: 1.2 });
+    for (const e of this.loc.enemies) {
+      if (slots.length >= 6) break;
+      if (e.wounds <= 0) continue;
+      const dx = e.x - hx;
+      const dz = e.z - hz;
+      if (dx * dx + dz * dz > 64) continue;
+      slots.push({ x: e.x, z: e.z, strength: e.kind === 'golem' ? 1.4 : 0.9 });
+    }
+    this.grass.update(time / 1000, slots as readonly Pusher[]);
+  }
+
   /** Раны видны на силуэте: подранок ниже. Полоски здоровья в игре нет (§11.3). */
   private scaleByWounds(mesh: THREE.Mesh, e: Enemy): void {
     const max = ENEMY_STATS[e.kind].wounds;
@@ -330,6 +375,8 @@ export class RaidView {
   }
 
   dispose(): void {
+    this.grass?.dispose();
+    this.grass = null;
     this.group.removeFromParent();
     this.group.traverse((o) => {
       if (o instanceof THREE.InstancedMesh) o.dispose();
