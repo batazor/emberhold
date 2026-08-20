@@ -1,0 +1,386 @@
+<title>Отряд</title>
+<style>
+  :root{
+    --ground:#E3E7E5; --surface:#F3F6F3; --surface-2:#DBE2DD; --line:#C2CCC6;
+    --text:#131C1B; --dim:#54625F; --brass:#8A6A12; --ember:#AC4C1D; --moss:#4B6C3D; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(12,26,24,.45);
+    /* палитра внутри экрана телефона — фиксированная, экран игры не меняет тему */
+    --g-bg:#0B1113; --g-panel:#162226; --g-panel-2:#1E2D32; --g-line:#2C3D42;
+    --g-text:#E8EEEA; --g-dim:#8CA09D; --g-brass:#C9A227; --g-ember:#D2662F; --g-moss:#7DA163;
+    --g-blood:#A33B3B;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+      --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+    --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+  canvas{display:block;}
+
+  /* ——— раскадровка ——— */
+  .rail{display:flex;flex-direction:column;gap:0;}
+  .beat{display:grid;grid-template-columns:70px 240px minmax(0,1fr);gap:26px;align-items:start;
+    padding:28px 0;border-top:1px solid var(--line);}
+  .beat:first-child{border-top:0;}
+  @media(max-width:820px){.beat{grid-template-columns:52px minmax(0,1fr);}
+    .beat .mini{grid-column:1 / -1;justify-self:center;}}
+  .no{font-family:var(--ff-mono);font-size:15px;color:var(--brass);padding-top:2px;
+    font-variant-numeric:tabular-nums;}
+  .no small{display:block;font-size:9.5px;color:var(--dim);letter-spacing:.12em;margin-top:3px;
+    text-transform:uppercase;}
+  .mini{width:240px;height:504px;overflow:hidden;border-radius:22px;box-shadow:var(--shadow);
+    border:1px solid var(--g-line);background:var(--g-bg);position:relative;}
+  .mini .phone{width:320px;height:672px;transform:scale(.75);transform-origin:0 0;position:relative;
+    background:var(--g-bg);color:var(--g-text);display:flex;flex-direction:column;overflow:hidden;}
+  .txt{display:flex;flex-direction:column;gap:13px;}
+  .txt h3{font-family:var(--ff-display);font-weight:400;font-size:23px;margin:0;}
+  .row{display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;font-size:14px;align-items:start;}
+  .row b{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+    padding-top:4px;font-weight:600;}
+  .row.does b{color:var(--text);} .row.teach b{color:var(--moss);} .row.hide b{color:var(--ember);}
+  .row span{color:var(--dim);}
+  .row.teach span{color:var(--text);}
+
+  /* ——— внутренности телефона ——— */
+  .sb{display:flex;justify-content:space-between;padding:10px 16px 4px;font-size:11px;color:var(--g-dim);
+    font-family:var(--ff-mono);}
+  .top{padding:6px 14px 10px;display:flex;flex-direction:column;gap:2px;}
+  .top b{font-family:var(--ff-display);font-weight:400;font-size:20px;}
+  .top i{font-style:normal;font-family:var(--ff-mono);font-size:10.5px;color:var(--g-dim);
+    letter-spacing:.1em;text-transform:uppercase;}
+  .body{flex:1 1 auto;padding:2px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;}
+  .nav{padding:10px 14px 16px;display:flex;flex-direction:column;gap:9px;}
+  .cta{display:block;text-align:center;padding:12px 18px;border-radius:9px;border:1px solid #E0BC3C;
+    background:linear-gradient(180deg,#D5AC2C,#A8811A);color:#140F02;font-family:var(--ff-display);font-size:16px;}
+  .cta.ghost{background:transparent;border-color:var(--g-line);color:var(--g-text);}
+  .cta.danger{border-color:#E07C46;background:linear-gradient(180deg,#D2662F,#9E4620);color:#150802;}
+  .cta.off{background:transparent;border-color:var(--g-line);color:var(--g-dim);}
+
+  .hero{display:flex;gap:10px;align-items:center;background:var(--g-panel);border:1px solid var(--g-line);
+    border-radius:9px;padding:9px 10px;}
+  .hero.sel{border-color:var(--g-brass);background:var(--g-panel-2);}
+  .hero.lock{opacity:.5;}
+  .por{width:46px;height:46px;border-radius:7px;background:#0E1618;border:1px solid var(--g-line);
+    flex:0 0 auto;overflow:hidden;}
+  .por canvas{width:46px;height:46px;}
+  .hero .who{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .hero .who b{font-family:var(--ff-display);font-weight:400;font-size:16px;}
+  .hero .who span{font-family:var(--ff-mono);font-size:10.5px;color:var(--g-dim);}
+  .tag{font-family:var(--ff-mono);font-size:10px;letter-spacing:.06em;padding:2px 6px;border-radius:4px;
+    border:1px solid var(--g-line);color:var(--g-dim);white-space:nowrap;}
+  .tag.ok{color:var(--g-moss);border-color:#3C5340;}
+  .tag.hurt{color:var(--g-blood);border-color:#4A2A2A;}
+  .tag.busy{color:var(--g-brass);border-color:#4A3E18;}
+
+  .pips{display:flex;gap:4px;} .pips s{width:15px;height:5px;border-radius:2px;background:var(--g-blood);
+    text-decoration:none;} .pips s.off{background:var(--g-line);}
+  .panel{background:var(--g-panel);border:1px solid var(--g-line);border-radius:9px;padding:11px 12px;
+    display:flex;flex-direction:column;gap:8px;}
+  .panel>.t{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .panel>.t b{font-family:var(--ff-display);font-weight:400;font-size:16px;}
+  .panel>.t i{font-style:normal;font-family:var(--ff-mono);font-size:11px;color:var(--g-brass);}
+  .panel p{margin:0;font-size:12px;color:var(--g-dim);line-height:1.45;}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;}
+  .stat{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--ff-mono);
+    font-size:11.5px;color:var(--g-dim);border-bottom:1px solid var(--g-line);padding-bottom:3px;}
+  .stat b{color:var(--g-text);font-size:13px;font-variant-numeric:tabular-nums;}
+  .stat b.up{color:var(--g-moss);}
+  .bar2{height:5px;border-radius:3px;background:var(--g-line);overflow:hidden;}
+  .bar2 i{display:block;height:100%;background:var(--g-brass);}
+  .slots{display:flex;gap:7px;}
+  .slot{flex:1;height:44px;border-radius:7px;border:1px dashed var(--g-line);display:flex;
+    align-items:center;justify-content:center;font-family:var(--ff-mono);font-size:9.5px;color:var(--g-dim);
+    text-align:center;line-height:1.2;padding:2px;}
+  .slot.full{border-style:solid;border-color:var(--g-brass);color:var(--g-brass);}
+  .line{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px;}
+  .line b{font-family:var(--ff-mono);font-size:12px;color:var(--g-brass);font-variant-numeric:tabular-nums;}
+  .clockbig{font-family:var(--ff-mono);font-size:30px;color:var(--g-brass);font-variant-numeric:tabular-nums;
+    letter-spacing:-.02em;text-align:center;padding:2px 0;}
+  .stage{position:relative;flex:1 1 auto;overflow:hidden;background:#0E1618;border-radius:9px;
+    border:1px solid var(--g-line);}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;}
+  .hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;font-family:var(--ff-mono);
+    font-size:11.5px;color:var(--g-text);text-shadow:0 1px 4px #0B1113;}
+  .hint s{text-decoration:none;color:var(--g-brass);}
+  .skill{position:absolute;right:10px;bottom:44px;width:58px;height:58px;border-radius:50%;
+    border:1px solid var(--g-brass);background:rgba(201,162,39,.14);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:1px;}
+  .skill b{font-family:var(--ff-display);font-weight:400;font-size:12px;color:var(--g-brass);}
+  .skill i{font-style:normal;font-family:var(--ff-mono);font-size:8.5px;color:var(--g-dim);}
+  .skill.used{border-color:var(--g-line);background:transparent;}
+  .skill.used b{color:var(--g-dim);}
+  .meter{display:flex;align-items:center;gap:8px;}
+  .meter em{font-style:normal;font-family:var(--ff-mono);font-size:10px;letter-spacing:.1em;
+    color:var(--g-dim);width:60px;text-transform:uppercase;}
+  .meter .bar{flex:1;height:7px;background:rgba(10,16,18,.85);border:1px solid var(--g-line);
+    border-radius:3px;overflow:hidden;}
+  .meter .bar i{display:block;height:100%;background:var(--g-ember);}
+  .meter b{font-family:var(--ff-mono);font-size:11px;font-variant-numeric:tabular-nums;width:48px;text-align:right;}
+  .loot{display:flex;flex-direction:column;gap:8px;}
+  .loot div{display:flex;align-items:center;gap:10px;font-size:14px;}
+  .loot div em{flex:1;font-style:normal;} .loot div b{font-family:var(--ff-mono);color:var(--g-brass);
+    font-variant-numeric:tabular-nums;}
+
+  /* ——— арт ——— */
+  .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5;
+    background:var(--ground);padding:12px 0;border-bottom:1px solid var(--line);}
+  .bar label{display:flex;align-items:center;gap:9px;font-size:13.5px;}
+  input[type=range]{accent-color:var(--brass);width:190px;}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+  .models{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;}
+  .m{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
+  .m .st{background:#12100c;display:flex;justify-content:center;padding:10px 0;}
+  .m b{font-family:var(--ff-display);font-weight:400;font-size:16px;padding:9px 12px 1px;}
+  .m u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
+    padding:0 12px 11px;display:flex;justify-content:space-between;gap:8px;}
+  .m u s{text-decoration:none;}
+  .m u s.over{color:var(--blood);} .m u s.ok{color:var(--moss);}
+
+  .scroll{overflow-x:auto;}
+  table{border-collapse:collapse;font-size:13.5px;min-width:560px;width:100%;}
+  th,td{text-align:left;padding:9px 14px 9px 0;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--dim);font-weight:600;}
+  td b{font-weight:600;} td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;}
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:28px;}
+  .cols h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;
+    color:var(--brass);margin:0 0 10px;font-weight:600;}
+  .cols p{margin:0;font-size:14px;color:var(--dim);} .cols p b{color:var(--text);font-weight:600;}
+  .cols ul{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:9px;font-size:14px;color:var(--dim);}
+  .cols li b{color:var(--text);font-weight:600;}
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:26px;
+    border-top:1px solid var(--line);padding-top:22px;}
+  .guard .key{border-left:2px solid var(--brass);padding-left:16px;}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;
+    color:var(--brass);margin:0 0 8px;font-weight:600;}
+  .guard p{margin:0;font-size:14px;color:var(--dim);} .guard p b{color:var(--text);font-weight:600;}
+  .states{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);}
+  .strow{background:var(--surface);display:grid;grid-template-columns:150px 96px minmax(0,1fr);gap:16px;
+    padding:12px 16px;align-items:baseline;}
+  @media(max-width:700px){.strow{grid-template-columns:1fr;gap:4px;}}
+  .strow b{font-family:var(--ff-display);font-weight:400;font-size:17px;}
+  .strow .dur{font-family:var(--ff-mono);font-size:11.5px;color:var(--brass);}
+  .strow p{margin:0;font-size:13.5px;color:var(--dim);}
+  .closing{border-top:1px solid var(--line);padding-top:34px;display:flex;flex-direction:column;gap:24px;}
+  .metric{border-left:2px solid var(--brass);padding:2px 0 2px 18px;font-size:15px;max-width:66ch;}
+  .metric b{font-weight:600;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Раскадровка и арт · Соляной Тракт · §3, §11.7–11.8, §17</div>
+    <h1>Отряд: <em>как играется</em> и как выглядит</h1>
+    <p class="lede">Девять кадров работы с героями — от первого ранения до выбора,
+      кем идти в следующую вылазку, — и арт-блок, где те же три класса собраны
+      на примитивах под настоящей ортокамерой. Правило, из которого выведено
+      всё остальное: <b>герой — не полоска характеристик, а расписание.</b>
+      Каждый экран отвечает на один вопрос: <i>кем я иду сейчас и кем пойду,
+      пока этот лечится.</i></p>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">Часть I</div><h2>Раскадровка</h2></div>
+    <p>Порядок кадров — не порядок меню, а порядок появления. Ни один экран
+      не показывается раньше, чем игрок в него упёрся: §21 требует, чтобы каждая
+      механика открывалась после того, как на неё напоролись. Лазарет — после
+      первой раны, ростер — когда героев стало двое, Плац — когда появился
+      запасной, которому нечем заняться.</p>
+    <div class="rail" id="rail"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">Часть II</div><h2>Пять состояний героя</h2></div>
+    <p>Это и есть вся «работа с героями»: состояние плюс таймер. Ротация возникает
+      не из желания собирать персонажей, а из того, что состояние
+      <b>«лечится» занимает реальное время</b>, а вылазка хочется прямо сейчас.</p>
+    <div class="states">
+      <div class="strow"><b>Готов</b><span class="dur">—</span>
+        <p>В лагере, без ран. Единственное состояние, из которого можно выйти в вылазку.</p></div>
+      <div class="strow"><b>В вылазке</b><span class="dur">1,5–3 мин</span>
+        <p>Занят. Второй герой в это время недоступен: в вылазку идёт один (§3).</p></div>
+      <div class="strow"><b>Ранен</b><span class="dur">до конца вылазки</span>
+        <p>Раны не лечатся внутри вылазки — только расходниками из лагеря (§1).
+          Три раны — эвакуация без добычи.</p></div>
+      <div class="strow"><b>Лечится</b><span class="dur">6 мин за рану, максимум 18</span>
+        <p>Лазарет. Ускоряется солью по общей формуле §20.5. Это тот самый таймер,
+          ради которого нужен второй герой.</p></div>
+      <div class="strow"><b>Тренируется</b><span class="dur">2 ч за уровень</span>
+        <p>Плац. Потолок — на 2 уровня ниже лучшего героя: догоняющая механика
+          для запасных, а не альтернатива игре (§11.8).</p></div>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Чего в списке нет</h3>
+        <p><b>Смерти.</b> Герой выбывает на таймер, не исчезает. Перманентная потеря
+          прокачанного героя в мобильной игре с этим циклом — самая частая причина
+          необратимого оттока (§3).</p>
+      </div>
+      <div>
+        <h3>Почему состояний ровно пять</h3>
+        <p>Каждое меняет ответ на вопрос «кем я иду сейчас». Состояние, которое
+          на этот вопрос не влияет, — это строчка в интерфейсе и ноль решений,
+          поэтому его нет.</p>
+      </div>
+      <div>
+        <h3>Ротация — следствие, а не фича</h3>
+        <p>Мы нигде не просим игрока «собрать отряд». Мы делаем лечение долгим,
+          а вылазку короткой — и второй герой становится его собственной идеей.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">Часть III</div><h2>Классы: одно решение на троих</h2></div>
+    <p>Все три умения влияют на одно и то же решение — <b>насколько глубоко можно
+      зайти и вернуться</b> (§11.7). Умения, не связанные с ним, в игру не берём:
+      они добавляют кнопку и не добавляют выбора.</p>
+    <div class="scroll">
+      <table>
+        <tr><th>Класс</th><th>Сильная сторона</th><th>Слабая</th><th>Умение · раз за вылазку</th>
+          <th>Когда его берут</th></tr>
+        <tr><td><b>Следопыт</b></td><td>обзор, скорость</td><td>рюкзак −25%</td>
+          <td><b>Тропа</b> — путь назад −25% на 30 с</td>
+          <td>разведка нового яруса, ночная локация</td></tr>
+        <tr><td><b>Ратник</b></td><td>защита, 4 раны</td><td>обзор −1</td>
+          <td><b>Заслон</b> — не получает урон 5 с</td>
+          <td>известная локация, плотные враги, ярус 3</td></tr>
+        <tr><td><b>Солевар</b></td><td>рюкзак +30%, добыча</td><td>защита</td>
+          <td><b>Прикорм</b> — разово +20 провианта</td>
+          <td>фарм пройденного яруса под постройку</td></tr>
+      </table>
+    </div>
+    <p>Проверка на вырожденность: если один класс выигрывает на всех ярусах,
+      выбор героя — не решение, а подсказка. Поэтому слабая сторона у каждого
+      бьёт ровно по той шкале, которой сильна пара остальных: обзор, рюкзак, защита.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">Часть IV</div><h2>Арт: силуэт до модели</h2></div>
+    <p>Формы собраны из примитивов и отрисованы под той же ортокамерой, что в игре:
+      азимут 45°, наклон 30°, один направленный свет и полусферический подсвет.
+      Это не картинки — это та же математика, что в <code>render/scene.ts</code>,
+      поэтому карточкам можно верить. <b>Силуэт утверждается на примитивах
+      до моделирования</b> (§6.1): low-poly прощает кривые пропорции хуже пикселя.</p>
+    <div class="bar">
+      <label>Поворот <input id="rot" type="range" min="0" max="360" value="30"></label>
+      <button id="spin" aria-pressed="false">Вращать</button>
+      <button id="sil" aria-pressed="false">Только силуэт</button>
+      <button id="wire" aria-pressed="false">Сетка</button>
+      <span class="note" id="rotlbl"></span>
+    </div>
+    <p>Нажмите <b>«Только силуэт»</b>. Это и есть приёмка: за пределами фонаря
+      цвет пропадает первым, и класс обязан читаться одной чёрной формой.
+      Следопыт — узкий конус капюшона, Ратник — квадратные плечи и щит,
+      Солевар — горб рюкзака выше головы.</p>
+    <div class="models" id="chars"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Снаряжение читается силуэтом</h2></div>
+    <p>Правило зданий из §6.1 переносится на героев дословно: <b>уровень читается
+      по силуэту, а не по цифре.</b> Три состояния Следопыта — без снаряжения,
+      Кузница ур. 2, Кузница ур. 3. Меняется деталь модели, а не модель целиком:
+      плащ, наплечник, колчан. Цена улучшения — один примитив, не новый персонаж.</p>
+    <div class="models" id="gear"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">06</div><h2>Состояния в кадре</h2></div>
+    <p>Пять клипов из §17.1 на общем скелете. Урон — не клип, а вспышка эмиссией
+      на 150 мс поверх текущей анимации: короче не заметят, длиннее сольётся
+      со следующим ударом. Ранение видно и вне боя — по позе и по щиту на земле,
+      чтобы в лагере не приходилось читать цифру.</p>
+    <div class="models" id="states"></div>
+    <div class="guard">
+      <div class="key">
+        <h3>Бюджет полигонов</h3>
+        <p>Герой ≤ 900 треугольников. <b>Ограничение не про GPU</b> — оно про то,
+          чтобы модель читалась на пяти сантиметрах экрана и делалась за вечер.
+          Число под каждой карточкой — фактический счёт блокинга.</p>
+      </div>
+      <div>
+        <h3>Четвёртый герой стоит одной модели</h3>
+        <p>Клипы живут на скелете: гуманоид один на героев и ходячих врагов.
+          Четвёртый класс — это <b>модель и ноль анимаций</b>. В пиксель-варианте
+          он стоил двадцать один кадр (§17.5).</p>
+      </div>
+      <div>
+        <h3>Направления не рисуются</h3>
+        <p>Модель поворачивается — ползунок выше показывает ровно это.
+          Взамен одно новое ограничение: <b>разворот 120–150 мс</b>, иначе
+          движение читается как рывок.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="closing">
+    <h2>Что этот документ фиксирует</h2>
+    <div class="cols">
+      <div>
+        <h3>Решено</h3>
+        <ul>
+          <li><b>Ростер — не витрина.</b> Экран отряда открывается только со вторым
+            героем и всегда сортирован по готовности: сверху тот, кем можно пойти.</li>
+          <li><b>Один экран героя.</b> Характеристики, умение и слоты — в одной
+            карточке. Отдельного экрана инвентаря нет.</li>
+          <li><b>Умение — одна кнопка в вылазке</b>, без отката: один раз за вылазку.
+            Кнопка появляется, только когда умение уже можно применить осмысленно.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Осознанно не сделано</h3>
+        <ul>
+          <li><b>Найма и гачи нет.</b> Герои открываются уровнем Штаба (2 и 4) —
+            это гейт темпа, а не источник дохода.</li>
+          <li><b>Портретов-иллюстраций нет.</b> Портрет — та же 3D-модель
+            в маленьком кадре: ноль новых ассетов и всегда актуальное снаряжение.</li>
+          <li><b>Кастомизации, имён, редактора внешности нет</b> до подтверждения
+            петли: они не меняют ни одного решения игрока.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Проверяем замером</h3>
+        <ul>
+          <li>Доля сессий, где игрок <b>сменил героя</b>, а не подождал лечения.
+            Если она мала — лечение слишком короткое, и второй герой лишний.</li>
+          <li>Доля вылазок, где <b>умение применено</b>. Ниже 50% — умение
+            непонятно или бесполезно.</li>
+          <li>Сколько соли уходит на ускорение <b>Лазарета</b> против стройки.
+            Перекос в Лазарет означает, что ротация не работает.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="metric"><b>Главный вопрос документа:</b> становится ли простой героя
+      поводом открыть игру завтра — или поводом закрыть её сегодня. Всё остальное
+      здесь — способ выбрать первое.</p>
+  </div>
+</div>
