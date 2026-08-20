@@ -63,6 +63,12 @@ interface Row {
  */
 export class CampHud {
   private readonly root: HTMLElement;
+  /**
+   * Место для панелей, которые живут в лагере, но не принадлежат зданиям, —
+   * сейчас там отряд (§11.8). Слот, а не прямой доступ к корню: порядок
+   * элементов в лагере — решение этой панели, а не того, кто в неё встраивается.
+   */
+  readonly slot: HTMLElement;
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
   private readonly gearRows = new Map<GearSlot, Row>();
@@ -125,7 +131,13 @@ export class CampHud {
     for (const slot of GEAR_ORDER) this.gearPanel.appendChild(this.makeGearRow(slot));
     this.gearPanel.style.display = 'none';
 
-    this.root.append(res, this.banner, list, this.gearPanel, raid);
+    this.slot = document.createElement('div');
+    this.slot.className = 'camp-slot';
+
+    // Порядок: постройки, Кузница, отряд, вылазка. Снаряжение стоит рядом
+    // со стройкой, потому что это выбор той же природы — во что вложить
+    // добычу; отряд отвечает на другой вопрос — кем идти.
+    this.root.append(res, this.banner, list, this.gearPanel, this.slot, raid);
     parent.appendChild(this.root);
   }
 

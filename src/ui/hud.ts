@@ -1,4 +1,5 @@
-import { HERO_WOUNDS, TIER_NAME, TIER_RISK } from '../sim/config';
+import { TIER_NAME, TIER_RISK } from '../sim/config';
+import { HERO_CLASSES, SKILLS } from '../sim/heroes';
 import { atRisk, backSteps } from '../sim/raid';
 import type { RaidState } from '../sim/raid';
 
@@ -12,6 +13,8 @@ export interface HudCallbacks {
   onZoom(delta: number): void;
   onEvacuate(): void;
   onNight(value: number): void;
+  /** §11.7 — умение, раз за вылазку. Одна кнопка: вторую руку она не занимает. */
+  onSkill(): void;
 }
 
 export class Hud {
@@ -28,7 +31,10 @@ export class Hud {
   private readonly tier: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly stats: HTMLElement;
+  private readonly skill: HTMLButtonElement;
   private hintTimer = 0;
+  /** Число сегментов ран рисуется по классу героя: у Ратника их четыре. */
+  private woundSlots = 0;
 
   constructor(parent: HTMLElement, private readonly cb: HudCallbacks) {
     this.root = document.createElement('div');
@@ -64,6 +70,7 @@ export class Hud {
           <button data-act="rot-r">⟳</button>
           <button data-act="zoom-in">＋</button>
           <button data-act="zoom-out">－</button>
+          <button data-act="skill" id="h-skill">Умение</button>
           <button data-act="evac">К эвакуации</button>
         </div>
       </div>`;
@@ -77,7 +84,7 @@ export class Hud {
     this.bagBar = this.q('h-bag-bar');
     this.wounds = this.q('h-wounds');
     this.woundsNum = this.q('h-wounds-num');
-    this.wounds.innerHTML = Array.from({ length: HERO_WOUNDS }, () => '<i></i>').join('');
+    this.skill = this.q('h-skill') as HTMLButtonElement;
     this.risk = this.q('h-risk');
     this.tier = this.q('h-tier');
     this.hint = this.q('h-hint');
@@ -96,6 +103,7 @@ export class Hud {
         case 'zoom-in': this.cb.onZoom(-4); break;
         case 'zoom-out': this.cb.onZoom(4); break;
         case 'evac': this.cb.onEvacuate(); break;
+        case 'skill': this.cb.onSkill(); break;
       }
     });
 
@@ -112,6 +120,22 @@ export class Hud {
 
   sync(state: RaidState, dt: number): void {
     const tier = state.loc.tier;
+    const maxWounds = HERO_CLASSES[state.loadout.cls].wounds;
+    if (this.woundSlots !== maxWounds) {
+      this.wounds.innerHTML = Array.from({ length: maxWounds }, () => '<i></i>').join('');
+      this.woundSlots = maxWounds;
+    }
+
+    // Кнопка не исчезает после применения, а гаснет: исчезнувшая читается
+    // как поломка, а гаснущая — как «уже потратил» (§11.7 — отката нет).
+    const skill = SKILLS[state.loadout.skill];
+    this.skill.disabled = state.skillUsed || state.status !== 'running';
+    this.skill.textContent =
+      state.skillLeft > 0
+        ? `${skill.name} · ${state.skillLeft.toFixed(0)} с`
+        : state.skillUsed
+          ? `${skill.name} · использовано`
+          : `${skill.name} · 1/1`;
     const foodMax = state.foodMax;
     const food = Math.max(0, state.food);
 
@@ -125,7 +149,7 @@ export class Hud {
     for (let i = 0; i < segments.length; i++) {
       (segments[i] as HTMLElement).className = i < state.hero.wounds ? 'on' : '';
     }
-    this.woundsNum.textContent = `${state.hero.wounds} / ${HERO_WOUNDS}`;
+    this.woundsNum.textContent = `${state.hero.wounds} / ${maxWounds}`;
     this.woundsNum.className = `num${state.hero.wounds <= 1 ? ' bad' : ''}`;
 
     this.bagBar.style.width = `${(state.bagTotal / state.capacity) * 100}%`;

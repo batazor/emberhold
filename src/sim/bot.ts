@@ -15,9 +15,10 @@ import {
 } from './camp';
 import type { BuildingId, CampState } from './camp';
 import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
+import { FORAGE_FOOD, TRAIL_STEP_DISCOUNT } from './heroes';
 import { distanceField, idx } from './grid';
 import { findPath, nearestWalkable } from './pathfinding';
-import { commandMove, createRaid, raidResult, stepRaid } from './raid';
+import { commandMove, createRaid, raidResult, stepFoodCost, stepRaid, useSkill } from './raid';
 import type { RaidOptions } from './raid';
 import type { RaidResult, RaidState } from './raid';
 import { addResources, totalOf } from './resources';
@@ -107,6 +108,9 @@ export interface Decision {
 
 export interface BotRaid extends RaidResult {
   readonly decisions: readonly Decision[];
+  /** Потратил ли бот умение (§11.7). Умение, которое не срабатывает,
+   *  и умение, которое ничего не меняет, — разные диагнозы. */
+  readonly skillUsed: boolean;
   /** Отношение пройденных шагов к длине пути до самой дальней точки и обратно.
    *  Та самая величина, которую в балансе я задавал предположением ×1,4. */
   readonly detour: number;
@@ -118,12 +122,73 @@ function heroCell(state: RaidState): { x: number; z: number } {
   return { x: Math.round(state.hero.x), z: Math.round(state.hero.z) };
 }
 
+/**
+ * Когда бот тратит умение (§11.7). Момент выбран так, чтобы умение решало
+ * то, ради чего дано, а не сгорало впустую:
+ *
+ * - **Прикорм** — когда провианта осталось меньше, чем на дорогу назад
+ *   с запасом политики: именно там +20 превращаются в лишнюю комнату.
+ * - **Заслон** — когда противник уже вплотную: пять секунд неуязвимости
+ *   стоят ровно столько, сколько ран они снимают.
+ * - **Тропа** — на развороте домой, потому что дешевеет путь назад.
+ *
+ * Бот с умением — модель игрока, который понял, зачем оно. Разница между
+ * прогонами с ним и без него и есть ответ на вопрос «читается ли умение».
+ */
+function maybeUseSkill(
+  state: RaidState,
+  policy: Policy,
+  goingHome: boolean,
+  toHere: Int32Array,
+): void {
+  if (state.skillUsed) return;
+  const skill = state.loadout.skill;
+  const back = state.loc.backSteps[idx(state.loc.size, Math.round(state.hero.x), Math.round(state.hero.z))] ?? 0;
+
+  if (skill === 'forage' && state.food < back * FOOD_COST.step + policy.margin + FORAGE_FOOD) {
+    useSkill(state);
+    return;
+  }
+  if (skill === 'guard') {
+    const close = state.loc.enemies.some(
+      (e) => e.wounds > 0 && e.awake && Math.hypot(e.x - state.hero.x, e.z - state.hero.z) <= 1.6,
+    );
+    if (close) useSkill(state);
+    return;
+  }
+  if (skill === 'trail') {
+    // Тропа тратится не на разворот, а на то, ради чего она дана: дотянуться
+    // до находки, которая без скидки не по карману. Применение «когда пошёл
+    // домой» звучит логично и не даёт ничего — дорога назад уже оплачена
+    // решением, принятым раньше.
+    const full = FOOD_COST.step;
+    const cheap = full * (1 - TRAIL_STEP_DISCOUNT);
+    const size = state.loc.size;
+    const reachable = state.loc.containers.some((c) => {
+      if (c.opened) return false;
+      const dTo = toHere[idx(size, c.x, c.z)] ?? -1;
+      if (dTo < 0) return false;
+      const dHome = state.loc.backSteps[idx(size, c.x, c.z)] ?? 0;
+      const withoutSkill = state.food - (dTo * full + FOOD_COST.container + dHome * full);
+      const withSkill = state.food - (dTo * cheap + FOOD_COST.container + dHome * cheap);
+      return withoutSkill < policy.margin && withSkill >= policy.margin;
+    });
+    if (reachable || (goingHome && back > 8)) useSkill(state);
+  }
+}
+
 /** Один забег: бот ставит цель, симуляция её отрабатывает, бот решает заново. */
 export function playRaid(
-  // Тип берётся из вылазки, а не переписывается здесь: иначе каждое новое
-  // поле (снаряжение §14 — уже второе после класса героя) приходится
-  // добавлять дважды и однажды забыть.
-  opts: RaidOptions,
+  /**
+   * Вход вылазки целиком плюс то, что касается только бота. Литерал полей
+   * не переписывается: снаряжение (§14) — уже второе поле после класса,
+   * которое иначе пришлось бы добавлять дважды и однажды забыть.
+   */
+  opts: RaidOptions & {
+    /** Тратит ли бот умение. По умолчанию нет: базовая линия §22 снята
+     *  без умений, и включать их молча значило бы сдвинуть её задним числом. */
+    useSkills?: boolean;
+  },
   policy: Policy,
   rng: Rng,
 ): BotRaid {
@@ -133,7 +198,8 @@ export function playRaid(
   const decisions: Decision[] = [];
   let seconds = 0;
 
-  const vision = visionRadius(HERO_KNOWLEDGE, true, true);
+  const knowledge = opts.loadout?.knowledge ?? HERO_KNOWLEDGE;
+  const vision = visionRadius(knowledge, true, true);
 
   while (state.status === 'running' && seconds < MAX_SECONDS) {
     const from = heroCell(state);
@@ -155,11 +221,14 @@ export function playRaid(
         const dTo = toHere[idx(size, c.x, c.z)] ?? -1;
         if (dTo < 0) continue;
         const dHome = loc.backSteps[idx(size, c.x, c.z)] ?? 0;
-        const cost = dTo * FOOD_COST.step + FOOD_COST.container;
+        // Цена шага берётся текущая: под Тропой дорога и туда, и обратно
+        // дешевле, и именно на этом умение обязано превращаться в добычу.
+        const step = stepFoodCost(state);
+        const cost = dTo * step + FOOD_COST.container;
         // Главное правило бота: он никогда не берёт то, после чего не дойдёт
         // до выхода. Провал должен быть следствием жадности в оценке,
         // а не арифметической ошибки.
-        if (state.food - cost - dHome * FOOD_COST.step < policy.margin) continue;
+        if (state.food - cost - dHome * step < policy.margin) continue;
         // Находка рядом с врагом не запрещена, а хуже: живой игрок рискнёт,
         // если больше нечего брать. Жёсткий запрет превращал бота в труса,
         // который уходил пустым, — и это тоже была бы неверная модель.
@@ -183,7 +252,8 @@ export function playRaid(
         const d = toHere[cell] ?? -1;
         const home = loc.backSteps[cell] ?? 0;
         if (d < 2 || d > 8) continue;
-        if (state.food - d * FOOD_COST.step - home * FOOD_COST.step < policy.margin) continue;
+        const wanderStep = stepFoodCost(state);
+        if (state.food - d * wanderStep - home * wanderStep < policy.margin) continue;
         target = { x: cell % size, z: (cell / size) | 0 };
         kind = 'wander';
         break;
@@ -196,6 +266,7 @@ export function playRaid(
     }
 
     decisions.push({ kind, foodLeft: state.food, backSteps: back });
+    if (opts.useSkills === true) maybeUseSkill(state, policy, kind === 'evac', toHere);
     if (!moveAvoiding(state, target, danger)) break;
 
     // Крутим симуляцию до цели, пересматривая решение по мере продвижения:
@@ -208,7 +279,7 @@ export function playRaid(
     let guard = 0;
     const stepsAtPlan = state.steps;
     while (state.status === 'running' && state.path.length > 0 && guard < 60 * 120) {
-      stepRaid(state, TICK, true, HERO_KNOWLEDGE);
+      stepRaid(state, TICK, true, knowledge);
       seconds += TICK;
       guard++;
       if (seconds >= MAX_SECONDS) break;
@@ -219,7 +290,12 @@ export function playRaid(
 
   const result = raidResult(state);
   const ideal = Math.max(1, result.maxBack * 2);
-  return { ...result, decisions, detour: +(result.steps / ideal).toFixed(2) };
+  return {
+    ...result,
+    decisions,
+    skillUsed: state.skillUsed,
+    detour: +(result.steps / ideal).toFixed(2),
+  };
 }
 
 export interface ProgressionPoint {
