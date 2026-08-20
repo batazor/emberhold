@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { buildingGeometry, enemyGeometry, heroGeometry } from './models';
+import { ENEMY_HEIGHT, buildingGeometry, enemyParts, heroGeometry, heroParts } from './models';
+import { Rigged } from './rigged';
 import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
+import { HERO_SPEED } from '../sim/config';
 import { idx } from '../sim/grid';
-import type { Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
+import type { EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
 import { forestGeometry, forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
@@ -53,17 +55,61 @@ export type RaidFlavor = 'mine' | 'glade';
  */
 const BUILDING_SCALE = 0.55;
 
+/**
+ * Замеры клипов (`npm run clips`, каталог набора анимаций) — по ним клип
+ * подгоняется под механику, а не наоборот.
+ *
+ * `SLIDE` — сколько единиц набора проходит нога за секунду в клипе ходьбы;
+ * `STRIKE` — когда в клипе удара приходится сам удар.
+ */
+const SLIDE = 0.855;
+const STRIKE = 0.583;
+
+/**
+ * Растяжение клипа удара: удар обязан прийтись ровно на конец замаха (§17.3),
+ * иначе телеграф врёт. У мага замах вдвое длиннее, и клип у него медленнее.
+ */
+const ATTACK_RATE: Record<EnemyKind, number> = {
+  minion: STRIKE / ENEMY_STATS.minion.telegraph,
+  warrior: STRIKE / ENEMY_STATS.warrior.telegraph,
+  mage: STRIKE / ENEMY_STATS.mage.telegraph,
+};
+
+/**
+ * Растяжение клипа ходьбы: шаг клипа обязан совпасть со скоростью §17.4,
+ * иначе ноги едут по полу.
+ *
+ * Потолок здесь не от лени. Замер показал расхождение самой игры: падальщик
+ * ростом 0,72 клетки бежит 2,2 клетки в секунду — три своих роста, — и честное
+ * растяжение вышло бы семикратным. Семикратная ходьба читается как дрожь,
+ * поэтому клип ускоряется втрое, а остаток скольжения остаётся видимым долгом:
+ * либо скорость, либо рост назначены неверно, и решать это балансом, а не
+ * множителем в рендере.
+ */
+const MAX_RATE = 3;
+const rateFor = (speed: number, scale: number): number =>
+  Math.min(MAX_RATE, speed / Math.max(1e-3, SLIDE * scale));
+const walkRate = (kind: EnemyKind, scale: number): number =>
+  rateFor(ENEMY_STATS[kind].speed, scale);
+
 /** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка. */
 const hash = (a: number, b: number, mod: number): number =>
   Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
 
 interface EnemyView {
-  readonly mesh: THREE.Mesh;
+  readonly rig: Rigged;
   readonly base: THREE.MeshLambertMaterial;
   readonly hot: THREE.MeshLambertMaterial;
+  /** Полоска жизни: заполнение отдельным спрайтом, чтобы расти слева. */
+  readonly life: THREE.Sprite;
+  readonly lifeRoot: THREE.Object3D;
   /** Куда смотрит модель. Хранится отдельно, потому что поворот сглаживается,
    *  а симуляция направления противника не держит: ей оно не нужно. */
   facing: number;
+  /** Раны на прошлом кадре: по их уменьшению и запускается клип урона. */
+  wounds: number;
+  /** Одиночный клип доигрывает до конца и только потом отпускает состояние. */
+  busy: boolean;
 }
 
 export class RaidView {
@@ -71,6 +117,8 @@ export class RaidView {
   private readonly enemyViews = new Map<number, EnemyView>();
   private readonly containerMeshes = new Map<number, THREE.Mesh>();
   private hero!: THREE.Group;
+  /** Есть у класса с моделью набора; у примитивных классов остаётся null. */
+  private heroRig: Rigged | null = null;
   private marker!: THREE.Mesh;
   /** Точка тапа из кадра 1 онбординга: единственная подсказка, которая
    *  показывает жест вместо того, чтобы называть его словами. */
@@ -330,17 +378,9 @@ export class RaidView {
    * набора это уже не мелочь: одна модель — пять тысяч треугольников.
    */
   private buildEnemies(): void {
-    const shapes = new Map<EnemyKind, THREE.BufferGeometry>();
     const hots = new Map<EnemyKind, THREE.MeshLambertMaterial>();
-    const shapeOf = (kind: EnemyKind): THREE.BufferGeometry => {
-      const found = shapes.get(kind);
-      if (found !== undefined) return found;
-      const made = this.track(enemyGeometry(kind));
-      shapes.set(kind, made);
-      return made;
-    };
-    // §17.3: замах обязан быть виден заранее. Пока клипов нет, телеграф —
-    // эмиссия материала; с анимацией это станет клипом замаха.
+    // §17.3: замах обязан быть виден заранее. Клип замаха его и показывает,
+    // но на пяти сантиметрах экрана одного движения мало — эмиссия остаётся.
     const hotOf = (kind: EnemyKind): THREE.MeshLambertMaterial => {
       const found = hots.get(kind);
       if (found !== undefined) return found;
@@ -357,12 +397,61 @@ export class RaidView {
     };
 
     for (const e of this.loc.enemies) {
-      const mesh = new THREE.Mesh(shapeOf(e.kind), this.blocking);
-      mesh.castShadow = true;
-      mesh.position.set(e.x, 0, e.z);
-      this.group.add(mesh);
-      this.enemyViews.set(e.id, { mesh, base: this.blocking, hot: hotOf(e.kind), facing: 0 });
+      // Геометрия и материал общие на вид, скелет — свой: пятеро с одним
+      // скелетом махали бы одновременно.
+      const rig = new Rigged(enemyParts(e.kind), this.blocking);
+      rig.root.position.set(e.x, 0, e.z);
+      this.group.add(rig.root);
+
+      const { root: lifeRoot, fill } = this.buildLifeBar(ENEMY_STATS[e.kind].wounds);
+      rig.root.add(lifeRoot);
+
+      this.enemyViews.set(e.id, {
+        rig,
+        base: this.blocking,
+        hot: hotOf(e.kind),
+        life: fill,
+        lifeRoot,
+        facing: 0,
+        wounds: e.wounds,
+        busy: false,
+      });
     }
+  }
+
+  /**
+   * Полоска жизни противника. У героя здоровье остаётся ранами без полоски
+   * (§11.3) — это про него и сказано; противник же раньше показывал состояние
+   * масштабом меша, а сжимающийся скелет читается как «сдувается», а не
+   * как «ранен».
+   *
+   * Спрайты, а не плоскости: камера поворачивается, и полоску пришлось бы
+   * доворачивать руками каждый кадр.
+   */
+  private buildLifeBar(wounds: number): { root: THREE.Object3D; fill: THREE.Sprite } {
+    const root = new THREE.Object3D();
+    // Ширина от числа ран: у мага их пять, и полоска обязана это показывать
+    // без цифр — иначе «много ран» ничем не отличается от «одна».
+    const width = 0.5 + 0.12 * (wounds - 1);
+
+    const back = new THREE.Sprite(
+      this.track(new THREE.SpriteMaterial({ color: PALETTE.backdrop, depthTest: false })),
+    );
+    back.scale.set(width + 0.06, 0.14, 1);
+    back.renderOrder = 2;
+
+    const fill = new THREE.Sprite(
+      this.track(new THREE.SpriteMaterial({ color: PALETTE.siteOk, depthTest: false })),
+    );
+    fill.center.set(0, 0.5);
+    fill.position.x = -width / 2;
+    fill.scale.set(width, 0.08, 1);
+    fill.renderOrder = 3;
+    fill.userData.width = width;
+
+    root.add(back, fill);
+    root.visible = false;
+    return { root, fill };
   }
 
   /**
@@ -371,8 +460,19 @@ export class RaidView {
    */
   private buildHero(): void {
     this.hero = new THREE.Group();
-    const body = new THREE.Mesh(this.track(heroGeometry(this.heroClass)), this.blocking);
-    body.castShadow = true;
+    // Герой стоит на том же риге, что противники (§6.1.4), и клипы у них общие.
+    // Классу без модели набора достаётся неподвижный примитив — у него скелета
+    // нет, и выдумывать его нечем.
+    const parts = heroParts(this.heroClass);
+    let body: THREE.Object3D;
+    if (parts === null) {
+      const mesh = new THREE.Mesh(this.track(heroGeometry(this.heroClass)), this.blocking);
+      mesh.castShadow = true;
+      body = mesh;
+    } else {
+      this.heroRig = new Rigged(parts, this.blocking);
+      body = this.heroRig.root;
+    }
     const lantern = new THREE.Mesh(
       this.track(new THREE.SphereGeometry(0.08, 8, 6)),
       this.track(new THREE.MeshBasicMaterial({ color: 0xffcf90, fog: false })),
@@ -439,24 +539,41 @@ export class RaidView {
     while (turn < -Math.PI) turn += Math.PI * 2;
     // §17.2: разворот не мгновенный, 120–150 мс — иначе читается как рывок.
     this.hero.rotation.y += turn * Math.min(1, dt * 8);
-    this.hero.children[0]!.position.y =
-      0.6 + (state.path.length > 0 ? Math.sin(time / 90) * 0.04 : 0);
+    // Герой на риге ходит клипом, примитивный — прежним покачиванием: у него
+    // ног нет, и качать его — единственное, чем ход отличается от стойки.
+    const heroWalking = state.path.length > 0;
+    if (this.heroRig === null) {
+      this.hero.children[0]!.position.y = 0.6 + (heroWalking ? Math.sin(time / 90) * 0.04 : 0);
+    } else {
+      this.heroRig.update(dt);
+      if (heroWalking) this.heroRig.play('ходьба', rateFor(HERO_SPEED, this.heroRig.root.scale.y));
+      else this.heroRig.play('покой');
+    }
 
     for (const e of this.loc.enemies) {
       const view = this.enemyViews.get(e.id);
       if (view === undefined) continue;
+      view.rig.update(dt);
+
       if (e.wounds <= 0) {
-        view.mesh.visible = false;
+        // Падение — клип, а не мгновенное исчезновение: §17.1 отводит на него
+        // 680 мс, и всё это время противник ещё на полу.
+        if (view.rig.state !== 'падение') {
+          view.rig.play('падение');
+          view.rig.setMaterial(view.base);
+          view.lifeRoot.visible = false;
+        } else if (view.rig.finished) {
+          view.rig.root.visible = false;
+        }
         continue;
       }
+
       const ex = lerp(e.prevX, e.x, alpha);
       const ez = lerp(e.prevZ, e.z, alpha);
-      // Шаг вместо парения: модель стоит на полу, а покачивание остаётся
-      // только пока противник идёт. Клипов ходьбы у игры пока нет (§17.1),
-      // и это всё, чем ход отличается от стойки.
       const walking = e.x !== e.prevX || e.z !== e.prevZ;
-      view.mesh.position.set(ex, walking ? Math.abs(Math.sin(time / 110 + e.id)) * 0.03 : 0, ez);
-      view.mesh.material = e.telegraph > 0 ? view.hot : view.base;
+      view.rig.root.position.set(ex, 0, ez);
+      view.rig.setMaterial(e.telegraph > 0 ? view.hot : view.base);
+
       // Спящий смотрит, куда стоял; проснувшийся — на героя. Разворот тот же,
       // что у героя (§17.2): за кадр, а не мгновенно.
       const look = walking
@@ -466,8 +583,32 @@ export class RaidView {
       while (spin > Math.PI) spin -= Math.PI * 2;
       while (spin < -Math.PI) spin += Math.PI * 2;
       view.facing += spin * Math.min(1, dt * 8);
-      view.mesh.rotation.y = view.facing;
-      this.scaleByWounds(view.mesh, e);
+      view.rig.root.rotation.y = view.facing;
+
+      // Состояния §17.1. Одиночный клип доигрывает до конца: удар, прерванный
+      // шагом на середине замаха, читается как рывок, а не как удар.
+      if (view.busy && view.rig.finished) view.busy = false;
+      if (e.wounds < view.wounds) {
+        view.rig.play('урон');
+        view.busy = true;
+      } else if (e.telegraph > 0 && view.rig.state !== 'удар') {
+        view.rig.play('удар', ATTACK_RATE[e.kind]);
+        view.busy = true;
+      } else if (!view.busy) {
+        if (walking) view.rig.play('ходьба', walkRate(e.kind, view.rig.root.scale.y));
+        else view.rig.play('покой');
+      }
+      view.wounds = e.wounds;
+
+      // Полоска показывается, когда есть что показывать: спящий и целый
+      // противник её не носит, иначе локация превращается в приборную панель.
+      const share = e.wounds / ENEMY_STATS[e.kind].wounds;
+      view.lifeRoot.visible = e.awake || share < 1;
+      view.lifeRoot.position.y = ENEMY_HEIGHT[e.kind] / view.rig.root.scale.y + 0.4;
+      view.life.scale.x = (view.life.userData.width as number) * share;
+      (view.life.material as THREE.SpriteMaterial).color.setHex(
+        share > 0.5 ? PALETTE.siteOk : PALETTE.siteNo,
+      );
     }
 
     for (const c of this.loc.containers) {
@@ -517,12 +658,6 @@ export class RaidView {
     this.grass.update(time / 1000, slots as readonly Pusher[]);
   }
 
-  /** Раны видны на силуэте: подранок ниже. Полоски здоровья в игре нет (§11.3). */
-  private scaleByWounds(mesh: THREE.Mesh, e: Enemy): void {
-    const max = ENEMY_STATS[e.kind].wounds;
-    mesh.scale.setScalar(0.7 + 0.3 * (e.wounds / max));
-  }
-
   dispose(): void {
     this.grass?.dispose();
     this.grass = null;
@@ -530,6 +665,10 @@ export class RaidView {
     this.group.traverse((o) => {
       if (o instanceof THREE.InstancedMesh) o.dispose();
     });
+    // Скелет у каждой особи свой, и три не освобождает его вместе с группой.
+    for (const view of this.enemyViews.values()) view.rig.dispose();
+    this.heroRig?.dispose();
+    this.heroRig = null;
     for (const d of this.disposables) d.dispose();
     this.disposables = [];
     this.enemyViews.clear();
