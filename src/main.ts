@@ -67,6 +67,7 @@ import type { ConsumableId } from './sim/consumables';
 import { addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import { generateCastleSite } from './sim/castleSite';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
@@ -597,6 +598,9 @@ function toRaid(node: number): boolean {
     campHud.notify('Регион пересобрался — выберите место заново');
     return false;
   }
+  // Замок (§6.1.6) — не вылазка: там нечего добывать и не с кем драться,
+  // и заход в него не тратит ни богатство места, ни героя.
+  if (place.kind === 'замок') return toCastle(node, nodeSeed(day, node));
   const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
@@ -656,6 +660,50 @@ function toRaid(node: number): boolean {
   track({ t: 'raid_start', at: now, tier, food: raid.foodMax, capacity: raid.capacity });
   // §11.8 — ротация меряется здесь: сменил героя или дождался лечения.
   track({ t: 'hero_pick', at: clock.now(), cls: hero.cls, level: hero.level, rotated });
+  return true;
+}
+
+/**
+ * Замок (§6.1.6). Собирается тем же `createRaid`, что вылазка и пролог:
+ * ходьба, шаг и камера обязаны считаться одинаково везде, иначе прогулка
+ * научит игрока не тому, что его ждёт дальше.
+ *
+ * Отличается замок тем, чего в нём нет. Ни добычи, ни противников, ни голода:
+ * это постройка, а не сделка, и провиант в ней ничего не решает. Выход
+ * открыт сразу — уйти можно в любой момент, потому что уходить не от чего.
+ */
+function toCastle(node: number, seed: number): boolean {
+  const hero = heroForRaid() ?? roster.heroes[0]!;
+  const site = generateCastleSite(seed);
+  raidNode = node;
+  // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
+  // прогулка не обязана снимать его с лечения.
+  raidHero = null;
+  raidView?.dispose();
+  raid = createRaid({
+    seed,
+    tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
+    loc: site.loc,
+    evacOpen: true,
+    containerFood: 0,
+    hunger: false,
+  });
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site);
+  hud.setGrass(grassPerTile);
+  rig.world.add(raidView.group);
+  campView.group.visible = false;
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  // Замок выше всего, что игра показывала до сих пор: с высоты вылазки
+  // стена закрывала бы двор целиком.
+  rig.setZoom(26, true);
+  // День: замок стоит на поверхности, и подземный мрак спрятал бы его.
+  rig.night = 0.1;
+  resultShown = false;
+  ear.reset(raid);
+  showScene('raid', 0);
   return true;
 }
 

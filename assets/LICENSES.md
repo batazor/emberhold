@@ -23,12 +23,14 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-adventurers/*_texture.png` — пять атласов, свой на каждого персонажа | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-resources/gltf/*.gltf`, `*.bin` — 76 моделей: слитки, самородки, брёвна, доски, тюки, поддоны, бочки, груды деталей | [kaylousberg.itch.io/resource-bits](https://kaylousberg.itch.io/resource-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-resources/resource_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
+| `kenney-castle-kit/glb/*.glb` — 76 моделей: стены, углы, башни, ворота, мосты, лестницы, знамёна, осадные машины | [kenney.nl/assets/castle-kit](https://kenney.nl/assets/castle-kit), версия 2.0 | CC0 1.0 | Kenney Vleugels |
+| `kenney-castle-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
-`kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`
-и `kenney-rpg-audio/License.txt` — файлы
+`kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
+`kenney-rpg-audio/License.txt` и `kenney-castle-kit/License.txt` — файлы
 лицензий как они пришли в архивах,
 без правок.
 

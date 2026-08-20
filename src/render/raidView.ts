@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
 import { ENEMY_HEIGHT, buildingGeometry, enemyParts, heroGeometry, heroParts } from './models';
+import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
+import type { CastlePartModelName } from './castle';
+import type { CastleSite } from '../sim/castleSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
 import { Rigged } from './rigged';
@@ -50,7 +53,7 @@ const GLADE_TREES: readonly ForestModelName[] = [
  * Чем застроены непроходимые клетки. Копи и поляна отличаются ровно этим
  * и точкой эвакуации: правила ходьбы, камера и трава у них общие.
  */
-export type RaidFlavor = 'mine' | 'glade';
+export type RaidFlavor = 'mine' | 'glade' | 'castle';
 
 /**
  * Шатёр рисуется в габаритах артбука — почти четыре единицы в ширину.
@@ -158,10 +161,13 @@ export class RaidView {
     private readonly heroClass: HeroClassId = 'ranger',
     grassPerTile = 24,
     private readonly flavor: RaidFlavor = 'mine',
+    /** Площадка замка (§6.1.6): без неё вкус «замок» рисовать нечем. */
+    private readonly keep: CastleSite | null = null,
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
     this.buildWalls();
+    if (this.keep !== null) this.buildCastle(this.keep);
     if (flavor !== 'glade') this.buildEvac();
     this.buildContainers();
     this.buildEnemies();
@@ -239,12 +245,19 @@ export class RaidView {
    */
   private buildWalls(): void {
     const { size, blocked } = this.loc;
-    const tree = this.flavor === 'glade';
+    const tree = this.flavor === 'glade' || this.flavor === 'castle';
     const models = tree ? GLADE_TREES : RAID_ROCKS;
     const cells: number[][] = models.map(() => []);
+    // У замка занятых клеток два рода: лес по краю и сам замок. Лесом
+    // засаживается только лес — иначе деревья выросли бы сквозь стену.
+    const wood = this.keep === null
+      ? null
+      : new Set(this.keep.trees.map((s) => idx(size, s.x, s.z)));
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
-        if (!blocked[idx(size, x, z)]) continue;
+        const at = idx(size, x, z);
+        if (!blocked[at]) continue;
+        if (wood !== null && !wood.has(at)) continue;
         cells[hash(x * 5.1, z * 9.3, models.length)]!.push(x, z);
       }
     }
@@ -270,6 +283,57 @@ export class RaidView {
         dummy.scale.set(s, s * (tree ? 0.9 + t * 0.25 : 0.8 + t * 0.5), s);
         dummy.updateMatrix();
         mesh.setMatrixAt(i / 2, dummy.matrix);
+      }
+      this.group.add(mesh);
+    }
+  }
+
+  /**
+   * Замок (§6.1.6). Деталей в кадре под сотню, а моделей два десятка, поэтому
+   * рисуется он одной InstancedMesh на модель: сто мешей стоили бы сто вызовов
+   * отрисовки за то же изображение.
+   *
+   * Ни одного смещения здесь не подбирается. Клетка плана переводится
+   * в клетки локации умножением на масштаб, поворот берётся у детали как
+   * есть, высота яруса — из плана: всё это уже посчитано конструктором,
+   * и вторая копия этих правил в рендере разошлась бы с первой молча.
+   */
+  private buildCastle(site: CastleSite): void {
+    const byModel = new Map<string, typeof site.castle.pieces[number][]>();
+    for (const piece of site.castle.pieces) {
+      // Мощение двора не рисуется: под замком уже лежит земля локации,
+      // и вторая плита поверх неё дала бы z-fighting, а не пол.
+      if (piece.role === 'двор') continue;
+      const list = byModel.get(piece.model) ?? [];
+      list.push(piece);
+      byModel.set(piece.model, list);
+    }
+
+    const mat = this.track(castleMaterial());
+    const dummy = new THREE.Object3D();
+    for (const [model, list] of byModel) {
+      // Геометрия живёт в общем кэше castle.ts и переживает вид: её не track.
+      const mesh = new THREE.InstancedMesh(
+        castleGeometry(model as CastlePartModelName),
+        mat,
+        list.length,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i++) {
+        const piece = list[i]!;
+        // Ноль детали стоит в центре её клетки набора, а клетка набора
+        // покрывает CASTLE_SCALE клеток локации: центр квадрата смещён
+        // на полклетки от его угла.
+        dummy.position.set(
+          site.at.x + piece.x * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+          piece.y * CASTLE_SCALE,
+          site.at.z + piece.z * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+        );
+        dummy.rotation.set(0, (piece.turn * Math.PI) / 2, 0);
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
       }
       this.group.add(mesh);
     }

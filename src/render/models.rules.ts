@@ -20,7 +20,11 @@ import { ADVENTURERS_MODELS } from './adventurers.data';
 import { adventurerGeometry } from './adventurers';
 import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf } from './models';
 import { FOREST_SLOTS } from './forest.data';
-import { FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
+import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
+import { CASTLE_SCALE, castleGeometry } from './castle';
+import { PARTS, STAIRS, TOWER, TOWER_MAX, WALK, WALL_TOP, towerHeight } from '../sim/castle';
+import { ELEVATION } from './scene';
+import { CASTLE_SLOT_ORDER, FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
 import { SKELETON_SLOTS } from './skeleton.data';
 
 /**
@@ -132,6 +136,103 @@ describe('Артбук: бюджет треугольников', () => {
 
   test('шесть уровней укладываются в три стадии', () => {
     assert.deepEqual([1, 2, 3, 4, 5, 6].map(stageOf), [0, 0, 1, 1, 2, 2]);
+  });
+});
+
+/**
+ * Замок (§6.1.6). Проверяется не то, красив ли он, а два обещания, которые
+ * иначе протухнут молча: что конструктору есть чем строить и что стена
+ * читается стеной, а не забором.
+ */
+describe('Артбук: замок', () => {
+  test('каждая деталь конструктора запечена в бандл', () => {
+    const named = [
+      ...Object.values(PARTS).flat().map((p) => p.model),
+      STAIRS.model,
+      TOWER.base,
+      TOWER.cap,
+      ...TOWER.body,
+      ...TOWER.roofs,
+    ];
+    for (const model of named) {
+      assert.ok(
+        model in CASTLE_MODELS,
+        `«${model}» стоит в словаре конструктора, но в бандл не поехал`,
+      );
+    }
+  });
+
+  test('слоты замка не разошлись с палитрой артбука', () => {
+    assert.deepEqual([...CASTLE_SLOTS], [...CASTLE_SLOT_ORDER]);
+    for (const name of CASTLE_SLOTS) {
+      assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  test('через стену не заглянуть, и ход по ней идёт над головой', () => {
+    // Рост героя меряется, а не берётся числом: модель может смениться,
+    // и масштаб замка обязан спорить с новой, а не со старой.
+    const geo = heroGeometry('ranger');
+    geo.computeBoundingBox();
+    const hero = geo.boundingBox!.max.y - geo.boundingBox!.min.y;
+    geo.dispose();
+    const wall = WALL_TOP * CASTLE_SCALE;
+    const walk = WALK * CASTLE_SCALE;
+    assert.ok(
+      walk > hero * 1.5,
+      `ход поверху ${walk.toFixed(2)} при герое ${hero.toFixed(2)} — не над головой`,
+    );
+    assert.ok(
+      wall > walk && wall > hero * 1.8,
+      `стена ${wall.toFixed(2)} при герое ${hero.toFixed(2)} — это забор, а не стена`,
+    );
+  });
+
+  test('потолок роста башни посчитан камерой, а не выбран', () => {
+    /**
+     * Камера смотрит с фиксированного наклона, и башня прячет за собой полосу
+     * земли длиной H · ctg(наклон). Двор самого большого замка — 7 клеток
+     * плана, то есть 14 клеток локации; самого малого — 4 плана, 8 локации.
+     *
+     * Требование, из которого взят потолок: **на верхнем уровне башня ещё
+     * помещается в самый большой двор, а следующий уровень не помещается
+     * ни в один**. Ни одно из этих чисел не назначено — все меряются.
+     */
+    const hides = (level: number): number =>
+      (towerHeight(level) * CASTLE_SCALE) / Math.tan(ELEVATION);
+    const YARD_MAX = 7 * CASTLE_SCALE;
+    const YARD_MIN = 4 * CASTLE_SCALE;
+
+    assert.ok(
+      hides(TOWER_MAX) <= YARD_MAX,
+      `башня ${TOWER_MAX} уровня прячет ${hides(TOWER_MAX).toFixed(1)} клеток — больше двора ${YARD_MAX}`,
+    );
+    assert.ok(
+      hides(TOWER_MAX + 1) > YARD_MAX,
+      `башня ${TOWER_MAX + 1} уровня прячет ${hides(TOWER_MAX + 1).toFixed(1)} — потолок занижен`,
+    );
+    assert.ok(hides(1) < YARD_MIN, 'первый уровень уже закрывает самый малый двор');
+  });
+
+  test('готовый замок укладывается в свой потолок — килобайты', () => {
+    const source = readFileSync(new URL('./castle.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    // Потолок посчитан, а не выбран: это всё, что взято сейчас, округлённое
+    // вверх до десятка. Упереться в него можно один раз — за ним не «ещё одна
+    // деталь», а решение брать из набора больше.
+    assert.ok(kb <= 40, `набор замка: ${kb} КБ gzip > 40 КБ`);
+  });
+
+  test('геометрия детали приходит в клетку локации, а не в единицы набора', () => {
+    const geo = castleGeometry('wall');
+    geo.computeBoundingBox();
+    const box = geo.boundingBox!;
+    assert.ok(
+      Math.abs(box.max.x - box.min.x - CASTLE_SCALE) < 0.02,
+      `стена шириной ${(box.max.x - box.min.x).toFixed(2)} при клетке ${CASTLE_SCALE}`,
+    );
+    assert.ok(Math.abs(box.min.y) < 0.02, 'основание стены не на нуле');
   });
 });
 
