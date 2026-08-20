@@ -158,8 +158,13 @@ export class Hud {
     const foodMax = state.foodMax;
     const food = Math.max(0, state.food);
 
-    this.foodBar.style.width = `${Math.min(100, (food / foodMax) * 100)}%`;
-    this.foodBar.className = food <= 10 ? 'bad' : food <= 25 ? 'warn' : 'good';
+    // Тревога считается долей, а не штуками. При Кухне ур. 1 (запас 50) это
+    // те же пороги 10 и 25, на которых полоса калибровалась, но в прологе
+    // запаса всего двадцать — и абсолютные пороги красили полосу тревожной
+    // с первого кадра, ещё до того, как игрок сделал шаг.
+    const left = food / foodMax;
+    this.foodBar.style.width = `${Math.min(100, left * 100)}%`;
+    this.foodBar.className = left <= 0.2 ? 'bad' : left <= 0.5 ? 'warn' : 'good';
     this.food.textContent = String(Math.ceil(food));
 
     // Раны — сегменты, а не сплошная полоса: §11.3 требует, чтобы каждая

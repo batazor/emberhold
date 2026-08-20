@@ -6,10 +6,11 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { FOOD_COST, HERO_SPEED } from './config';
+import { FOOD_COST } from './config';
 import { distanceField, idx } from './grid';
-import { GLADE_SIZE, gladeFood, generateGlade } from './prologue';
-import { createRaid } from './raid';
+import { GLADE_FOOD, GLADE_SIZE, gladeFood, generateGlade, siteBlock } from './prologue';
+import { restartStep } from './onboarding';
+import { commandMove, createRaid, stepRaid } from './raid';
 
 const glade = (seed = 1): ReturnType<typeof generateGlade> => generateGlade(seed);
 
@@ -90,22 +91,96 @@ describe('Пролог: кадр кончается провиантом', () =>
       evacOpen: false,
     });
 
-  test('провиант пролога — это Кухня ур. 1, а не назначенное заново число', () => {
+  test('провиант пролога — свой, а не кухонный: Кухни ещё нет', () => {
     const state = prologue();
-    assert.equal(state.food, gladeFood());
-    assert.equal(state.foodMax, gladeFood());
+    assert.equal(state.food, GLADE_FOOD);
+    assert.equal(state.foodMax, GLADE_FOOD);
   });
 
-  test('прогулка длится около полуминуты (§17.4)', () => {
-    const seconds = gladeFood() / FOOD_COST.step / HERO_SPEED;
-    assert.ok(seconds > 25 && seconds < 35, `вышло ${seconds.toFixed(1)} с`);
+  /**
+   * Длина кадра меряется прогулкой, а не делением провианта на скорость:
+   * герой тормозит на поворотах, и расчёт расходился с замером в полтора раза.
+   * Замер на 60 сидах даёт 11,6–15,0 с; границы взяты с запасом, чтобы
+   * падение означало смену механики, а не дрожание генератора.
+   */
+  test('прогулка кончается провиантом за десяток секунд, а не за минуту', () => {
+    const dt = 1 / 60;
+    for (const seed of [0, 7, 23, 41]) {
+      const loc = glade(seed);
+      const state = createRaid({
+        seed, tier: 0, kitchenLevel: 1, storageLevel: 1,
+        loc, food: gladeFood(), evacOpen: false,
+      });
+      let t = 0;
+      while (state.food > 0 && t < 120) {
+        if (state.path.length === 0) {
+          const d = distanceField(loc.size, loc.blocked, {
+            x: Math.round(state.hero.x),
+            z: Math.round(state.hero.z),
+          });
+          let best = -1;
+          let target = loc.evac;
+          for (let z = 0; z < loc.size; z++) {
+            for (let x = 0; x < loc.size; x++) {
+              const v = d[idx(loc.size, x, z)]!;
+              if (v > best) { best = v; target = { x, z }; }
+            }
+          }
+          commandMove(state, target);
+        }
+        stepRaid(state, dt, false, 0);
+        t += dt;
+      }
+      assert.ok(t > 8 && t < 20, `сид ${seed}: прогулка ${t.toFixed(1)} с`);
+    }
   });
 
   test('выход закрыт: с поляны не эвакуируются', () => {
     assert.equal(prologue().evacOpen, false);
   });
 
-  test('размер поляны крупнее нулевого яруса — по ней бродят', () => {
-    assert.ok(GLADE_SIZE > 8);
+  test('поляна больше любой вылазки — в кромку за провиант не упереться', () => {
+    assert.ok(GLADE_SIZE > 20, 'дно вылазки — 20×20 (§11.1)');
+  });
+
+  test('перезапуск возвращает в пролог, а не в вылазку', () => {
+    assert.equal(restartStep('glade'), 'glade', 'сохранённый пролог открывался вылазкой');
+    assert.equal(restartStep('bait'), 'move', 'вылазка по-прежнему перематывается к началу');
+    assert.equal(restartStep('build'), 'build', 'лагерные кадры перезапуск переживают');
+  });
+});
+
+describe('Пролог: место под здание', () => {
+  const loc = glade(5);
+  const free = (): { x: number; z: number } => {
+    for (let z = 1; z < loc.size - 1; z++) {
+      for (let x = 1; x < loc.size - 1; x++) {
+        if (!loc.blocked[idx(loc.size, x, z)]) return { x, z };
+      }
+    }
+    throw new Error('поляна заросла целиком');
+  };
+
+  test('на свободную землю — можно', () => {
+    assert.equal(siteBlock(loc, [], { x: -9, z: -9 }, free()), 'ok');
+  });
+
+  test('в дерево — нельзя, и это видно причиной', () => {
+    assert.equal(siteBlock(loc, [], { x: -9, z: -9 }, { x: 0, z: 0 }), 'tree');
+  });
+
+  test('за краем поляны — нельзя', () => {
+    assert.equal(siteBlock(loc, [], { x: -9, z: -9 }, { x: -1, z: 3 }), 'tree');
+    assert.equal(siteBlock(loc, [], { x: -9, z: -9 }, { x: loc.size, z: 3 }), 'tree');
+  });
+
+  test('поверх уже стоящего здания — нельзя', () => {
+    const c = free();
+    assert.equal(siteBlock(loc, [c], { x: -9, z: -9 }, c), 'busy');
+  });
+
+  test('под ноги герою — нельзя: он оказался бы внутри', () => {
+    const c = free();
+    assert.equal(siteBlock(loc, [], { x: c.x + 0.2, z: c.z - 0.3 }, c), 'hero');
   });
 });

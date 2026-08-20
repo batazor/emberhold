@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { enemyGeometry, heroGeometry } from './models';
+import { buildingGeometry, enemyGeometry, heroGeometry } from './models';
+import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
 import { idx } from '../sim/grid';
 import type { Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
@@ -45,6 +46,13 @@ const GLADE_TREES: readonly ForestModelName[] = [
  */
 export type RaidFlavor = 'mine' | 'glade';
 
+/**
+ * Шатёр рисуется в габаритах артбука — почти четыре единицы в ширину.
+ * Тот же коэффициент, что в лагере (`campView.ts`): здание не имеет права
+ * выглядеть по-разному в двух сценах, иначе это два разных здания.
+ */
+const BUILDING_SCALE = 0.55;
+
 /** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка. */
 const hash = (a: number, b: number, mod: number): number =>
   Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
@@ -66,6 +74,11 @@ export class RaidView {
   private hintRing!: THREE.Mesh;
   /** На поляне выхода нет, и кольца тоже: показывать некуда (§12.1). */
   private evacRing: THREE.Mesh | null = null;
+  /** Здания, поставленные в конце пролога. До него их нет вовсе. */
+  private readonly placed = new Map<BuildingId, THREE.Mesh>();
+  /** Пятно под курсором в режиме выбора места и призрак здания над ним. */
+  private site: THREE.Mesh | null = null;
+  private ghost: THREE.Mesh | null = null;
   private grass: Grass | null = null;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
@@ -194,6 +207,68 @@ export class RaidView {
       }
       this.group.add(mesh);
     }
+  }
+
+  /**
+   * Здание на клетку. Отдельной сцены под лагерь не открывается: поляна,
+   * по которой игрок ходил, и есть место, где он остался, — уводить его
+   * на другую карту значило бы обесценить прогулку, которая эту карту
+   * только что показала.
+   *
+   * Трава на клетке выкашивается: под зданием её быть не должно.
+   */
+  place(id: BuildingId, x: number, z: number): void {
+    if (this.placed.has(id)) return;
+    const mesh = new THREE.Mesh(this.track(buildingGeometry(id, 1)), this.blocking);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.scale.setScalar(BUILDING_SCALE);
+    mesh.position.set(x, 0, z);
+    this.placed.set(id, mesh);
+    this.group.add(mesh);
+    this.grass?.clearCell(x, z);
+  }
+
+  /**
+   * Место под здание: пятно на земле и полупрозрачный силуэт над ним.
+   * Зелёное — можно, красное — нельзя. Силуэт нужен затем, что пятно
+   * показывает клетку, а вопрос у игрока другой — «что тут встанет».
+   */
+  showSite(id: BuildingId, x: number, z: number, ok: boolean): void {
+    if (this.site === null) {
+      this.site = new THREE.Mesh(
+        this.track(new THREE.PlaneGeometry(0.94, 0.94)),
+        this.track(
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, fog: false }),
+        ),
+      );
+      this.site.rotation.x = -Math.PI / 2;
+      this.group.add(this.site);
+    }
+    if (this.ghost === null || this.ghost.userData['id'] !== id) {
+      this.ghost?.removeFromParent();
+      this.ghost = new THREE.Mesh(
+        this.track(buildingGeometry(id, 1)),
+        this.track(
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, fog: false }),
+        ),
+      );
+      this.ghost.userData['id'] = id;
+      this.ghost.scale.setScalar(BUILDING_SCALE);
+      this.group.add(this.ghost);
+    }
+    const color = ok ? PALETTE.siteOk : PALETTE.siteNo;
+    (this.site.material as THREE.MeshBasicMaterial).color.setHex(color);
+    (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(color);
+    this.site.visible = true;
+    this.ghost.visible = true;
+    this.site.position.set(x, 0.05, z);
+    this.ghost.position.set(x, 0, z);
+  }
+
+  hideSite(): void {
+    if (this.site !== null) this.site.visible = false;
+    if (this.ghost !== null) this.ghost.visible = false;
   }
 
   private buildEvac(): void {

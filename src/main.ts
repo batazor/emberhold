@@ -45,14 +45,15 @@ import {
   scriptWound,
 } from './sim/onboarding';
 import type { OnbStep } from './sim/onboarding';
+import { firstGladeCell, generateGlade, gladeFood, siteBlock } from './sim/prologue';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { addResources } from './sim/resources';
-import { load, save } from './sim/save';
+import { load, save, wipe } from './sim/save';
 import { loadTelemetry, track } from './sim/telemetry';
-import type { Tier } from './sim/types';
+import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
@@ -61,6 +62,8 @@ import { CampHud } from './ui/campHud';
 import { RosterPanel } from './ui/rosterPanel';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
+import { CampPrompt } from './ui/campPrompt';
+import { DevMenu } from './ui/devMenu';
 import { Hud } from './ui/hud';
 import { StartScreen } from './ui/startScreen';
 
@@ -111,6 +114,31 @@ let titleView: TitleView | null = null;
 /** Герой, который сейчас в локации: раны и опыт зачисляются ему. */
 let raidHero: HeroState | null = null;
 let raidView: RaidView | null = null;
+/**
+ * Идёт пролог. Отдельного режима у него нет: поляна ходится теми же
+ * правилами, что вылазка, и отличается тем, чем кадр кончается — не
+ * эвакуацией, а нулём провианта.
+ */
+let inGlade = false;
+/**
+ * Начата новая игра. Сейв уже стёрт, но страница ещё жива: до перезагрузки
+ * цикл успевает вызвать persist и записать прежний кадр обратно — и «Новая
+ * игра» возвращала туда же, откуда её нажали, вместо заставки.
+ */
+let wiped = false;
+/**
+ * Что сейчас ставится на поляну; null — режима выбора места нет.
+ * Порядок один и жёсткий: сначала палатка, потом костёр. Очаг ставит тот,
+ * кто уже решил остаться, — значит, крыша идёт первой.
+ */
+let placing: BuildingId | null = null;
+const PITCH_ORDER: readonly BuildingId[] = ['hq', 'kitchen'];
+const PITCH_HINT: Partial<Record<BuildingId, string>> = {
+  hq: 'Выберите место для палатки',
+  kitchen: 'Теперь костёр',
+};
+/** Клетки, уже занятые зданиями лагеря. */
+const pitched: Cell[] = [];
 let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
@@ -284,8 +312,32 @@ function forge(slot: GearSlot): boolean {
 }
 
 const startScreen = new StartScreen(app, {
-  onPlay: () => toCamp(),
+  // До лагеря игрок доходит сам: кнопка открывает поляну, а лагерь
+  // появляется в конце пролога как его результат.
+  onPlay: () => (onb === 'glade' ? toGlade() : toCamp()),
 });
+
+const campPrompt = new CampPrompt(app, {
+  onPitch: () => {
+    campPrompt.setVisible(false);
+    // Лагерь встаёт прямо здесь. Никакого перехода в отдельную сцену:
+    // поляна, по которой игрок только что ходил, и есть место, где он
+    // остался, — и первое здание вырастает у него на глазах, а не за
+    // загрузочным экраном.
+    startPlacing(PITCH_ORDER[0]!);
+  },
+});
+
+// Только в разработке: в продакшен-сборке ветка вырезается целиком.
+if (import.meta.env.DEV) {
+  new DevMenu(app, {
+    onNewGame: () => {
+      wiped = true;
+      wipe();
+      location.reload();
+    },
+  });
+}
 
 const statsPanel = new StatsPanel(app);
 
@@ -301,6 +353,7 @@ function buy(id: ConsumableId): boolean {
 }
 
 function persist(): void {
+  if (wiped) return;
   save(camp, roster, clock.watermark, onb);
 }
 
@@ -314,7 +367,10 @@ function applyOnb(): void {
   hud.setHint(ONB_HINT[onb] ?? '');
   campHud.setOnboarding(onb);
   // Точка тапа нужна ровно в первом кадре: дальше игрок уже знает жест.
-  if (onb === 'move' && raid !== null) {
+  if (onb === 'glade' && raid !== null) {
+    const cell = firstGladeCell(raid.loc, raid.hero);
+    if (cell !== null) raidView?.showHint(cell.x, cell.z);
+  } else if (onb === 'move' && raid !== null) {
     const cell = firstTapCell(raid.loc, raid.hero);
     if (cell !== null) raidView?.showHint(cell.x, cell.z);
   } else {
@@ -416,6 +472,8 @@ function finishRaidForHero(
 /* ---------- переходы между сценами ---------- */
 function toRaid(tier: Tier): boolean {
   leaveTitle();
+  inGlade = false;
+  campPrompt.setVisible(false);
   // Кнопка уже заблокирована, но вход закрыт и здесь: ярус не должен
   // открываться в обход Кухни ни через отладку, ни через сохранение
   // от прежней сборки.
@@ -497,6 +555,8 @@ function toTitle(): void {
   // Ранний вечер: тени от букв уже длинные, но поле ещё зелёное, а не серое.
   rig.night = 0.08;
   mode = 'title';
+  inGlade = false;
+  campPrompt.setVisible(false);
   hud.setVisible(false);
   campHud.setVisible(false);
   rosterPanel.setVisible(false);
@@ -516,8 +576,108 @@ function leaveTitle(): void {
   startScreen.setVisible(false);
 }
 
+/** Свободная клетка рядом с героем — с неё начинается выбор места. */
+function siteNearHero(): Cell {
+  if (raid === null) return { x: 0, z: 0 };
+  const hx = Math.round(raid.hero.x);
+  const hz = Math.round(raid.hero.z);
+  for (const [dx, dz] of [[1, 0], [0, 1], [-1, 0], [0, -1]] as const) {
+    const c = { x: hx + dx, z: hz + dz };
+    if (siteBlock(raid.loc, pitched, raid.hero, c) === 'ok') return c;
+  }
+  return { x: hx, z: hz };
+}
+
+/**
+ * Режим выбора места. Подсветка показывается сразу, а не по первому касанию:
+ * на телефоне наведения нет, и без неё игрок не понял бы, что от него ждут
+ * тапа по земле, а не по кнопке.
+ */
+function startPlacing(id: BuildingId): void {
+  if (raid === null) return;
+  placing = id;
+  hud.setHint(PITCH_HINT[id] ?? '');
+  const c = siteNearHero();
+  raidView?.showSite(id, c.x, c.z, siteBlock(raid.loc, pitched, raid.hero, c) === 'ok');
+}
+
+/** Тап по земле в режиме выбора места. */
+function tryPlace(cell: Cell): void {
+  if (placing === null || raid === null) return;
+  const ok = siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok';
+  raidView?.showSite(placing, cell.x, cell.z, ok);
+  // Отказ не молчит и не двигает кадр: красное пятно остаётся под пальцем,
+  // и следующий тап игрок делает уже зная, почему прошлый не сработал.
+  if (!ok) return;
+
+  raidView?.place(placing, cell.x, cell.z);
+  pitched.push(cell);
+  const next = PITCH_ORDER[PITCH_ORDER.indexOf(placing) + 1];
+  if (next === undefined) {
+    placing = null;
+    raidView?.hideSite();
+    hud.setHint('Лагерь разбит');
+    return;
+  }
+  startPlacing(next);
+}
+
+/**
+ * Пролог (`prologue.ts`). Открывается кнопкой заставки и ведёт не в лагерь,
+ * а на поляну: лагеря ещё нет — его разбивают в конце этого кадра.
+ *
+ * Собирается тем же createRaid, что вылазка, и это не экономия: ходьба, шаг
+ * и расход провианта обязаны считаться одинаково, иначе прогулка научит
+ * игрока не тому, что его ждёт дальше.
+ */
+function toGlade(): void {
+  leaveTitle();
+  raidView?.dispose();
+  const hero = heroForRaid() ?? roster.heroes[0]!;
+  // Раны и опыт в прологе не начисляются никому: драться не с кем.
+  raidHero = null;
+  const seed = debugSeed ?? ((Math.random() * 1e9) | 0);
+  raid = createRaid({
+    seed,
+    tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
+    loc: generateGlade(seed),
+    food: gladeFood(),
+    // Выхода с поляны нет, и кольцо эвакуации не рисуется: уйти можно
+    // только тем, что провиант кончился.
+    evacOpen: false,
+  });
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade');
+  hud.setGrass(grassPerTile);
+  rig.world.add(raidView.group);
+  campView.group.visible = false;
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  rig.setZoom(20, true);
+  // Поляна — на поверхности, и это день. Подземный мрак вылазки здесь
+  // спрятал бы лес, ради которого кадр и существует.
+  rig.night = 0.12;
+  resultShown = false;
+  inGlade = true;
+  placing = null;
+  pitched.length = 0;
+  raidView.hideSite();
+  mode = 'raid';
+  hud.setVisible(true);
+  campHud.setVisible(false);
+  rosterPanel.setVisible(false);
+  statsPanel.setVisible(false);
+  returnScreen.hide();
+  campPrompt.setVisible(false);
+  applyOnb();
+  track({ t: 'raid_start', at: clock.now(), tier: 0, food: raid.foodMax, capacity: raid.capacity });
+}
+
 function toCamp(): void {
   leaveTitle();
+  inGlade = false;
+  campPrompt.setVisible(false);
   raidView?.dispose();
   raidView = null;
   raid = null;
@@ -630,8 +790,13 @@ canvas.addEventListener('pointerdown', (e) => {
   if (mode === 'raid') {
     const hit = rig.screenToGround(e.clientX, e.clientY);
     if (hit === null) return;
-    if (raid === null || raid.status !== 'running') return;
     const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+    // Выбор места перебивает ходьбу: провиант кончился, идти всё равно некуда.
+    if (placing !== null) {
+      tryPlace(cell);
+      return;
+    }
+    if (raid === null || raid.status !== 'running') return;
     if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
     return;
   }
@@ -662,6 +827,21 @@ function pointerSpread(): number {
 }
 
 canvas.addEventListener('pointermove', (e) => {
+  // Место под здание ведётся наведением, без нажатия: мышь показывает,
+  // куда встанет, до того как игрок решится.
+  if (placing !== null && raid !== null) {
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    if (hit === null) return;
+    const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+    raidView?.showSite(
+      placing,
+      cell.x,
+      cell.z,
+      siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok',
+    );
+    return;
+  }
+
   const prev = pointers.get(e.pointerId);
   if (prev === undefined || mode !== 'camp') return;
   const cur = { x: e.clientX, y: e.clientY };
@@ -792,15 +972,19 @@ let fpsAcc = 0;
 let fpsFrames = 0;
 let lastRender = performance.now();
 
-// Раскадровка кадра 1: ни одного экрана меню до того, как игрок сыграет.
-// Поэтому первая сессия открывается сразу в вылазке, а стартовый экран
-// достаётся тем, кто уже играл, — ему он и адресован.
-if (onb !== 'done') {
+// Игра открывается заставкой с одной кнопкой, и сразу за кнопкой начинается
+// пролог — поляна, герой и полоса провианта. Правило раскадровки «ни одного
+// экрана меню до того, как игрок сыграет» этим не нарушено: меню здесь нет,
+// есть одна кнопка, и за ней не лагерь, а локация.
+//
+// Кадры вылазки по-прежнему открываются в вылазке: они перезапуск не
+// переживают, и заставка посреди раскадровки уводила бы игрока из неё.
+if (onb === 'glade' || onb === 'done') {
+  toTitle();
+} else if (!isRaidStep(onb) || !toRaid(0)) {
   // Вход мог не открыться (сейв от прежних правил) — тогда честно в лагерь,
   // а не в пустой экран.
-  if (!isRaidStep(onb) || !toRaid(0)) toCamp();
-} else {
-  toTitle();
+  toCamp();
 }
 
 // Отладочный вход: ?tier=N открывает игру сразу в вылазке нужного яруса.
@@ -914,6 +1098,20 @@ startLoop({
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
+      if (inGlade) {
+        hud.sync(raid, dt);
+        // Кадр кончается ровно на нуле провианта. Голод, который в вылазке
+        // отнимает рану через шесть секунд, сюда не успевает и не должен:
+        // терять ещё нечего, и учить потерям в прологе не на чем.
+        if (raid.food <= 0 && !resultShown) {
+          resultShown = true;
+          raid.path = [];
+          raid.status = 'evacuated';
+          raidView?.hideHint();
+          campPrompt.setVisible(true);
+        }
+        return;
+      }
       if (isRaidStep(onb)) driveOnboarding(raid);
       hud.sync(raid, dt);
       if (raid.status !== 'running' && !resultShown) {

@@ -5,7 +5,7 @@ import type { GearSlot } from './gear';
 import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
 import type { HeroState, Roster } from './heroes';
 import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
-import { ONB_ORDER, isRaidStep } from './onboarding';
+import { ONB_ORDER, restartStep } from './onboarding';
 import type { OnbStep } from './onboarding';
 import { emptyResources } from './resources';
 import type { ResourceKind } from './resources';
@@ -114,12 +114,12 @@ export function load(): LoadResult {
     raw = null;
   }
   // Хранилища нет вовсе — это первый запуск: игра начинается с первого кадра.
-  if (raw === null) return { camp, roster, watermark: 0, onboarding: 'move' };
+  if (raw === null) return { camp, roster, watermark: 0, onboarding: 'glade' };
 
   try {
     const data = JSON.parse(raw) as Partial<SaveV1>;
     // Чужая или будущая версия — начинаем заново, но не роняем игру.
-    if (data.version !== VERSION) return { camp, roster, watermark: 0, onboarding: 'move' };
+    if (data.version !== VERSION) return { camp, roster, watermark: 0, onboarding: 'glade' };
 
     for (const id of BUILDING_ORDER) {
       const level = data.levels?.[id];
@@ -177,7 +177,7 @@ export function load(): LoadResult {
       onboarding: readStep(data.onb),
     };
   } catch {
-    return { camp, roster, watermark: 0, onboarding: 'move' };
+    return { camp, roster, watermark: 0, onboarding: 'glade' };
   }
 }
 
@@ -189,7 +189,7 @@ export function load(): LoadResult {
 function readStep(saved: unknown): OnbStep {
   const step = ONB_ORDER.find((s) => s === saved);
   if (step === undefined) return 'done';
-  return isRaidStep(step) ? 'move' : step;
+  return restartStep(step);
 }
 
 const STATUSES: readonly HeroState['status'][] = ['ready', 'raid', 'healing', 'training'];

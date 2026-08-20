@@ -20,6 +20,10 @@ export const PALETTE = {
   telegraph: 0xd4543a,
   loot: 0xdba845,
   evac: 0x8fd6c0,
+  /** Место под здание: те же зелёный и красный, что «хорошо» и «плохо»
+   *  в HUD (`style.css`), — сцена и панель обязаны говорить одним цветом. */
+  siteOk: 0x7fb069,
+  siteNo: 0xd4543a,
   backdrop: 0x141410,
 } as const;
 
