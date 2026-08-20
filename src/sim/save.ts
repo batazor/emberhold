@@ -8,6 +8,7 @@ import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
 import { ONB_ORDER, restartStep } from './onboarding';
 import type { OnbStep } from './onboarding';
 import { emptyResources } from './resources';
+import { WORLD_NODES, liveVisits } from './world';
 import type { ResourceKind } from './resources';
 
 /**
@@ -57,6 +58,13 @@ interface SaveV1 {
    * как «пройдено», а не как «начать заново».
    */
   onb?: OnbStep;
+  /**
+   * Дельты мира (§4): куда игрок ходил и когда. Единственное, что хранится
+   * от карты — кланы и богатство считаются функцией от сида и часов. Поле
+   * необязательное по той же причине, что отряд и снаряжение: сейв прежних
+   * этапов обязан открываться.
+   */
+  visits?: { n: number; s: number }[];
 }
 
 export interface LoadResult {
@@ -83,6 +91,9 @@ export function save(
     loadout: camp.loadout,
     raids: camp.raids,
     gear: camp.gear,
+    // Заходы старше окна на богатство уже не влияют — в сохранение они
+    // не едут, иначе список растёт без предела.
+    visits: liveVisits(camp.visits, watermark).map((v) => ({ n: v.node, s: v.shift })),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -149,6 +160,18 @@ export function load(): LoadResult {
     }
     camp.resources = res;
     if (typeof data.raids === 'number') camp.raids = data.raids;
+    if (Array.isArray(data.visits)) {
+      camp.visits = data.visits
+        .filter(
+          (v) =>
+            v != null &&
+            typeof v.n === 'number' &&
+            typeof v.s === 'number' &&
+            v.n >= 0 &&
+            v.n < WORLD_NODES,
+        )
+        .map((v) => ({ node: Math.floor(v.n), shift: Math.floor(v.s) }));
+    }
     if (Array.isArray(data.loadout)) {
       camp.loadout = data.loadout.filter((id) => id in CONSUMABLES).slice(0, CONSUMABLE_SLOTS);
     }

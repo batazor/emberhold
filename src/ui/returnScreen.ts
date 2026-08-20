@@ -4,6 +4,7 @@ import {
   gearAction,
   suggestGear,
   suggestUpgrade,
+  tierBlock,
   upgradeProgress,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
@@ -15,7 +16,7 @@ import type { ConsumableId } from '../sim/consumables';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
-import type { Tier } from '../sim/types';
+import { RAID_NODES, nodeOf, worldAt } from '../sim/world';
 
 /**
  * Экран возврата (мокап 04). Самый важный экран для удержания: здесь игрок
@@ -39,8 +40,23 @@ export interface ReturnCallbacks {
   onCraft(slot: GearSlot): void;
   /** §21 — третья ветка того же места: расходник тратит соль, которой в избытке. */
   onBuyConsumable(id: ConsumableId): void;
-  onRaid(tier: Tier): void;
+  /** §4 — «ещё вылазка» ведёт в место на карте, и оно названо на кнопке. */
+  onRaid(node: number): void;
   onCamp(): void;
+}
+
+/**
+ * Место для следующей вылазки: то же самое, пока в нём осталось хотя бы два
+ * захода, иначе самое богатое из открытых. Автовыбора «лучшей локации» на
+ * карте нет и не будет (`world.html`, кадр 05) — но кнопка «ещё вылазка»
+ * решения не отменяет: она его предлагает, а карта рядом открыта.
+ */
+function nextPlace(camp: CampState, node: number, now: number): number {
+  const world = worldAt(now, camp.visits);
+  if ((world[node]?.rich ?? 0) >= 2) return node;
+  const open = RAID_NODES.filter((n) => tierBlock(camp, n.tier) === 'ok');
+  if (open.length === 0) return node;
+  return [...open].sort((a, b) => (world[b.id]?.rich ?? 0) - (world[a.id]?.rich ?? 0))[0]!.id;
 }
 
 export class ReturnScreen {
@@ -65,7 +81,12 @@ export class ReturnScreen {
   /** Что предложить, когда постройка недоступна: слот занят или не по карману. */
   private gearSuggestion: GearSlot | null = null;
   private consumable: ConsumableId | null = null;
-  private tier: Tier = 0;
+  /**
+   * Куда ведёт «ещё вылазка». Локация помнит заход (§4): если она уже
+   * просела, экран предлагает не её, а лучшее из доступного — иначе кнопка
+   * молча ведёт в выработанную жилу.
+   */
+  private raidNode = 0;
   /**
    * Кадр 8 раскадровки: в первый раз выбора нет. Кнопки «Ещё вылазка» здесь
    * не существует — иначе игрок не увидит лагерь, ради которого играл.
@@ -133,12 +154,12 @@ export class ReturnScreen {
         this.cb.onCraft(this.gearSuggestion);
       } else {
         this.report('raid');
-        this.cb.onRaid(this.tier);
+        this.cb.onRaid(this.raidNode);
       }
     });
     this.secondary.addEventListener('click', () => {
       this.report('raid');
-      this.cb.onRaid(this.tier);
+      this.cb.onRaid(this.raidNode);
     });
     this.tertiary.addEventListener('click', () => {
       this.report('camp');
@@ -166,13 +187,15 @@ export class ReturnScreen {
     camp: CampState,
     onChoice: (chose: 'build' | 'craft' | 'raid' | 'camp', canBuy: boolean) => void,
     onlyCamp = false,
+    node = 0,
+    now = 0,
   ): void {
     this.onChoice = onChoice;
     this.onlyCamp = onlyCamp;
     this.reported = false;
     this.shownAt = performance.now();
     this.skipped = false;
-    this.tier = result.tier;
+    this.raidNode = nextPlace(camp, node, now);
     this.suggestion = suggestUpgrade(camp);
     // Три ветки одной главной кнопки, и они не бывают главными одновременно.
     // Порядок — постройка, расходник, ковка. Постройка меняет вылазку
@@ -227,18 +250,18 @@ export class ReturnScreen {
     if (this.suggestion !== null) {
       const id = this.suggestion;
       this.primary.textContent = `Построить: ${BUILDINGS[id].name} ур. ${camp.levels[id] + 1}`;
-      this.secondary.textContent = 'Ещё вылазка';
+      this.secondary.textContent = this.raidLabel();
       this.secondary.style.display = '';
     } else if (this.consumable !== null) {
       this.primary.textContent = `Взять: ${CONSUMABLES[this.consumable].name}`;
-      this.secondary.textContent = 'Ещё вылазка';
+      this.secondary.textContent = this.raidLabel();
       this.secondary.style.display = '';
     } else if (this.gearSuggestion !== null) {
       this.primary.textContent = gearAction(camp, this.gearSuggestion);
-      this.secondary.textContent = 'Ещё вылазка';
+      this.secondary.textContent = this.raidLabel();
       this.secondary.style.display = '';
     } else {
-      this.primary.textContent = 'Ещё вылазка';
+      this.primary.textContent = this.raidLabel();
       this.secondary.style.display = 'none';
     }
 
@@ -254,6 +277,14 @@ export class ReturnScreen {
     this.tertiary.style.display = onlyCamp ? 'none' : '';
 
     this.root.classList.add('on');
+  }
+
+  /**
+   * Куда зовёт кнопка. Название места вместо «ещё вылазка»: после первой же
+   * вылазки места перестают быть одинаковыми, и кнопка обязана это признавать.
+   */
+  private raidLabel(): string {
+    return `Ещё вылазка · ${nodeOf(this.raidNode).name}`;
   }
 
   /** Полоса прогресса к следующему улучшению — то, ради чего играли. */

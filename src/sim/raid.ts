@@ -61,10 +61,15 @@ export interface RaidOptions {
   readonly loc?: GameLocation;
   /** Провиант вместо кухонного. Тоже для пролога: Кухни в нём ещё нет. */
   readonly food?: number;
+  /**
+   * Множитель добычи от богатства локации на карте мира (§4). По умолчанию 1:
+   * замеры, бот и золотой мастер считают вылазку без карты.
+   */
+  readonly lootMul?: number;
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
-  const loc = opts.loc ?? generateLocation(opts.seed, opts.tier);
+  const loc = opts.loc ?? generateLocation(opts.seed, opts.tier, opts.lootMul ?? 1);
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
