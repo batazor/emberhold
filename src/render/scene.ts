@@ -1,0 +1,176 @@
+import * as THREE from 'three';
+import { PALETTE } from './palette';
+
+/**
+ * §6: ортокамера с азимутом 45° и наклоном 30° — это проекция 2:1.
+ * Камера стоит близко к сцене намеренно: туман считается от камеры, и при
+ * большом отлёте он съедает всю картинку (проверено прототипом).
+ */
+const ELEVATION = (30 * Math.PI) / 180;
+const CAM_DIST = 42;
+
+export class SceneRig {
+  readonly scene = new THREE.Scene();
+  readonly renderer: THREE.WebGLRenderer;
+  readonly camera: THREE.OrthographicCamera;
+  readonly world = new THREE.Group();
+
+  private readonly hemi: THREE.HemisphereLight;
+  private readonly sun: THREE.DirectionalLight;
+  private readonly torch: THREE.PointLight;
+  private readonly fog: THREE.Fog;
+  private readonly target = new THREE.Vector3();
+  private readonly focus = new THREE.Vector3();
+
+  private azimuth = Math.PI / 4;
+  private azimuthGoal = Math.PI / 4;
+  private frustum = 18;
+  private frustumGoal = 18;
+  /** 0 — день, 1 — ночь. */
+  night = 1;
+
+  constructor(canvasParent: HTMLElement) {
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1;
+    canvasParent.appendChild(this.renderer.domElement);
+
+    this.fog = new THREE.Fog(new THREE.Color(PALETTE.night), CAM_DIST + 10, CAM_DIST + 70);
+    this.scene.fog = this.fog;
+    this.scene.background = new THREE.Color(PALETTE.night);
+    this.scene.add(this.world);
+
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 140);
+
+    this.hemi = new THREE.HemisphereLight(0xbcd2e8, 0x2b2519, 1);
+    // §6: один источник с тенями. Второй — отдельное решение, а не мелочь.
+    this.sun = new THREE.DirectionalLight(PALETTE.sun, 2);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(1024, 1024);
+    Object.assign(this.sun.shadow.camera, {
+      left: -14,
+      right: 14,
+      top: 14,
+      bottom: -14,
+      near: 1,
+      far: 80,
+    });
+    this.sun.shadow.bias = -0.0011;
+    this.sun.shadow.normalBias = 0.035;
+    this.torch = new THREE.PointLight(PALETTE.torch, 0, 10, 1.15);
+    this.scene.add(this.hemi, this.sun, this.sun.target, this.torch);
+
+    this.resize();
+    addEventListener('resize', () => this.resize());
+  }
+
+  resize(): void {
+    const w = innerWidth;
+    const h = innerHeight;
+    this.renderer.setSize(w, h);
+    const fh = this.frustum;
+    const fw = fh * (w / h);
+    this.camera.left = -fw / 2;
+    this.camera.right = fw / 2;
+    this.camera.top = fh / 2;
+    this.camera.bottom = -fh / 2;
+    this.camera.updateProjectionMatrix();
+  }
+
+  lookAt(x: number, z: number, instant = false): void {
+    this.target.set(x, 0, z);
+    if (instant) this.focus.copy(this.target);
+  }
+
+  rotate(steps: number): void {
+    this.azimuthGoal += (steps * Math.PI) / 2;
+  }
+
+  zoom(delta: number): void {
+    this.frustumGoal = Math.min(34, Math.max(10, this.frustumGoal + delta));
+  }
+
+  setZoom(value: number, instant = false): void {
+    this.frustumGoal = Math.min(34, Math.max(10, value));
+    if (instant) {
+      this.frustum = this.frustumGoal;
+      this.resize();
+    }
+  }
+
+  /** Экран → координаты земли. Плоскость, а не рейкаст по мешам: земля плоская. */
+  private readonly ray = new THREE.Raycaster();
+  private readonly ndc = new THREE.Vector2();
+  private readonly plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly hit = new THREE.Vector3();
+
+  screenToGround(clientX: number, clientY: number): { x: number; z: number } | null {
+    this.ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+    this.ray.setFromCamera(this.ndc, this.camera);
+    if (this.ray.ray.intersectPlane(this.plane, this.hit) === null) return null;
+    return { x: this.hit.x, z: this.hit.z };
+  }
+
+  /**
+   * §6.1 / §11.4: обзор — это дальность фонаря, а не наложенная маска.
+   * visionRadius приходит из симуляции, чтобы число на экране и то, что видно,
+   * не разъезжались.
+   */
+  update(dt: number, heroX: number, heroZ: number, visionRadius: number): void {
+    const day = 1 - this.night;
+
+    this.sun.intensity = 0.05 + day * 1.75;
+    this.sun.color.setHSL(0.09 + this.night * 0.5, 0.55 - day * 0.25, 0.55 + day * 0.12);
+    this.hemi.intensity = 0.07 + day * 0.58;
+    this.hemi.color.lerpColors(new THREE.Color(0x27324d), new THREE.Color(0xbcd2e8), day);
+
+    const sunAngle = (0.25 + day * 0.5) * Math.PI;
+    this.sun.position.set(heroX + Math.cos(sunAngle) * 24, 12 + day * 20, heroZ + 14);
+    this.sun.target.position.set(heroX, 0, heroZ);
+    this.sun.target.updateMatrixWorld();
+
+    this.torch.intensity = 1.6 + this.night * 3.4;
+    this.torch.distance = visionRadius + 1.5;
+    // Фонарь смещён к камере: в собственном свете герой иначе стоит силуэтом.
+    this.torch.position.set(
+      heroX + Math.cos(this.azimuth) * 0.75,
+      1.35,
+      heroZ + Math.sin(this.azimuth) * 0.75,
+    );
+
+    this.fog.color.lerpColors(
+      new THREE.Color(PALETTE.night),
+      new THREE.Color(PALETTE.day),
+      day * day,
+    );
+    (this.scene.background as THREE.Color).copy(this.fog.color);
+    this.fog.near = CAM_DIST + 2 + day * 8;
+    this.fog.far = CAM_DIST + 14 + day * 55;
+
+    this.focus.lerp(this.target, Math.min(1, dt * 3.5));
+    this.azimuth += (this.azimuthGoal - this.azimuth) * Math.min(1, dt * 6);
+    if (Math.abs(this.frustum - this.frustumGoal) > 0.01) {
+      this.frustum += (this.frustumGoal - this.frustum) * Math.min(1, dt * 8);
+      this.resize();
+    }
+
+    const ce = Math.cos(ELEVATION);
+    this.camera.position.set(
+      this.focus.x + Math.cos(this.azimuth) * ce * CAM_DIST,
+      Math.sin(ELEVATION) * CAM_DIST,
+      this.focus.z + Math.sin(this.azimuth) * ce * CAM_DIST,
+    );
+    this.camera.lookAt(this.focus);
+  }
+
+  render(): void {
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  get drawCalls(): number {
+    return this.renderer.info.render.calls;
+  }
+}

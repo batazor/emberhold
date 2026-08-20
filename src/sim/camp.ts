@@ -1,0 +1,199 @@
+import type { Resources } from './resources';
+import { canAfford, emptyResources, spend } from './resources';
+import type { Tier } from './types';
+
+/** Прототип v0 (§7): три здания. Кузница, Лазарет и Плац — после петли. */
+export type BuildingId = 'hq' | 'kitchen' | 'storage';
+
+export const BUILDING_ORDER: readonly BuildingId[] = ['hq', 'kitchen', 'storage'];
+
+export const MAX_LEVEL = 6;
+
+export interface BuildingDef {
+  readonly id: BuildingId;
+  readonly name: string;
+  /** §2: каждое здание обязано отвечать на вопрос «что я смогу в вылазке». */
+  readonly effect: (level: number) => string;
+}
+
+/** §11.1 — Кухня: ур. 1 = 50, далее +20. */
+export const kitchenFood = (level: number): number => 50 + 20 * (level - 1);
+
+/** Вместимость Склада. §11.5 отменила формулы построек, число не назначено;
+ *  подобрано так, чтобы пример «12 из 19» из §11.2 приходился на Склад ур. 2. */
+export const storageCapacity = (level: number): number => 11 + 4 * level;
+
+/** §20.4 — площадь растёт со Штабом: 6×6 на ур. 1 … 10×10 на ур. 5. */
+export const campArea = (hqLevel: number): number => Math.min(10, 5 + hqLevel);
+
+export const BUILDINGS: Record<BuildingId, BuildingDef> = {
+  hq: {
+    id: 'hq',
+    name: 'Штаб',
+    effect: (l) => `Потолок уровня зданий ${l} · площадь ${campArea(l)}×${campArea(l)}`,
+  },
+  kitchen: {
+    id: 'kitchen',
+    name: 'Кухня',
+    effect: (l) => `Провиант ${kitchenFood(l)} — это максимальная глубина захода`,
+  },
+  storage: {
+    id: 'storage',
+    name: 'Склад',
+    effect: (l) => `Рюкзак ${storageCapacity(l)} — столько добычи можно вынести`,
+  },
+};
+
+/** §20.2 — времена назначены вручную, каждая ступень целится в поведение. */
+export const BUILD_SECONDS: Record<number, number> = {
+  2: 3 * 60,
+  3: 12 * 60,
+  4: 45 * 60,
+  5: 3 * 3600,
+  6: 8 * 3600,
+};
+
+/**
+ * §20.3 — абсолютные значения намеренно не назначены до замеров добычи.
+ * Это placeholder, откалиброванный по правилу «уровень N стоит примерно
+ * столько же, сколько N−1 успешных вылазок»: дерево держит ранние уровни,
+ * железо — средние, кристалл появляется только на пятом (§13).
+ */
+export const BUILD_COST: Record<number, Partial<Resources>> = {
+  2: { wood: 8, salt: 4 },
+  3: { wood: 16, iron: 4, salt: 8 },
+  4: { wood: 24, iron: 12, salt: 12 },
+  5: { iron: 24, crystal: 2, salt: 20 },
+  6: { iron: 40, crystal: 5, salt: 30 },
+};
+
+/**
+ * Ярус открывается уровнем Кухни. Запас провианта обязан лежать между
+ * «до дна и обратно» и «полным обходом» (§12.2) — иначе локацию можно
+ * зачистить целиком и решения «уйти или идти дальше» не существует.
+ *
+ * Замер на настоящем генераторе, 300 локаций на ярус: при доступе к ярусам 2
+ * и 3 с Кухней 4 и 6 полный обход был по карману в 72–89% случаев.
+ * При гейте 1/1/2/4 — в 0–2%. Кривые Кухни это не касается, дело только
+ * в том, на каком её уровне ярус открывается.
+ */
+export const TIER_KITCHEN_GATE: Record<Tier, number> = { 0: 1, 1: 1, 2: 2, 3: 4 };
+
+export type TierBlock = 'ok' | 'kitchen';
+
+/** Причина, а не булево: игрок должен видеть, чего именно не хватает. */
+export function tierBlock(camp: CampState, tier: Tier): TierBlock {
+  return camp.levels.kitchen >= TIER_KITCHEN_GATE[tier] ? 'ok' : 'kitchen';
+}
+
+export interface Construction {
+  readonly building: BuildingId;
+  readonly toLevel: number;
+  readonly startedAt: number;
+  readonly endsAt: number;
+}
+
+export interface CampState {
+  levels: Record<BuildingId, number>;
+  layout: Record<BuildingId, { x: number; z: number }>;
+  resources: Resources;
+  /** §20.1 — один слот. Это и делает вопрос «что дальше» настоящим выбором. */
+  construction: Construction | null;
+  raids: number;
+}
+
+export function createCamp(): CampState {
+  return {
+    levels: { hq: 1, kitchen: 1, storage: 1 },
+    // След здания 2×2, площадь при Штабе ур. 1 — 6×6, поэтому левый
+    // верхний угол не может быть правее 4 (§20.4).
+    layout: { hq: { x: 1, z: 1 }, kitchen: { x: 4, z: 1 }, storage: { x: 1, z: 4 } },
+    resources: emptyResources(),
+    construction: null,
+    raids: 0,
+  };
+}
+
+export type UpgradeBlock =
+  | 'ok'
+  | 'max'
+  | 'hq-cap'
+  | 'slot-busy'
+  | 'resources';
+
+/**
+ * Почему улучшение недоступно. Возвращается причина, а не булево: игрок должен
+ * видеть «Штаб не пускает», а не молчащую серую кнопку.
+ */
+export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
+  const level = camp.levels[id];
+  if (level >= MAX_LEVEL) return 'max';
+  // §20.4 — единственный настоящий ограничитель: никакое здание не может
+  // превысить уровень Штаба.
+  if (id !== 'hq' && level + 1 > camp.levels.hq) return 'hq-cap';
+  if (camp.construction !== null) return 'slot-busy';
+  if (!canAfford(camp.resources, BUILD_COST[level + 1] ?? {})) return 'resources';
+  return 'ok';
+}
+
+export function startUpgrade(camp: CampState, id: BuildingId, now: number): boolean {
+  if (upgradeBlock(camp, id) !== 'ok') return false;
+  const toLevel = camp.levels[id] + 1;
+  spend(camp.resources, BUILD_COST[toLevel] ?? {});
+  const seconds = BUILD_SECONDS[toLevel] ?? 0;
+  camp.construction = { building: id, toLevel, startedAt: now, endsAt: now + seconds };
+  // Ур. 1 мгновенный (§20.2) — здание вырастает на глазах в онбординге.
+  if (seconds === 0) completeIfDue(camp, now);
+  return true;
+}
+
+export function completeIfDue(camp: CampState, now: number): BuildingId | null {
+  const c = camp.construction;
+  if (c === null || now < c.endsAt) return null;
+  camp.levels[c.building] = c.toLevel;
+  camp.construction = null;
+  return c.building;
+}
+
+/**
+ * §20.5 — 2 соли за минуту, ×1.5 за каждый час: дёшево для коротких таймеров,
+ * дорого для длинных. Последние пять минут бесплатны — это убирает худшее
+ * состояние жанра, «осталось четыре минуты, зайду позже».
+ */
+export function speedupCost(remainingSeconds: number): number {
+  if (remainingSeconds <= 5 * 60) return 0;
+  const minutes = Math.ceil(remainingSeconds / 60);
+  const hours = Math.floor(remainingSeconds / 3600);
+  return Math.ceil(2 * minutes * Math.pow(1.5, hours));
+}
+
+export function speedup(camp: CampState, now: number): boolean {
+  const c = camp.construction;
+  if (c === null) return false;
+  const cost = speedupCost(c.endsAt - now);
+  if (camp.resources.salt < cost) return false;
+  camp.resources.salt -= cost;
+  camp.construction = { ...c, endsAt: now };
+  completeIfDue(camp, now);
+  return true;
+}
+
+/** camp.html: жителей два плюс по одному на каждые четыре уровня, потолок десять. */
+export function villagerCount(camp: CampState): number {
+  const sum = BUILDING_ORDER.reduce((acc, id) => acc + camp.levels[id], 0);
+  return Math.min(10, 2 + Math.floor(sum / 4));
+}
+
+/** §20.4 — перестановка бесплатна и мгновенна: планировка выразительная,
+ *  а не механическая. Занятость клетки проверяется, площадь — по Штабу. */
+export function moveBuilding(camp: CampState, id: BuildingId, x: number, z: number): boolean {
+  const area = campArea(camp.levels.hq);
+  if (x < 0 || z < 0 || x + 2 > area || z + 2 > area) return false;
+  for (const other of BUILDING_ORDER) {
+    if (other === id) continue;
+    const p = camp.layout[other];
+    if (Math.abs(p.x - x) < 2 && Math.abs(p.z - z) < 2) return false;
+  }
+  camp.layout[id] = { x, z };
+  return true;
+}

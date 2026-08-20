@@ -1,0 +1,427 @@
+<title>Звук Соляного Тракта</title>
+<style>
+  :root{
+    --ground:#E3E7E5; --surface:#F3F6F3; --surface-2:#DBE2DD; --line:#C2CCC6;
+    --text:#131C1B; --dim:#54625F; --brass:#8A6A12; --ember:#AC4C1D; --moss:#4B6C3D; --blood:#8E3838;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+      --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+    --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  button{font-family:var(--ff-ui);font-size:14px;padding:8px 16px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+  input[type=range]{accent-color:var(--brass);width:220px;}
+
+  .grp{display:flex;flex-direction:column;gap:11px;}
+  .grp>h3{margin:0;font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.15em;
+    text-transform:uppercase;color:var(--brass);font-weight:600;}
+  .snd{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:12px;}
+  .card{background:var(--surface);border:1px solid var(--line);padding:13px 15px 15px;
+    display:flex;flex-direction:column;gap:9px;}
+  .card .top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .card b{font-family:var(--ff-display);font-weight:400;font-size:17px;}
+  .card .rec{font-family:var(--ff-mono);font-size:9.5px;color:var(--dim);letter-spacing:.04em;}
+  .card p{margin:0;font-size:13px;color:var(--dim);}
+  .card p.says{color:var(--text);}
+  .card p.says s{text-decoration:none;font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--moss);display:block;margin-bottom:2px;}
+  .play{padding:6px 12px;font-size:13px;flex:0 0 auto;}
+
+  .supply{background:var(--surface);border:1px solid var(--line);padding:20px;display:flex;
+    flex-direction:column;gap:16px;}
+  .meter{display:flex;align-items:center;gap:12px;}
+  .meter em{font-style:normal;font-family:var(--ff-mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--dim);width:72px;}
+  .meter .track{flex:1;height:10px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:5px;overflow:hidden;}
+  .meter .track i{display:block;height:100%;background:var(--ember);transition:width .12s linear;}
+  .meter b{font-family:var(--ff-mono);font-size:12px;font-variant-numeric:tabular-nums;width:52px;text-align:right;}
+  .zones{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+    background:var(--line);border:1px solid var(--line);}
+  .zone{background:var(--surface);padding:11px 13px;display:flex;flex-direction:column;gap:3px;}
+  .zone.on{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--brass);}
+  .zone s{text-decoration:none;font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.11em;color:var(--dim);}
+  .zone span{font-size:13px;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;}
+  .scroll{overflow-x:auto;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Звук · Соляной Тракт</div>
+    <h1>Звук, который <em>что-то сообщает</em></h1>
+    <p class="lede">Все звуки ниже синтезируются прямо на странице — ни одного файла.
+      Это не демонстрация технологии, а рабочий формат: для прототипа процедурный звук
+      весит ноль, правится параметром и не требует ждать композитора. Нажимайте —
+      всё звучит так, как задумано в игре.</p>
+    <div class="bar">
+      <button id="unlock" type="button">Включить звук</button>
+      <label class="note">громкость <input type="range" id="vol" min="0" max="100" value="55"></label>
+      <span class="note" id="status">аудио не запущено</span>
+    </div>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Четыре правила</h2></div>
+    <div class="guard">
+      <div class="key">
+        <h3>Звук несёт информацию</h3>
+        <p>Главное решение игры принимается по двум полосам наверху, а глаза в это время
+          смотрят на пол. <b>Звук — второй канал для тех же данных</b>, и прежде всего
+          для провианта. Атмосфера вторична.</p>
+      </div>
+      <div class="key">
+        <h3>И при этом ничего не решает в одиночку</h3>
+        <p>Значительная доля мобильных игроков играет без звука. Поэтому <b>всё, что
+          сообщает звук, обязано быть видно и глазами.</b> Звук дублирует и ускоряет
+          восприятие, но никогда не остаётся единственным носителем.</p>
+      </div>
+      <div>
+        <h3>Три слоя, не больше</h3>
+        <p>Мобильный динамик не разделяет больше трёх одновременных источников: получается
+          каша. Приоритет при переполнении: урон по герою → интерфейс → всё остальное.</p>
+      </div>
+      <div>
+        <h3>Разнесение по частоте</h3>
+        <p>Шаги и бой живут в средних частотах, интерфейс — в верхних, тревога провианта —
+          в нижних. Так три слоя различимы даже в динамике телефона.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Провиант как звук</h2></div>
+    <p>Ключевая механика звукового дизайна. По мере расхода провианта включается
+      пульс — сначала редкий и низкий, затем чаще и выше. Игрок узнаёт, что пора
+      разворачиваться, не поднимая глаз на полосу.</p>
+    <div class="supply">
+      <div class="meter">
+        <em>Провиант</em>
+        <div class="track"><i id="sfill" style="width:70%"></i></div>
+        <b id="sval">70%</b>
+      </div>
+      <input type="range" id="supply" min="0" max="100" value="70" aria-label="Уровень провианта">
+      <div class="bar">
+        <button id="pulse" type="button" aria-pressed="false">Запустить пульс</button>
+        <span class="note">двигайте ползунок, пока играет</span>
+      </div>
+      <div class="zones" id="zones"></div>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Почему пульс, а не голос или цифра</h3>
+        <p>Пульс воспринимается периферийно и не требует внимания — ровно как полоса
+          в углу экрана. Голос или звуковой отсчёт заставляли бы слушать,
+          а <b>слушать игрок не должен: он должен чувствовать.</b></p>
+      </div>
+      <div>
+        <h3>Молчание — тоже состояние</h3>
+        <p>Выше 60% пульса нет вообще. Тишина в начале вылазки нужна, чтобы её появление
+          было событием. Постоянный фоновый тик обесценивается за две минуты.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Библиотека</h2></div>
+    <p>Каждая карточка — рецепт синтеза и то, что этот звук сообщает игроку.
+      Звук, которому нечего написать в строке «сообщает», из игры вырезается.</p>
+    <div id="lib" style="display:flex;flex-direction:column;gap:26px"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Амбиент по ярусам</h2></div>
+    <p>Не музыка, а подложка. Мелодия в игре с двухминутными сессиями надоедает за день,
+      поэтому мелодия есть только в лагере — короткая петля, которая звучит,
+      пока игрок думает, и обрывается на выходе в вылазку.</p>
+    <div class="snd" id="amb"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Техническая часть</h2></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Вопрос</th><th>Решение</th><th>Почему</th></tr>
+        <tr><td><b>Запуск на iOS</b></td><td>первый тап игрока</td>
+            <td>Safari не даёт запустить звук без жеста. Первый тап в игре — это шаг из первого кадра раскадровки; отдельного экрана «включить звук» не нужно.</td></tr>
+        <tr><td><b>Источник звуков</b></td><td>процедурный синтез в прототипе</td>
+            <td>Ноль ассетов, ноль веса, правится параметром. Позже заменяется сэмплами через тот же интерфейс вызова.</td></tr>
+        <tr><td><b>Одновременных голосов</b></td><td class="num">8</td>
+            <td>Пул с вытеснением самого старого. Без предела бой в тесной комнате превращается в шум.</td></tr>
+        <tr><td><b>Шины</b></td><td>бой · интерфейс · амбиент</td>
+            <td>Раздельная громкость. Игрок должен иметь возможность приглушить амбиент, не теряя сигнал провианта.</td></tr>
+        <tr><td><b>Громкость по умолчанию</b></td><td class="num">55%</td>
+            <td>Игра запускается не в наушниках и часто при людях.</td></tr>
+        <tr><td><b>Пауза при сворачивании</b></td><td>обязательна</td>
+            <td>Звук из свёрнутой игры — главная причина её удаления.</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var ac=null,master=null,busSfx=null,busUi=null,busAmb=null,voices=0;
+  function AC(){
+    if(!ac){
+      ac=new (window.AudioContext||window.webkitAudioContext)();
+      master=ac.createGain(); master.gain.value=0.55; master.connect(ac.destination);
+      busSfx=ac.createGain(); busSfx.gain.value=0.9; busSfx.connect(master);
+      busUi =ac.createGain(); busUi.gain.value=0.7; busUi.connect(master);
+      busAmb=ac.createGain(); busAmb.gain.value=0.5; busAmb.connect(master);
+    }
+    if(ac.state==="suspended")ac.resume();
+    document.getElementById("status").textContent="аудио запущено";
+    return ac;
+  }
+  function noiseBuf(dur){
+    var n=Math.max(1,Math.floor(ac.sampleRate*dur)),b=ac.createBuffer(1,n,ac.sampleRate),d=b.getChannelData(0);
+    for(var i=0;i<n;i++)d[i]=Math.random()*2-1;
+    return b;
+  }
+  // шум через полосовой фильтр
+  function nz(o){
+    var t=ac.currentTime+(o.at||0),dur=o.dur||0.1;
+    var s=ac.createBufferSource(); s.buffer=noiseBuf(dur);
+    var f=ac.createBiquadFilter(); f.type=o.type||"bandpass";
+    f.frequency.setValueAtTime(o.f0||1000,t);
+    if(o.f1)f.frequency.exponentialRampToValueAtTime(Math.max(40,o.f1),t+dur);
+    f.Q.value=o.q||1;
+    var g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(o.gain||0.2,t+(o.a||0.005));
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    s.connect(f); f.connect(g); g.connect(o.bus||busSfx);
+    s.start(t); s.stop(t+dur+0.02);
+  }
+  // тон с огибающей
+  function tn(o){
+    var t=ac.currentTime+(o.at||0),dur=o.dur||0.15;
+    var osc=ac.createOscillator(); osc.type=o.type||"sine";
+    osc.frequency.setValueAtTime(o.f0||440,t);
+    if(o.f1)osc.frequency.exponentialRampToValueAtTime(Math.max(20,o.f1),t+dur);
+    var g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(o.gain||0.18,t+(o.a||0.008));
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    osc.connect(g); g.connect(o.bus||busSfx);
+    osc.start(t); osc.stop(t+dur+0.02);
+  }
+  var stepFlip=0;
+  var SOUNDS={
+    step:function(){ stepFlip^=1;
+      nz({f0:stepFlip?1150:900,f1:520,dur:0.055,gain:0.09,q:1.2}); },
+    swing:function(){ nz({type:"highpass",f0:900,f1:2600,dur:0.09,gain:0.11,q:0.7}); },
+    hit:function(){ nz({f0:1600,f1:400,dur:0.09,gain:0.2,q:1.4});
+      tn({type:"triangle",f0:180,f1:90,dur:0.12,gain:0.16}); },
+    wound:function(){ tn({type:"sine",f0:90,f1:52,dur:0.42,gain:0.34});
+      nz({type:"lowpass",f0:800,f1:180,dur:0.3,gain:0.22,q:0.6});
+      tn({type:"square",f0:140,f1:70,dur:0.16,gain:0.06}); },
+    kill:function(){ nz({f0:2200,f1:260,dur:0.26,gain:0.18,q:1.1});
+      tn({type:"triangle",f0:300,f1:120,dur:0.2,gain:0.1}); },
+    chest:function(){ nz({f0:600,f1:1400,dur:0.07,gain:0.12,q:2});
+      tn({type:"triangle",f0:880,dur:0.18,gain:0.14,at:0.05});
+      tn({type:"triangle",f0:1320,dur:0.26,gain:0.12,at:0.12}); },
+    pick:function(){ tn({type:"sine",f0:1180,f1:1560,dur:0.09,gain:0.12}); },
+    tick:function(){ tn({type:"sine",f0:640,dur:0.05,gain:0.09}); },
+    evac:function(){ [660,880,1320].forEach(function(f,i){
+        tn({type:"triangle",f0:f,dur:0.22,gain:0.16,at:i*0.1}); }); },
+    fail:function(){ tn({type:"sine",f0:220,f1:110,dur:0.5,gain:0.24});
+      tn({type:"sine",f0:165,f1:82,dur:0.7,gain:0.18,at:0.14}); },
+    build:function(){ nz({f0:420,f1:260,dur:0.11,gain:0.18,q:2.4});
+      nz({f0:700,f1:300,dur:0.08,gain:0.12,q:2,at:0.1}); },
+    levelup:function(){ [523,659,784,1046].forEach(function(f,i){
+        tn({type:"triangle",f0:f,dur:0.4,gain:0.11,at:i*0.07}); }); },
+    tap:function(){ nz({type:"highpass",f0:2600,dur:0.028,gain:0.07,bus:busUi}); },
+    deny:function(){ tn({type:"square",f0:150,f1:120,dur:0.14,gain:0.09,bus:busUi}); }
+  };
+
+  var LIB=[
+    ["Вылазка",[
+      ["Шаг","step","шум 900–1150 Гц · 55 мс · чередование","Самый тихий звук игры: он звучит постоянно. Два варианта по очереди, иначе шаг превращается в стук метронома.","Поверхность под ногами"],
+      ["Взмах","swing","шум с подъёмом 900→2600 Гц · 90 мс","Отделён от попадания: игрок слышит, что герой начал бить, до того как узнает результат.","Атака началась"],
+      ["Попадание","hit","шум 1600→400 Гц + тон 180→90 Гц","Короткий и плотный. Не громче ранения — иначе успех звучит опаснее неудачи.","Урон нанесён"],
+      ["Ранение героя","wound","тон 90→52 Гц + низкий шум · 420 мс","Самый громкий и самый низкий звук в игре. Ран всего три, каждая обязана прозвучать как событие.","Потеряна рана"],
+      ["Смерть врага","kill","шум 2200→260 Гц · 260 мс","Затухает вниз и быстро: путь свободен, идём дальше. Долгий звук смерти тормозил бы темп.","Путь свободен"],
+      ["Сундук","chest","щелчок + два тона 880 и 1320 Гц","Единственный по-настоящему приятный звук в вылазке. Награда должна звучать чище всего остального.","Добыча получена"]
+    ]],
+    ["Провиант и исход",[
+      ["Тик расхода","tick","тон 640 Гц · 50 мс","Каждые 10% запаса. Тихий, но регулярный — так игрок считает расход, не глядя.","−10% провианта"],
+      ["Эвакуация","evac","восходящее трезвучие 660–880–1320","Вверх и светлее. Выход должен ощущаться облегчением, а не окончанием.","Вылазка удалась"],
+      ["Провал","fail","два нисходящих тона 220→110 и 165→82","Вниз и глухо, но коротко. Провал не наказывает ушами — он и так стоил добычи.","Добыча потеряна"]
+    ]],
+    ["Лагерь",[
+      ["Стройка","build","два шумовых удара 420 и 700 Гц","Дерево и инструмент. Звучит один раз при старте, а не циклом: фоновый стук в лагере утомляет.","Работа началась"],
+      ["Уровень здания","levelup","арпеджио 523–659–784–1046","Единственное настоящее созвучие в игре. Приберегается для роста здания — главной награды меты.","Здание выросло"],
+      ["Подбор","pick","тон 1180→1560 Гц · 90 мс","Начисление добычи на экране возврата, по одному на строку.","Ресурс зачислен"]
+    ]],
+    ["Интерфейс",[
+      ["Тап","tap","шум выше 2600 Гц · 28 мс","Верхние частоты, чтобы не спорить с боем. Почти неслышен по отдельности и заметен по отсутствию.","Касание принято"],
+      ["Отказ","deny","прямоугольник 150→120 Гц · 140 мс","Не хватает ресурса или действие недоступно. Короткий и неприятный ровно настолько, чтобы не повторять.","Действие невозможно"]
+    ]]
+  ];
+
+  var lib=document.getElementById("lib");
+  LIB.forEach(function(G){
+    var g=document.createElement("div"); g.className="grp";
+    g.innerHTML="<h3>"+G[0]+"</h3>";
+    var grid=document.createElement("div"); grid.className="snd";
+    G[1].forEach(function(S){
+      var card=document.createElement("div"); card.className="card";
+      card.innerHTML='<div class="top"><b>'+S[0]+'</b></div>'+
+        '<div class="rec">'+S[2]+'</div><p>'+S[3]+'</p>'+
+        '<p class="says"><s>Сообщает</s>'+S[4]+'</p>';
+      var btn=document.createElement("button"); btn.type="button"; btn.className="play";
+      btn.textContent="Слушать";
+      btn.addEventListener("click",function(){AC();SOUNDS[S[1]]();});
+      card.querySelector(".top").appendChild(btn);
+      grid.appendChild(card);
+    });
+    g.appendChild(grid); lib.appendChild(g);
+  });
+
+  // ——— пульс провианта ———
+  var ZONES=[
+    [60,100,"выше 60%","тишина",null],
+    [30,60,"60–30%","пульс раз в 2 с, 70 Гц",2000],
+    [15,30,"30–15%","пульс раз в 1,2 с, 88 Гц",1200],
+    [0,15,"ниже 15%","пульс раз в 0,6 с, 110 Гц",600]
+  ];
+  var zonesEl=document.getElementById("zones");
+  ZONES.forEach(function(z,i){
+    var d=document.createElement("div"); d.className="zone"; d.dataset.i=i;
+    d.innerHTML="<s>"+z[2]+"</s><span>"+z[3]+"</span>";
+    zonesEl.appendChild(d);
+  });
+  function zoneOf(v){
+    for(var i=ZONES.length-1;i>=0;i--)if(v>=ZONES[i][0]&&v<ZONES[i][1])return i;
+    return v>=100?0:0;
+  }
+  var supply=document.getElementById("supply"),sfill=document.getElementById("sfill"),
+      sval=document.getElementById("sval"),pulseBtn=document.getElementById("pulse");
+  var timer=null,running=false;
+  function paintZone(){
+    var zi=zoneOf(+supply.value);
+    [].forEach.call(zonesEl.children,function(el,i){el.classList.toggle("on",i===zi);});
+    return zi;
+  }
+  function schedule(){
+    clearTimeout(timer);
+    if(!running)return;
+    var zi=paintZone(),Z=ZONES[zi];
+    if(Z[4]===null){ timer=setTimeout(schedule,300); return; }
+    var f=[0,70,88,110][zi];
+    tn({type:"sine",f0:f,f1:f*0.82,dur:0.26,gain:0.3,bus:busAmb});
+    nz({type:"lowpass",f0:260,f1:120,dur:0.18,gain:0.07,bus:busAmb});
+    timer=setTimeout(schedule,Z[4]);
+  }
+  supply.addEventListener("input",function(){
+    sfill.style.width=supply.value+"%"; sval.textContent=supply.value+"%"; paintZone();
+  });
+  pulseBtn.addEventListener("click",function(){
+    AC(); running=!running;
+    pulseBtn.setAttribute("aria-pressed",running?"true":"false");
+    pulseBtn.textContent=running?"Остановить пульс":"Запустить пульс";
+    if(running)schedule(); else clearTimeout(timer);
+  });
+  paintZone();
+
+  // ——— амбиент ———
+  var ambNodes=null,ambCur=null;
+  var AMB=[
+    ["Подступы","ярус 0–1 · шум ветра, светлый","полосовой шум 700 Гц, медленное дыхание",700,0.055],
+    ["Копи","ярус 2 · капель и низкий гул","шум 300 Гц + гул 60 Гц",300,0.075],
+    ["Дно","ярус 3 · давящий низ","шум 140 Гц + гул 42 Гц, дыхание чаще",140,0.1]
+  ];
+  function stopAmb(){
+    if(ambNodes){ambNodes.forEach(function(n){try{n.stop();}catch(e){}});ambNodes=null;}
+    ambCur=null;
+    [].forEach.call(document.querySelectorAll("#amb button"),function(b){
+      b.setAttribute("aria-pressed","false");b.textContent="Слушать";});
+  }
+  function playAmb(i,btn){
+    AC();
+    if(ambCur===i){stopAmb();return;}
+    stopAmb(); ambCur=i;
+    var A=AMB[i],t=ac.currentTime;
+    var src=ac.createBufferSource(); src.buffer=noiseBuf(4); src.loop=true;
+    var f=ac.createBiquadFilter(); f.type="bandpass"; f.frequency.value=A[3]; f.Q.value=0.8;
+    var g=ac.createGain(); g.gain.value=A[4];
+    // медленное «дыхание» подложки
+    var lfo=ac.createOscillator(); lfo.frequency.value=i===2?0.22:0.12;
+    var lg=ac.createGain(); lg.gain.value=A[4]*0.55;
+    lfo.connect(lg); lg.connect(g.gain);
+    src.connect(f); f.connect(g); g.connect(busAmb);
+    src.start(t); lfo.start(t);
+    var nodes=[src,lfo];
+    if(i>0){
+      var hum=ac.createOscillator(); hum.type="sine"; hum.frequency.value=i===2?42:60;
+      var hg=ac.createGain(); hg.gain.value=0.05;
+      hum.connect(hg); hg.connect(busAmb); hum.start(t); nodes.push(hum);
+    }
+    ambNodes=nodes;
+    btn.setAttribute("aria-pressed","true"); btn.textContent="Остановить";
+  }
+  var ambEl=document.getElementById("amb");
+  AMB.forEach(function(A,i){
+    var card=document.createElement("div"); card.className="card";
+    card.innerHTML='<div class="top"><b>'+A[0]+'</b></div><div class="rec">'+A[2]+'</div><p>'+A[1]+'</p>';
+    var btn=document.createElement("button"); btn.type="button"; btn.className="play"; btn.textContent="Слушать";
+    btn.addEventListener("click",function(){playAmb(i,btn);});
+    card.querySelector(".top").appendChild(btn);
+    ambEl.appendChild(card);
+  });
+
+  document.getElementById("unlock").addEventListener("click",function(){AC();SOUNDS.tap();});
+  document.getElementById("vol").addEventListener("input",function(e){
+    if(master)master.gain.value=e.target.value/100;
+  });
+  document.addEventListener("visibilitychange",function(){
+    if(document.hidden){running=false;clearTimeout(timer);stopAmb();
+      pulseBtn.setAttribute("aria-pressed","false");pulseBtn.textContent="Запустить пульс";
+      if(ac&&ac.state==="running")ac.suspend();
+      document.getElementById("status").textContent="аудио приостановлено";}
+  });
+})();
+</script>

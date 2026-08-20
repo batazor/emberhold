@@ -1,0 +1,375 @@
+<title>Карты сборов</title>
+<style>
+  :root{
+    --ground:#E3E7E5; --surface:#F3F6F3; --surface-2:#DBE2DD; --line:#C2CCC6;
+    --text:#131C1B; --dim:#54625F; --brass:#8A6A12; --ember:#AC4C1D; --moss:#4B6C3D; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(12,26,24,.4);
+    --g-bg:#0B1113; --g-panel:#162226; --g-line:#2C3D42; --g-text:#E8EEEA; --g-dim:#8CA09D;
+    --g-brass:#C9A227; --g-ember:#D2662F; --g-moss:#7DA163; --g-blood:#A33B3B;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+      --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+    --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{image-rendering:pixelated;display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  button{font-family:var(--ff-ui);font-size:14px;padding:8px 16px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+
+  .live{display:grid;grid-template-columns:300px minmax(0,1fr);gap:36px;align-items:start;}
+  @media(max-width:800px){.live{grid-template-columns:1fr;}.live .mini{justify-self:center;}}
+  .mini{width:300px;height:630px;overflow:hidden;border-radius:24px;border:1px solid var(--g-line);
+    background:var(--g-bg);box-shadow:var(--shadow);}
+  .phone{width:320px;height:672px;transform:scale(.9375);transform-origin:0 0;display:flex;
+    flex-direction:column;background:var(--g-bg);color:var(--g-text);}
+  .ptop{padding:18px 18px 10px;text-align:center;}
+  .ptop .k{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.16em;color:var(--g-dim);}
+  .ptop .t{font-family:var(--ff-display);font-size:24px;margin-top:4px;}
+  .ptop .s{font-family:var(--ff-mono);font-size:11px;color:var(--g-ember);margin-top:3px;}
+  .hand{flex:1;padding:6px 14px;display:flex;flex-direction:column;gap:10px;justify-content:center;}
+  .gcard{border:1px solid var(--g-line);border-radius:10px;background:var(--g-panel);
+    padding:11px 13px 12px 15px;position:relative;overflow:hidden;display:flex;gap:11px;align-items:flex-start;}
+  .gcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ax);}
+  .gcard .gl{flex:0 0 auto;margin-top:2px;}
+  .gcard .body{flex:1;min-width:0;}
+  .gcard .ax{font-family:var(--ff-mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ax);}
+  .gcard b{display:block;font-family:var(--ff-display);font-weight:400;font-size:17px;margin-top:1px;}
+  .gcard .e{font-size:12.5px;color:var(--g-text);margin-top:3px;}
+  .gcard .c{font-size:11.5px;color:var(--g-ember);margin-top:2px;}
+  .gcard .c.none{color:var(--g-dim);}
+  .pfoot{padding:8px 14px 16px;}
+  .pfoot .hint{text-align:center;font-family:var(--ff-mono);font-size:11px;color:var(--g-dim);}
+
+  .rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:22px;}
+  .rules div{border-left:2px solid var(--line);padding-left:15px;display:flex;flex-direction:column;gap:6px;}
+  .rules div.key{border-left-color:var(--brass);}
+  .rules h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .rules p{margin:0;font-size:14px;color:var(--dim);}
+  .rules p b{color:var(--text);font-weight:600;}
+
+  .pool{display:flex;flex-direction:column;gap:22px;}
+  .axgrp>h3{margin:0 0 9px;font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.15em;
+    text-transform:uppercase;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .axgrp>h3 i{width:10px;height:10px;display:block;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(244px,1fr));gap:10px;}
+  .pc{background:var(--surface);border:1px solid var(--line);padding:11px 13px;display:flex;
+    flex-direction:column;gap:5px;}
+  .pc b{font-family:var(--ff-display);font-weight:400;font-size:17px;}
+  .pc .e{font-size:13px;}
+  .pc .c{font-size:12.5px;color:var(--ember);}
+  .pc .c.none{color:var(--dim);}
+  .pc .m{font-family:var(--ff-mono);font-size:9.5px;color:var(--dim);letter-spacing:.04em;margin-top:2px;
+    display:flex;gap:9px;flex-wrap:wrap;}
+  .pc.risk{box-shadow:inset 0 0 0 1px rgba(163,59,59,.35);}
+
+  table{border-collapse:collapse;width:100%;font-size:13px;}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  .scroll{overflow-x:auto;}
+  .freq{position:relative;}
+  .freq i{position:absolute;left:0;top:3px;bottom:3px;background:rgba(201,162,39,.22);}
+  .freq span{position:relative;}
+  .verdict{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
+  .chk{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.05em;padding:3px 8px;border-radius:3px;border:1px solid;}
+  .chk.ok{color:var(--moss);border-color:var(--moss);}
+  .chk.no{color:var(--blood);border-color:var(--blood);background:rgba(142,56,56,.09);}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Драфт сборов · Соляной Тракт</div>
+    <h1>Карты <em>сборов</em></h1>
+    <p class="lede">Одна карта из трёх перед входом в локацию. Единственный карточный слой
+      в игре: героев-карт и карточного боя нет и не будет. Задача драфта — закрыть
+      настоящую дыру: вылазки одного яруса сейчас различаются планировкой,
+      но не тем, как в них играют.</p>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Экран драфта</h2></div>
+    <p>Встаёт между выбором локации и входом в неё. Раздача ниже — настоящая,
+      по тем же правилам, что уйдут в игру.</p>
+    <div class="live">
+      <div class="mini"><div class="phone">
+        <div class="ptop">
+          <div class="k">СБОРЫ В ДОРОГУ</div>
+          <div class="t">Соляные копи</div>
+          <div class="s">ярус 2 · при провале теряется 60% добычи</div>
+        </div>
+        <div class="hand" id="hand"></div>
+        <div class="pfoot"><div class="hint">Выберите одну — сборы тратятся на эту вылазку</div></div>
+      </div></div>
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div class="bar">
+          <button id="deal" type="button">Раздать заново</button>
+          <span class="note" id="dealnote"></span>
+        </div>
+        <div class="rules">
+          <div class="key">
+            <h3>Три карты — три разные оси</h3>
+            <p>В раздаче не бывает двух карт одной оси. Иначе выбор вырождается
+              в сравнение чисел: <b>«+25 провианта» против «+40 провианта» — это не решение</b>,
+              а арифметика. Осей семь: провиант, дорога, вместимость, обзор, сведения, ставка, бой.</p>
+          </div>
+          <div class="key">
+            <h3>Не больше одной карты риска</h3>
+            <p>Карт, повышающих ставку, в раздаче максимум одна. Рука из трёх жадных
+              карт вынуждает жадность вместо того, чтобы её предлагать.</p>
+          </div>
+          <div>
+            <h3>Без переброса</h3>
+            <p>Переброс превращает решение в игровой автомат: игрок крутит, пока не выпадет
+              привычное. Раздача одна, выбрать обязательно.</p>
+          </div>
+          <div>
+            <h3>Не копятся и не покупаются</h3>
+            <p>Карта тратится на текущую вылазку и не хранится. Это снимает главную беду
+              расходников в мобильных играх — <b>их берегут для лучшего момента,
+              который не наступает никогда.</b></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Пул: 18 карт на семи осях</h2></div>
+    <p>Фильтр для пула тот же, что и для зданий: <b>карта обязана менять решение
+      «глубже или назад»</b>. Не меняет — не берём. Пул расширяется постройками,
+      поэтому здания начинают влиять на вылазку не только числами.</p>
+    <div class="pool" id="pool"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Проверка раздачи</h2></div>
+    <p>Две тысячи раздач на каждом состоянии прогресса. Проверяем, что ни одна карта
+      не выпала из оборота и что оба правила соблюдаются без исключений.</p>
+    <div id="sim" style="display:flex;flex-direction:column;gap:26px"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Где драфт появляется в кривой</h2></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Момент</th><th>Состояние</th><th>Почему здесь</th></tr>
+        <tr><td>Первые 3 минуты</td><td>драфта нет</td>
+            <td>Онбординг уже вводит шесть механик. Седьмая на том же отрезке не запомнится.</td></tr>
+        <tr><td>Конец 1-й сессии</td><td>драфта нет</td>
+            <td>Открыты Кухня и Склад — в пуле две карты. Выбор из двух на одной оси не выбор.</td></tr>
+        <tr><td><b>2-я сессия</b></td><td><b>драфт включается</b></td>
+            <td>Штаб ур. 3 и Лазарет ур. 2 доводят пул до пяти карт на пяти осях — раздача перестаёт повторяться.</td></tr>
+        <tr><td>День 2–3</td><td>пул 10–12 карт</td>
+            <td>Кузница и Плац добавляют оси боя и сведений.</td></tr>
+        <tr><td>День 5+</td><td>пул 16–18 карт</td>
+            <td>Редкие карты пятого уровня зданий: они и есть награда за поздние улучшения.</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var AX={
+    prov:{n:"провиант",c:"#7DA163"},
+    road:{n:"дорога",  c:"#C9A227"},
+    bag: {n:"вместимость",c:"#8FA3A8"},
+    see: {n:"обзор",   c:"#E0A13C"},
+    info:{n:"сведения",c:"#5B8FB9"},
+    risk:{n:"ставка",  c:"#A33B3B"},
+    war: {n:"бой",     c:"#B08060"}
+  };
+  // eff — что даёт, cost — чем платит, up — постройка и уровень, t — минимальный ярус,
+  // w — вес в раздаче, R — повышает ставку
+  var POOL=[
+    {id:1, ax:"prov", n:"Двойной паёк",  eff:"+25 провианта", cost:"", up:["Кухня",2], t:0, w:10},
+    {id:2, ax:"prov", n:"Солёная рыба",  eff:"+40 провианта", cost:"обзор −1", up:["Кухня",4], t:1, w:6},
+    {id:3, ax:"prov", n:"Костровой набор",eff:"привал: +20 провианта один раз", cost:"", up:["Кухня",5], t:2, w:3},
+
+    {id:4, ax:"road", n:"Верёвка",       eff:"путь назад −25%", cost:"", up:["Штаб",2], t:0, w:10},
+    {id:5, ax:"road", n:"Обходная тропа",eff:"первый возврат ко входу бесплатен", cost:"", up:["Штаб",4], t:2, w:6},
+    {id:6, ax:"road", n:"Скорый выход",  eff:"эвакуация из любой точки, один раз", cost:"добыча −20%", up:["Штаб",5], t:2, w:3},
+
+    {id:7, ax:"bag",  n:"Пустой короб",  eff:"+3 вместимости", cost:"ставка +15%", up:["Склад",2], t:1, w:10, R:1},
+    {id:8, ax:"bag",  n:"Двойное дно",   eff:"+5 вместимости", cost:"провиант −15", up:["Склад",4], t:2, w:6},
+    {id:9, ax:"bag",  n:"Крепёж",        eff:"вес добычи не замедляет", cost:"", up:["Склад",5], t:2, w:3},
+
+    {id:10,ax:"see",  n:"Нетопырь",      eff:"обзор +2", cost:"провиант −10", up:["Кузница",2], t:1, w:10},
+    {id:11,ax:"see",  n:"Чуткий слух",   eff:"противники видны сквозь стены", cost:"", up:["Кузница",4], t:2, w:6},
+
+    {id:12,ax:"info", n:"Соляная метка", eff:"самая ценная комната отмечена с начала", cost:"", up:["Штаб",3], t:1, w:10},
+    {id:13,ax:"info", n:"Чутьё на жилу", eff:"кристалл отмечен на карте", cost:"", up:["Кузница",5], t:2, w:3},
+
+    {id:14,ax:"risk", n:"Заклад",        eff:"ставка −20%", cost:"добыча −10%", up:["Лазарет",2], t:1, w:10},
+    {id:15,ax:"risk", n:"Ва-банк",       eff:"добыча +40%", cost:"ставка +25%", up:["Плац",3], t:2, w:3, R:1},
+
+    {id:16,ax:"war",  n:"Повязки",       eff:"одна рана восстанавливается", cost:"", up:["Лазарет",3], t:0, w:10},
+    {id:17,ax:"war",  n:"Точило",        eff:"бой стоит 2 провианта вместо 3", cost:"", up:["Кузница",3], t:1, w:6},
+    {id:18,ax:"war",  n:"Западня",       eff:"первый враг гибнет мгновенно", cost:"", up:["Плац",2], t:1, w:6}
+  ];
+
+  // ——— пиксельные значки осей ———
+  function glyph(ax,scale){
+    var cv=document.createElement("canvas"); cv.width=16;cv.height=16;
+    cv.style.width=(16*scale)+"px"; cv.style.height=(16*scale)+"px";
+    var c=cv.getContext("2d");
+    function R(x,y,w,h,col){c.fillStyle=col;c.fillRect(x,y,w,h);}
+    var col=AX[ax].c, dk="#0b1113";
+    if(ax==="prov"){ R(5,3,6,2,col);R(3,5,10,9,col);R(3,5,10,1,dk);R(6,8,4,3,dk); }
+    if(ax==="road"){ R(3,11,3,2,col);R(7,8,3,2,col);R(11,5,3,2,col);R(2,13,2,1,col); }
+    if(ax==="bag"){  R(2,5,12,9,col);R(2,5,12,1,dk);R(7,5,2,9,dk); }
+    if(ax==="see"){  R(6,2,4,2,col);R(4,4,8,8,col);R(6,6,4,4,dk);R(7,7,2,2,col);R(5,13,6,1,col); }
+    if(ax==="info"){ R(7,2,2,10,col);R(9,3,5,4,col);R(5,13,6,1,col); }
+    if(ax==="risk"){ R(4,4,8,7,col);R(6,6,1,2,dk);R(9,6,1,2,dk);R(6,9,4,1,dk);R(3,11,10,2,col); }
+    if(ax==="war"){  R(7,2,2,9,col);R(5,11,6,2,col);R(6,13,4,1,col);R(7,2,1,9,"#dfe6df"); }
+    return cv;
+  }
+
+  // ——— правила раздачи ———
+  function unlocked(state,card){
+    var lv=state[card.up[0]]||0;
+    return lv>=card.up[1];
+  }
+  function pick(state,tier,rnd){
+    var avail=POOL.filter(function(c){return unlocked(state,c)&&tier>=c.t;});
+    var hand=[],usedAx={},riskCount=0;
+    for(var slot=0;slot<3;slot++){
+      var pool=avail.filter(function(c){
+        if(usedAx[c.ax])return false;                       // правило: оси не повторяются
+        if(c.R&&riskCount>=1)return false;                  // правило: не больше одной карты риска
+        return hand.indexOf(c)<0;
+      });
+      if(!pool.length){
+        // ослабляем только запрет на ось — на раннем прогрессе осей может не хватить
+        pool=avail.filter(function(c){return hand.indexOf(c)<0&&!(c.R&&riskCount>=1);});
+        if(!pool.length)break;
+      }
+      var tot=pool.reduce(function(s,c){return s+c.w;},0),r=rnd()*tot,acc=0,chosen=pool[pool.length-1];
+      for(var i=0;i<pool.length;i++){acc+=pool[i].w;if(r<acc){chosen=pool[i];break;}}
+      hand.push(chosen); usedAx[chosen.ax]=1; if(chosen.R)riskCount++;
+    }
+    return hand;
+  }
+
+  // ——— живая раздача ———
+  var STATE_LATE={"Кухня":5,"Штаб":5,"Склад":4,"Кузница":4,"Лазарет":3,"Плац":3};
+  var handEl=document.getElementById("hand");
+  function renderHand(){
+    var h=pick(STATE_LATE,2,Math.random);
+    handEl.innerHTML="";
+    h.forEach(function(c){
+      var d=document.createElement("div"); d.className="gcard";
+      d.style.setProperty("--ax",AX[c.ax].c);
+      var gl=document.createElement("div"); gl.className="gl"; gl.appendChild(glyph(c.ax,1.5));
+      d.appendChild(gl);
+      var b=document.createElement("div"); b.className="body";
+      b.innerHTML='<div class="ax">'+AX[c.ax].n+'</div><b>'+c.n+'</b>'+
+        '<div class="e">'+c.eff+'</div>'+
+        '<div class="c'+(c.cost?'':' none')+'">'+(c.cost||"без платы")+'</div>';
+      d.appendChild(b);
+      handEl.appendChild(d);
+    });
+    document.getElementById("dealnote").textContent=
+      "оси: "+h.map(function(c){return AX[c.ax].n;}).join(" · ");
+  }
+  document.getElementById("deal").addEventListener("click",renderHand);
+  renderHand();
+
+  // ——— пул ———
+  var poolEl=document.getElementById("pool");
+  Object.keys(AX).forEach(function(ax){
+    var list=POOL.filter(function(c){return c.ax===ax;});
+    if(!list.length)return;
+    var g=document.createElement("div"); g.className="axgrp";
+    var h=document.createElement("h3");
+    h.style.color=AX[ax].c;
+    h.innerHTML='<i style="background:'+AX[ax].c+'"></i>'+AX[ax].n;
+    g.appendChild(h);
+    var grid=document.createElement("div"); grid.className="cards";
+    list.forEach(function(c){
+      var d=document.createElement("div"); d.className="pc"+(c.R?" risk":"");
+      d.innerHTML='<b>'+c.n+'</b><div class="e">'+c.eff+'</div>'+
+        '<div class="c'+(c.cost?'':' none')+'">'+(c.cost||"без платы")+'</div>'+
+        '<div class="m"><span>'+c.up[0]+' ур. '+c.up[1]+'</span><span>с яруса '+c.t+'</span>'+
+        '<span>вес '+c.w+'</span>'+(c.R?'<span style="color:var(--blood)">повышает ставку</span>':'')+'</div>';
+      grid.appendChild(d);
+    });
+    g.appendChild(grid); poolEl.appendChild(g);
+  });
+
+  // ——— проверка распределения ———
+  var SIMS=[
+    {name:"2-я сессия",tier:1,state:{"Кухня":2,"Штаб":3,"Склад":2,"Кузница":0,"Лазарет":2,"Плац":0}},
+    {name:"День 5",    tier:2,state:STATE_LATE}
+  ];
+  var simEl=document.getElementById("sim");
+  SIMS.forEach(function(S){
+    var N=2000,count={},dupAx=0,dupRisk=0,short=0;
+    POOL.forEach(function(c){count[c.id]=0;});
+    for(var i=0;i<N;i++){
+      var h=pick(S.state,S.tier,Math.random);
+      if(h.length<3)short++;
+      var axs={},risks=0;
+      h.forEach(function(c){count[c.id]++;if(axs[c.ax])dupAx++;axs[c.ax]=1;if(c.R)risks++;});
+      if(risks>1)dupRisk++;
+    }
+    var avail=POOL.filter(function(c){return unlocked(S.state,c)&&S.tier>=c.t;});
+    var zero=avail.filter(function(c){return count[c.id]===0;});
+    var maxc=Math.max.apply(null,avail.map(function(c){return count[c.id];}));
+
+    var box=document.createElement("div");
+    var rows=avail.slice().sort(function(a,b){return count[b.id]-count[a.id];}).map(function(c){
+      var pct=(count[c.id]/N*100);
+      return '<tr><td>'+c.n+'</td><td style="color:'+AX[c.ax].c+'">'+AX[c.ax].n+'</td>'+
+        '<td class="num">'+c.w+'</td>'+
+        '<td class="freq" style="width:44%"><i style="width:'+(count[c.id]/maxc*100)+'%"></i>'+
+        '<span>'+pct.toFixed(1)+'%</span></td></tr>';
+    }).join("");
+    box.innerHTML='<div style="font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;'+
+      'text-transform:uppercase;color:var(--brass);font-weight:600;margin-bottom:9px">'+S.name+
+      ' <span style="color:var(--dim);letter-spacing:0;text-transform:none;font-weight:400">— ярус '+
+      S.tier+', доступно карт: '+avail.length+', раздач: '+N+'</span></div>'+
+      '<div class="scroll"><table><tr><th>Карта</th><th>Ось</th><th style="text-align:right">Вес</th>'+
+      '<th>Доля раздач</th></tr>'+rows+'</table></div>'+
+      '<div class="verdict">'+
+      '<span class="chk '+(zero.length===0?'ok':'no')+'">все карты в обороте'+
+        (zero.length?': не выпало '+zero.length:'')+'</span>'+
+      '<span class="chk '+(dupAx===0?'ok':'no')+'">оси не повторяются'+(dupAx?': '+dupAx:'')+'</span>'+
+      '<span class="chk '+(dupRisk===0?'ok':'no')+'">не больше одной карты риска'+(dupRisk?': '+dupRisk:'')+'</span>'+
+      '<span class="chk '+(short===0?'ok':'no')+'">раздача полная'+(short?': коротких '+short:'')+'</span>'+
+      '</div>';
+    simEl.appendChild(box);
+  });
+})();
+</script>

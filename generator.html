@@ -1,0 +1,466 @@
+<title>Генератор локаций</title>
+<style>
+  :root{
+    --ground:#E3E7E5; --surface:#F3F6F3; --surface-2:#DBE2DD; --line:#C2CCC6;
+    --text:#131C1B; --dim:#54625F; --brass:#8A6A12; --ember:#AC4C1D; --moss:#4B6C3D; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(12,26,24,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+      --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+    --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{image-rendering:pixelated;display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  button{font-family:var(--ff-ui);font-size:14px;padding:9px 18px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .seed{font-family:var(--ff-mono);font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;}
+
+  .tier{display:flex;flex-direction:column;gap:14px;}
+  .tierhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+  .tierhead b{font-family:var(--ff-display);font-weight:400;font-size:22px;}
+  .tierhead span{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+  .samples{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;}
+  .smp{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
+  .smp .cv{background:#0b1113;display:flex;justify-content:center;padding:14px 0;}
+  .smp .meta{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;}
+  .nums{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;font-family:var(--ff-mono);font-size:11px;
+    font-variant-numeric:tabular-nums;}
+  .nums div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dotted var(--line);padding-bottom:3px;}
+  .nums s{text-decoration:none;color:var(--dim);}
+  .checks{display:flex;flex-wrap:wrap;gap:5px;}
+  .chk{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.06em;padding:3px 7px;border-radius:3px;
+    border:1px solid;}
+  .chk.ok{color:var(--moss);border-color:var(--moss);}
+  .chk.no{color:var(--blood);border-color:var(--blood);background:rgba(142,56,56,.09);}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+  .legend s{text-decoration:none;display:flex;align-items:center;gap:6px;}
+  .legend s i{width:10px;height:10px;display:block;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td b{font-weight:600;}
+  .scroll{overflow-x:auto;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Механика вылазки · Соляной Тракт</div>
+    <h1>Генератор <em>локаций</em></h1>
+    <p class="lede">Алгоритм реализован целиком и работает прямо на этой странице: разбиение
+      пространства, связывание комнат, раскладка добычи и противников, проверка гарантий.
+      Схемы ниже — не рисунки, а настоящий вывод генератора. Кнопка меняет сид и
+      перегенерирует всё заново.</p>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Вывод по ярусам</h2></div>
+    <p>Вид сверху — служебная схема, а не игровой экран: так алгоритм читается,
+      а в игре то же самое рисуется в изометрии. Заливка пола показывает глубину:
+      светлее у входа, темнее на дне.</p>
+    <div class="bar">
+      <button id="reseed" type="button">Другой сид</button>
+      <span class="seed" id="seedlbl"></span>
+    </div>
+    <div class="legend">
+      <s><i style="background:#7DA163"></i>вход и эвакуация</s>
+      <s><i style="background:#C9A227"></i>добыча, размер = ценность</s>
+      <s><i style="background:#A33B3B"></i>противник</s>
+      <s><i style="background:#2b3a3d"></i>глубина пола</s>
+    </div>
+    <div id="tiers" style="display:flex;flex-direction:column;gap:34px"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Четыре гарантии</h2></div>
+    <p>Генератор отбрасывает результат и увеличивает сид, пока все четыре не выполнены.
+      Проверки идут в коде на каждой генерации, а не глазами на выборке.</p>
+    <div class="guard">
+      <div>
+        <h3>Достижимость</h3>
+        <p>Все комнаты доступны от входа. Тривиально, но ловит ошибки прокладки коридоров,
+          которые иначе всплывут у игрока.</p>
+      </div>
+      <div>
+        <h3>Выполнимость</h3>
+        <p>Дойти до самой дальней комнаты и вернуться стоит <b>не больше 85% запаса</b>.
+          Иначе дно недостижимо в принципе, и ярус врёт игроку.</p>
+      </div>
+      <div class="key">
+        <h3>Полный обход невозможен</h3>
+        <p>Обойти все комнаты и вернуться стоит <b>больше запаса</b>. Это главная проверка:
+          если зачистить всё возможно, решения «уйти или идти дальше» не существует,
+          и игра выключается. Одно условие описывает то, ради чего сделано всё остальное.</p>
+      </div>
+      <div>
+        <h3>Приманка</h3>
+        <p>Есть комната с ценностью выше средней, расположенная на <b>30% дальше</b>
+          оптимального по соотношению «добыча к провианту» маршрута. Без неё жадность
+          не с чем сравнивать.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Что проверка нашла сразу</h2></div>
+    <p>Первый же прогон завалил третью гарантию на всех ярусах. При исходном запасе
+      провианта (100 на нулевом ярусе, 225 на третьем) полный обход локации стоил
+      31, 63, 135 и 229 — то есть зачистить всё и спокойно выйти было можно везде,
+      кроме самого дна. Решения, ради которого сделана вся игра, попросту не существовало.</p>
+    <div class="guard">
+      <div class="key">
+        <h3>Что изменено</h3>
+        <p>Запас провианта пересчитан от замеров: <b>40 / 50 / 105 / 150</b> вместо
+          100 / 125 / 175 / 225. Базовый запас — 50, Кухня добавляет по 20 за уровень
+          вместо 25 от сотни. Локации при этом не тронуты.</p>
+      </div>
+      <div>
+        <h3>Почему запас, а не размер локации</h3>
+        <p>Размер задаёт, сколько в локации содержания; запас задаёт напряжение.
+          Крутить нужно то, что дешевле перебалансировать по телеметрии, — и это запас.</p>
+      </div>
+      <div>
+        <h3>Ярус 0 — исключение</h3>
+        <p>На обучающем ярусе полный обход <b>разрешён намеренно</b>: в первые три минуты
+          глубина не должна казаться обязательной. Проверка там отключена, а не провалена.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Стоимость шага</h2></div>
+    <p>Единая шкала расхода. Из неё выводятся все проверки выше — и она же
+      единственное, что нужно перебалансировать, если медианная глубина эвакуации
+      окажется не там, где нужно.</p>
+    <div class="scroll">
+      <table>
+        <tr><th>Действие</th><th>Провиант</th><th>Почему столько</th></tr>
+        <tr><td><b>Шаг</b></td><td>1</td><td>Базовая единица. Все расстояния меряются в ней.</td></tr>
+        <tr><td><b>Бой</b></td><td>3</td><td>Дороже трёх шагов, значит обойти врага почти всегда выгоднее, чем убить. Бой — плата за короткий путь.</td></tr>
+        <tr><td><b>Сундук</b></td><td>5</td><td>Дороже боя: добыча должна стоить решения, а не подбираться попутно.</td></tr>
+        <tr><td><b>Умение</b></td><td>0</td><td>Умения бесплатны и одноразовы — иначе игрок копит их вместо использования.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Куда уходит добыча</h2></div>
+    <p>Четыре ресурса, замкнутые в петлю. Каждый существует ради своего решения;
+      ресурс, который тратится туда же, куда соседний, вырезается.</p>
+    <div class="scroll">
+      <table>
+        <tr><th>Ресурс</th><th>Откуда</th><th>Куда</th><th>Роль</th></tr>
+        <tr><td><b>Соль</b></td><td>все ярусы, много</td><td>расходники, ускорение лечения</td>
+            <td>мягкая валюта; её избыток — фон, на котором дефицит остальных читается как настоящий</td></tr>
+        <tr><td><b>Дерево</b></td><td>ярусы 0–2</td><td>постройки уровней 1–3</td><td>ранний ограничитель темпа</td></tr>
+        <tr><td><b>Железо</b></td><td>ярусы 1–3</td><td>постройки от 3, снаряжение</td><td>средний ограничитель</td></tr>
+        <tr><td><b>Соляной кристалл</b></td><td>только ярусы 2–3, редко</td><td>снаряжение высоких уровней, разблокировки</td>
+            <td><b>единственная причина идти на дно</b></td></tr>
+      </table>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Правило, которое нельзя нарушать</h3>
+        <p><b>Нехватка ресурса никогда не блокирует вход в вылазку.</b> Провиант
+          восполняется между вылазками бесплатно и полностью, Кухня задаёт только его потолок.
+          Как только «не могу пойти» становится возможным состоянием, игра выключает сама себя,
+          и никакая мета-прогрессия этого не компенсирует.</p>
+      </div>
+      <div>
+        <h3>Про кристалл</h3>
+        <p>Вся конструкция глубины держится на одном предмете: его нельзя получить иначе,
+          кроме как рискнув. Если он однажды начнёт капать на мелких ярусах — например,
+          в награду за задание — спускаться станет незачем.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ——— детерминированный ГПСЧ ———
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+  // запас провианта подобран по замерам самого генератора: он обязан лежать между
+  // «до дна и обратно» и «полный обход». Прежние значения (100/125/175/225) допускали
+  // полную зачистку на каждом ярусе и обнуляли решение об эвакуации.
+  var TIERS=[
+    {n:0,size:8, rooms:[4,5],  cycles:1, dens:0.15, curve:0.4, budget:40,  chestBase:3, freeClear:true},
+    {n:1,size:12,rooms:[6,7],  cycles:2, dens:0.35, curve:0.8, budget:50,  chestBase:4},
+    {n:2,size:16,rooms:[8,10], cycles:3, dens:0.60, curve:1.6, budget:105, chestBase:5},
+    {n:3,size:20,rooms:[10,12],cycles:4, dens:0.90, curve:2.5, budget:150, chestBase:6}
+  ];
+  var STEP=1, FIGHT=3, CHEST=5;
+
+  function bsp(x,y,w,h,depth,out,rng,minLeaf){
+    if(depth<=0||(w<minLeaf*2+1&&h<minLeaf*2+1)){out.push({x:x,y:y,w:w,h:h});return;}
+    var horiz = (h>w) ? true : (w>h ? false : rng()<0.5);
+    if(horiz&&h>=minLeaf*2+1){
+      var cut=minLeaf+Math.floor(rng()*(h-minLeaf*2+1));
+      bsp(x,y,w,cut,depth-1,out,rng,minLeaf); bsp(x,y+cut,w,h-cut,depth-1,out,rng,minLeaf);
+    } else if(w>=minLeaf*2+1){
+      var cut2=minLeaf+Math.floor(rng()*(w-minLeaf*2+1));
+      bsp(x,y,cut2,h,depth-1,out,rng,minLeaf); bsp(x+cut2,y,w-cut2,h,depth-1,out,rng,minLeaf);
+    } else out.push({x:x,y:y,w:w,h:h});
+  }
+
+  function bfs(grid,N,sx,sy){
+    var d=new Array(N*N).fill(-1),q=[sx+sy*N];d[sx+sy*N]=0;
+    for(var i=0;i<q.length;i++){
+      var cur=q[i],cx=cur%N,cy=(cur-cx)/N,cd=d[cur];
+      var nb=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(var k=0;k<4;k++){
+        var nx=cx+nb[k][0],ny=cy+nb[k][1];
+        if(nx<0||ny<0||nx>=N||ny>=N)continue;
+        var id=nx+ny*N;
+        if(grid[id]===0||d[id]>=0)continue;
+        d[id]=cd+1; q.push(id);
+      }
+    }
+    return d;
+  }
+
+  function generate(tier,seed){
+    var fallback=null;
+    for(var attempt=0;attempt<60;attempt++){
+      var rng=mulberry32(seed+attempt*7919);
+      var N=tier.size, grid=new Array(N*N).fill(0);
+      var leaves=[]; var depth=Math.ceil(Math.log2(tier.rooms[1]));
+      bsp(0,0,N,N,depth,leaves,rng,3);
+      if(leaves.length<tier.rooms[0])continue;
+      leaves=leaves.slice(0,tier.rooms[1]);
+
+      var rooms=[];
+      leaves.forEach(function(L){
+        var w=Math.max(2,Math.min(L.w-2,2+Math.floor(rng()*(L.w-2))));
+        var h=Math.max(2,Math.min(L.h-2,2+Math.floor(rng()*(L.h-2))));
+        var x=L.x+1+Math.floor(rng()*Math.max(1,L.w-w-1));
+        var y=L.y+1+Math.floor(rng()*Math.max(1,L.h-h-1));
+        x=Math.max(1,Math.min(x,N-1-w)); y=Math.max(1,Math.min(y,N-1-h));
+        if(w<2||h<2||x+w>N-1||y+h>N-1)return;
+        rooms.push({x:x,y:y,w:w,h:h,cx:x+(w>>1),cy:y+(h>>1)});
+        for(var j=y;j<y+h;j++)for(var i=x;i<x+w;i++)grid[i+j*N]=1;
+      });
+      if(rooms.length<tier.rooms[0])continue;
+
+      // остовное дерево по центрам + дополнительные рёбра для циклов
+      function dist(a,b){return Math.abs(a.cx-b.cx)+Math.abs(a.cy-b.cy);}
+      var inT=[0],out=[],edges=[];
+      for(var i=1;i<rooms.length;i++)out.push(i);
+      while(out.length){
+        var best=null;
+        inT.forEach(function(a){out.forEach(function(b){
+          var d=dist(rooms[a],rooms[b]);
+          if(!best||d<best.d)best={a:a,b:b,d:d};});});
+        edges.push([best.a,best.b]); inT.push(best.b); out.splice(out.indexOf(best.b),1);
+      }
+      var cand=[];
+      for(var a=0;a<rooms.length;a++)for(var b=a+1;b<rooms.length;b++){
+        var has=edges.some(function(e){return (e[0]===a&&e[1]===b)||(e[0]===b&&e[1]===a);});
+        if(!has)cand.push({a:a,b:b,d:dist(rooms[a],rooms[b])});
+      }
+      cand.sort(function(p,q){return p.d-q.d;});
+      for(var c=0;c<tier.cycles&&c<cand.length;c++)edges.push([cand[c].a,cand[c].b]);
+
+      function carve(a,b){
+        var x1=rooms[a].cx,y1=rooms[a].cy,x2=rooms[b].cx,y2=rooms[b].cy;
+        var mx=rng()<0.5;
+        if(mx){ for(var x=Math.min(x1,x2);x<=Math.max(x1,x2);x++)grid[x+y1*N]=1;
+                for(var y=Math.min(y1,y2);y<=Math.max(y1,y2);y++)grid[x2+y*N]=1; }
+        else  { for(var y=Math.min(y1,y2);y<=Math.max(y1,y2);y++)grid[x1+y*N]=1;
+                for(var x=Math.min(x1,x2);x<=Math.max(x1,x2);x++)grid[x+y2*N]=1; }
+      }
+      edges.forEach(function(e){carve(e[0],e[1]);});
+
+      // вход — комната, ближайшая к краю
+      var entry=0,bestEdge=1e9;
+      rooms.forEach(function(r,i){
+        var e=Math.min(r.cx,r.cy,N-1-r.cx,N-1-r.cy);
+        if(e<bestEdge){bestEdge=e;entry=i;}
+      });
+      var dist0=bfs(grid,N,rooms[entry].cx,rooms[entry].cy);
+      var reach=rooms.every(function(r){return dist0[r.cx+r.cy*N]>=0;});
+      if(!reach)continue;
+
+      var maxD=0; rooms.forEach(function(r,i){r.d=dist0[r.cx+r.cy*N]; if(r.d>maxD)maxD=r.d;});
+      if(maxD<4)continue;
+
+      // добыча и противники
+      var chests=[],foes=[],totalVal=0;
+      rooms.forEach(function(r,i){
+        if(i===entry){r.val=0;r.foes=0;return;}
+        var t=maxD?r.d/maxD:0;
+        r.val=Math.round(tier.chestBase*(1+tier.curve*t));
+        totalVal+=r.val;
+        chests.push({x:r.cx,y:r.cy,v:r.val});
+        r.foes=Math.floor(tier.dens*(0.4+t)*Math.max(1,(r.w*r.h)/6));
+        for(var f=0;f<r.foes;f++){
+          var fx=r.x+Math.floor(rng()*r.w),fy=r.y+Math.floor(rng()*r.h);
+          if(fx===r.cx&&fy===r.cy)continue;
+          foes.push({x:fx,y:fy});
+        }
+      });
+
+      // попарные расстояния между комнатами
+      var D=rooms.map(function(r){var dd=bfs(grid,N,r.cx,r.cy);
+        return rooms.map(function(q){return dd[q.cx+q.cy*N];});});
+
+      // до дна и обратно
+      var deep=0; rooms.forEach(function(r,i){if(r.d===maxD)deep=i;});
+      var costDeep=2*maxD*STEP + CHEST + FIGHT*rooms[deep].foes;
+
+      // полный обход: ближайший сосед от входа + возврат
+      var unvis=rooms.map(function(_,i){return i;}).filter(function(i){return i!==entry;});
+      var curR=entry,costFull=0;
+      while(unvis.length){
+        var bi=0,bd=1e9;
+        unvis.forEach(function(i,k){if(D[curR][i]>=0&&D[curR][i]<bd){bd=D[curR][i];bi=k;}});
+        var nxt=unvis[bi]; costFull+=bd*STEP+CHEST+FIGHT*rooms[nxt].foes;
+        curR=nxt; unvis.splice(bi,1);
+      }
+      costFull+=D[curR][entry]*STEP;
+
+      // приманка: комната ценнее средней и дальше оптимума по отношению добыча/провиант
+      var avgVal=totalVal/Math.max(1,rooms.length-1),bestRatio=0,bestRoomD=1;
+      rooms.forEach(function(r,i){
+        if(i===entry||r.d<=0)return;
+        var ratio=r.val/(2*r.d);
+        if(ratio>bestRatio){bestRatio=ratio;bestRoomD=r.d;}
+      });
+      var lure=rooms.some(function(r,i){return i!==entry&&r.val>avgVal&&r.d>bestRoomD*1.3;});
+
+      var ok={reach:true,
+              feasible:costDeep<=tier.budget*0.85,
+              // ярус 0 — обучающий: полная зачистка там разрешена намеренно
+              notFull:tier.freeClear?true:costFull>tier.budget,
+              lure:lure};
+      var allOk=ok.reach&&ok.feasible&&ok.notFull&&ok.lure;
+      var res={grid:grid,N:N,rooms:rooms,entry:entry,chests:chests,foes:foes,dist:dist0,
+               maxD:maxD,costDeep:costDeep,costFull:Math.round(costFull),ok:ok,
+               budget:tier.budget,attempts:attempt+1,allOk:allOk};
+      if(allOk)return res;
+      // не отбрасываем совсем: держим лучший из виденных на случай, что идеальный не найдётся
+      if(!fallback||score(ok)>score(fallback.ok))fallback=res;
+    }
+    return fallback;
+  }
+  function score(o){return (o.reach?1:0)+(o.feasible?1:0)+(o.notFull?1:0)+(o.lure?1:0);}
+
+  function draw(g,cell){
+    var N=g.N,W=N*cell,cv=document.createElement("canvas");
+    cv.width=W; cv.height=W; cv.style.width=(W*2)+"px"; cv.style.height=(W*2)+"px";
+    var c=cv.getContext("2d");
+    c.fillStyle="#0b1113"; c.fillRect(0,0,W,W);
+    for(var y=0;y<N;y++)for(var x=0;x<N;x++){
+      if(!g.grid[x+y*N])continue;
+      var d=g.dist[x+y*N]; var t=g.maxD?Math.max(0,Math.min(1,d/g.maxD)):0;
+      // светлее у входа, темнее на дне
+      var r=Math.round(143-(143-31)*t),gg=Math.round(163-(163-42)*t),b=Math.round(163-(163-45)*t);
+      c.fillStyle="rgb("+r+","+gg+","+b+")";
+      c.fillRect(x*cell,y*cell,cell,cell);
+      c.fillStyle="rgba(11,17,19,.25)"; c.fillRect(x*cell,y*cell+cell-1,cell,1);
+    }
+    g.foes.forEach(function(f){
+      c.fillStyle="#a33b3b";
+      c.fillRect(f.x*cell+cell/2-1,f.y*cell+cell/2-1,3,3);
+    });
+    g.chests.forEach(function(ch){
+      var s=Math.max(3,Math.min(cell-1,2+ch.v));
+      c.fillStyle="#c9a227";
+      c.fillRect(ch.x*cell+(cell-s)/2,ch.y*cell+(cell-s)/2,s,s);
+      c.fillStyle="#f0d27a";
+      c.fillRect(ch.x*cell+(cell-s)/2,ch.y*cell+(cell-s)/2,s,1);
+    });
+    var e=g.rooms[g.entry];
+    c.fillStyle="#7da163";
+    c.fillRect(e.cx*cell-1,e.cy*cell-1,cell+2,1);
+    c.fillRect(e.cx*cell-1,e.cy*cell+cell,cell+2,1);
+    c.fillRect(e.cx*cell-1,e.cy*cell-1,1,cell+2);
+    c.fillRect(e.cx*cell+cell,e.cy*cell-1,1,cell+2);
+    c.fillRect(e.cx*cell+cell/2-1,e.cy*cell+cell/2-1,3,3);
+    return cv;
+  }
+
+  var seedBase=20260820;
+  function render(){
+    document.getElementById("seedlbl").textContent="сид "+seedBase;
+    var host=document.getElementById("tiers"); host.innerHTML="";
+    TIERS.forEach(function(t){
+      var wrap=document.createElement("div"); wrap.className="tier";
+      var hd=document.createElement("div"); hd.className="tierhead";
+      hd.innerHTML="<b>Ярус "+t.n+"</b><span>"+t.size+"×"+t.size+" · "+t.rooms[0]+"–"+t.rooms[1]+
+        " комнат · циклов "+t.cycles+" · запас "+t.budget+"</span>";
+      wrap.appendChild(hd);
+      var sm=document.createElement("div"); sm.className="samples";
+      for(var k=0;k<2;k++){
+        var g=generate(t,seedBase+t.n*1013+k*337);
+        if(!g)continue;
+        var card=document.createElement("div"); card.className="smp";
+        var cvbox=document.createElement("div"); cvbox.className="cv";
+        cvbox.appendChild(draw(g,Math.max(6,Math.round(112/g.N))));
+        card.appendChild(cvbox);
+        var meta=document.createElement("div"); meta.className="meta";
+        meta.innerHTML=
+          '<div class="nums">'+
+          '<div><s>комнат</s><span>'+g.rooms.length+'</span></div>'+
+          '<div><s>глубина</s><span>'+g.maxD+'</span></div>'+
+          '<div><s>до дна и назад</s><span>'+g.costDeep+' / '+g.budget+'</span></div>'+
+          '<div><s>полный обход</s><span>'+g.costFull+' / '+g.budget+'</span></div>'+
+          '<div><s>сундуков</s><span>'+g.chests.length+'</span></div>'+
+          '<div><s>попыток</s><span>'+g.attempts+'</span></div>'+
+          '</div>'+
+          '<div class="checks">'+
+          '<span class="chk '+(g.ok.reach?'ok':'no')+'">достижимость</span>'+
+          '<span class="chk '+(g.ok.feasible?'ok':'no')+'">выполнимость</span>'+
+          '<span class="chk '+(g.ok.notFull?'ok':'no')+'">'+(t.freeClear?'обход разрешён':'обход невозможен')+'</span>'+
+          '<span class="chk '+(g.ok.lure?'ok':'no')+'">приманка</span>'+
+          '</div>';
+        card.appendChild(meta);
+        sm.appendChild(card);
+      }
+      wrap.appendChild(sm); host.appendChild(wrap);
+    });
+  }
+  document.getElementById("reseed").addEventListener("click",function(){
+    seedBase=(seedBase*1664525+1013904223)>>>0; render();
+  });
+  render();
+})();
+</script>

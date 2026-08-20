@@ -1,0 +1,545 @@
+<title>Скелетные клипы</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:62px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+  input[type=range]{accent-color:var(--brass);width:190px;}
+  label{display:flex;align-items:center;gap:9px;font-size:13.5px;}
+
+  .clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;}
+  .cl{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
+  .cl .stage{background:#12100c;display:flex;justify-content:center;padding:8px 0;}
+  .cl b{font-family:var(--ff-display);font-weight:400;font-size:16px;padding:9px 12px 1px;}
+  .cl u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);padding:0 12px 10px;}
+
+  .lab{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:28px;align-items:start;}
+  @media(max-width:840px){.lab{grid-template-columns:1fr;}}
+  .screen{background:#12100c;border:1px solid var(--line);padding:12px;display:flex;justify-content:center;}
+  .screen canvas{width:100%;max-width:640px;height:auto;}
+  .panel{background:var(--surface);border:1px solid var(--line);padding:17px;display:flex;
+    flex-direction:column;gap:14px;}
+  .panel .rows{display:flex;flex-direction:column;gap:5px;font-family:var(--ff-mono);font-size:11.5px;
+    font-variant-numeric:tabular-nums;color:var(--dim);}
+  .panel .rows div{display:flex;justify-content:space-between;gap:10px;}
+  .panel .rows b{color:var(--text);}
+  .chk{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.05em;padding:4px 9px;border-radius:3px;
+    border:1px solid;display:inline-block;}
+  .chk.ok{color:var(--moss);border-color:var(--moss);}
+  .chk.no{color:var(--blood);border-color:var(--blood);background:rgba(142,56,56,.09);}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard div.warn{border-left-color:var(--blood);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard div.warn h3{color:var(--blood);}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.was{color:var(--dim);text-decoration:line-through;}
+  .scroll{overflow-x:auto;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Анимации · скелетные клипы · Three.js</div>
+    <h1>Клипы вместо <em>кадров</em></h1>
+    <p class="lede">Переписано под 3D. Кадров, направлений и зеркалирования больше нет:
+      есть скелет, набор клипов и переходы между ними. Всё ниже анимируется прямо
+      на странице тем же скелетным принципом, что и в игре — иерархия суставов,
+      углы во времени, смешивание клипов.</p>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Набор клипов</h2></div>
+    <p>Пять клипов на персонажа. Клип, который не влияет на решение игрока,
+      в прототип не берём.</p>
+    <div class="bar" style="margin-bottom:2px">
+      <button id="play" type="button" aria-pressed="true">Пауза</button>
+      <button id="slow" type="button" aria-pressed="false">Замедлить ×4</button>
+      <button id="bones" type="button" aria-pressed="false">Скелет</button>
+    </div>
+    <div class="clips" id="clips"></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Клип</th><th>Длительность</th><th>Цикл</th><th>Прерывается</th><th>События по времени</th></tr>
+        <tr><td><b>Покой</b></td><td class="num">2,4 с</td><td>да</td><td>да</td><td>—</td></tr>
+        <tr><td><b>Ходьба</b></td><td class="num">0,6 с</td><td>да</td><td>да</td><td>шаг на 0,15 и 0,45 — звук и пыль</td></tr>
+        <tr><td><b>Удар</b></td><td class="num">0,6 с</td><td>нет</td><td>только после фазы удара</td><td>замах 0–0,18 · удар 0,30 · возврат 0,30–0,60</td></tr>
+        <tr><td><b>Урон</b></td><td class="num">0,15 с</td><td>нет</td><td>—</td><td>вспышка поверх любого клипа, аддитивно</td></tr>
+        <tr><td><b>Падение</b></td><td class="num">0,68 с</td><td>нет</td><td>нет</td><td>—</td></tr>
+        <tr><td><b>Разворот</b></td><td class="num">0,12–0,15 с</td><td>нет</td><td>да</td><td>—</td></tr>
+      </table>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>События — по времени, а не по кадру</h3>
+        <p>В спрайтовой версии удар приходился на конкретный кадр. Теперь это отметка
+          на клипе: <code>0,30 с</code>. <b>Урон наносится по событию, а не по окончанию клипа</b> —
+          иначе он расходится с тем, что игрок видит.</p>
+      </div>
+      <div>
+        <h3>Клип не двигает персонажа</h3>
+        <p>Корневое движение выключено, ходьба играется на месте. Перемещение считает
+          симуляция по сетке: от неё зависят путь назад и расход провианта,
+          и она обязана оставаться главной.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Скорость и скольжение ног</h2></div>
+    <p>Главная новая ошибка, которой в спрайтах не существовало: если клип играется
+      с постоянной скоростью, а персонаж двигается со своей — ноги скользят.
+      Отметки на земле ставятся в момент события шага; при верной настройке
+      они ложатся ровно через полтайла.</p>
+    <div class="lab">
+      <div class="screen"><canvas id="walk" width="640" height="240"></canvas></div>
+      <div class="panel">
+        <label>Скорость <input type="range" id="speed" min="60" max="320" value="167"></label>
+        <div class="bar">
+          <button id="lock" type="button" aria-pressed="true">Темп клипа от скорости</button>
+        </div>
+        <div class="rows" id="wrows"></div>
+        <div id="wverdict"></div>
+        <div class="note">Проектная скорость героя — 1,67 тайла в секунду.
+          Отключите привязку и подвигайте ползунок: отметки шага разъедутся.</div>
+      </div>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Правило</h3>
+        <p><code>темп клипа = текущая скорость / проектная скорость</code>.
+          Клип ходьбы рисуется под <b>шаг 0,5 юнита и два шага за цикл</b> —
+          то есть ровно один тайл за цикл в 0,6 с. Любое отклонение
+          компенсируется темпом, а не новым клипом.</p>
+      </div>
+      <div class="warn">
+        <h3>Почему это важнее, чем кажется</h3>
+        <p>Скольжение ног не воспринимается как баг анимации — оно воспринимается
+          как <b>дешевизна игры в целом</b>. Это первое, что замечают на видео,
+          и последнее, что чинят, если не заложить сразу.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Переходы между клипами</h2></div>
+    <p>Второе, чего не было в спрайтах: клипы не переключаются мгновенно,
+      а смешиваются. Длительность смешивания — параметр дизайна, а не техническая мелочь.</p>
+    <div class="lab">
+      <div class="screen"><canvas id="blend" width="640" height="240"></canvas></div>
+      <div class="panel">
+        <div class="bar" id="clipbtns"></div>
+        <label>Смешивание <input type="range" id="fade" min="0" max="400" step="10" value="100"></label>
+        <div class="rows" id="brows"></div>
+        <div class="note">Нажимайте клипы подряд — переход виден на самом персонаже.</div>
+      </div>
+    </div>
+    <div class="scroll">
+      <table>
+        <tr><th>Переход</th><th>Смешивание</th><th>Почему</th></tr>
+        <tr><td>Покой ⟷ ходьба</td><td class="num">120 мс</td><td>Самый частый переход в игре. Короче — дёргается, длиннее — герой «отъезжает» на месте.</td></tr>
+        <tr><td>Ходьба → удар</td><td class="num">60 мс</td><td>Атака должна начинаться резко: замах — это сигнал, и он не может быть смазан.</td></tr>
+        <tr><td>Удар → покой</td><td class="num">160 мс</td><td>Возврат мягкий: он ничего не сообщает и не должен привлекать внимание.</td></tr>
+        <tr><td>Любой → урон</td><td class="num">0 мс</td><td>Мгновенно. Урон — единственное событие, которое обязано прервать всё.</td></tr>
+        <tr><td>Любой → падение</td><td class="num">80 мс</td><td>Достаточно, чтобы не выглядело обрывом, и мало, чтобы не тормозить темп.</td></tr>
+      </table>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Проверка на конфликт с боем</h3>
+        <p>Интервал атаки — 1,2 с, клип удара — 0,6 с, вход 60 мс и выход 160 мс.
+          Итого <b>0,82 с из 1,2 с</b>: удары не накладываются, запас 0,38 с.
+          Если клип удара когда-нибудь удлинят до 0,9 с, запас исчезнет —
+          это и есть граница, за которую нельзя заходить без пересчёта боя.</p>
+      </div>
+      <div>
+        <h3>Разворот считается отдельно</h3>
+        <p>120–150 мс поверх всего остального. Он не смешивается с клипами,
+          а поворачивает корень модели — поэтому в бюджет перехода не входит
+          и может идти одновременно с ходьбой.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Бюджеты</h2></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Что</th><th>Предел</th><th>Почему именно столько</th></tr>
+        <tr><td><b>Костей на персонаже</b></td><td class="num">≤ 24</td>
+            <td>Хватает на две руки, две ноги, корпус, голову и оружие. Больше на пяти сантиметрах экрана не читается, а стоимость скиннинга растёт линейно.</td></tr>
+        <tr><td><b>Скиннованных персонажей в кадре</b></td><td class="num">≤ 12</td>
+            <td><b>Скиннованные меши не инстансятся</b> — каждый это отдельный вызов отрисовки. Это главное отличие от земли и стен, которые идут через InstancedMesh одним вызовом.</td></tr>
+        <tr><td><b>Наборов клипов</b></td><td class="num">2</td>
+            <td>Один на гуманоидов (герои, копейщик), один на четвероногих и голема. Скелет общий — клипы переиспользуются целиком.</td></tr>
+        <tr><td><b>Вес анимаций</b></td><td class="num">~40 КБ на набор</td>
+            <td>Ключи вращений в glTF. Против 3 МБ спрайтовых атласов, которые считались для пререндера.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Что отменено из спрайтовой версии</h2></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Было</th><th>Зачем</th><th>Почему больше нет</th></tr>
+        <tr><td class="was">4 направления, 2 из них зеркалятся</td><td>вдвое сократить рисование</td>
+            <td>Модель поворачивается. Направлений нет как понятия.</td></tr>
+        <tr><td class="was">21 кадр на персонажа</td><td>бюджет рисования</td>
+            <td>Считаются клипы и кости, а не кадры. Новое состояние стоит анимации, а не перерисовки всех ракурсов.</td></tr>
+        <tr><td class="was">Урон — вспышка вместо кадра</td><td>сэкономить 4 кадра</td>
+            <td>Остаётся, но уже как решение о читаемости: вспышка аддитивна и не требует прерывать текущий клип.</td></tr>
+        <tr><td class="was">Тень отдельным проходом после отражения</td><td>свет не должен зеркалиться</td>
+            <td>Тень настоящая, от источника в сцене.</td></tr>
+      </table>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Что осталось дословно</h3>
+        <p>Все тайминги: шаг 600 мс, удар 600 мс, замах врага 250–500 мс,
+          вспышка урона 150 мс, падение 680 мс. Они выведены из механики,
+          а не из способа рисования, — и смена движка их не касается.</p>
+      </div>
+      <div>
+        <h3>И правило замаха</h3>
+        <p>Фаза замаха держится не меньше 250 мс, у голема 500 мс. Бой автоматический,
+          но позиция — нет: враг, бьющий без замаха, читается как несправедливость
+          независимо от урона.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var C={mrak:"#0e0d0a",kamT:"#2b2a24",kam:"#3f3d34",kamS:"#57544a",skol:"#6f6c60",
+    derT:"#543922",der:"#6f4d2c",derS:"#8f6a3f",solom:"#b08f56",
+    hvo:"#31432a",moh:"#465c39",trav:"#7fa361",
+    metT:"#2b3138",met:"#474f58",stal:"#7d8892",plam:"#c9722a",lat:"#dfa53c",
+    cloth:"#35454e",skin:"#b08f56",blood:"#8E3838"};
+
+  // ——— тот же отрисовщик, что в артбуке: ортокамера 45°/30°, плоское затенение ———
+  var AZ=45*Math.PI/180, EL=30*Math.PI/180;
+  var LIGHT=(function(){var v=[-0.55,0.78,-0.31],l=Math.hypot(v[0],v[1],v[2]);
+    return [v[0]/l,v[1]/l,v[2]/l];})();
+  function shade(hex,k){
+    var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    return "rgb("+Math.round(Math.min(255,r*k))+","+Math.round(Math.min(255,g*k))+","+
+      Math.round(Math.min(255,b*k))+")";
+  }
+  function view(p){
+    var ca=Math.cos(AZ),sa=Math.sin(AZ);
+    var x=p[0]*ca-p[2]*sa, z=p[0]*sa+p[2]*ca, y=p[1];
+    var ce=Math.cos(EL),se=Math.sin(EL);
+    return [x, y*ce-z*se, y*se+z*ce];
+  }
+  function normal(a,b,c){
+    var u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    var n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    var l=Math.hypot(n[0],n[1],n[2])||1;return [n[0]/l,n[1]/l,n[2]/l];
+  }
+  function box(w,h,d,col,oy){
+    var x=w/2,z=d/2,y0=oy||0;
+    return {v:[[-x,y0,-z],[x,y0,-z],[x,y0,z],[-x,y0,z],
+               [-x,y0+h,-z],[x,y0+h,-z],[x,y0+h,z],[-x,y0+h,z]],
+            f:[[4,5,6,7],[0,3,2,1],[3,7,6,2],[0,1,5,4],[1,2,6,5],[0,4,7,3]],c:col};
+  }
+  // сустав: точка крепления, поворот вокруг X и Y, дети
+  function J(pivot,meshes,children){return {p:pivot,m:meshes||[],ch:children||[],rx:0,ry:0,rz:0};}
+  function rotP(p,rx,ry,rz){
+    var y=p[1]*Math.cos(rx)-p[2]*Math.sin(rx), z=p[1]*Math.sin(rx)+p[2]*Math.cos(rx), x=p[0];
+    var x2=x*Math.cos(ry)+z*Math.sin(ry), z2=-x*Math.sin(ry)+z*Math.cos(ry);
+    var x3=x2*Math.cos(rz)-y*Math.sin(rz), y3=x2*Math.sin(rz)+y*Math.cos(rz);
+    return [x3,y3,z2];
+  }
+  function collect(joint,base,out,bones){
+    var org=[base[0]+joint.p[0],base[1]+joint.p[1],base[2]+joint.p[2]];
+    // локальные вершины поворачиваются вокруг сустава и складываются с родительским
+    function xf(p){var r=rotP(p,joint.rx,joint.ry,joint.rz);return [org[0]+r[0],org[1]+r[1],org[2]+r[2]];}
+    joint.m.forEach(function(m){out.push({v:m.v.map(xf),f:m.f,c:m.c});});
+    bones.push(org);
+    joint.ch.forEach(function(ch){
+      var r=rotP(ch.p,joint.rx,joint.ry,joint.rz);
+      collectFrom(ch,[org[0]+r[0],org[1]+r[1],org[2]+r[2]],out,bones,joint);
+    });
+  }
+  function collectFrom(joint,org,out,bones,parent){
+    var rx=joint.rx+(parent?parent.rx:0), ry=joint.ry+(parent?parent.ry:0), rz=joint.rz+(parent?parent.rz:0);
+    function xf(p){var r=rotP(p,rx,ry,rz);return [org[0]+r[0],org[1]+r[1],org[2]+r[2]];}
+    joint.m.forEach(function(m){out.push({v:m.v.map(xf),f:m.f,c:m.c});});
+    bones.push(org);
+    joint.ch.forEach(function(ch){
+      var r=rotP(ch.p,rx,ry,rz);
+      collectFrom(ch,[org[0]+r[0],org[1]+r[1],org[2]+r[2]],out,bones,{rx:rx,ry:ry,rz:rz});
+    });
+  }
+  function render(ctx,W,H,meshes,bones,scale,cx,cy,showBones,flash){
+    var faces=[];
+    meshes.forEach(function(m){
+      m.f.forEach(function(face){
+        var a=m.v[face[0]],b=m.v[face[1]],c2=m.v[face[2]];
+        var n=normal(a,b,c2);
+        var pts=face.map(function(i){return view(m.v[i]);});
+        var area=0;
+        for(var i=0;i<pts.length;i++){var p1=pts[i],p2=pts[(i+1)%pts.length];
+          area+=(p1[0]*(-p2[1])-p2[0]*(-p1[1]));}
+        if(area<=0)return;
+        var d=pts.reduce(function(s,p){return s+p[2];},0)/pts.length;
+        var lam=Math.max(0,n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2]);
+        faces.push({pts:pts,d:d,k:0.34+0.16*Math.max(0,n[1])+lam*0.72,c:m.c});
+      });
+    });
+    faces.sort(function(a,b){return a.d-b.d;});
+    faces.forEach(function(f){
+      ctx.beginPath();
+      f.pts.forEach(function(p,i){var sx=cx+p[0]*scale,sy=cy-p[1]*scale;
+        if(i)ctx.lineTo(sx,sy);else ctx.moveTo(sx,sy);});
+      ctx.closePath();
+      ctx.fillStyle=flash?shade("#f0e2b0",f.k*1.1):shade(f.c,f.k);
+      ctx.fill(); ctx.strokeStyle=ctx.fillStyle; ctx.lineWidth=0.5; ctx.stroke();
+    });
+    if(showBones){
+      bones.forEach(function(b){
+        var p=view(b);
+        ctx.beginPath();ctx.arc(cx+p[0]*scale,cy-p[1]*scale,2.4,0,7);
+        ctx.fillStyle="#dfa53c";ctx.fill();
+      });
+    }
+  }
+
+  // ——— скелет героя: 9 суставов ———
+  function rig(){
+    var legL=J([-0.11,0,0],[box(0.13,-0.42,0.15,C.metT,0)]);
+    var legR=J([0.11,0,0],[box(0.13,-0.42,0.15,C.metT,0)]);
+    var armL=J([-0.25,0.44,0],[box(0.11,-0.4,0.12,C.cloth,0)]);
+    var armR=J([0.25,0.44,0],[box(0.11,-0.4,0.12,C.cloth,0),
+      {v:box(0.05,0.95,0.05,C.derT,-0.34).v,f:box(0.05,0.95,0.05,C.derT,-0.34).f,c:C.derT}]);
+    var head=J([0,0.52,0],[box(0.26,0.24,0.24,C.skin,0),box(0.34,0.09,0.32,C.cloth,0.2)]);
+    var torso=J([0,0.42,0],[box(0.44,0.5,0.28,C.cloth,0),box(0.46,0.06,0.3,C.trav,0.2)],[head,armL,armR]);
+    var pelvis=J([0,0.42,0],[],[torso,J([-0.11,0,0],[]),J([0.11,0,0],[])]);
+    // ноги крепим к тазу напрямую
+    pelvis.ch=[torso,legL,legR];
+    return {root:J([0,0,0],[],[pelvis]),pelvis:pelvis,torso:torso,head:head,
+            armL:armL,armR:armR,legL:legL,legR:legR};
+  }
+
+  // ——— клипы: функции времени, возвращают углы суставов ———
+  var CLIPS={
+    idle:{dur:2.4,loop:true,f:function(t){var p=t/2.4*Math.PI*2;
+      return {torsoRx:Math.sin(p)*0.03,headRx:Math.sin(p+0.6)*0.04,
+        armLRx:Math.sin(p)*0.05,armRRx:-Math.sin(p)*0.05,legLRx:0,legRRx:0,pelvisY:Math.sin(p*2)*0.006};}},
+    walk:{dur:0.6,loop:true,f:function(t){var p=t/0.6*Math.PI*2;
+      return {torsoRx:0.06,headRx:0,armLRx:Math.sin(p)*0.5,armRRx:-Math.sin(p)*0.5,
+        legLRx:-Math.sin(p)*0.62,legRRx:Math.sin(p)*0.62,pelvisY:Math.abs(Math.sin(p))*0.035-0.017};}},
+    attack:{dur:0.6,loop:false,f:function(t){
+      var a;
+      if(t<0.18)a=-1.15*(t/0.18);                  // замах
+      else if(t<0.30)a=-1.15+2.6*((t-0.18)/0.12);  // удар
+      else a=1.45*(1-(t-0.30)/0.30);               // возврат
+      return {torsoRx:-a*0.12,headRx:0,armLRx:a*0.2,armRRx:-a,legLRx:0.1,legRRx:-0.1,pelvisY:0};}},
+    down:{dur:0.68,loop:false,f:function(t){var k=Math.min(1,t/0.68),e=k*k;
+      return {torsoRx:e*1.1,headRx:e*0.5,armLRx:e*0.8,armRRx:e*0.8,
+        legLRx:e*0.5,legRRx:e*0.4,pelvisY:-e*0.34,pelvisRx:e*0.55};}}
+  };
+  function blend(a,b,w){
+    var o={},k;
+    for(k in a)o[k]=a[k]*(1-w)+(b[k]||0)*w;
+    for(k in b)if(!(k in o))o[k]=(b[k]||0)*w;
+    return o;
+  }
+  function apply(R,pose){
+    R.pelvis.rx=pose.pelvisRx||0; R.pelvis.p=[0,0.42+(pose.pelvisY||0),0];
+    R.torso.rx=pose.torsoRx||0; R.head.rx=pose.headRx||0;
+    R.armL.rx=pose.armLRx||0; R.armR.rx=pose.armRRx||0;
+    R.legL.rx=pose.legLRx||0; R.legR.rx=pose.legRRx||0;
+  }
+  function build(R){
+    var out=[],bones=[];
+    // земля
+    out.push({v:box(1.5,0.02,1.5,C.kamT,-0.02).v,f:box(1.5,0.02,1.5,C.kamT,-0.02).f,c:C.kamT});
+    collect(R.root,[0,0,0],out,bones);
+    return {meshes:out,bones:bones};
+  }
+
+  var playing=true, slow=1, showBones=false;
+  var cards=[];
+  var CLIPINFO=[["idle","Покой","2,4 с · цикл"],["walk","Ходьба","0,6 с · цикл"],
+                ["attack","Удар","0,6 с · один раз"],["down","Падение","0,68 с · один раз"]];
+  var clipsEl=document.getElementById("clips");
+  CLIPINFO.forEach(function(ci){
+    var d=document.createElement("div"); d.className="cl";
+    var st=document.createElement("div"); st.className="stage";
+    var cv=document.createElement("canvas");
+    var DPR=Math.min(2,window.devicePixelRatio||1);
+    cv.width=160*DPR;cv.height=150*DPR;cv.style.width="160px";cv.style.height="150px";
+    var ctx=cv.getContext("2d");ctx.scale(DPR,DPR);
+    st.appendChild(cv); d.appendChild(st);
+    d.insertAdjacentHTML("beforeend","<b>"+ci[1]+"</b><u>"+ci[2]+"</u>");
+    clipsEl.appendChild(d);
+    cards.push({ctx:ctx,clip:ci[0],t:0,R:rig(),w:160,h:150});
+  });
+
+  // ——— ходьба и отметки шага ———
+  var wcv=document.getElementById("walk"),wctx=wcv.getContext("2d");
+  var wR=rig(), wt=0, wx=0, marks=[], lastPhase=0, lockRate=true, speed=1.67;
+  var DESIGN_SPEED=1.67, STRIDE=0.5;
+
+  // ——— смешивание ———
+  var bcv=document.getElementById("blend"),bctx=bcv.getContext("2d");
+  var bR=rig(), cur="idle", prev=null, prevT=0, bt=0, fadeT=0, fadeDur=0.1;
+  var btns=document.getElementById("clipbtns");
+  CLIPINFO.forEach(function(ci){
+    var b=document.createElement("button");b.type="button";b.textContent=ci[1];
+    b.addEventListener("click",function(){
+      prev=cur; prevT=bt; cur=ci[0]; bt=0; fadeT=fadeDur;
+      [].forEach.call(btns.children,function(x){x.setAttribute("aria-pressed",x===b?"true":"false");});
+    });
+    btns.appendChild(b);
+  });
+  btns.children[0].setAttribute("aria-pressed","true");
+  document.getElementById("fade").addEventListener("input",function(e){fadeDur=+e.target.value/1000;});
+  document.getElementById("speed").addEventListener("input",function(e){speed=+e.target.value/100;});
+  document.getElementById("lock").addEventListener("click",function(){
+    lockRate=!lockRate; this.setAttribute("aria-pressed",lockRate?"true":"false");
+    marks=[]; wx=0;
+  });
+
+  function poseOf(clip,t){
+    var Cd=CLIPS[clip];
+    var tt=Cd.loop?(t%Cd.dur):Math.min(t,Cd.dur);
+    return Cd.f(tt);
+  }
+
+  var last=0;
+  function frame(ts){ frameBody(ts); requestAnimationFrame(frame); }
+  function frameBody(ts){
+    var dt=last?Math.min(0.05,(ts-last)/1000):0.016; last=ts;
+    if(playing)dt*=slow; else dt=0;
+
+    cards.forEach(function(c){
+      c.t+=dt;
+      var Cd=CLIPS[c.clip];
+      if(!Cd.loop&&c.t>Cd.dur+0.5)c.t=0;
+      apply(c.R,poseOf(c.clip,c.t));
+      var b=build(c.R);
+      c.ctx.clearRect(0,0,c.w,c.h);
+      c.ctx.fillStyle="#12100c";c.ctx.fillRect(0,0,c.w,c.h);
+      render(c.ctx,c.w,c.h,b.meshes,b.bones,110,c.w/2,c.h*0.78,showBones,false);
+    });
+
+    // ходьба
+    var rate=lockRate?(speed/DESIGN_SPEED):1;
+    wt+=dt*rate; wx+=speed*dt;
+    var phase=(wt/0.6)%1;
+    if(phase<lastPhase||(lastPhase<0.15&&phase>=0.15)||(lastPhase<0.65&&phase>=0.65)){
+      if((lastPhase<0.15&&phase>=0.15)||(lastPhase<0.65&&phase>=0.65))marks.push(wx);
+    }
+    lastPhase=phase;
+    if(wx>6){wx=0;marks=[];}
+    apply(wR,poseOf("walk",wt));
+    var wb=build(wR);
+    wctx.fillStyle="#12100c";wctx.fillRect(0,0,640,240);
+    // земля с разметкой по полтайла
+    wctx.strokeStyle="rgba(230,228,214,.13)";wctx.lineWidth=1;
+    for(var g=0;g<=12;g++){var gx=40+g*47;wctx.beginPath();wctx.moveTo(gx,196);wctx.lineTo(gx,206);wctx.stroke();}
+    marks.forEach(function(m){
+      var mx=40+m*94/2;
+      if(mx>630)return;
+      wctx.fillStyle="#dfa53c";wctx.fillRect(mx-1.5,190,3,18);
+    });
+    var hx=40+wx*94/2;
+    render(wctx,640,240,wb.meshes,wb.bones,150,Math.min(600,hx),176,showBones,false);
+    var gaps=[];for(var i2=1;i2<marks.length;i2++)gaps.push(marks[i2]-marks[i2-1]);
+    var avg=gaps.length?gaps.reduce(function(a,b2){return a+b2;},0)/gaps.length:0;
+    var err=avg?Math.abs(avg-STRIDE)/STRIDE*100:0;
+    document.getElementById("wrows").innerHTML=
+      '<div><span>скорость</span><b>'+speed.toFixed(2).replace(".",",")+' тайла/с</b></div>'+
+      '<div><span>темп клипа</span><b>×'+rate.toFixed(2).replace(".",",")+'</b></div>'+
+      '<div><span>шаг между отметками</span><b>'+(avg?avg.toFixed(2).replace(".",","):"—")+'</b></div>'+
+      '<div><span>должен быть</span><b>0,50</b></div>'+
+      '<div><span>расхождение</span><b>'+(avg?Math.round(err)+"%":"—")+'</b></div>';
+    var ok=avg?err<8:true;
+    document.getElementById("wverdict").innerHTML='<span class="chk '+(ok?"ok":"no")+'">'+
+      (ok?"ноги не скользят":"ноги скользят")+'</span>';
+
+    // смешивание
+    bt+=dt; if(fadeT>0)fadeT=Math.max(0,fadeT-dt);
+    var pose=poseOf(cur,bt);
+    if(prev&&fadeDur>0&&fadeT>0){
+      var w=1-fadeT/fadeDur;
+      pose=blend(poseOf(prev,prevT+bt),pose,w);
+    }
+    apply(bR,pose);
+    var bb=build(bR);
+    bctx.fillStyle="#12100c";bctx.fillRect(0,0,640,240);
+    render(bctx,640,240,bb.meshes,bb.bones,150,320,196,showBones,false);
+    document.getElementById("brows").innerHTML=
+      '<div><span>текущий клип</span><b>'+cur+'</b></div>'+
+      '<div><span>смешивание</span><b>'+Math.round(fadeDur*1000)+' мс</b></div>'+
+      '<div><span>идёт переход</span><b>'+(fadeT>0?"да":"нет")+'</b></div>'+
+      '<div><span>удар + переходы</span><b>820 из 1200 мс</b></div>';
+
+  }
+  // первый кадр рисуется синхронно: страница обязана показывать позу даже когда
+  // движение выключено системной настройкой или цикл ещё не запустился
+  frameBody(performance.now());
+  requestAnimationFrame(frame);
+
+  var pb=document.getElementById("play");
+  pb.addEventListener("click",function(){playing=!playing;
+    pb.textContent=playing?"Пауза":"Играть";pb.setAttribute("aria-pressed",playing?"true":"false");});
+  var sb=document.getElementById("slow");
+  sb.addEventListener("click",function(){slow=slow===1?0.25:1;
+    sb.setAttribute("aria-pressed",slow!==1?"true":"false");
+    sb.textContent=slow===1?"Замедлить ×4":"Обычная скорость";});
+  var bnb=document.getElementById("bones");
+  bnb.addEventListener("click",function(){showBones=!showBones;
+    bnb.setAttribute("aria-pressed",showBones?"true":"false");});
+  if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+    playing=false;pb.textContent="Играть";pb.setAttribute("aria-pressed","false");
+  }
+})();
+</script>

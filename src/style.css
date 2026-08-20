@@ -1,0 +1,109 @@
+:root {
+  --ink: #e8e2d4;
+  --dim: #9a927f;
+  --warn: #e2a33c;
+  --bad: #d4543a;
+  --good: #7fb069;
+  --panel: rgba(14, 13, 11, 0.82);
+  --line: rgba(232, 226, 212, 0.14);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* Игровой интерфейс не выделяется: случайный протяг по панели не должен
+   превращаться в выделение текста и съедать нажатие. */
+#hud, #camp, #result { user-select: none; -webkit-user-select: none; }
+button { touch-action: manipulation; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden; background: #0b0a09; color: var(--ink);
+  font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+canvas { display: block; touch-action: none; }
+
+#hud {
+  position: fixed; inset: 0; pointer-events: none; display: flex;
+  flex-direction: column; justify-content: space-between;
+  padding: calc(8px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+}
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.stats {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 5px 8px;
+  align-items: center; font-variant-numeric: tabular-nums;
+}
+.lbl { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.num { font-size: 12px; min-width: 56px; text-align: right; }
+.bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 100%; transition: width 0.15s linear; background: var(--dim); }
+.bar > i.good { background: var(--good); }
+.bar > i.warn { background: var(--warn); }
+.bar > i.bad { background: var(--bad); }
+.bar > i.dimbar { background: #6f6a5c; }
+#h-bag-bar { background: #c8a24a; }
+/* Раны — сегменты, а не сплошная полоса (§11.3). */
+.bar.segmented { display: flex; gap: 3px; background: none; overflow: visible; }
+.bar.segmented > i {
+  flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1);
+  transition: background 0.15s linear;
+}
+.bar.segmented > i.on { background: var(--bad); }
+.risk { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 12px; }
+.risk b { color: var(--warn); }
+.dim { color: var(--dim); }
+.warn { color: var(--warn); }
+.bad { color: var(--bad); }
+.ok { color: var(--good); }
+
+.bottom { display: flex; flex-direction: column; gap: 8px; }
+.hint { min-height: 17px; font-size: 12px; color: var(--dim); text-align: center; text-shadow: 0 1px 3px #000; }
+.night { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+.night input { flex: 1; accent-color: #c8a24a; }
+.ctl { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
+.tiers { margin-top: 2px; }
+button {
+  pointer-events: auto; font: inherit; font-size: 12px; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 11px; cursor: pointer;
+}
+button:active { background: rgba(255, 255, 255, 0.12); }
+
+#result { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(8, 7, 6, 0.8); backdrop-filter: blur(4px); padding: 20px; z-index: 5; }
+#result.on { display: flex; }
+#result .panel { max-width: 340px; width: 100%; text-align: center; }
+#result h2 { margin: 0; font-size: 20px; }
+#result p { margin: 6px 0; font-size: 13px; color: var(--dim); }
+#result .big { font-size: 34px; font-variant-numeric: tabular-nums; margin: 10px 0 2px; }
+
+#stats {
+  align-self: flex-end; font-size: 10px; color: var(--dim);
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 6px; pointer-events: none;
+}
+
+/* ---------- лагерь ---------- */
+#camp {
+  position: fixed; inset: 0; pointer-events: none; display: flex;
+  flex-direction: column; justify-content: space-between; gap: 8px;
+  /* Сцена видна в верхней половине: лагерь — это то, ради чего возвращаются,
+     и прятать его под панелью управления бессмысленно. */
+  padding: calc(8px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+}
+#camp .res { display: flex; justify-content: space-between; gap: 6px; }
+.res-item { display: flex; flex-direction: column; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.res-item b { font-size: 15px; }
+#camp .list {
+  display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
+  max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+#camp .b { display: flex; flex-direction: column; gap: 5px; }
+#camp .b + .b { padding-top: 9px; border-top: 1px solid var(--line); }
+.b-top { display: flex; justify-content: space-between; align-items: baseline; }
+.b-eff { font-size: 12px; color: var(--dim); }
+.b-bot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+#camp .raid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  align-items: center; pointer-events: auto;
+}
+#camp .raid .lbl { grid-column: 1 / -1; }
+button[disabled] { opacity: 0.4; cursor: default; }

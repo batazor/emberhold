@@ -1,0 +1,440 @@
+<title>Первые три минуты</title>
+<style>
+  :root{
+    --ground:#E3E7E5; --surface:#F3F6F3; --surface-2:#DBE2DD; --line:#C2CCC6;
+    --text:#131C1B; --dim:#54625F; --brass:#8A6A12; --ember:#AC4C1D; --moss:#4B6C3D;
+    --shadow:0 16px 36px -20px rgba(12,26,24,.45);
+    --g-bg:#0B1113; --g-panel:#162226; --g-line:#2C3D42; --g-text:#E8EEEA; --g-dim:#8CA09D;
+    --g-brass:#C9A227; --g-ember:#D2662F; --g-moss:#7DA163; --g-blood:#A33B3B;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+      --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+    --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.75);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:56px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;}
+
+  .rail{display:flex;flex-direction:column;gap:0;}
+  .beat{display:grid;grid-template-columns:74px 240px minmax(0,1fr);gap:26px;align-items:start;
+    padding:26px 0;border-top:1px solid var(--line);}
+  .beat:first-child{border-top:0;}
+  @media(max-width:800px){.beat{grid-template-columns:56px minmax(0,1fr);}
+    .beat .mini{grid-column:1 / -1;justify-self:center;}}
+  .clock{font-family:var(--ff-mono);font-size:15px;font-variant-numeric:tabular-nums;color:var(--brass);
+    padding-top:2px;letter-spacing:-.02em;}
+  .clock small{display:block;font-size:9.5px;color:var(--dim);letter-spacing:.12em;margin-top:3px;}
+
+  .mini{width:240px;height:504px;overflow:hidden;border-radius:22px;box-shadow:var(--shadow);
+    border:1px solid var(--g-line);background:var(--g-bg);position:relative;}
+  .mini .phone{width:320px;height:672px;transform:scale(.75);transform-origin:0 0;position:relative;
+    background:var(--g-bg);color:var(--g-text);display:flex;flex-direction:column;overflow:hidden;}
+
+  .txt{display:flex;flex-direction:column;gap:14px;}
+  .txt h3{font-family:var(--ff-display);font-weight:400;font-size:23px;margin:0;}
+  .row{display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;font-size:14px;align-items:start;}
+  .row b{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+    padding-top:4px;font-weight:600;}
+  .row.does b{color:var(--text);} .row.teach b{color:var(--moss);} .row.hide b{color:var(--ember);}
+  .row span{color:var(--dim);}
+  .row.teach span{color:var(--text);}
+
+  .stage{position:relative;flex:1 1 auto;overflow:hidden;}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;}
+  .hud{position:absolute;left:12px;right:12px;top:10px;display:flex;flex-direction:column;gap:7px;}
+  .meter{display:flex;align-items:center;gap:8px;}
+  .meter em{font-style:normal;font-family:var(--ff-mono);font-size:10px;letter-spacing:.1em;
+    color:var(--g-dim);width:62px;text-transform:uppercase;}
+  .meter .bar{flex:1;height:7px;background:rgba(10,16,18,.85);border:1px solid var(--g-line);
+    border-radius:3px;overflow:hidden;}
+  .meter .bar i{display:block;height:100%;background:var(--g-ember);}
+  .meter .bar.pack i{background:var(--g-moss);} .meter .bar.risk i{background:var(--g-blood);}
+  .meter b{font-family:var(--ff-mono);font-size:11px;font-variant-numeric:tabular-nums;width:52px;text-align:right;}
+  .meter.flash em,.meter.flash b{color:var(--g-ember);}
+  .foot{position:absolute;left:12px;right:12px;bottom:12px;display:flex;justify-content:space-between;
+    align-items:flex-end;gap:10px;}
+  .pips{display:flex;gap:4px;} .pips s{width:16px;height:5px;border-radius:2px;background:var(--g-blood);
+    text-decoration:none;} .pips s.off{background:var(--g-line);}
+  .depth{font-family:var(--ff-mono);font-size:11px;color:var(--g-dim);margin-top:7px;}
+  .depth u{text-decoration:none;color:var(--g-ember);}
+  .cta{display:block;text-align:center;padding:12px 18px;border-radius:9px;border:1px solid #E0BC3C;
+    background:linear-gradient(180deg,#D5AC2C,#A8811A);color:#140F02;font-family:var(--ff-display);font-size:16px;}
+  .cta.danger{border-color:#E07C46;background:linear-gradient(180deg,#D2662F,#9E4620);color:#150802;}
+  .cta.ghost{background:transparent;border-color:var(--g-line);color:var(--g-text);}
+  .hint{position:absolute;left:0;right:0;bottom:88px;text-align:center;font-family:var(--ff-mono);
+    font-size:12px;color:var(--g-text);letter-spacing:.04em;text-shadow:0 1px 4px #0B1113;}
+  .hint s{text-decoration:none;color:var(--g-brass);}
+
+  .sb{display:flex;justify-content:space-between;padding:9px 16px 3px;font-size:11px;color:var(--g-dim);
+    font-family:var(--ff-mono);}
+  .res{display:flex;gap:6px;padding:4px 12px 10px;}
+  .res div{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--g-panel);
+    border:1px solid var(--g-line);border-radius:6px;padding:5px 7px;font-family:var(--ff-mono);
+    font-size:12px;font-variant-numeric:tabular-nums;}
+  .res div.new{border-color:var(--g-brass);color:var(--g-brass);}
+  .nav{padding:11px 12px 15px;display:flex;flex-direction:column;gap:10px;}
+  .bar2{height:5px;border-radius:3px;background:var(--g-line);overflow:hidden;margin-top:8px;}
+  .bar2 i{display:block;height:100%;background:var(--g-brass);}
+  .loot{display:flex;flex-direction:column;gap:10px;padding:6px 4px;}
+  .loot div{display:flex;align-items:center;gap:10px;font-size:14px;}
+  .loot div em{flex:1;font-style:normal;} .loot div b{font-family:var(--ff-mono);color:var(--g-brass);
+    font-variant-numeric:tabular-nums;}
+  .card{position:absolute;left:12px;right:12px;background:rgba(21,33,37,.95);border:1px solid var(--g-line);
+    border-radius:10px;padding:11px 13px;}
+  .card .t{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .card .t b{font-family:var(--ff-display);font-weight:400;font-size:16px;}
+  .card .t i{font-style:normal;font-family:var(--ff-mono);font-size:12px;color:var(--g-brass);}
+  .card p{margin:5px 0 0;font-size:12px;color:var(--g-dim);}
+
+  .closing{border-top:1px solid var(--line);padding-top:34px;display:flex;flex-direction:column;gap:24px;}
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:28px;}
+  .cols h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;
+    color:var(--brass);margin:0 0 10px;font-weight:600;}
+  .cols ul{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:9px;font-size:14px;color:var(--dim);}
+  .cols li b{color:var(--text);font-weight:600;}
+  .metric{border-left:2px solid var(--brass);padding:2px 0 2px 18px;font-size:15px;max-width:66ch;}
+  .metric b{font-weight:600;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Раскадровка онбординга · Соляной Тракт</div>
+    <h1>Первые <em>три минуты</em></h1>
+    <p class="lede">Десять кадров от запуска до второй вылазки. Правило, из которого выведено
+      всё остальное: <b>ни одного экрана меню до того, как игрок сыграет.</b> Ни логина,
+      ни имени героя, ни выбора сложности — приложение открывается сразу в вылазке,
+      и лагерь появляется как награда за неё, а не как стартовая комната.</p>
+  </header>
+
+  <div class="rail" id="rail"></div>
+
+  <div class="closing">
+    <h2>Принципы, из которых собран этот сценарий</h2>
+    <div class="cols">
+      <div>
+        <h3>Чему учим и чем</h3>
+        <ul>
+          <li><b>Обучение жестами, не текстом.</b> Единственная подсказка — подсвеченная точка тапа и одна строка внизу. Всплывающих окон с «Понятно» нет ни одного.</li>
+          <li><b>Одна механика на кадр.</b> Движение, бой, добыча, провиант, путь назад, ставка — по одной за раз, с паузой в 15–20 секунд между ними.</li>
+          <li><b>Полосы учат сами.</b> Игрок видит, как рюкзак растёт, а провиант убывает, до того как ему это назовут словами.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Порядок, который нельзя менять</h3>
+        <ul>
+          <li><b>Первая жадность обязана быть вознаграждена.</b> На нулевом ярусе ставка равна нулю: игрок рискует, получает добычу и запоминает, что риск окупается. Наказание за жадность — только со второй вылазки.</li>
+          <li><b>Ставка вводится последней.</b> Ненулевая цифра «под угрозой» появляется на третьей минуте, когда игрок уже понимает, что такое рюкзак и путь назад.</li>
+          <li><b>Лагерь — награда, а не меню.</b> Он открывается после эвакуации, и первое здание вырастает на глазах за ноль секунд.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Что намеренно отложено</h3>
+        <ul>
+          <li><b>Мировая карта</b> — после второй вылазки.</li>
+          <li><b>Герои, характеристики, снаряжение</b> — после первого ранения, ближе к 10-й минуте.</li>
+          <li><b>Таймеры построек</b> — первое здание мгновенное, второе уже с ожиданием.</li>
+          <li><b>Альянсы, фракции, аккаунт</b> — не в первой сессии вообще.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="metric"><b>Метрика этой раскадровки:</b> доля игроков, дошедших до первой эвакуации.
+      Цель — не ниже 85%. Всё, что ниже, означает, что мы теряем людей до того, как они
+      увидели саму игру, и ни один мета-слой этого не исправит. Вторая цифра — доля тех,
+      кто на 1:30 пошёл за приманкой вместо немедленного выхода: если она ниже половины,
+      значит «путь назад» читается страшнее, чем он есть.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  var MRAK="#0b1113",TEN="#141c1e",KAMT="#1f2a2c",KAM="#2b3a3d",KAMS="#3d5053",SKOL="#55696c",
+      SOLT="#6e8385",SOL="#8fa3a3",SOLS="#b6c4c0",
+      ZEMT="#241a14",ZEM="#37271c",DERT="#4d3826",DER="#6b4e33",DERS="#8a6a45",SOLOM="#a98a5e",
+      HVOT="#1e2b1c",HVO="#2f4128",MOH="#435c38",TRA="#5c7a4a",TRAS="#7da163",
+      METT="#2a3138",MET="#45505a",METS="#667380",STAL="#8f9daa",
+      UGOL="#5a2f10",ZHAR="#8e4a17",PLAM="#c9722a",LAT="#e0a13c",SVET="#f0d27a",
+      KROT="#6b2228",KRO="#a33b3b";
+  function R(c,x,y,w,h,col){c.fillStyle=col;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));}
+  function hash(x,y,s){var h=(x*374761393+y*668265263+s*2246822519)>>>0;h=(h^(h>>>13))*1274126177>>>0;
+    return ((h>>>8)%1000)/1000;}
+  function plate(c,cx,cy,w,col,colL){
+    var h=w/2,k=w/h;
+    for(var i=0;i<h;i++){var hw=(i<h/2)?(i+1)*k:(h-i)*k;
+      if(colL){R(c,cx-hw,cy-h/2+i,hw,1,colL);R(c,cx,cy-h/2+i,hw,1,col);}
+      else R(c,cx-hw,cy-h/2+i,hw*2,1,col);}
+  }
+  function box(c,cx,cy,w,ht,top,l,r){
+    var h=w/2;
+    for(var x=0;x<w/2;x++){R(c,cx-w/2+x,cy+x/2-ht,1,ht+1,l);}
+    for(var x=0;x<w/2;x++){R(c,cx+x,cy+h/2-x/2-ht,1,ht+1,r);}
+    plate(c,cx,cy-ht,w,top,null);
+  }
+  function hip(c,cx,cy,w,steps,colR,colL){
+    for(var k=0;k<steps;k++){var ww=w-k*4;if(ww<4)break;plate(c,cx,cy-k,ww,colR,colL);}
+  }
+  function hero(c,x,y){
+    plate(c,x,y+1,14,"rgba(11,17,19,.5)",null);
+    R(c,x-4,y-11,8,11,MRAK); R(c,x-3,y-10,6,10,"#35454e"); R(c,x-3,y-5,6,1,TRAS);
+    R(c,x-3,y-16,6,6,MRAK); R(c,x-2,y-15,4,4,"#c8a184");
+    R(c,x-4,y-16,8,3,"#35454e"); R(c,x+3,y-14,1,4,"#35454e");
+    R(c,x-1,y-14,1,1,MRAK); R(c,x+1,y-14,1,1,MRAK);
+    R(c,x+5,y-13,1,9,DERT); R(c,x+5,y-14,1,1,STAL);
+  }
+  function foe(c,x,y){
+    plate(c,x,y+1,12,"rgba(11,17,19,.5)",null);
+    R(c,x-4,y-8,8,8,MRAK); R(c,x-3,y-7,6,7,SOLT); R(c,x-3,y-4,6,1,SOL);
+    R(c,x-2,y-6,1,1,KRO); R(c,x+1,y-6,1,1,KRO);
+    R(c,x-5,y-3,2,3,SOLT); R(c,x+3,y-3,2,3,SOLT);
+  }
+  function chest(c,x,y,open){
+    R(c,x-6,y-7,12,7,"#8e7318"); R(c,x-6,y-9,12,3,LAT);
+    if(open){R(c,x-6,y-12,12,3,SVET);} else R(c,x-1,y-8,2,6,MRAK);
+  }
+  function exitMark(c,x,y){
+    plate(c,x,y,30,"rgba(125,161,99,.30)",null);
+    for(var i=0;i<30;i+=2){var hw=(i<15)?(i+1):(30-i);R(c,x-hw,y-7+i/2,1,1,TRAS);R(c,x+hw-1,y-7+i/2,1,1,TRAS);}
+    R(c,x-1,y-13,2,10,TRAS); R(c,x-4,y-16,8,4,TRAS); R(c,x-3,y-15,6,2,MRAK);
+  }
+  function tapRing(c,x,y){
+    for(var i=0;i<16;i+=1){var hw=(i<8)?(i+1)*2:(16-i)*2;
+      R(c,x-hw,y-8+i,1,1,SVET); R(c,x+hw-1,y-8+i,1,1,SVET);}
+    R(c,x-1,y-1,2,2,SVET);
+  }
+  var BAYER=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+  function fog(ctx,W,H,cx,cy,r0,r1){
+    var img=ctx.getImageData(0,0,W,H),d=img.data;
+    for(var y=0;y<H;y++)for(var x=0;x<W;x++){
+      var dx=x-cx,dy=(y-cy)*1.9,t=(Math.sqrt(dx*dx+dy*dy)-r0)/(r1-r0);
+      if(t<=0)continue;
+      var b=BAYER[y&3][x&3]/16,i=(y*W+x)*4,a;
+      if(t>=1)a=1; else if(t>b)a=(t>0.72?0.85:0.5); else continue;
+      d[i]+=(11-d[i])*a; d[i+1]+=(17-d[i+1])*a; d[i+2]+=(19-d[i+2])*a;
+    }
+    ctx.putImageData(img,0,0);
+  }
+
+  var TW=32,TH=16;
+  function raid(o){
+    return function(c,W,H){
+      R(c,0,0,W,H,MRAK);
+      var N=11,ox=W/2,oy=H/2-(N-1)*TH/2+10;
+      function iso(x,y){return [ox+(x-y)*TW/2, oy+(x+y)*TH/2];}
+      for(var y=0;y<N;y++)for(var x=0;x<N;x++){
+        var p=iso(x,y),v=hash(x,y,5);
+        plate(c,p[0],p[1],TW,v<.33?SOLT:v<.66?SOL:"#7a8f90",null);
+        if(v>.92)R(c,p[0]-1,p[1],2,1,SOLS);
+      }
+      var objs=[];
+      (o.walls||[[0,3],[0,4],[1,7],[2,8],[8,0],[9,1],[9,4],[7,9],[3,0],[4,0]]).forEach(function(w){
+        objs.push({d:w[0]+w[1],f:(function(a,b){return function(){var p=iso(a,b);
+          box(c,p[0],p[1],TW,15,KAMS,KAMT,KAM);};})(w[0],w[1])});
+      });
+      if(o.chest)objs.push({d:o.chest[0]+o.chest[1],f:function(){var p=iso(o.chest[0],o.chest[1]);chest(c,p[0],p[1],o.chestOpen);}});
+      if(o.foe)  objs.push({d:o.foe[0]+o.foe[1],f:function(){var p=iso(o.foe[0],o.foe[1]);foe(c,p[0],p[1]);}});
+      objs.push({d:o.hero[0]+o.hero[1],f:function(){var p=iso(o.hero[0],o.hero[1]);hero(c,p[0],p[1]);}});
+      objs.sort(function(a,b){return a.d-b.d;}).forEach(function(x){x.f();});
+      var hp=iso(o.hero[0],o.hero[1]);
+      fog(c,W,H,hp[0],hp[1]-6,o.r0||52,o.r1||112);
+      // маяк эвакуации и подсветка тапа — интерфейс, а не мир: рисуются поверх тумана
+      if(o.exit){var pe=iso(o.exit[0],o.exit[1]); exitMark(c,pe[0],pe[1]);}
+      if(o.tap){var pt=iso(o.tap[0],o.tap[1]); tapRing(c,pt[0],pt[1]);}
+    };
+  }
+  function camp(level){
+    return function(c,W,H){
+      R(c,0,0,W,H,MRAK);
+      var N=9,ox=W/2,oy=H/2-(N-1)*TH/2;
+      function iso(x,y){return [ox+(x-y)*TW/2, oy+(x+y)*TH/2];}
+      for(var y=0;y<N;y++)for(var x=0;x<N;x++){
+        var p=iso(x,y),v=hash(x,y,11);
+        plate(c,p[0],p[1],TW,v<.33?HVOT:v<.66?HVO:MOH,null);
+        if(v>.9)R(c,p[0]-1,p[1]-1,1,1,TRA);
+      }
+      var p=iso(4,4);
+      // шатёр-штаб есть всегда
+      hip(c,p[0]-18,p[1]-8,34,13,SOLOM,DERT); R(c,p[0]-21,p[1]-12,6,5,MRAK);
+      if(level===0){
+        // пустое место под кухню: мерцающий контур
+        var q=iso(5.6,3.4);
+        for(var i=0;i<16;i+=1){var hw=(i<8)?(i+1)*2:(16-i)*2;
+          R(c,q[0]-hw,q[1]-8+i,1,1,LAT); R(c,q[0]+hw-1,q[1]-8+i,1,1,LAT);}
+        R(c,q[0]-1,q[1]-6,2,6,LAT); R(c,q[0]-4,q[1]-4,8,2,LAT);
+      } else {
+        var q=iso(5.6,3.4);
+        plate(c,q[0],q[1],24,UGOL,MRAK);
+        R(c,q[0]-7,q[1]-12,1,12,DERT); R(c,q[0]+6,q[1]-12,1,12,DERT); R(c,q[0]-7,q[1]-12,14,1,DERT);
+        R(c,q[0]-4,q[1]-9,8,6,METT); R(c,q[0]-5,q[1]-10,10,1,MET);
+        R(c,q[0]-5,q[1]-3,10,2,PLAM); R(c,q[0]-4,q[1]-5,8,2,LAT); R(c,q[0]-3,q[1]-7,6,1,SVET);
+      }
+    };
+  }
+
+  function meters(m){
+    var s='<div class="hud">';
+    s+='<div class="meter'+(m.flash==="prov"?" flash":"")+'"><em>Провиант</em><div class="bar"><i style="width:'+m.prov+'%"></i></div><b>'+m.provT+'</b></div>';
+    if(m.pack!=null) s+='<div class="meter"><em>Рюкзак</em><div class="bar pack"><i style="width:'+m.pack+'%"></i></div><b>'+m.packT+'</b></div>';
+    if(m.risk!=null) s+='<div class="meter'+(m.flash==="risk"?" flash":"")+'"><em>Под угрозой</em><div class="bar risk"><i style="width:'+m.risk+'%"></i></div><b>'+m.riskT+'</b></div>';
+    return s+'</div>';
+  }
+  function foot(m){
+    // одна рана = гаснет одна полоска, не две
+    return '<div class="foot"><div><div class="pips"><s></s><s></s><s'+(m.hurt?' class="off"':'')+
+      '></s></div><div class="depth">'+(m.depth||'')+'</div></div>'+
+      (m.cta?'<a class="cta danger">'+m.cta+'</a>':'')+'</div>';
+  }
+
+  var BEATS=[
+    {t:"0:00",tag:"кадр 1",title:"Игра начинается в вылазке",
+     scene:raid({hero:[4,5],tap:[6,4],r0:44,r1:96}),
+     m:{prov:96,provT:"96/100"},
+     hint:'Коснитесь земли, чтобы <s>идти</s>',
+     does:"Открывает приложение и видит героя в локации. Одна подсвеченная точка на полу.",
+     teach:"Управление: тап по земле. Больше в игре жестов нет.",
+     hide:"Логин, имя героя, выбор сложности, главное меню, логотип. Ничего из этого в первой сессии не показывается вообще."},
+
+    {t:"0:20",tag:"кадр 2",title:"Первый противник, бой сам собой",
+     scene:raid({hero:[5,4],foe:[7,4],r0:48,r1:100}),
+     m:{prov:88,provT:"88/100"},
+     hint:'Подойдите ближе',
+     does:"Идёт к падальщику. Герой атакует автоматически, враг гибнет за три удара.",
+     teach:"Бой не требует ввода. Игрок выбирает, ввязываться ли, а не когда бить.",
+     hide:"Характеристики, урон в числах, полоска здоровья врага. Достаточно того, что он падает."},
+
+    {t:"0:40",tag:"кадр 3",title:"Скриптовая рана",
+     scene:raid({hero:[5,4],foe:[6.2,4],r0:48,r1:100}),
+     m:{prov:84,provT:"84/100"},hurt:true,
+     hint:'',
+     does:"Второй падальщик успевает ударить. Одна из трёх полосок ран гаснет, экран коротко дёргается.",
+     teach:"Раны конечны и считаются штуками. Урон показан до того, как стал опасным.",
+     hide:"Лечение и Лазарет. Про них игрок узнает только когда вернётся раненым."},
+
+    {t:"1:00",tag:"кадр 4",title:"Первая добыча",
+     scene:raid({hero:[6,3.4],chest:[6.6,3],chestOpen:true,r0:50,r1:104}),
+     m:{prov:72,provT:"72/100",pack:33,packT:"4/12"},hurt:true,
+     hint:'',
+     does:"Вскрывает сундук. Появляется вторая полоса — рюкзак — и сразу заполняется на треть.",
+     teach:"Добыча занимает место. Полоса рюкзака вводится в момент, когда ей есть что показать.",
+     hide:"Типы ресурсов и их назначение. Пока это просто «добыча»."},
+
+    {t:"1:15",tag:"кадр 5",title:"Появляется выход и цена возврата",
+     scene:raid({hero:[6,3.4],exit:[3,6],r0:50,r1:104}),
+     m:{prov:58,provT:"58/100",pack:33,packT:"4/12",flash:"prov"},hurt:true,
+     depth:'Ярус 0 · путь назад <u>18</u>',
+     hint:'',
+     does:"Точка эвакуации подсвечивается вдалеке, внизу загорается «путь назад 18».",
+     teach:"У возврата есть цена в провианте, и она растёт с расстоянием. Это главное число игры.",
+     hide:"Ставка. Строка «под угрозой» ещё не существует — иначе игрок испугается раньше, чем поймёт."},
+
+    {t:"1:30",tag:"кадр 6",title:"Приманка: жадность без наказания",
+     scene:raid({hero:[6,3.4],chest:[8.4,2],exit:[3,6],r0:50,r1:104}),
+     m:{prov:52,provT:"52/100",pack:33,packT:"4/12",risk:0,riskT:"0/4"},hurt:true,
+     depth:'Ярус 0 · путь назад <u>18</u>',
+     hint:'Дальше — ещё один сундук',
+     does:"Видит второй сундук в стороне от выхода. Идёт за ним, тратит провиант, забирает добычу.",
+     teach:"Ставка вводится нулём: «под угрозой 0 из 4». Риск существует, но пока ничего не стоит.",
+     hide:"Ничего. Это единственный кадр, где игроку показывают всё — чтобы он рискнул осознанно."},
+
+    {t:"1:50",tag:"кадр 7",title:"Эвакуация",
+     scene:raid({hero:[3.6,5.6],exit:[3,6],r0:54,r1:110}),
+     m:{prov:31,provT:"31/100",pack:66,packT:"8/12",risk:0,riskT:"0/4"},hurt:true,
+     depth:'Ярус 0 · путь назад <u>2</u>',cta:"Эвакуация",
+     does:"Доходит до выхода. Красная кнопка — единственное яркое пятно на экране.",
+     teach:"Выход всегда доступен одним касанием, а не через меню паузы.",
+     hide:"Подтверждение «вы уверены?». Оно бы научило колебаться, а нам нужно обратное."},
+
+    {t:"2:05",tag:"кадр 8",title:"Возвращение: добыча превращается в прогресс",
+     custom:'<div class="sb"><span>9:41</span><span>82%</span></div>'+
+       '<div style="padding:20px 18px 8px;text-align:center">'+
+       '<div style="font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;color:var(--g-moss)">ВЫЛАЗКА ЗАВЕРШЕНА</div>'+
+       '<div style="font-family:var(--ff-display);font-size:26px;margin-top:5px">Соляные подступы</div>'+
+       '<div style="font-size:12px;color:var(--g-dim);font-family:var(--ff-mono);margin-top:3px">ярус 0 · 1 мин 50 с</div></div>'+
+       '<div style="flex:1;padding:10px 18px"><div class="loot">'+
+       '<div><em>Дерево</em><b>+18</b></div><div><em>Соль</em><b>+9</b></div></div>'+
+       '<div style="height:1px;background:var(--g-line);margin:16px 0"></div>'+
+       '<div style="font-size:12px;color:var(--g-dim);display:flex;justify-content:space-between">'+
+       '<span>Лагерь открыт</span><b style="font-family:var(--ff-mono);color:var(--g-text)">Кухня доступна</b></div>'+
+       '<div class="bar2"><i style="width:100%;background:var(--g-moss)"></i></div></div>'+
+       '<div class="nav"><a class="cta">В лагерь</a></div>',
+     does:"Смотрит, как числа набегают, а полоса заполняется до конца. Внизу — «Лагерь открыт».",
+     teach:"Добыча существует ради чего-то. Мета-слой представлен как награда, а не как стартовое меню.",
+     hide:"Кнопка «Ещё вылазка». В первый раз выбора нет — путь ведёт в лагерь, иначе игрок его не увидит."},
+
+    {t:"2:30",tag:"кадр 9",title:"Лагерь: пустое место просит здание",
+     custom:null,scene:camp(0),
+     res:['<div>18</div>','<div>9</div>'],
+     hint:'Поставьте <s>Кухню</s>',
+     cta2:"Построить · бесплатно",
+     does:"Видит поляну с шатром и одно подсвеченное пустое место. Тапает — здание строится мгновенно.",
+     teach:"Здания ставятся на сетку и растут визуально. Первое — без ожидания и без цены.",
+     hide:"Все остальные постройки и вкладки. На экране ровно одно возможное действие."},
+
+    {t:"2:50",tag:"кадр 10",title:"Кухня выросла — и подняла ставку",
+     custom:null,scene:camp(1),
+     res:['<div>0</div>','<div class="new">Провиант 100 → 120</div>'],
+     cta2:"В вылазку · ярус 1",
+     card:{t:"Соляные копи",i:"ярус 1",p:"При провале теряется 30% добычи"},
+     does:"Видит горящий очаг на месте пустоты и новую цифру провианта. Кнопка ведёт на ярус 1.",
+     teach:"Улучшение читается силуэтом и меняет вылазку. Впервые показана ненулевая ставка — 30%.",
+     hide:"Мировая карта, герои, вторая постройка с таймером. Они появятся после этой вылазки."}
+  ];
+
+  var rail=document.getElementById("rail");
+  BEATS.forEach(function(b){
+    var row=document.createElement("div"); row.className="beat";
+
+    var cl=document.createElement("div"); cl.className="clock";
+    cl.innerHTML=b.t+"<small>"+b.tag.toUpperCase()+"</small>";
+    row.appendChild(cl);
+
+    var mini=document.createElement("div"); mini.className="mini";
+    var ph=document.createElement("div"); ph.className="phone";
+    mini.appendChild(ph); row.appendChild(mini);
+
+    if(b.custom){ ph.innerHTML=b.custom; }
+    else if(b.res){
+      ph.innerHTML='<div class="sb"><span>9:44</span><span>82%</span></div>'+
+        '<div class="res">'+b.res.join("")+'</div>';
+      var st=document.createElement("div"); st.className="stage"; ph.appendChild(st);
+      var cv=document.createElement("canvas"); cv.width=160; cv.height=380; st.appendChild(cv);
+      b.scene(cv.getContext("2d"),160,380);
+      if(b.card) st.insertAdjacentHTML("beforeend",
+        '<div class="card" style="bottom:12px"><div class="t"><b>'+b.card.t+'</b><i>'+b.card.i+
+        '</i></div><p>'+b.card.p+'</p></div>');
+      if(b.hint) st.insertAdjacentHTML("beforeend",'<div class="hint">'+b.hint+'</div>');
+      ph.insertAdjacentHTML("beforeend",'<div class="nav"><a class="cta">'+b.cta2+'</a></div>');
+    } else {
+      var st=document.createElement("div"); st.className="stage"; st.style.flex="1"; ph.appendChild(st);
+      var cv=document.createElement("canvas"); cv.width=160; cv.height=336; st.appendChild(cv);
+      b.scene(cv.getContext("2d"),160,336);
+      var m=b.m||{}; m.hurt=b.hurt; m.depth=b.depth; m.cta=b.cta;
+      st.insertAdjacentHTML("beforeend",meters(m)+foot(m));
+      if(b.hint) st.insertAdjacentHTML("beforeend",'<div class="hint">'+b.hint+'</div>');
+    }
+
+    var txt=document.createElement("div"); txt.className="txt";
+    txt.innerHTML='<h3>'+b.title+'</h3>'+
+      '<div class="row does"><b>Игрок</b><span>'+b.does+'</span></div>'+
+      '<div class="row teach"><b>Учит</b><span>'+b.teach+'</span></div>'+
+      '<div class="row hide"><b>Скрыто</b><span>'+b.hide+'</span></div>';
+    row.appendChild(txt);
+    rail.appendChild(row);
+  });
+})();
+</script>

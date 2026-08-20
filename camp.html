@@ -1,0 +1,463 @@
+<title>Живой лагерь</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+  input[type=range]{accent-color:var(--brass);width:180px;}
+  label{display:flex;align-items:center;gap:9px;font-size:13.5px;}
+
+  .lab{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:26px;align-items:start;}
+  @media(max-width:860px){.lab{grid-template-columns:1fr;}}
+  .screen{background:#11100c;border:1px solid var(--line);padding:12px;display:flex;justify-content:center;}
+  .screen canvas{width:100%;max-width:680px;height:auto;}
+  .panel{background:var(--surface);border:1px solid var(--line);padding:17px;display:flex;
+    flex-direction:column;gap:14px;}
+  .rows{display:flex;flex-direction:column;gap:5px;font-family:var(--ff-mono);font-size:11.5px;
+    font-variant-numeric:tabular-nums;color:var(--dim);}
+  .rows div{display:flex;justify-content:space-between;gap:10px;}
+  .rows b{color:var(--text);}
+  .chk{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.05em;padding:4px 9px;border-radius:3px;
+    border:1px solid;display:inline-block;}
+  .chk.ok{color:var(--moss);border-color:var(--moss);}
+  .chk.no{color:var(--blood);border-color:var(--blood);background:rgba(142,56,56,.09);}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard div.warn{border-left-color:var(--blood);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard div.warn h3{color:var(--blood);}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  .scroll{overflow-x:auto;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Лагерь · Соляной Тракт</div>
+    <h1>Живой <em>лагерь</em></h1>
+    <p class="lede">Лагерь Age of Empires ощущается живым не из-за детализации, а из-за движения:
+      жители ходят, работают, дым идёт. Наш лагерь до сих пор статичен — а он и есть
+      тот слой, ради которого игрок возвращается. Сцена ниже считается на месте
+      той же ортокамерой и тем же плоским затенением, что в игре.</p>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Сцена</h2></div>
+    <div class="lab">
+      <div class="screen"><canvas id="camp" width="680" height="400"></canvas></div>
+      <div class="panel">
+        <div class="bar">
+          <button id="play" type="button" aria-pressed="true">Пауза</button>
+          <button id="build" type="button" aria-pressed="true">Стройка идёт</button>
+        </div>
+        <label>Сумма уровней зданий <input type="range" id="lvsum" min="6" max="30" value="14"></label>
+        <div class="rows" id="rows"></div>
+        <div id="verdict"></div>
+        <div class="note">Жителей не назначают вручную: их число выводится из развития лагеря.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Правила</h2></div>
+    <div class="guard">
+      <div class="key">
+        <h3>Жители — не юниты</h3>
+        <p>Их нельзя выбрать, им нельзя приказать, они не собирают ресурсы.
+          <b>Это принципиально:</b> вид Age of Empires сам по себе обещает управление,
+          которого у нас нет. Если житель откликается на тап, игрок ждёт стратегию
+          и разочаровывается в первую же минуту. Тап по жителю не делает ничего —
+          это решение, а не недоделка.</p>
+      </div>
+      <div>
+        <h3>Их количество — показатель роста</h3>
+        <p>Жителей столько, сколько заслужил лагерь: два плюс по одному на каждые
+          четыре уровня зданий, потолок десять. Развитие читается без единой цифры,
+          ровно как силуэты построек.</p>
+      </div>
+      <div>
+        <h3>Работа привязана к зданию</h3>
+        <p>У Кузницы стучат, у Кухни мешают котёл, на Плацу тренируются.
+          Житель идёт к зданию, работает 2–5 секунд, уходит к следующему.</p>
+      </div>
+      <div class="key">
+        <h3>Стройка видна по маршрутам</h3>
+        <p>Пока идёт стройка, треть маршрутов ведёт на площадку, и жители несут туда
+          материалы. <b>Игрок видит, что стройка идёт, не читая таймер</b> —
+          и замечает её окончание боковым зрением.</p>
+      </div>
+      <div>
+        <h3>Скорость та же, что в вылазке</h3>
+        <p>1,67 тайла в секунду. Единый темп связывает две сцены; разная скорость
+          читается как ошибка, даже когда игрок не может объяснить, что не так.</p>
+      </div>
+      <div>
+        <h3>Герой стоит там, где ему место</h3>
+        <p>Здоровый — у Штаба, раненый — у Лазарета. Состояние отряда читается
+          из мира, а не из вкладки «Герои».</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Конфликт с экономией батареи</h2></div>
+    <p>В техническом разделе записано: <b>рендер в лагере по требованию</b>, сцена статична,
+      пока не идёт анимация таймера. Живой лагерь это правило ломает — ходящие жители
+      требуют непрерывного цикла, и лагерь начинает жечь батарею наравне с вылазкой.</p>
+    <div class="guard">
+      <div class="warn">
+        <h3>Почему нельзя просто оставить как есть</h3>
+        <p>Лагерь — это место, где игрок стоит и думает, иногда минутами.
+          Непрерывный цикл на 60 кадрах ради пяти бродящих человечков —
+          худшая сделка по расходу батареи во всей игре.</p>
+      </div>
+      <div class="key">
+        <h3>Решение: 30 кадров и заморозка по бездействию</h3>
+        <p>Лагерь идёт на <b>30 кадрах в секунду</b> — при скорости 1,67 тайла в секунду
+          этого хватает с запасом — и <b>замирает через 20 секунд без касаний</b>,
+          оживая от любого ввода. Визит в лагерь длится от 30 секунд до двух минут,
+          так что заморозка почти никогда не наступает во время осмысленного действия.</p>
+      </div>
+      <div>
+        <h3>Что остаётся анимированным всегда</h3>
+        <p>Полоса таймера стройки и зарево горна — они рисуются шейдером по времени
+          и не требуют пересчёта сцены. Замирают только жители.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Бюджет отрисовки</h2></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Что</th><th>Вызовов</th><th>Почему столько</th></tr>
+        <tr><td><b>Земля</b></td><td class="num">1</td><td>Один <code>InstancedMesh</code> на все тайлы.</td></tr>
+        <tr><td><b>Здания</b></td><td class="num">6–8</td><td>По одному на тип. Стадии роста — замена меша, не новый вызов.</td></tr>
+        <tr><td><b>Реквизит</b></td><td class="num">2</td><td>Бочки, ящики, ограда — инстансами по типу.</td></tr>
+        <tr><td><b>Жители и герой</b></td><td class="num">3–11</td><td><b>Скиннованные меши не инстансятся</b> — каждый отдельный вызов. Это и есть главный расход лагеря.</td></tr>
+        <tr><td><b>Тени</b></td><td class="num">×2</td><td>Один теневой источник — второй проход по видимой геометрии.</td></tr>
+      </table>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Предел — 12 скиннованных мешей</h3>
+        <p>Отсюда потолок в десять жителей плюс герой. Он взят не с потолка:
+          в вылазке тот же лимит расходуется на героя и противников,
+          и <b>обе сцены должны укладываться в один бюджет</b>, чтобы переход
+          между ними не проваливал кадр.</p>
+      </div>
+      <div>
+        <h3>Как проверять</h3>
+        <p>Прототип показывает 11–17 вызовов на сетке 44×44 в вылазке.
+          Лагерь при десяти жителях даёт примерно столько же. Если счётчик
+          уходит за 40, причина почти всегда одна: у здания появился
+          собственный материал вместо общего.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Чего в лагере нет</h2></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Не делаем</th><th>Почему</th></tr>
+        <tr><td><b>Сбор ресурсов жителями</b></td>
+            <td>Ресурсы добываются только в вылазке. Пассивная добыча в лагере обесценивает единственное решение игры — идти глубже или уходить.</td></tr>
+        <tr><td><b>Приказы и выделение</b></td>
+            <td>См. правило «жители не юниты». Любой отклик на тап обещает стратегию.</td></tr>
+        <tr><td><b>Реплики и облачка над головой</b></td>
+            <td>Читаются как задания. У нас задания живут на экране возврата и на карте.</td></tr>
+        <tr><td><b>Нападения на лагерь</b></td>
+            <td>Потеря базы противоречит правилу «провал стоит одной вылазки, а не прогресса».</td></tr>
+        <tr><td><b>Имена и характеристики жителей</b></td>
+            <td>Привязанность к безымянному населению — чужая механика. Привязанность у нас к героям.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">06</div><h2>Звук</h2></div>
+    <p>Приглушённый труд, позиционный и привязанный к зданиям: ближе к Кузнице слышен
+      стук, ближе к Кухне — котёл. Это <b>единственное место в игре, где звук работает
+      на атмосферу, а не на информацию</b>, — и потому он тише всего остального
+      и выключается целиком вместе с шиной амбиента. Шаги жителей не звучат:
+      пять источников шагов в маленькой сцене превращаются в топот.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  var C={mrak:"#0e0d0a",kamT:"#2b2a24",kam:"#3f3d34",kamS:"#57544a",skol:"#6f6c60",
+    zemT:"#2a1d14",zem:"#3f2c1d",derT:"#543922",der:"#6f4d2c",derS:"#8f6a3f",solom:"#b08f56",
+    hvoT:"#1f2b1a",hvo:"#31432a",moh:"#465c39",trav:"#5d7a49",travS:"#7fa361",
+    metT:"#2b3138",met:"#474f58",stal:"#7d8892",ugol:"#4d2a10",plam:"#c9722a",lat:"#dfa53c",
+    cloth:"#3f5560",cloth2:"#5d6a4a",skin:"#b08f56"};
+
+  var AZ=45*Math.PI/180, EL=30*Math.PI/180;
+  var LIGHT=(function(){var v=[-0.55,0.78,-0.31],l=Math.hypot(v[0],v[1],v[2]);
+    return [v[0]/l,v[1]/l,v[2]/l];})();
+  function shade(hex,k){
+    var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    return "rgb("+Math.round(Math.min(255,r*k))+","+Math.round(Math.min(255,g*k))+","+
+      Math.round(Math.min(255,b*k))+")";
+  }
+  function view(p){
+    var ca=Math.cos(AZ),sa=Math.sin(AZ);
+    var x=p[0]*ca-p[2]*sa, z=p[0]*sa+p[2]*ca, y=p[1];
+    var ce=Math.cos(EL),se=Math.sin(EL);
+    return [x, y*ce-z*se, y*se+z*ce];
+  }
+  function nrm(a,b,c){
+    var u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    var n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    var l=Math.hypot(n[0],n[1],n[2])||1;return [n[0]/l,n[1]/l,n[2]/l];
+  }
+  function box(cx,cy,cz,w,h,d,col){
+    var x=w/2,z=d/2;
+    return {v:[[cx-x,cy,cz-z],[cx+x,cy,cz-z],[cx+x,cy,cz+z],[cx-x,cy,cz+z],
+               [cx-x,cy+h,cz-z],[cx+x,cy+h,cz-z],[cx+x,cy+h,cz+z],[cx-x,cy+h,cz+z]],
+            f:[[4,5,6,7],[0,3,2,1],[3,7,6,2],[0,1,5,4],[1,2,6,5],[0,4,7,3]],c:col};
+  }
+  function wedge(cx,cy,cz,w,h,d,col){
+    var x=w/2,z=d/2;
+    return {v:[[cx-x,cy,cz-z],[cx+x,cy,cz-z],[cx+x,cy,cz+z],[cx-x,cy,cz+z],
+               [cx-x,cy+h,cz],[cx+x,cy+h,cz]],
+            f:[[0,3,2,1],[3,4,5,2],[0,1,5,4],[0,4,3],[1,2,5]],c:col};
+  }
+  function cone(cx,cy,cz,r,h,n,col){
+    var v=[],f=[],i;
+    for(i=0;i<n;i++){var a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy,cz+Math.sin(a)*r]);}
+    v.push([cx,cy+h,cz]);
+    for(i=0;i<n;i++)f.push([i,(i+1)%n,n]);
+    return {v:v,f:f,c:col};
+  }
+  function quad(x,z,s,col){
+    // обход как у верхней грани короба, иначе нормаль смотрит вниз и грань отсекается
+    return {v:[[x,0,z],[x+s,0,z],[x+s,0,z+s],[x,0,z+s]],f:[[0,1,2,3]],c:col};
+  }
+
+  var cv=document.getElementById("camp"),ctx=cv.getContext("2d"),W=680,H=400;
+  var SCALE=34, CX=W/2, CY=H*0.74;
+  function draw(meshes){
+    ctx.fillStyle="#11100c";ctx.fillRect(0,0,W,H);
+    var faces=[];
+    meshes.forEach(function(m){
+      m.f.forEach(function(face){
+        var a=m.v[face[0]],b=m.v[face[1]],c2=m.v[face[2]];
+        var n=nrm(a,b,c2);
+        var pts=face.map(function(i){return view(m.v[i]);});
+        var area=0;
+        for(var i=0;i<pts.length;i++){var p1=pts[i],p2=pts[(i+1)%pts.length];
+          area+=(p1[0]*(-p2[1])-p2[0]*(-p1[1]));}
+        if(area<=0)return;
+        var d=pts.reduce(function(s,p){return s+p[2];},0)/pts.length;
+        var lam=Math.max(0,n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2]);
+        faces.push({pts:pts,d:d,k:0.38+0.16*Math.max(0,n[1])+lam*0.74,c:m.c,e:m.e});
+      });
+    });
+    faces.sort(function(a,b){return a.d-b.d;});
+    faces.forEach(function(f){
+      ctx.beginPath();
+      f.pts.forEach(function(p,i){var sx=CX+p[0]*SCALE,sy=CY-p[1]*SCALE;
+        if(i)ctx.lineTo(sx,sy);else ctx.moveTo(sx,sy);});
+      ctx.closePath();
+      ctx.fillStyle=f.e?f.c:shade(f.c,f.k);
+      ctx.fill();ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=0.5;ctx.stroke();
+    });
+  }
+
+  // ——— лагерь ———
+  var N=9, HALF=N/2;
+  var BLD=[
+    {n:"Штаб",   x:-2.4,z:-2.2,work:null,
+     mk:function(o){return [box(o.x,0,o.z,2.1,1.1,1.8,C.kam),
+       wedge(o.x,1.1,o.z,2.4,0.8,2.1,C.derT),
+       box(o.x,0,o.z+0.92,0.6,0.85,0.05,C.mrak)];}},
+    {n:"Кухня",  x:1.9,z:-2.6,work:"pot",
+     mk:function(o){return [box(o.x,0,o.z,1.7,0.9,1.5,C.der),
+       wedge(o.x,0.9,o.z,2,0.65,1.8,C.solom),
+       box(o.x+1.15,0,o.z+0.5,0.5,0.12,0.5,C.ugol),
+       box(o.x+1.15,0.12,o.z+0.5,0.34,0.3,0.34,C.metT)];}},
+    {n:"Склад",  x:-2.6,z:1.9,work:null,
+     mk:function(o){return [box(o.x,0,o.z,1.9,0.95,1.6,C.derS),
+       wedge(o.x,0.95,o.z,2.2,0.6,1.9,C.derT),
+       box(o.x+1.3,0,o.z-0.4,0.45,0.5,0.45,C.der),
+       box(o.x+1.3,0,o.z+0.35,0.4,0.45,0.4,C.der)];}},
+    {n:"Кузница",x:2.2,z:1.6,work:"forge",
+     mk:function(o){return [box(o.x,0,o.z,1.7,1,1.5,C.kamS),
+       wedge(o.x,1,o.z,2,0.55,1.8,C.metT),
+       box(o.x+0.75,0,o.z-0.6,0.42,2.2,0.42,C.kamT)];}},
+    {n:"Плац",   x:0.2,z:3.1,work:"train",
+     mk:function(o){return [box(o.x-0.6,0,o.z,0.12,0.9,0.12,C.derT),
+       box(o.x-0.6,0.55,o.z,0.5,0.28,0.2,C.solom),
+       box(o.x+0.7,0,o.z+0.3,0.12,0.9,0.12,C.derT),
+       box(o.x+0.7,0.55,o.z+0.3,0.5,0.28,0.2,C.solom)];}}
+  ];
+  var SITE={x:2.6,z:-0.6};
+
+  function villager(a){
+    var m=[],y=0;
+    var sw=Math.sin(a.ph)*0.16, bob=a.state==="walk"?Math.abs(Math.sin(a.ph*2))*0.03:0;
+    var wob=a.state==="work"?Math.sin(a.ph*3)*0.06:0;
+    m.push(box(a.x-0.07,y,a.z,0.1,0.28+sw*0.3,0.1,C.metT));
+    m.push(box(a.x+0.07,y,a.z,0.1,0.28-sw*0.3,0.1,C.metT));
+    m.push(box(a.x,0.28+bob,a.z,0.3,0.34,0.22,a.col));
+    m.push(box(a.x,0.62+bob,a.z,0.19,0.17,0.18,C.skin));
+    m.push(box(a.x,0.76+bob,a.z,0.25,0.05,0.24,C.derT));
+    // руки: при работе качаются, при переноске держат груз
+    m.push(box(a.x-0.19,0.36+bob+wob,a.z,0.08,0.26,0.08,a.col));
+    m.push(box(a.x+0.19,0.36+bob-wob,a.z,0.08,0.26,0.08,a.col));
+    if(a.carry)m.push(box(a.x,0.42+bob,a.z+0.22,0.26,0.22,0.16,C.derS));
+    return m;
+  }
+  function hero(x,z){
+    return [box(x,0,z,0.34,0.42,0.24,C.cloth),
+            box(x,0.42,z,0.22,0.2,0.2,C.skin),
+            box(x,0.6,z,0.3,0.07,0.28,C.cloth),
+            box(x+0.24,0,z,0.05,0.9,0.05,C.derT)];
+  }
+
+  var agents=[],T=0,buildOn=true,lvsum=14,playing=true;
+  function popOf(sum){return Math.max(2,Math.min(10,2+Math.floor(sum/4)));}
+  function spawn(n){
+    while(agents.length<n){
+      var b=BLD[agents.length%BLD.length];
+      agents.push({x:b.x,z:b.z,tx:b.x,tz:b.z,state:"work",timer:1000+Math.random()*2500,
+        ph:Math.random()*6,carry:false,col:agents.length%2?C.cloth2:C.cloth});
+    }
+    while(agents.length>n)agents.pop();
+  }
+  spawn(popOf(lvsum));
+
+  function step(dt){
+    T+=dt;
+    agents.forEach(function(a){
+      if(a.state==="work"){
+        a.ph+=dt/220;
+        a.timer-=dt;
+        if(a.timer<=0){
+          var toSite=buildOn&&Math.random()<0.34;
+          var b=BLD[Math.floor(Math.random()*BLD.length)];
+          a.tx=toSite?SITE.x:b.x; a.tz=toSite?SITE.z:b.z;
+          a.carry=toSite; a.state="walk";
+        }
+      } else {
+        var dx=a.tx-a.x,dz=a.tz-a.z,d=Math.hypot(dx,dz);
+        var sp=1.67*dt/1000;
+        if(d<=sp){a.x=a.tx;a.z=a.tz;a.state="work";a.timer=2000+Math.random()*3000;a.carry=false;}
+        else{a.x+=dx/d*sp;a.z+=dz/d*sp;a.ph+=dt/95;}
+      }
+    });
+  }
+  function scene(){
+    var m=[];
+    for(var i=0;i<N;i++)for(var j=0;j<N;j++){
+      var h=((i*7+j*13)%5);
+      m.push(quad(i-HALF,j-HALF,1, h<2?C.moh: h<4?C.trav:C.travS));
+    }
+    if(buildOn){
+      m.push(box(SITE.x,0,SITE.z,1.5,0.06,1.4,C.zem));
+      m.push(box(SITE.x-0.6,0,SITE.z-0.55,0.1,0.9,0.1,C.derS));
+      m.push(box(SITE.x+0.6,0,SITE.z-0.55,0.1,0.9,0.1,C.derS));
+      m.push(box(SITE.x,0.85,SITE.z-0.55,1.3,0.1,0.1,C.derS));
+      m.push(box(SITE.x-0.35,0,SITE.z+0.4,0.36,0.3,0.3,C.der));
+    }
+    BLD.forEach(function(b){
+      b.mk(b).forEach(function(x){m.push(x);});
+      if(b.work==="forge"){
+        var f=0.55+0.45*(Math.sin(T/210)+1)/2;
+        m.push({v:box(b.x,0.55,b.z+0.78,0.5,0.22,0.04,C.plam).v,
+                f:box(b.x,0.55,b.z+0.78,0.5,0.22,0.04,C.plam).f,
+                c:"rgba("+Math.round(201*f+40)+","+Math.round(114*f+30)+",42,1)",e:1});
+      }
+      if(b.work==="pot"){
+        var s=(T/900)%1;
+        m.push(cone(b.x+1.15,0.5+s*0.9,b.z+0.5,0.1*(1-s*0.5),0.16,5,C.skol));
+      }
+    });
+    m.push.apply(m,hero(BLD[0].x+1.15,BLD[0].z+1.1));
+    agents.forEach(function(a){m.push.apply(m,villager(a));});
+    return m;
+  }
+
+  function panel(){
+    var pop=agents.length, skinned=pop+1;
+    var calls=1+BLD.length+2+skinned;
+    var ok=skinned<=12;
+    document.getElementById("rows").innerHTML=
+      '<div><span>жителей</span><b>'+pop+'</b></div>'+
+      '<div><span>скиннованных мешей</span><b>'+skinned+' / 12</b></div>'+
+      '<div><span>вызовов отрисовки</span><b>≈'+calls+'</b></div>'+
+      '<div><span>с тенями</span><b>≈'+calls*2+'</b></div>'+
+      '<div><span>кадров в секунду</span><b>30</b></div>';
+    document.getElementById("verdict").innerHTML='<span class="chk '+(ok?"ok":"no")+'">'+
+      (ok?"укладывается в бюджет":"превышает 12 скиннованных")+'</span>';
+  }
+
+  var last=0, acc=0, STEP=1000/30;   // лагерь идёт на 30 кадрах
+  function loop(ts){
+    var dt=last?Math.min(80,ts-last):16; last=ts;
+    if(playing){acc+=dt;
+      if(acc>=STEP){step(acc);draw(scene());acc=0;}}
+    requestAnimationFrame(loop);
+  }
+  draw(scene()); panel();
+  requestAnimationFrame(loop);
+
+  var pb=document.getElementById("play");
+  pb.addEventListener("click",function(){playing=!playing;
+    pb.textContent=playing?"Пауза":"Играть";pb.setAttribute("aria-pressed",playing?"true":"false");});
+  var bb=document.getElementById("build");
+  bb.addEventListener("click",function(){buildOn=!buildOn;
+    bb.textContent=buildOn?"Стройка идёт":"Стройки нет";
+    bb.setAttribute("aria-pressed",buildOn?"true":"false");draw(scene());});
+  document.getElementById("lvsum").addEventListener("input",function(e){
+    lvsum=+e.target.value;spawn(popOf(lvsum));panel();draw(scene());});
+  if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+    playing=false;pb.textContent="Играть";pb.setAttribute("aria-pressed","false");
+  }
+})();
+</script>

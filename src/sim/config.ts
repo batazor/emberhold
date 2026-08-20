@@ -1,0 +1,55 @@
+/**
+ * Числа из DESIGN §11. Всё, что там не зафиксировано, помечено как placeholder —
+ * такие значения настраиваются телеметрией, а не спором.
+ */
+import type { Tier } from './types';
+
+/** §11.1 — размер локации по ярусам, в тайлах. Одна локация = один ярус. */
+export const TIER_SIZE: Record<Tier, number> = { 0: 8, 1: 12, 2: 16, 3: 20 };
+
+/**
+ * §12.1 и §12.3 — ценность находки растёт с глубиной комнаты.
+ * Множитель — во сколько раз содержимое у дна ценнее, чем у входа.
+ * Плоское распределение обесценивает глубину: риск растёт, награда нет,
+ * и решение «идти дальше» перестаёт существовать.
+ */
+export const TIER_DEPTH_VALUE: Record<Tier, number> = { 0: 1.4, 1: 1.8, 2: 2.6, 3: 3.5 };
+
+/** Величина находки у самого входа, до умножения на глубину. */
+export const TIER_CONTAINER_BASE: Record<Tier, number> = { 0: 2, 1: 2, 2: 3, 3: 3 };
+
+/** §11.2 — доля рюкзака под угрозой при провале. */
+export const TIER_RISK: Record<Tier, number> = { 0: 0, 1: 0.3, 2: 0.6, 3: 1 };
+
+export const TIER_NAME: Record<Tier, string> = {
+  0: 'Подступы',
+  1: 'Ярус 1',
+  2: 'Ярус 2',
+  3: 'Дно',
+};
+
+/** §11.1 — расход провианта. */
+export const FOOD_COST = {
+  step: 1,
+  fight: 3,
+  container: 5,
+} as const;
+
+/** §11.4 — радиус обзора в тайлах. */
+export const visionRadius = (knowledge: number, night: boolean, torch: boolean): number =>
+  3 + Math.floor(knowledge / 5) + (night ? -1 : 0) + (torch ? 2 : 0);
+
+/** §11.3 — здоровье героя это раны, а не полоска. */
+export const HERO_WOUNDS = 3;
+export const HERO_ATTACK_INTERVAL = 1.2;
+export const HERO_REACH = 1.0;
+
+/** §17.4 — закреплённая дизайнерская константа, не следствие анимации. */
+export const HERO_SPEED = 1.67;
+
+/** Вес добычи замедляет героя (§1). Доля скорости, теряемая на полном рюкзаке. */
+export const WEIGHT_SLOWDOWN = 0.35;
+
+/** Знание героя. Героев как сущностей ещё нет (§7 — этап 5), поэтому
+ *  характеристика задана константой и питает формулу обзора из §11.4. */
+export const HERO_KNOWLEDGE = 5;

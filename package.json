@@ -1,0 +1,22 @@
+{
+  "name": "new-world",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && tsx scripts/check.ts && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check": "tsx scripts/check.ts"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3"
+  }
+}

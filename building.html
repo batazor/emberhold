@@ -1,0 +1,357 @@
+<title>Стройка в лагере</title>
+<style>
+  :root{
+    --ground:#E3E7E5; --surface:#F3F6F3; --surface-2:#DBE2DD; --line:#C2CCC6;
+    --text:#131C1B; --dim:#54625F; --brass:#8A6A12; --ember:#AC4C1D; --moss:#4B6C3D; --blood:#8E3838;
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+      --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1416; --surface:#162126; --surface-2:#1E2C31; --line:#2B3A40;
+    --text:#E4EAE7; --dim:#92A4A2; --brass:#C9A227; --ember:#D2662F; --moss:#7DA163; --blood:#C36565;
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{image-rendering:pixelated;display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  button{font-family:var(--ff-ui);font-size:14px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .bar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+
+  /* лестница таймеров */
+  .ladder{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);}
+  .rung{background:var(--surface);display:grid;grid-template-columns:70px 88px minmax(0,1fr) 178px;
+    gap:14px;align-items:center;padding:12px 15px;}
+  @media(max-width:720px){.rung{grid-template-columns:58px 78px minmax(0,1fr);}
+    .rung .ret{grid-column:1 / -1;padding-left:0;}}
+  .rung .lv{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);}
+  .rung .tm{font-family:var(--ff-mono);font-size:15px;font-variant-numeric:tabular-nums;color:var(--text);}
+  .rung .track{height:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  .rung .track i{display:block;height:100%;background:var(--brass);}
+  .rung .ret{font-size:13px;color:var(--dim);}
+  .rung .ret b{color:var(--text);font-weight:600;display:block;font-size:12.5px;}
+
+  /* лагерь */
+  .camp{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;align-items:start;}
+  @media(max-width:820px){.camp{grid-template-columns:1fr;}}
+  .plot{background:#0b1113;border:1px solid var(--line);padding:16px;display:flex;justify-content:center;}
+  .legend{display:flex;flex-direction:column;gap:8px;}
+  .legend div{display:flex;align-items:center;gap:9px;font-size:13px;}
+  .legend i{width:13px;height:13px;flex:0 0 auto;}
+  .legend s{text-decoration:none;font-family:var(--ff-mono);font-size:10.5px;color:var(--dim);margin-left:auto;}
+  .stat{display:flex;flex-direction:column;gap:5px;margin-top:6px;padding-top:12px;border-top:1px solid var(--line);
+    font-family:var(--ff-mono);font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--dim);}
+  .stat div{display:flex;justify-content:space-between;gap:10px;}
+  .stat b{color:var(--text);}
+  .chk{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.05em;padding:3px 8px;border-radius:3px;
+    border:1px solid;display:inline-block;margin-top:8px;}
+  .chk.ok{color:var(--moss);border-color:var(--moss);}
+  .chk.no{color:var(--blood);border-color:var(--blood);background:rgba(142,56,56,.09);}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard div.warn{border-left-color:var(--blood);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard div.warn h3{color:var(--blood);}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;}
+  .scroll{overflow-x:auto;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Стройка · Соляной Тракт</div>
+    <h1>Что делает стройку <em>решением</em></h1>
+    <p class="lede">Формулы стоимости у нас были, а всё, что превращает стройку в выбор, —
+      нет. Четыре вопроса: сколько строек одновременно, какие таймеры, сколько места
+      в лагере и можно ли ускорять. Первый же из них конфликтует с уже принятым
+      правилом экрана возврата.</p>
+  </header>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Один слот — и что он ломает</h2></div>
+    <p>Строится одно здание за раз. Это делает вопрос «что дальше» настоящим выбором
+      и даёт ровно тот повод вернуться, ради которого таймеры и существуют.
+      Но в связке с экраном возврата один слот даёт сбой.</p>
+    <div class="guard">
+      <div class="warn">
+        <h3>Конфликт</h3>
+        <p>Экран возврата построен на правиле: <b>после вылазки покупка доступна
+          в 60–80% случаев</b>, и главная кнопка — трата, а не повтор. Но если слот занят,
+          построить нечего, и главная кнопка исчезает ровно в тот момент,
+          на котором держится вся петля удержания.</p>
+      </div>
+      <div class="key">
+        <h3>Решение: второй сток, мгновенный</h3>
+        <p>Постройки идут по таймеру в один слот. Параллельно существует
+          <b>сток без таймера</b>: снаряжение в Кузнице, расходники, тренировка героя
+          на Плацу. Экран возврата всегда имеет что предложить — если стройка занята,
+          он предлагает снаряжение.</p>
+      </div>
+      <div>
+        <h3>Почему не два слота</h3>
+        <p>Два слота снимают выбор «что дальше»: строится всё подряд. А третий слот
+          за деньги — это монетизация, которую мы отложили, и закладывать под неё
+          дизайн сейчас рано.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Лестница таймеров</h2></div>
+    <p>Времена не выводятся формулой, а назначаются вручную: каждая ступень целится
+      в конкретное поведение игрока. Формула дала бы гладкую кривую, которая
+      ни во что не попадает.</p>
+    <div class="ladder" id="ladder"></div>
+    <div class="guard">
+      <div class="key">
+        <h3>Первый уровень мгновенный</h3>
+        <p>Ноль секунд, ноль ресурсов. Здание вырастает на глазах в первые три минуты —
+          это обещание, которое остальная лестница потом отрабатывает.</p>
+      </div>
+      <div>
+        <h3>Разрыв между 45 минутами и 3 часами</h3>
+        <p>Он намеренный. 45 минут — это «вернусь сегодня», 3 часа — «вернусь вечером».
+          Промежуточная ступень попадала бы в «вернусь непонятно когда»
+          и не создавала бы привычки.</p>
+      </div>
+      <div>
+        <h3>Восемь часов — потолок</h3>
+        <p>Ночь. Таймер длиннее суток в игре с двухминутными сессиями
+          превращает лагерь в календарь, а не в место, куда хочется зайти.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Место в лагере: проверка, которая отменила механику</h2></div>
+    <p>Я собирался сделать площадь третьим ограничителем — наравне с ресурсами и временем.
+      Упаковщик ниже настоящий, и он показал, что при шести зданиях такого ограничения
+      не существует: площадь либо не вмещает ничего, либо вмещает всё с запасом.
+      Промежуточного, интересного состояния нет.</p>
+    <div class="bar" id="lvbar"></div>
+    <div class="camp">
+      <div class="plot" id="plot"></div>
+      <div>
+        <div class="legend" id="legend"></div>
+        <div class="stat" id="stat"></div>
+        <div id="verdict"></div>
+      </div>
+    </div>
+    <div class="guard">
+      <div class="warn">
+        <h3>Вывод: планировка выразительная, а не механическая</h3>
+        <p>Игрок расставляет лагерь как хочет, перестановка бесплатна и мгновенна.
+          <b>Площадь ничего не ограничивает и не притворяется, что ограничивает.</b>
+          Ложное ограничение хуже отсутствующего: оно требует внимания и ничего не даёт.</p>
+      </div>
+      <div>
+        <h3>Когда площадь станет ресурсом</h3>
+        <p>Когда зданий станет больше десяти: дом альянса, ресурсные участки, украшения.
+          Рост площади со Штабом закладывается сейчас именно ради этого —
+          менять сетку задним числом дороже, чем заложить её сразу.</p>
+      </div>
+      <div>
+        <h3>Почему без бонусов за соседство</h3>
+        <p>Это был второй способ сделать планировку механикой, и он хуже.
+          Бонусы за соседство порождают одну оптимальную раскладку,
+          которую все списывают из руководства, — выбор исчезает совсем.</p>
+      </div>
+      <div class="key">
+        <h3>Штаб ограничивает уровень, а не место</h3>
+        <p>Настоящий ограничитель остаётся один: никакое здание не может превысить
+          уровень Штаба. Вложение в Штаб всегда осмысленно и никогда
+          не бывает единственным осмысленным.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Ускорение</h2></div>
+    <div class="scroll">
+      <table>
+        <tr><th>Правило</th><th>Значение</th><th>Почему</th></tr>
+        <tr><td><b>Валюта ускорения</b></td><td>соль</td>
+            <td>Единственный ресурс, которого к концу дня в избытке. Ускорение — его главный сток.</td></tr>
+        <tr><td><b>Цена</b></td><td class="num">2 соли за минуту, ×1.5 за каждый час</td>
+            <td>Дешёвое сокращение коротких таймеров и дорогое — длинных. Ускорять ночную стройку невыгодно, и это правильно.</td></tr>
+        <tr><td><b>Последние 5 минут</b></td><td>бесплатно</td>
+            <td>Убирает худшее состояние в жанре: «осталось четыре минуты, зайду позже». Игрок дожимает стройку и остаётся в сессии.</td></tr>
+        <tr><td><b>Ускорение за деньги</b></td><td>не в прототипе</td>
+            <td>Монетизация отложена целиком. Важно лишь, чтобы её появление позже не потребовало переделки: соль и деньги — разные входы в один и тот же расчёт.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Стоимость</h2></div>
+    <p>Абсолютные значения намеренно не назначены. После истории с провиантом,
+      где рассуждение разошлось с замерами вчетверо, стоимость задаётся
+      не числом, а отношением к добыче.</p>
+    <div class="scroll">
+      <table>
+        <tr><th>Уровень</th><th>Стоит</th><th>Следствие</th></tr>
+        <tr><td class="num">1</td><td>бесплатно</td><td>Онбординг</td></tr>
+        <tr><td class="num">2</td><td class="num">~1 успешная вылазка</td><td>Первая покупка — в конце первой же сессии</td></tr>
+        <tr><td class="num">3</td><td class="num">~2 вылазки</td><td>Вторая сессия</td></tr>
+        <tr><td class="num">4</td><td class="num">~3 вылазки</td><td>Второй день</td></tr>
+        <tr><td class="num">5</td><td class="num">~5 вылазок</td><td>Открывает редкие карты сборов</td></tr>
+      </table>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Связующее правило</h3>
+        <p>Средняя добыча одной успешной вылазки текущего яруса ≈ <b>70% стоимости
+          следующего доступного улучшения</b>. Отсюда и берутся 60–80% возвратов,
+          заканчивающихся покупкой, — и отсюда же абсолютные числа,
+          когда генератор даст замеры добычи.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ——— лестница таймеров ———
+  var LADDER=[
+    [1,"мгновенно",0,"Первые три минуты","Здание вырастает на глазах в онбординге"],
+    [2,"3 мин",3,"Та же сессия","Игрок дожидается, не выходя из игры"],
+    [3,"12 мин",12,"Та же сессия, после вылазки","Успевает сходить в вылазку и вернуться"],
+    [4,"45 мин",45,"Вернётся сегодня","Занимается своими делами и заходит снова"],
+    [5,"3 ч",180,"Вернётся вечером","Дневной интервал"],
+    [6,"8 ч",480,"Вернётся завтра","Ночь. Потолок лестницы"]
+  ];
+  var maxT=480, lad=document.getElementById("ladder");
+  LADDER.forEach(function(L){
+    var d=document.createElement("div"); d.className="rung";
+    var w=L[2]?Math.max(2,Math.pow(L[2]/maxT,0.42)*100):0;
+    d.innerHTML='<div class="lv">ур. '+L[0]+'</div><div class="tm">'+L[1]+'</div>'+
+      '<div class="track"><i style="width:'+w+'%"></i></div>'+
+      '<div class="ret"><b>'+L[3]+'</b>'+L[4]+'</div>';
+    lad.appendChild(d);
+  });
+
+  // ——— упаковка лагеря ———
+  var BLD=[
+    {n:"Штаб",   c:"#C9A227"},
+    {n:"Кухня",  c:"#7DA163"},
+    {n:"Склад",  c:"#8FA3A8"},
+    {n:"Кузница",c:"#D2662F"},
+    {n:"Лазарет",c:"#B6C4C0"},
+    {n:"Плац",   c:"#A98A5E"}
+  ];
+  // площадь застройки и след здания зависят от уровня Штаба
+  function areaOf(hq){return 5+hq;}          // ур.1 → 6×6, ур.5 → 10×10
+  function footOf(lv){return lv<=3?2:3;}     // 2×2 до третьего уровня, 3×3 с четвёртого
+  function availOf(hq){return hq>=5?6:hq>=3?5:hq>=2?4:2;} // сколько зданий открыто
+
+  function pack(hq){
+    var N=areaOf(hq), grid=[], i, j;
+    for(i=0;i<N;i++){grid.push(new Array(N).fill(-1));}
+    var f=footOf(hq), items=BLD.slice(0,availOf(hq));
+    var placed=[];
+    items.forEach(function(b,bi){
+      var done=false;
+      for(var y=0;y<=N-f&&!done;y++)for(var x=0;x<=N-f&&!done;x++){
+        // зазор не требуется: здания могут стоять вплотную, проходы — это остаток
+        var free=true;
+        for(var dy=0;dy<f&&free;dy++)for(var dx=0;dx<f&&free;dx++){
+          if(grid[y+dy][x+dx]>=0)free=false;
+        }
+        if(!free)continue;
+        for(var q=0;q<f;q++)for(var w=0;w<f;w++)grid[y+q][x+w]=bi;
+        placed.push({b:bi,x:x,y:y,f:f}); done=true;
+      }
+      if(!done)placed.push({b:bi,fail:true});
+    });
+    return {N:N,grid:grid,placed:placed,items:items,f:f};
+  }
+
+  function draw(P){
+    var cell=Math.floor(340/P.N), W=P.N*cell;
+    var cv=document.createElement("canvas"); cv.width=W; cv.height=W;
+    cv.style.width=W+"px"; cv.style.height=W+"px";
+    var c=cv.getContext("2d");
+    c.fillStyle="#0b1113"; c.fillRect(0,0,W,W);
+    for(var y=0;y<P.N;y++)for(var x=0;x<P.N;x++){
+      c.fillStyle=(x+y)%2?"#1c2a24":"#20302a";
+      c.fillRect(x*cell,y*cell,cell,cell);
+      c.fillStyle="rgba(11,17,19,.35)"; c.fillRect(x*cell,y*cell+cell-1,cell,1);
+      c.fillRect(x*cell+cell-1,y*cell,1,cell);
+    }
+    P.placed.forEach(function(p){
+      if(p.fail)return;
+      var col=P.items[p.b].c;
+      c.fillStyle=col;
+      c.fillRect(p.x*cell+2,p.y*cell+2,p.f*cell-4,p.f*cell-4);
+      c.fillStyle="rgba(11,17,19,.55)";
+      c.fillRect(p.x*cell+2,p.y*cell+p.f*cell-6,p.f*cell-4,4);
+      c.fillStyle="rgba(255,255,255,.22)";
+      c.fillRect(p.x*cell+2,p.y*cell+2,p.f*cell-4,2);
+    });
+    return cv;
+  }
+
+  var HQ=5;
+  var bar=document.getElementById("lvbar");
+  [1,2,3,4,5].forEach(function(l){
+    var b=document.createElement("button"); b.type="button"; b.textContent="Штаб ур. "+l;
+    b.addEventListener("click",function(){HQ=l;render();});
+    b.dataset.lv=l; bar.appendChild(b);
+  });
+
+  function render(){
+    [].forEach.call(bar.children,function(b){
+      b.setAttribute("aria-pressed",+b.dataset.lv===HQ?"true":"false");});
+    var P=pack(HQ);
+    var plot=document.getElementById("plot"); plot.innerHTML=""; plot.appendChild(draw(P));
+    var leg=document.getElementById("legend"); leg.innerHTML="";
+    P.items.forEach(function(b,i){
+      var p=P.placed[i];
+      var d=document.createElement("div");
+      d.innerHTML='<i style="background:'+b.c+'"></i>'+b.n+
+        '<s>'+(p&&!p.fail?P.f+"×"+P.f:"не помещается")+'</s>';
+      leg.appendChild(d);
+    });
+    var used=P.placed.filter(function(p){return !p.fail;}).length*P.f*P.f;
+    var tot=P.N*P.N, fits=P.placed.every(function(p){return !p.fail;});
+    document.getElementById("stat").innerHTML=
+      '<div><span>площадь</span><b>'+P.N+'×'+P.N+' = '+tot+'</b></div>'+
+      '<div><span>занято зданиями</span><b>'+used+'</b></div>'+
+      '<div><span>свободно под проходы</span><b>'+(tot-used)+'</b></div>'+
+      '<div><span>плотность</span><b>'+Math.round(used/tot*100)+'%</b></div>';
+    document.getElementById("verdict").innerHTML=
+      '<span class="chk '+(fits?"ok":"no")+'">'+
+      (fits?"всё помещается, площадь не ограничивает":"не помещается")+'</span>';
+  }
+  render();
+})();
+</script>
