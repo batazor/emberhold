@@ -77,6 +77,7 @@ import { DevMenu } from './ui/devMenu';
 import { Hud } from './ui/hud';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
+import { bindCampInput } from './features/campInput';
 import { createRaidEar } from './features/raidAudio';
 
 const app = document.getElementById('app');
@@ -739,8 +740,7 @@ function toCamp(): void {
   // Возвращение показывает лагерь целиком: куда игрок уехал камерой
   // в прошлый раз — это состояние осмотра, а не то, что он хочет увидеть,
   // открыв игру.
-  camPan.x = 0;
-  camPan.z = 0;
+  campInput.reset();
   rig.lookAt(c.x, c.z, true);
   // Кадр растёт вместе с площадью (§20.4): фиксированный зум либо резал
   // лагерь на Штабе ур. 5, либо оставлял пустое поле на первом.
@@ -763,46 +763,21 @@ function toCamp(): void {
 /* ---------- ввод ---------- */
 
 /**
- * Камера лагеря. Лагерь растёт до 10×10 (§20.4) и в один экран телефона
- * целиком не влезает, поэтому его можно возить пальцем и приближать щипком.
- *
- * Смещение живёт здесь, а не в SceneRig: рига возит камеру за героем в вылазке,
- * и общее состояние сделало бы «где мы смотрим» зависимым от того, в каком
- * режиме игра. В лагере цель — центр площадки плюс это смещение, и только.
+ * Ввод лагеря (features/campInput): возить пальцем, приближать щипком,
+ * тапать по зданию. Здесь остаётся только то, что делает лагерь с тапом, —
+ * жест туда не заглядывает и про здания не знает.
  */
-const camPan = { x: 0, z: 0 };
-/** Сколько можно отъехать от края площадки, в клетках. */
-const PAN_MARGIN = 4;
-/** Тап или протяг: ниже порога — это тап, и он открывает карточку. */
-const DRAG_SLOP = 8;
-
-const pointers = new Map<number, { x: number; y: number }>();
-let dragged = false;
-let downAt: { x: number; y: number } | null = null;
-/** Расстояние между пальцами и зум на начало щипка. */
-let pinchFrom = 0;
-let pinchZoom = 0;
-
-function clampPan(): void {
-  const limit = campArea(camp.levels.hq) / 2 + PAN_MARGIN;
-  camPan.x = Math.max(-limit, Math.min(limit, camPan.x));
-  camPan.z = Math.max(-limit, Math.min(limit, camPan.z));
-}
-
-/** Точка под пальцем должна оставаться под пальцем — отсюда разница по земле,
- *  а не пересчёт пикселей в клетки: он зависел бы от азимута и зума. */
-function panByDrag(from: { x: number; y: number }, to: { x: number; y: number }): void {
-  const a = rig.screenToGround(from.x, from.y);
-  const b = rig.screenToGround(to.x, to.y);
-  if (a === null || b === null) return;
-  camPan.x += a.x - b.x;
-  camPan.z += a.z - b.z;
-  clampPan();
-  // Без сглаживания: палец ведёт камеру ровно за собой, а плавность рига
-  // нужна там, где цель ставит игра, — за героем в вылазке.
-  const c = campView.center;
-  rig.lookAt(c.x + camPan.x, c.z + camPan.z, true);
-}
+const campInput = bindCampInput({
+  canvas: rig.renderer.domElement,
+  camera: rig,
+  active: () => mode === 'camp',
+  center: () => campView.center,
+  area: () => campArea(camp.levels.hq),
+  onTap: (clientX, clientY) => campTap(clientX, clientY),
+  onTouch: () => {
+    idleSeconds = 0;
+  },
+});
 
 function campTap(clientX: number, clientY: number): void {
   const hit = rig.screenToGround(clientX, clientY);
@@ -831,116 +806,35 @@ function campTap(clientX: number, clientY: number): void {
   else campHud.openBuilding(picked);
 }
 
+/* ---------- ввод вылазки ---------- */
+
 const canvas = rig.renderer.domElement;
 
 canvas.addEventListener('pointerdown', (e) => {
   play('tap');
   idleSeconds = 0;
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-  if (mode === 'raid') {
-    const hit = rig.screenToGround(e.clientX, e.clientY);
-    if (hit === null) return;
-    const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
-    // Выбор места перебивает ходьбу: провиант кончился, идти всё равно некуда.
-    if (placing !== null) {
-      tryPlace(cell);
-      return;
-    }
-    if (raid === null || raid.status !== 'running') return;
-    if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
+  if (mode !== 'raid') return;
+  const hit = rig.screenToGround(e.clientX, e.clientY);
+  if (hit === null) return;
+  const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+  // Выбор места перебивает ходьбу: провиант кончился, идти всё равно некуда.
+  if (placing !== null) {
+    tryPlace(cell);
     return;
   }
-
-  if (pointers.size === 1) {
-    downAt = { x: e.clientX, y: e.clientY };
-    dragged = false;
-  } else if (pointers.size === 2) {
-    // Второй палец отменяет тап: щипок — это не промах по зданию.
-    dragged = true;
-    pinchFrom = pointerSpread();
-    pinchZoom = rig.zoomLevel;
-  }
-  // Захват — удобство, а не условие: палец, ушедший за край канваса, должен
-  // продолжать вести камеру. Но он же и необязателен, и на отказ браузера
-  // жест ломаться не должен.
-  try {
-    canvas.setPointerCapture(e.pointerId);
-  } catch {
-    /* без захвата ведём по событиям канваса */
-  }
+  if (raid === null || raid.status !== 'running') return;
+  if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
 });
-
-function pointerSpread(): number {
-  const [a, b] = [...pointers.values()];
-  if (a === undefined || b === undefined) return 0;
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
 
 canvas.addEventListener('pointermove', (e) => {
   // Место под здание ведётся наведением, без нажатия: мышь показывает,
   // куда встанет, до того как игрок решится.
-  if (placing !== null && raid !== null) {
-    const hit = rig.screenToGround(e.clientX, e.clientY);
-    if (hit === null) return;
-    const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
-    raidView?.showSite(
-      placing,
-      cell.x,
-      cell.z,
-      siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok',
-    );
-    return;
-  }
-
-  const prev = pointers.get(e.pointerId);
-  if (prev === undefined || mode !== 'camp') return;
-  const cur = { x: e.clientX, y: e.clientY };
-  idleSeconds = 0;
-
-  if (pointers.size >= 2) {
-    pointers.set(e.pointerId, cur);
-    const spread = pointerSpread();
-    // Пальцы разъезжаются — кадр сужается: щипок приближает, а не отдаляет.
-    if (pinchFrom > 8 && spread > 8) rig.setZoom((pinchZoom * pinchFrom) / spread);
-    return;
-  }
-
-  if (!dragged && downAt !== null) {
-    if (Math.hypot(cur.x - downAt.x, cur.y - downAt.y) < DRAG_SLOP) {
-      pointers.set(e.pointerId, cur);
-      return;
-    }
-    dragged = true;
-  }
-  if (dragged) panByDrag(prev, cur);
-  pointers.set(e.pointerId, cur);
+  if (placing === null || raid === null) return;
+  const hit = rig.screenToGround(e.clientX, e.clientY);
+  if (hit === null) return;
+  const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+  raidView?.showSite(placing, cell.x, cell.z, siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok');
 });
-
-function endPointer(e: PointerEvent): void {
-  if (mode === 'camp' && pointers.has(e.pointerId) && pointers.size === 1 && !dragged) {
-    campTap(e.clientX, e.clientY);
-  }
-  pointers.delete(e.pointerId);
-  if (pointers.size === 0) {
-    downAt = null;
-    dragged = false;
-  }
-}
-
-canvas.addEventListener('pointerup', endPointer);
-canvas.addEventListener('pointercancel', endPointer);
-
-canvas.addEventListener(
-  'wheel',
-  (e) => {
-    if (mode !== 'camp') return;
-    e.preventDefault();
-    idleSeconds = 0;
-    rig.zoom(Math.sign(e.deltaY) * 2);
-  },
-  { passive: false },
-);
 
 function moveSelected(x: number, z: number): boolean {
   if (selected === null) return false;
@@ -1190,7 +1084,7 @@ startLoop({
       campView.update(campDt, now, rig.dayFactor);
       const c = campView.center;
       // Тот же кадр, что и в toCamp, плюс то, куда игрок увёз камеру.
-      rig.lookAt(c.x + camPan.x, c.z + camPan.z);
+      rig.lookAt(c.x + campInput.pan.x, c.z + campInput.pan.z);
       rig.update(campDt, c.x, c.z, 12);
       rig.render();
     }
