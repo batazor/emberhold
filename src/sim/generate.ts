@@ -187,10 +187,11 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
   open.sort((a, b) => backSteps[b]! - backSteps[a]!);
 
   const taken = new Set<number>();
-  const takeFrom = (pool: readonly number[]): number | null => {
+  const takeFrom = (pool: readonly number[], reject?: (cell: number) => boolean): number | null => {
     for (let attempt = 0; attempt < 60; attempt++) {
       const c = pool[randInt(rng, pool.length)];
       if (c === undefined || taken.has(c)) continue;
+      if (reject !== undefined && reject(c)) continue;
       taken.add(c);
       return c;
     }
@@ -240,13 +241,37 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
       ? chokes.filter((c) => hasDetour(size, blocked, evac, containers, c % size, (c / size) | 0))
       : chokes;
 
+  /**
+   * §15 — голем перекрывает маршрут, но не отрезает его. Разница существенная:
+   * узкий проход, который можно обойти кругом, — это решение; единственный
+   * проход к добыче — это стена, притворяющаяся врагом.
+   *
+   * Клетка проверяется: если, замуровав зону голема 3×3, хоть один контейнер
+   * становится недостижим от эвакуации, клетка отбрасывается.
+   */
+  const golemBlocksLoot = (cell: number): boolean => {
+    const walled = Uint8Array.from(blocked);
+    const gx = cell % size;
+    const gz = (cell / size) | 0;
+    for (let z = gz - 1; z <= gz + 1; z++) {
+      for (let x = gx - 1; x <= gx + 1; x++) {
+        if (inBounds(size, x, z)) walled[idx(size, x, z)] = 1;
+      }
+    }
+    const reach = distanceField(size, walled, evac);
+    return containers.some((c) => reach[idx(size, c.x, c.z)]! < 0);
+  };
+
   const enemies: Enemy[] = [];
   TIER_ROSTER[tier].forEach((kind, i) => {
     const stats = ENEMY_STATS[kind];
     // §15 — голем перекрывает маршрут, а не гонится. Значит его место
     // в узком проходе: там обход стоит шагов, а прорыв — ран.
     const pool = kind === 'golem' && golemChokes.length > 0 ? golemChokes : open;
-    const cell = takeFrom(pool);
+    const cell =
+      kind === 'golem'
+        ? takeFrom(pool, golemBlocksLoot) ?? takeFrom(open, golemBlocksLoot)
+        : takeFrom(pool);
     if (cell === null) return;
     const x = cell % size;
     const z = (cell / size) | 0;
