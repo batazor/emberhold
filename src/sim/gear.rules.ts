@@ -15,7 +15,7 @@ import {
   suggestUpgrade,
   upgradeBlock,
 } from './camp';
-import { GEAR_COST, MAX_ITEM_LEVEL, emptyGear } from './gear';
+import { GEAR_COST, MAX_ITEM_LEVEL, emptyGear, gearMods } from './gear';
 import { atRisk, createRaid, raidResult } from './raid';
 import { load, save, wipe } from './save';
 import { createRoster } from './heroes';
@@ -122,6 +122,32 @@ describe('Снаряжение в вылазке', () => {
 
     const lit = createRaid({ ...opts, gear: { ...emptyGear(), torch: 4 } });
     assert.equal(lit.mods.vision, 2, 'фонарь прибавляет обзор');
+  });
+
+  /**
+   * §14.2 — единственное место раздела, где две вещи спорят за один слот.
+   * Проверяется не «щит работает», а то, ради чего он заведён: ни один
+   * из двух вариантов не лучше другого во всём, иначе выбора нет.
+   */
+  test('§14.2 — левая рука одна: фонарь или щит, и ни один не лучше', () => {
+    const gear = { ...emptyGear(), torch: 4 };
+    const lit = gearMods(gear, 'torch');
+    const held = gearMods(gear, 'shield');
+
+    assert.equal(lit.vision, 2, 'фонарь светит');
+    assert.equal(lit.wounds, 0, 'и только светит');
+    assert.equal(held.vision, 0, 'щит не светит вовсе');
+    assert.equal(held.wounds, 2, 'щит держит удар');
+    assert.ok(held.wounds > lit.wounds && lit.vision > held.vision, 'выбор существует');
+
+    assert.deepEqual(gearMods(gear), lit, 'умолчание — фонарь, как было до §14.2');
+
+    // Щит и броня покупают одно, но платят разным: броня — провиантом,
+    // щит — обзором. Одинаковой ценой они бы дублировали друг друга.
+    const both = gearMods({ ...emptyGear(), armor: 3, torch: 2 }, 'shield');
+    assert.equal(both.wounds, 2, 'раны складываются');
+    assert.ok(both.foodStep > 1, 'платит только броня — шагом');
+    assert.equal(both.vision, 0, 'и только щит — темнотой');
   });
 
   test('§11.2 — кольцо смягчает ставку, но не отменяет её', () => {
