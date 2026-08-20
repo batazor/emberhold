@@ -31,6 +31,7 @@ import {
 } from '../src/sim/balance';
 import { addResources } from '../src/sim/resources';
 import {
+  CONSUMABLES,
   RATION_FOOD,
   buyConsumable,
   cheapestAffordable,
@@ -403,8 +404,9 @@ check('§21.1 — не больше двух за вылазку', () => {
 check('§21.1 — купленное сгорает: возврат денег только до входа', () => {
   const camp = createCamp();
   camp.resources = { salt: 20, wood: 0, iron: 0, crystal: 0 };
+  const price = CONSUMABLES.ration.price.salt ?? 0;
   buyConsumable(camp, 'ration');
-  assert.equal(camp.resources.salt, 16);
+  assert.equal(camp.resources.salt, 20 - price, 'списано ровно по прайсу');
   assert.equal(refundConsumable(camp, 0), true);
   assert.equal(camp.resources.salt, 20, 'вернули целиком');
   assert.equal(refundConsumable(camp, 0), false, 'возвращать нечего');
@@ -481,9 +483,10 @@ check('§20.1 — экран возврата предлагает расход�
 
 check('§21.3 — предлагается самый дешёвый по карману', () => {
   const camp = createCamp();
-  camp.resources = { salt: 6, wood: 0, iron: 0, crystal: 0 };
-  assert.equal(cheapestAffordable(camp.resources, camp.loadout), 'ration', 'паёк за 4');
-  camp.resources.salt = 3;
+  const cheapest = CONSUMABLES.ration.price.salt ?? 0;
+  camp.resources = { salt: cheapest, wood: 0, iron: 0, crystal: 0 };
+  assert.equal(cheapestAffordable(camp.resources, camp.loadout), 'ration', 'паёк — самый дешёвый');
+  camp.resources.salt = cheapest - 1;
   assert.equal(cheapestAffordable(camp.resources, camp.loadout), null);
 });
 
