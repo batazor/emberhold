@@ -628,7 +628,7 @@
   function hash(x,y,s){var h=(x*73856093)^(y*19349663)^(s*83492791);h=(h^(h>>>13))>>>0;return (h%1000)/1000;}
 
   // изометрическая проекция
-  var TW=44,TH=22;
+  var TW=44,TH=22,RIDGE=6; // RIDGE — подъём конька над коньковой точкой крыши
   function iso(x,y){return [(x-y)*TW/2,(x+y)*TH/2];}
   function diamond(cx,cy){return (cx)+","+(cy-TH/2)+" "+(cx+TW/2)+","+cy+" "+cx+","+(cy+TH/2)+" "+(cx-TW/2)+","+cy;}
 
@@ -641,7 +641,7 @@
     // крыша
     g.appendChild(el("polygon",{points:cx+","+(cy-hh-h)+" "+(cx+hw)+","+(cy-h)+" "+cx+","+(cy+hh-h)+" "+(cx-hw)+","+(cy-h),fill:top}));
     if(d){ // конёк/навершие
-      g.appendChild(el("polygon",{points:cx+","+(cy-hh-h-d)+" "+(cx+hw*0.72)+","+(cy-h-2)+" "+cx+","+(cy+hh*0.72-h)+" "+(cx-hw*0.72)+","+(cy-h-2),
+      g.appendChild(el("polygon",{points:cx+","+(cy-hh-h-RIDGE)+" "+(cx+hw*0.72)+","+(cy-h-2)+" "+cx+","+(cy+hh*0.72-h)+" "+(cx-hw*0.72)+","+(cy-h-2),
         fill:d,opacity:.95}));
     }
   }
