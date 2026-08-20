@@ -35,7 +35,8 @@ export class SceneRig {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1;
+    // Подобрано замером по буферу, а не на глаз: см. комментарий у фонаря.
+    this.renderer.toneMappingExposure = 1.25;
     canvasParent.appendChild(this.renderer.domElement);
 
     this.fog = new THREE.Fog(new THREE.Color(PALETTE.night), CAM_DIST + 10, CAM_DIST + 70);
@@ -132,7 +133,13 @@ export class SceneRig {
     this.sun.target.position.set(heroX, 0, heroZ);
     this.sun.target.updateMatrixWorld();
 
-    this.torch.intensity = 1.6 + this.night * 3.4;
+    // Сила света задана в физических единицах: начиная с three r155 точечный
+    // свет считается по канделам с делением на квадрат расстояния, и прежние
+    // 5 кд остались от старой модели (useLegacyLights), которой больше нет.
+    // Замер по кадру: при 5 кд освещённая земля у героя давала яркость 49
+    // из 255 при фоне 40 — пятно не отличалось от темноты. При 22 это 154,
+    // а затухание не меняется вовсе: обзор остаётся дальностью фонаря (§11.4).
+    this.torch.intensity = 7 + this.night * 15;
     this.torch.distance = visionRadius + 1.5;
     // Фонарь смещён к камере: в собственном свете герой иначе стоит силуэтом.
     this.torch.position.set(
