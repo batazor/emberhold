@@ -47,6 +47,12 @@ export interface RaidOptions {
   readonly gear?: GearState;
   /** Что игрок купил перед входом (§21). По умолчанию — ничего. */
   readonly consumables?: readonly ConsumableId[];
+  /**
+   * Открыт ли выход на входе. По умолчанию да: замеры, бот и золотой мастер
+   * обязаны считать вылазку ровно так, как её считали при калибровке §20.3.
+   * Закрывает его только онбординг — см. RaidState.evacOpen.
+   */
+  readonly evacOpen?: boolean;
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
@@ -95,6 +101,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     fired: [],
     smokeUntil: 0,
     lastHitBy: null,
+    evacOpen: opts.evacOpen ?? true,
     events: [],
   };
 }
@@ -211,7 +218,12 @@ function arriveAt(state: RaidState, cell: Cell): void {
     }
   }
 
-  if (cell.x === state.loc.evac.x && cell.z === state.loc.evac.z && state.steps > 0) {
+  if (
+    state.evacOpen &&
+    cell.x === state.loc.evac.x &&
+    cell.z === state.loc.evac.z &&
+    state.steps > 0
+  ) {
     state.status = 'evacuated';
     state.path = [];
   }
