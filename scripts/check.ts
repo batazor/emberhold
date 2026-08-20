@@ -15,10 +15,13 @@ import {
   speedupCost,
   startUpgrade,
   storageCapacity,
+  suggestUpgrade,
   upgradeBlock,
+  upgradeProgress,
   villagerCount,
 } from '../src/sim/camp';
 import { addResources } from '../src/sim/resources';
+import { events, setEvents, summarize } from '../src/sim/telemetry';
 import { load, save, wipe } from '../src/sim/save';
 import { atRisk, backSteps, commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
 import { TICK } from '../src/core/loop';
@@ -298,6 +301,82 @@ check('добыча доезжает до лагеря', () => {
   raid.status = 'evacuated';
   addResources(camp.resources, raidResult(raid).carried);
   assert.deepEqual(camp.resources, { salt: 4, wood: 3, iron: 1, crystal: 0 });
+});
+
+console.log('Телеметрия и экран возврата');
+
+check('§9 — сводка отвечает на «эвакуируются ли слишком рано»', () => {
+  setEvents([
+    { t: 'raid_end', at: 0, tier: 1, failed: false, maxBack: 5, locMaxBack: 20, carried: 6, lost: 0, steps: 30, foodLeft: 40, durationSec: 60 },
+    { t: 'raid_end', at: 1, tier: 1, failed: true, maxBack: 15, locMaxBack: 20, carried: 0, lost: 4, steps: 50, foodLeft: 0, durationSec: 90 },
+  ]);
+  const s = summarize(events());
+  assert.equal(s.raids, 2);
+  assert.equal(s.failRate, 0.5);
+  assert.equal(s.avgDepthShare, 0.5, '(5/20 + 15/20) / 2');
+  assert.equal(s.avgCarried, 3);
+  assert.equal(s.avgLost, 2);
+});
+
+check('§20.1 — считается доля возвратов с доступной покупкой', () => {
+  setEvents([
+    { t: 'return_screen', at: 0, canBuy: true, chose: 'build' },
+    { t: 'return_screen', at: 1, canBuy: true, chose: 'raid' },
+    { t: 'return_screen', at: 2, canBuy: false, chose: 'raid' },
+    { t: 'return_screen', at: 3, canBuy: true, chose: 'build' },
+  ]);
+  const s = summarize(events());
+  assert.equal(s.buyOfferRate, 0.75, 'покупка предлагалась в трёх возвратах из четырёх');
+  assert.equal(s.buyTakeRate, 2 / 3, 'из них стройку выбрали дважды');
+});
+
+check('§9 — время возврата меряется только там, где таймер шёл', () => {
+  setEvents([
+    { t: 'session_start', at: 0, awaySec: 600, timerLeftSec: 100 },
+    { t: 'session_start', at: 1, awaySec: 1800, timerLeftSec: 0 },
+    { t: 'session_start', at: 2, awaySec: 99999, timerLeftSec: null },
+  ]);
+  const s = summarize(events());
+  assert.equal(s.medianReturnMin, 20, 'медиана 10 и 30 минут; заход без таймера не в счёт');
+});
+
+check('точка выхода из сессии считается по местам', () => {
+  setEvents([
+    { t: 'exit', at: 0, where: 'raid' },
+    { t: 'exit', at: 1, where: 'camp' },
+    { t: 'exit', at: 2, where: 'camp' },
+  ]);
+  assert.deepEqual(summarize(events()).exits, { raid: 1, camp: 2, return: 0 });
+});
+
+check('пустая телеметрия не ломает сводку', () => {
+  setEvents([]);
+  const s = summarize(events());
+  assert.equal(s.raids, 0);
+  assert.equal(s.firstBuilding, null);
+  assert.equal(s.medianReturnMin, null);
+});
+
+check('§20.1 — экран возврата предлагает самое дешёвое доступное улучшение', () => {
+  const camp = createCamp();
+  camp.levels = { hq: 3, kitchen: 1, storage: 1 };
+  camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+  // У Кухни и Склада ур. 1 — одинаковая цена второго уровня, берётся первый
+  // по порядку; главное, что предложение вообще есть.
+  assert.notEqual(suggestUpgrade(camp), null);
+
+  camp.resources = { salt: 0, wood: 0, iron: 0, crystal: 0 };
+  assert.equal(suggestUpgrade(camp), null, 'без ресурсов покупки нет');
+
+  camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+  startUpgrade(camp, 'kitchen', 0);
+  assert.equal(suggestUpgrade(camp), null, 'слот занят — предлагать нечего (§20.1)');
+});
+
+check('прогресс к улучшению считается по самому дефицитному ресурсу', () => {
+  const camp = createCamp();
+  camp.resources = { salt: 4, wood: 4, iron: 0, crystal: 0 }; // нужно wood 8, salt 4
+  assert.equal(upgradeProgress(camp, 'hq'), 0.5, 'дерева половина, соли хватает');
 });
 
 console.log(`\n${checks} проверок пройдено`);

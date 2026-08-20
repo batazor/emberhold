@@ -3,9 +3,11 @@ import { Clock } from './core/clock';
 import { startLoop } from './core/loop';
 import {
   BUILDINGS,
+  BUILD_SECONDS,
   completeIfDue,
   moveBuilding,
   speedup,
+  speedupCost,
   startUpgrade,
   TIER_KITCHEN_GATE,
   tierBlock,
@@ -17,11 +19,14 @@ import { commandMove, createRaid, raidResult, stepRaid } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { addResources } from './sim/resources';
 import { load, save } from './sim/save';
+import { loadTelemetry, track } from './sim/telemetry';
 import type { Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { CampHud } from './ui/campHud';
+import { ReturnScreen } from './ui/returnScreen';
+import { StatsPanel } from './ui/statsPanel';
 import { Hud } from './ui/hud';
 
 const app = document.getElementById('app');
@@ -31,7 +36,23 @@ if (app === null) throw new Error('нет #app');
 const loaded = load();
 const clock = new Clock(loaded.watermark);
 let camp: CampState = loaded.camp;
-completeIfDue(camp, clock.now()); // оффлайн-прогресс: стройка могла закончиться без нас
+
+loadTelemetry();
+// §9 — время до возвращения в игру после установки таймера. Меряется только
+// там, где таймер реально шёл: иначе это просто «как часто заходят».
+const startedAt = clock.now();
+track({
+  t: 'session_start',
+  at: startedAt,
+  awaySec: loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark) : 0,
+  timerLeftSec:
+    camp.construction === null ? null : Math.max(0, camp.construction.endsAt - startedAt),
+});
+
+const finishedOffline = completeIfDue(camp, startedAt); // стройка могла закончиться без нас
+if (finishedOffline !== null) {
+  track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
+}
 
 let mode: 'camp' | 'raid' = 'camp';
 let raid: RaidState | null = null;
@@ -59,21 +80,22 @@ const hud = new Hud(app, {
   onNight: (value) => {
     rig.night = value;
   },
-  onToCamp: () => toCamp(),
 });
 
 const campHud = new CampHud(app, {
   onUpgrade: (id) => {
-    if (startUpgrade(camp, id, clock.now())) {
-      campHud.notify(`${BUILDINGS[id].name}: стройка началась`);
-      persist();
-      return;
-    }
     // Отказ обязан быть слышен: молчащая кнопка читается как поломка.
-    campHud.notify(`${BUILDINGS[id].name}: ${upgradeReason(camp, id)}`);
+    beginUpgrade(id);
   },
   onSpeedup: () => {
-    if (speedup(camp, clock.now())) persist();
+    const now = clock.now();
+    const c = camp.construction;
+    if (c === null) return;
+    const left = Math.max(0, c.endsAt - now);
+    const cost = speedupCost(left);
+    if (!speedup(camp, now)) return;
+    track({ t: 'speedup', at: now, building: c.building, cost, leftSec: left });
+    persist();
   },
   onRaid: (tier) => toRaid(tier),
 });
@@ -90,8 +112,39 @@ function upgradeReason(state: CampState, id: BuildingId): string {
   return BLOCK_REASON[upgradeBlock(state, id)] ?? 'не вышло';
 }
 
+const statsPanel = new StatsPanel(app);
+
 function persist(): void {
   save(camp, clock.watermark);
+}
+
+const returnScreen = new ReturnScreen(app, {
+  onBuild: (id) => {
+    beginUpgrade(id);
+    returnScreen.hide();
+    toCamp();
+  },
+  onRaid: (tier) => {
+    returnScreen.hide();
+    toRaid(tier);
+  },
+  onCamp: () => {
+    returnScreen.hide();
+    toCamp();
+  },
+});
+
+function beginUpgrade(id: BuildingId): boolean {
+  const now = clock.now();
+  if (!startUpgrade(camp, id, now)) {
+    campHud.notify(`${BUILDINGS[id].name}: ${upgradeReason(camp, id)}`);
+    return false;
+  }
+  const toLevel = camp.levels[id] + 1;
+  track({ t: 'build_start', at: now, building: id, toLevel, seconds: BUILD_SECONDS[toLevel] ?? 0 });
+  campHud.notify(`${BUILDINGS[id].name}: стройка началась`);
+  persist();
+  return true;
 }
 
 /* ---------- переходы между сценами ---------- */
@@ -120,7 +173,9 @@ function toRaid(tier: Tier): void {
   mode = 'raid';
   hud.setVisible(true);
   campHud.setVisible(false);
-  hud.hideResult();
+  statsPanel.setVisible(false);
+  returnScreen.hide();
+  track({ t: 'raid_start', at: clock.now(), tier, food: raid.foodMax, capacity: raid.capacity });
 }
 
 function toCamp(): void {
@@ -140,8 +195,8 @@ function toCamp(): void {
   mode = 'camp';
   idleSeconds = 0;
   hud.setVisible(false);
-  hud.hideResult();
   campHud.setVisible(true);
+  statsPanel.setVisible(true);
   persist();
 }
 
@@ -185,7 +240,15 @@ addEventListener('keydown', (e) => {
   if (e.key === 'e' || e.key === 'E') rig.rotate(1);
 });
 addEventListener('visibilitychange', () => {
-  if (document.hidden) persist();
+  if (!document.hidden) return;
+  // §9 — точка выхода из сессии. Пишется на уход, а не на закрытие вкладки:
+  // события выгрузки на мобильных не гарантированы.
+  track({
+    t: 'exit',
+    at: clock.now(),
+    where: returnScreen.visible ? 'return' : mode === 'raid' ? 'raid' : 'camp',
+  });
+  persist();
 });
 
 /* ---------- цикл ---------- */
@@ -194,6 +257,14 @@ let fpsFrames = 0;
 let lastRender = performance.now();
 
 toCamp();
+
+// Отладочный вход: ?tier=N открывает игру сразу в вылазке нужного яруса.
+// Нужен, чтобы проверять вылазку и экран возврата, не проходя лагерь заново.
+const debugTier = new URLSearchParams(location.search).get('tier');
+if (debugTier !== null) {
+  const t = Number(debugTier);
+  if (t >= 0 && t <= 3) toRaid(t as Tier);
+}
 
 startLoop({
   update: (dt) => {
@@ -207,7 +278,23 @@ startLoop({
         addResources(camp.resources, result.carried);
         camp.raids += 1;
         persist();
-        hud.showResult(result);
+        track({
+          t: 'raid_end',
+          at: now,
+          tier: result.tier,
+          failed: result.status !== 'evacuated',
+          maxBack: result.maxBack,
+          locMaxBack: result.locMaxBack,
+          carried: result.carriedTotal,
+          lost: result.lost,
+          steps: result.steps,
+          foodLeft: result.foodLeft,
+          durationSec: Math.round(result.durationSec),
+        });
+        hud.setVisible(false);
+        returnScreen.show(result, camp, (chose, canBuy) => {
+          track({ t: 'return_screen', at: clock.now(), canBuy, chose });
+        });
       }
       return;
     }
@@ -215,6 +302,7 @@ startLoop({
     idleSeconds += dt;
     const finished = completeIfDue(camp, now);
     if (finished !== null) {
+      track({ t: 'build_done', at: now, building: finished, level: camp.levels[finished] });
       campHud.notify(`${BUILDINGS[finished].name} готов`);
       persist();
     }
@@ -225,6 +313,8 @@ startLoop({
     const now = performance.now();
     const dt = Math.min(0.05, (now - lastRender) / 1000);
     lastRender = now;
+
+    returnScreen.update();
 
     if (mode === 'raid' && raid !== null && raidView !== null) {
       raidView.sync(raid, alpha, dt, now);

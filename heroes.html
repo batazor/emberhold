@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Отряд</title>
 <style>
   :root{
@@ -47,7 +49,8 @@
     padding:28px 0;border-top:1px solid var(--line);}
   .beat:first-child{border-top:0;}
   @media(max-width:820px){.beat{grid-template-columns:52px minmax(0,1fr);}
-    .beat .mini{grid-column:1 / -1;justify-self:center;}}
+    .beat .mini{grid-column:1 / -1;justify-self:center;}
+    .beat .txt{grid-column:1 / -1;}}
   .no{font-family:var(--ff-mono);font-size:15px;color:var(--brass);padding-top:2px;
     font-variant-numeric:tabular-nums;}
   .no small{display:block;font-size:9.5px;color:var(--dim);letter-spacing:.12em;margin-top:3px;
@@ -84,7 +87,7 @@
     border-radius:9px;padding:9px 10px;}
   .hero.sel{border-color:var(--g-brass);background:var(--g-panel-2);}
   .hero.lock{opacity:.5;}
-  .por{width:46px;height:46px;border-radius:7px;background:#0E1618;border:1px solid var(--g-line);
+  .por{position:relative;width:46px;height:46px;border-radius:7px;background:#0E1618;border:1px solid var(--g-line);
     flex:0 0 auto;overflow:hidden;}
   .por canvas{width:46px;height:46px;}
   .hero .who{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
@@ -122,6 +125,7 @@
     letter-spacing:-.02em;text-align:center;padding:2px 0;}
   .stage{position:relative;flex:1 1 auto;overflow:hidden;background:#0E1618;border-radius:9px;
     border:1px solid var(--g-line);}
+  .stage[data-scene="raid"]{background:radial-gradient(circle at 50% 44%,#1d2622 0%,#111a1b 42%,#080d0e 100%);}
   .stage canvas{position:absolute;inset:0;width:100%;height:100%;}
   .hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;font-family:var(--ff-mono);
     font-size:11.5px;color:var(--g-text);text-shadow:0 1px 4px #0B1113;}
@@ -384,3 +388,504 @@
       здесь — способ выбрать первое.</p>
   </div>
 </div>
+
+<script>
+(function(){
+  // ——————————————————————————————————————————————————————————————
+  // Минимальный отрисовщик: плоское затенение, ортокамера 45°/30°,
+  // сортировка по глубине. В игре это делает Three.js — здесь ровно
+  // та же математика, чтобы страница показывала настоящие формы.
+  // ——————————————————————————————————————————————————————————————
+  var C={
+    "Мрак":"#0e0d0a","Тень":"#1a1813","Камень тёмный":"#2b2a24","Камень":"#3f3d34",
+    "Камень светлый":"#57544a","Скол":"#6f6c60","Соль тень":"#8a8a7e","Соль":"#a6a698",
+    "Соль свет":"#c6c6b6","Иней":"#e2e2d6","Земля тёмная":"#2a1d14","Земля":"#3f2c1d",
+    "Дерево тень":"#543922","Дерево":"#6f4d2c","Дерево свет":"#8f6a3f","Солома":"#b08f56",
+    "Хвоя тень":"#1f2b1a","Хвоя":"#31432a","Мох":"#465c39","Трава":"#5d7a49","Трава свет":"#7fa361",
+    "Металл тень":"#2b3138","Металл":"#474f58","Сталь":"#7d8892","Уголь":"#4d2a10",
+    "Жар":"#8e4a17","Пламя":"#c9722a","Латунь":"#dfa53c","Плащ":"#35454e","Кровь":"#8E3838"
+  };
+
+  var AZ=45*Math.PI/180, EL=30*Math.PI/180;
+  var LIGHT=(function(){var v=[-0.55,0.78,-0.31],l=Math.hypot(v[0],v[1],v[2]);
+    return [v[0]/l,v[1]/l,v[2]/l];})();
+
+  function hex2rgb(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+  function shade(hex,k){
+    var c=hex2rgb(hex);
+    return "rgb("+Math.round(Math.min(255,c[0]*k))+","+Math.round(Math.min(255,c[1]*k))+","+
+      Math.round(Math.min(255,c[2]*k))+")";
+  }
+  function rotY(p,a){var ca=Math.cos(a),sa=Math.sin(a);return [p[0]*ca-p[2]*sa,p[1],p[0]*sa+p[2]*ca];}
+  function view(p){
+    var q=rotY(p,AZ), ce=Math.cos(EL), se=Math.sin(EL);
+    return [q[0], q[1]*ce-q[2]*se, q[1]*se+q[2]*ce];
+  }
+  function normal(a,b,c){
+    var u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    var n=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+    var l=Math.hypot(n[0],n[1],n[2])||1;
+    return [n[0]/l,n[1]/l,n[2]/l];
+  }
+
+  function box(cx,cy,cz,w,h,d,col){
+    var x=w/2,z=d/2;
+    return {v:[[cx-x,cy,cz-z],[cx+x,cy,cz-z],[cx+x,cy,cz+z],[cx-x,cy,cz+z],
+               [cx-x,cy+h,cz-z],[cx+x,cy+h,cz-z],[cx+x,cy+h,cz+z],[cx-x,cy+h,cz+z]],
+            f:[[4,5,6,7],[0,3,2,1],[3,7,6,2],[0,1,5,4],[1,2,6,5],[0,4,7,3]],c:col};
+  }
+  function pyr(cx,cy,cz,w,h,d,col){
+    var x=w/2,z=d/2;
+    return {v:[[cx-x,cy,cz-z],[cx+x,cy,cz-z],[cx+x,cy,cz+z],[cx-x,cy,cz+z],[cx,cy+h,cz]],
+            f:[[0,3,2,1],[0,1,4],[1,2,4],[2,3,4],[3,0,4]],c:col};
+  }
+  function cyl(cx,cy,cz,r,h,n,col){
+    var v=[],f=[],i,a;
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy+h,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++)f.push([i,(i+1)%n,n+(i+1)%n,n+i]);
+    var top=[],bot=[];
+    for(i=0;i<n;i++){top.push(n+i);bot.push(n-1-i);}
+    f.push(top);f.push(bot);
+    return {v:v,f:f,c:col};
+  }
+  function cone(cx,cy,cz,r,h,n,col){
+    var v=[],f=[],i,a;
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy+0,cz+Math.sin(a)*r]);}
+    v.push([cx,cy+h,cz]);
+    for(i=0;i<n;i++)f.push([i,(i+1)%n,n]);
+    var bot=[];for(i=0;i<n;i++)bot.push(n-1-i);f.push(bot);
+    return {v:v,f:f,c:col};
+  }
+  // наклон меша вокруг оси X у основания — для поз (ранение, замах)
+  function lean(m,ang,pivotY){
+    var ca=Math.cos(ang),sa=Math.sin(ang);
+    return {c:m.c,f:m.f,v:m.v.map(function(p){
+      var y=p[1]-pivotY;
+      return [p[0], pivotY+y*ca-p[2]*sa, p[2]*ca+y*sa];
+    })};
+  }
+  function tris(meshes){
+    return meshes.reduce(function(s,m){
+      return s+m.f.reduce(function(t,face){return t+(face.length-2);},0);},0);
+  }
+  function pad(col,r){var m=cyl(0,-0.02,0,r,0.02,12,col);m.pad=true;return m;}
+
+  function render(ctx,meshes,W,H,scale,spin,o){
+    o=o||{};
+    ctx.clearRect(0,0,W,H);
+    if(o.sil){ctx.fillStyle="#d8d6ca";ctx.fillRect(0,0,W,H);}   // светлый фон: приёмка силуэта
+    var faces=[];
+    meshes.forEach(function(m){
+      if(o.sil&&m.pad)return;                                   // подложка в силуэт не входит
+      var wv=m.v.map(function(p){return rotY(p,spin);});
+      m.f.forEach(function(face){
+        var a=wv[face[0]],b=wv[face[1]],c=wv[face[2]];
+        var n=normal(a,b,c);
+        var pts=face.map(function(i){return view(wv[i]);});
+        var area=0,i,p1,p2;
+        for(i=0;i<pts.length;i++){p1=pts[i];p2=pts[(i+1)%pts.length];
+          area+=(p1[0]*(-p2[1])-p2[0]*(-p1[1]));}
+        if(area<=0)return;                                   // отсечение задних граней
+        var d=pts.reduce(function(s,p){return s+p[2];},0)/pts.length;
+        var lam=Math.max(0,n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2]);
+        var sky=0.34+0.16*Math.max(0,n[1]);                  // полусферический подсвет
+        faces.push({pts:pts,d:d,k:sky+lam*0.72,c:m.c,pad:!!m.pad});
+      });
+    });
+    faces.sort(function(a,b){return a.d-b.d;});
+    var cx=W/2, cy=H*(o.base||0.78);
+    faces.forEach(function(f){
+      ctx.beginPath();
+      f.pts.forEach(function(p,i){
+        var sx=cx+p[0]*scale, sy=cy-p[1]*scale;
+        if(i)ctx.lineTo(sx,sy); else ctx.moveTo(sx,sy);
+      });
+      ctx.closePath();
+      if(o.sil){                                             // приёмка силуэта
+        ctx.fillStyle="#0d0c0a";ctx.fill();
+        ctx.strokeStyle="#0d0c0a";ctx.lineWidth=1;ctx.stroke();
+        return;
+      }
+      var fl=o.flash&&!f.pad;                                   // подложка не вспыхивает
+      var k=f.k*(fl?1.9:1);
+      ctx.fillStyle=shade(fl?"#e8c88a":f.c,k);ctx.fill();
+      if(o.wire){ctx.strokeStyle="rgba(230,228,214,.35)";ctx.lineWidth=0.6;ctx.stroke();}
+      else{ctx.strokeStyle=shade(fl?"#e8c88a":f.c,k*0.94);ctx.lineWidth=0.5;ctx.stroke();}
+    });
+  }
+
+  // ——————————————————————————————————————————————————————————————
+  // Герои. Общий скелет: ноги, корпус, голова, оружие — различаются
+  // пропорции и снаряжение (§17.5: три модели, один скелет).
+  // ——————————————————————————————————————————————————————————————
+  function ranger(o){
+    o=o||{};
+    var step=o.step||0, arm=o.arm||0, hurt=o.hurt?0.2:0;
+    var m=[
+      box(-0.11,0,step*0.12,0.13,0.42,0.15,C["Металл тень"]),
+      box(0.11,0,-step*0.12,0.13,0.42,0.15,C["Металл тень"]),
+      box(0,0.42,0,0.38,0.54,0.26,C["Плащ"]),
+      box(0,0.64,0,0.4,0.06,0.28,C["Трава свет"]),
+      pyr(0,0.96,0,0.36,0.5,0.32,C["Плащ"]),
+      box(0,0.98,0.09,0.18,0.16,0.1,C["Солома"])
+    ];
+    if(o.gear>=1){                                   // Кузница ур. 2 — наплечник и колчан
+      m.push(box(-0.24,0.82,0,0.16,0.1,0.3,C["Сталь"]));
+      m.push(cyl(-0.16,0.5,-0.16,0.07,0.42,6,C["Дерево тень"]));
+    }
+    if(o.gear>=2){                                   // Кузница ур. 3 — плащ и латунная застёжка
+      m.push(box(0,0.44,-0.17,0.42,0.62,0.06,C["Хвоя"]));
+      m.push(box(0,0.88,0.15,0.14,0.05,0.04,C["Латунь"]));
+    }
+    m.push(cyl(0.38,0.32+arm*0.3,-0.06+arm*0.25,0.05,1.12,5,C["Дерево тень"]));
+    m.push(box(0.38,1.42+arm*0.3,-0.06+arm*0.25,0.07,0.14,0.07,C["Сталь"]));
+    if(hurt)m=m.map(function(x){return lean(x,hurt,0);});
+    return [pad(C["Камень тёмный"],1.1)].concat(m);
+  }
+  function warrior(o){
+    o=o||{};
+    var step=o.step||0, arm=o.arm||0, hurt=o.hurt?0.22:0;
+    var m=[
+      box(-0.13,0,step*0.12,0.15,0.4,0.17,C["Металл тень"]),
+      box(0.13,0,-step*0.12,0.15,0.4,0.17,C["Металл тень"]),
+      box(0,0.4,0,0.6,0.52,0.34,C["Металл"]),
+      box(0,0.62,0,0.72,0.1,0.4,C["Сталь"]),
+      box(0,0.92,0,0.3,0.26,0.28,C["Солома"]),
+      box(0,1.12,0,0.38,0.14,0.34,C["Сталь"]),
+      box(0,1.26,0,0.08,0.14,0.3,C["Латунь"]),
+      cyl(0.36,0.42+arm*0.42,0+arm*0.3,0.05,0.85,6,C["Металл"]),
+      box(0.36,1.27+arm*0.42,0+arm*0.3,0.16,0.24,0.05,C["Сталь"]),
+      box(-0.46,0.4,0,0.1,0.56,0.48,C["Дерево"])
+    ];
+    if(hurt)m=m.map(function(x){return lean(x,hurt,0);});
+    return [pad(C["Камень тёмный"],1.1)].concat(m);
+  }
+  function salter(o){
+    o=o||{};
+    var step=o.step||0, arm=o.arm||0, hurt=o.hurt?0.24:0;
+    var m=[
+      box(-0.12,0,step*0.1,0.14,0.38,0.16,C["Земля"]),
+      box(0.12,0,-step*0.1,0.14,0.38,0.16,C["Земля"]),
+      box(0,0.38,0.03,0.46,0.5,0.26,C["Дерево"]),
+      box(0,0.4,0.16,0.34,0.42,0.05,C["Соль свет"]),      // солевой фартук
+      box(0,0.5,-0.26,0.54,0.74,0.32,C["Солома"]),        // рюкзак выше головы
+      box(0,1.24,-0.26,0.46,0.14,0.28,C["Соль"]),
+      box(0,0.88,0.03,0.26,0.22,0.24,C["Дерево свет"]),
+      box(0,1.06,0.03,0.34,0.08,0.3,C["Соль тень"]),      // низкая широкая шляпа
+      cyl(0.3,0.3+arm*0.28,0.02+arm*0.22,0.035,0.9,5,C["Дерево тень"]),
+      box(0.3,1.2+arm*0.28,0.02+arm*0.22,0.12,0.06,0.05,C["Латунь"])
+    ];
+    if(hurt)m=m.map(function(x){return lean(x,hurt,0);});
+    return [pad(C["Камень тёмный"],1.1)].concat(m);
+  }
+  var HERO={"Следопыт":ranger,"Ратник":warrior,"Солевар":salter};
+
+  // ——————————————————————————————————————————————————————————————
+  // Карточки арт-блока
+  // ——————————————————————————————————————————————————————————————
+  var CARDS=[
+    {g:"chars",n:"Следопыт",note:"узкий конус капюшона",budget:900,scale:48,build:function(){return ranger({});}},
+    {g:"chars",n:"Ратник",note:"квадратные плечи, щит",budget:900,scale:48,build:function(){return warrior({});}},
+    {g:"chars",n:"Солевар",note:"горб рюкзака выше головы",budget:900,scale:48,build:function(){return salter({});}},
+
+    {g:"gear",n:"Следопыт · без снаряжения",note:"старт, слоты пусты",budget:900,scale:48,
+      build:function(){return ranger({});}},
+    {g:"gear",n:"Следопыт · Кузница ур. 2",note:"наплечник и колчан",budget:900,scale:48,
+      build:function(){return ranger({gear:1});}},
+    {g:"gear",n:"Следопыт · Кузница ур. 3",note:"плащ, застёжка — тот же скелет",budget:900,scale:48,
+      build:function(){return ranger({gear:2});}},
+
+    {g:"states",n:"Покой · 1000 мс",note:"цикл, пока игрок думает",budget:900,scale:48,
+      build:function(){return warrior({});}},
+    {g:"states",n:"Ходьба · 600 мс на тайл",note:"шаг задаёт скорость игры",budget:900,scale:48,
+      build:function(){return warrior({step:1});}},
+    {g:"states",n:"Удар · 600 мс",note:"половина интервала атаки 1,2 с",budget:900,scale:48,
+      build:function(){return warrior({arm:1});}},
+    {g:"states",n:"Урон · 150 мс",note:"вспышка эмиссией, не клип",budget:900,scale:48,flash:true,
+      build:function(){return warrior({arm:0.2});}},
+    {g:"states",n:"Ранен · поза",budget:900,scale:48,note:"читается в лагере без цифры",
+      build:function(){return warrior({hurt:1});}}
+  ];
+
+  var spin=30*Math.PI/180, spinning=false, wireOn=false, silOn=false, cards=[];
+  var DPR=Math.min(2,window.devicePixelRatio||1);
+
+  function mkCanvas(host,w,h){
+    var cv=document.createElement("canvas");
+    cv.width=w*DPR;cv.height=h*DPR;cv.style.width=w+"px";cv.style.height=h+"px";
+    var ctx=cv.getContext("2d");ctx.scale(DPR,DPR);
+    host.appendChild(cv);
+    return ctx;
+  }
+  CARDS.forEach(function(M){
+    var host=document.getElementById(M.g);
+    if(!host)return;
+    var d=document.createElement("div");d.className="m";
+    var st=document.createElement("div");st.className="st";
+    d.appendChild(st);
+    var ctx=mkCanvas(st,170,150);
+    var meshes=M.build(), t=tris(meshes), over=t>M.budget;
+    d.insertAdjacentHTML("beforeend","<b>"+M.n+"</b><u><s>"+M.note+"</s>"+
+      '<s class="'+(over?"over":"ok")+'">блокинг '+t+" · бюджет "+M.budget+"</s></u>");
+    host.appendChild(d);
+    cards.push({ctx:ctx,meshes:meshes,scale:M.scale,W:170,H:150,flash:M.flash,base:0.84});
+  });
+
+  // ——————————————————————————————————————————————————————————————
+  // Раскадровка
+  // ——————————————————————————————————————————————————————————————
+  function sb(){return '<div class="sb"><span>9:41</span><span>Соляной Тракт</span></div>';}
+  function top(t,s){return '<div class="top"><b>'+t+'</b><i>'+s+'</i></div>';}
+
+  var BEATS=[
+  {no:"01",cap:"Первая рана",title:"Вылазка окончена — герой ранен",
+   does:"Экран возврата отдаёт добычу и тут же сообщает цену: две раны из трёх. Кнопка ведёт не в меню, а в Лазарет.",
+   teach:"Раны — не полоска, а счётчик. Внутри вылазки они не лечатся: значит, лечение живёт в лагере.",
+   hide:"Ростера, классов, характеристик ещё нет. Герой один, выбирать не из кого — экран отряда был бы пустым меню.",
+   html:sb()+top("Вылазка окончена","ярус 1 · 2 мин 04 с")+
+     '<div class="body">'+
+       '<div class="panel"><div class="t"><b>Добыча</b><i>вынесено 12 из 19</i></div>'+
+       '<div class="loot"><div><em>Соль</em><b>+8</b></div><div><em>Дерево</em><b>+3</b></div>'+
+       '<div><em>Камень</em><b>+1</b></div></div></div>'+
+       '<div class="panel"><div class="t"><b>Следопыт ранен</b><i>2 из 3</i></div>'+
+       '<div class="pips"><s></s><s></s><s class="off"></s></div>'+
+       '<p>Раны не лечатся сами. Пока герой в Лазарете, вылазки недоступны.</p></div>'+
+       '<div class="hero"><div class="por" data-m="Следопыт"></div>'+
+       '<div class="who"><b>Следопыт</b><span>уровень 2 · +140 опыта</span></div>'+
+       '<span class="tag hurt">ранен</span></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">В Лазарет — 12 мин</a>'+
+     '<a class="cta ghost">В лагерь</a></div>'},
+
+  {no:"02",cap:"Лазарет",title:"Таймер, который придумывает второго героя",
+   does:"6 минут за рану, максимум 18. Ускорение — по общей формуле соли, той же, что у построек: отдельного правила нет.",
+   teach:"Простой героя измеряется не в абстрактной усталости, а в минутах, которые видно. Это первая встреча с мыслью «а кем пока играть».",
+   hide:"Кнопка вылазки не убрана, а погашена с причиной. Спрятанная кнопка учит, что механика исчезла; погашенная — что герой занят.",
+   html:sb()+top("Лазарет","ур. 1 · один койко-слот")+
+     '<div class="body">'+
+       '<div class="hero"><div class="por" data-m="Следопыт"></div>'+
+       '<div class="who"><b>Следопыт</b><span>2 раны · 6 мин за рану</span></div>'+
+       '<span class="tag busy">лечится</span></div>'+
+       '<div class="panel"><div class="clockbig">11:42</div>'+
+       '<div class="bar2"><i style="width:34%"></i></div>'+
+       '<div class="line"><span>Ускорить целиком</span><b>24 соли</b></div>'+
+       '<p>2 соли за минуту, последние 5 минут — даром. Та же лестница, что у построек (§20.5).</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta ghost">Ускорить за 24 соли</a>'+
+     '<a class="cta off">Вылазка · герой занят</a></div>'},
+
+  {no:"03",cap:"Штаб ур. 2",title:"Второй герой приходит как ответ, а не как витрина",
+   does:"Постройка Штаба открывает Ратника. Экран показывает ровно одно: чем он отличается от того, кто сейчас в Лазарете.",
+   teach:"Классы вводятся сравнением, а не описанием. «Защита, 4 раны, обзор −1» читается только рядом с «обзор, скорость, рюкзак −25%».",
+   hide:"Ни найма, ни валюты, ни редкости. Герой — следствие уровня Штаба, то есть гейт темпа, а не источник дохода.",
+   html:sb()+top("Штаб ур. 2 достроен","открыт второй герой")+
+     '<div class="body">'+
+       '<div class="hero sel"><div class="por" data-m="Ратник"></div>'+
+       '<div class="who"><b>Ратник</b><span>защита · 4 раны · обзор −1</span></div>'+
+       '<span class="tag ok">новый</span></div>'+
+       '<div class="hero"><div class="por" data-m="Следопыт"></div>'+
+       '<div class="who"><b>Следопыт</b><span>обзор · скорость · рюкзак −25%</span></div>'+
+       '<span class="tag busy">11:42</span></div>'+
+       '<div class="panel"><div class="t"><b>Заслон</b><i>раз за вылазку</i></div>'+
+       '<p>Не получает урон 5 секунд. Как и два других умения, влияет на одно:'+
+       ' насколько глубоко можно зайти и вернуться.</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">Выйти Ратником — сейчас</a>'+
+     '<a class="cta ghost">Посмотреть отряд</a></div>'},
+
+  {no:"04",cap:"Отряд",title:"Ростер сортирован по готовности, а не по силе",
+   does:"Сверху тот, кем можно пойти прямо сейчас. Занятый герой показывает время, запертый — условие открытия.",
+   teach:"Отряд — это расписание. Три строки отвечают на единственный вопрос экрана: кем я иду.",
+   hide:"Числа характеристик в список не вынесены. В строке — состояние и роль; цифры живут в карточке, куда идут осознанно.",
+   html:sb()+top("Отряд","2 из 3 · Штаб ур. 2")+
+     '<div class="body">'+
+       '<div class="hero sel"><div class="por" data-m="Ратник"></div>'+
+       '<div class="who"><b>Ратник</b><span>уровень 4 · без ран</span></div>'+
+       '<span class="tag ok">готов</span></div>'+
+       '<div class="hero"><div class="por" data-m="Следопыт"></div>'+
+       '<div class="who"><b>Следопыт</b><span>уровень 2 · 2 раны</span></div>'+
+       '<span class="tag busy">11:42</span></div>'+
+       '<div class="hero lock"><div class="por" data-m="Солевар"></div>'+
+       '<div class="who"><b>Солевар</b><span>рюкзак +30% · добыча</span></div>'+
+       '<span class="tag">Штаб ур. 4</span></div>'+
+       '<div class="panel"><p>В вылазку идёт один герой. Вернувшийся ранен и занят лечением —'+
+       ' отсюда и берётся потребность в ротации.</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">В вылазку — Ратником</a>'+
+     '<a class="cta ghost">В лагерь</a></div>'},
+
+  {no:"05",cap:"Карточка героя",title:"Один экран: кто он, что умеет, что надето",
+   does:"Модель, четыре характеристики, опыт, умение и три слота — на одном экране. Отдельного инвентаря нет.",
+   teach:"Портрет — та же 3D-модель в маленьком кадре, поэтому надетое видно на герое, а не только в списке.",
+   hide:"Сравнения с другими героями здесь нет: сравнивают в ростере и на выходе в вылазку, где это решение и принимается.",
+   html:sb()+top("Ратник","класс · уровень 4")+
+     '<div class="body">'+
+       '<div class="stage" data-m="Ратник" data-w="292" data-h="140" data-s="62" data-base="0.84"></div>'+
+       '<div class="stats">'+
+         '<div class="stat"><span>Атака</span><b>7</b></div>'+
+         '<div class="stat"><span>Защита</span><b class="up">9</b></div>'+
+         '<div class="stat"><span>Знание</span><b>3</b></div>'+
+         '<div class="stat"><span>Сила</span><b>5</b></div>'+
+       '</div>'+
+       '<div class="line"><span>До уровня 5</span><b>340 / 500</b></div>'+
+       '<div class="bar2"><i style="width:68%"></i></div>'+
+       '<div class="panel"><div class="t"><b>Заслон</b><i>1 раз за вылазку</i></div>'+
+       '<p>Не получает урон 5 секунд.</p></div>'+
+       '<div class="slots"><div class="slot full">клинок<br>+2 атаки</div>'+
+       '<div class="slot full">доспех<br>+1 защита</div>'+
+       '<div class="slot">пусто<br>Кузница ур. 3</div></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">В вылазку</a></div>'},
+
+  {no:"06",cap:"Кузница",title:"Снаряжение меняет силуэт, а не только число",
+   does:"Список предметов со слотами. Надетое сразу видно на модели в карточке — стадии снаряжения читаются как стадии зданий.",
+   teach:"Улучшение видно без чтения цифр. Это то же правило, что у построек: уровень читается по силуэту.",
+   hide:"Ни случайных статов, ни редкостей, ни разборки. Предмет — это ветка постройки, а не лутбокс.",
+   html:sb()+top("Кузница","ур. 2 · слоты 2 из 3")+
+     '<div class="body">'+
+       '<div class="hero"><div class="por" data-m="Ратник"></div>'+
+       '<div class="who"><b>Ратник</b><span>атака 7 · защита 9</span></div>'+
+       '<span class="tag ok">готов</span></div>'+
+       '<div class="panel"><div class="line"><span>Соляной клинок</span><b>надет</b></div>'+
+       '<div class="line"><span>Кожаный доспех</span><b>надет</b></div>'+
+       '<div class="line"><span>Пластина</span><b>Кузница ур. 3</b></div>'+
+       '<p>Три слота, потолок — по уровню Кузницы. Предметы не выпадают'+
+       ' случайно: их куют за ресурсы вылазок.</p></div>'+
+       '<div class="panel"><div class="t"><b>Что изменится в вылазке</b><i>честно</i></div>'+
+       '<p>Пластина: −1 к скорости шага. Улучшение, у которого есть цена,'+
+       ' — это решение; улучшение без цены — просто задержка.</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta ghost">Ковать пластину — 45 мин</a></div>'},
+
+  {no:"07",cap:"Плац",title:"Запасному есть чем заняться, пока первый лечится",
+   does:"Тренировка поднимает уровень без вылазок: 1 уровень за 2 часа, потолок — на два ниже лучшего героя.",
+   teach:"Догоняющая механика. Запасной не отстаёт навсегда, но и обогнать основного тренировкой нельзя.",
+   hide:"Тренировка не заменяет игру: потолок делает её страховкой от простоя, а не вторым способом качаться.",
+   html:sb()+top("Плац","ур. 1 · один тренировочный слот")+
+     '<div class="body">'+
+       '<div class="hero sel"><div class="por" data-m="Солевар"></div>'+
+       '<div class="who"><b>Солевар</b><span>уровень 1 → 2</span></div>'+
+       '<span class="tag busy">2:00:00</span></div>'+
+       '<div class="panel"><div class="line"><span>Потолок тренировки</span><b>ур. 2</b></div>'+
+       '<p>На два уровня ниже лучшего героя отряда (Ратник, ур. 4).'+
+       ' Выше — только вылазками.</p></div>'+
+       '<div class="panel"><div class="t"><b>Оффлайн</b><i>идёт без игры</i></div>'+
+       '<p>Тренировка и лечение считаются по монотонному времени'+
+       ' и продолжаются, пока приложение закрыто.</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta">Тренировать</a>'+
+     '<a class="cta ghost">В отряд</a></div>'},
+
+  {no:"08",cap:"Выход",title:"Выбор героя — часть выбора локации",
+   does:"Герои показаны не абстрактно, а через эту локацию: ночь, ярус 2, ставка 60%. У каждого класса — своя строка последствий.",
+   teach:"Класс становится решением только рядом с картой. Ночью «обзор −1» Ратника — это не строка характеристик, а риск.",
+   hide:"Автоподбора «оптимального героя» нет. Он бы уничтожил единственное решение, ради которого экран существует.",
+   html:sb()+top("Солёная низина","ярус 2 · ночь · ставка 60%")+
+     '<div class="body">'+
+       '<div class="hero"><div class="por" data-m="Ратник"></div>'+
+       '<div class="who"><b>Ратник</b><span>обзор −1 · ночью почти вслепую</span></div>'+
+       '<span class="tag hurt">риск</span></div>'+
+       '<div class="hero sel"><div class="por" data-m="Следопыт"></div>'+
+       '<div class="who"><b>Следопыт</b><span>обзор +1 · рюкзак −25%</span></div>'+
+       '<span class="tag ok">подходит</span></div>'+
+       '<div class="hero lock"><div class="por" data-m="Солевар"></div>'+
+       '<div class="who"><b>Солевар</b><span>лечится — 4:10</span></div>'+
+       '<span class="tag busy">занят</span></div>'+
+       '<div class="panel"><div class="t"><b>Под угрозой</b><i>60% добычи</i></div>'+
+       '<p>Ставка объявляется до входа. Выбор героя — первое игровое решение,'+
+       ' ещё до первого шага.</p></div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta danger">Выйти Следопытом</a></div>'},
+
+  {no:"09",cap:"В вылазке",title:"Умение — одна кнопка и один раз",
+   does:"Кнопка появляется, когда умение можно применить осмысленно, и гаснет после применения. Отката нет: раз за вылазку.",
+   teach:"Умение — это тот же вопрос «дальше или назад», только с ответом на 30 секунд. «Тропа» сокращает путь назад на четверть.",
+   hide:"Панели умений, комбо и ресурса маны нет. Одна кнопка не отнимает вторую руку и не спорит с тапом по земле.",
+   html:sb()+
+     '<div class="body" style="padding:8px 10px 6px">'+
+       '<div class="stage" data-m="Следопыт" data-scene="raid" data-w="300" data-h="470" data-s="64" data-base="0.58">'+
+         '<div class="hud" style="position:absolute;left:12px;right:12px;top:10px;display:flex;flex-direction:column;gap:7px">'+
+           '<div class="meter"><em>Провиант</em><div class="bar"><i style="width:41%"></i></div><b>43</b></div>'+
+           '<div class="meter"><em>Рюкзак</em><div class="bar"><i style="width:72%;background:#7DA163"></i></div><b>14/19</b></div>'+
+         '</div>'+
+         '<div class="skill"><b>Тропа</b><i>1 / 1</i></div>'+
+         '<div class="hint">Путь назад <s>18 шагов</s> · под угрозой 9 из 14</div>'+
+       '</div>'+
+     '</div>'+
+     '<div class="nav"><a class="cta ghost">Эвакуация</a></div>'}
+  ];
+
+  var rail=document.getElementById("rail");
+  BEATS.forEach(function(b){
+    var d=document.createElement("div");d.className="beat";
+    d.innerHTML='<div class="no">'+b.no+'<small>'+b.cap+'</small></div>'+
+      '<div class="mini"><div class="phone">'+b.html+'</div></div>'+
+      '<div class="txt"><h3>'+b.title+'</h3>'+
+        '<div class="row does"><b>Делает</b><span>'+b.does+'</span></div>'+
+        '<div class="row teach"><b>Учит</b><span>'+b.teach+'</span></div>'+
+        '<div class="row hide"><b>Не показывает</b><span>'+b.hide+'</span></div></div>';
+    rail.appendChild(d);
+  });
+
+  // портреты и кадры внутри телефонов — те же модели, тот же свет
+  Array.prototype.forEach.call(document.querySelectorAll("[data-m]"),function(el){
+    var w=+(el.getAttribute("data-w")||46), h=+(el.getAttribute("data-h")||46);
+    var s=+(el.getAttribute("data-s")||30), base=+(el.getAttribute("data-base")||0.92);
+    var build=HERO[el.getAttribute("data-m")]; if(!build)return;
+    var meshes=build({});
+    if(el.getAttribute("data-scene")==="raid"){          // немного окружения под фонарём
+      meshes=meshes.concat([
+        box(-1.6,0,0.9,0.7,0.35,0.7,C["Камень тёмный"]),
+        box(1.8,0,-0.7,0.9,0.55,0.8,C["Камень"]),
+        box(1.0,0,1.7,0.5,0.25,0.5,C["Соль тень"]),
+        box(-1.9,0,-1.4,0.6,0.3,0.6,C["Камень тёмный"]),
+        box(0.4,0,-2.1,0.45,0.2,0.45,C["Соль тень"])
+      ]);
+    }
+    var ctx=mkCanvas(el,w,h);
+    var cv=el.lastElementChild;
+    if(el.classList.contains("stage")){          // кадр во весь блок, интерфейс поверх него
+      el.style.flex="0 0 auto";el.style.height=h+"px";
+      cv.style.position="absolute";cv.style.left="0";cv.style.top="0";
+      el.insertBefore(cv,el.firstChild);
+    }
+    render(ctx,meshes,w,h,s,25*Math.PI/180,{base:base});
+  });
+
+  // ——————————————————————————————————————————————————————————————
+  // Органы управления арт-блока
+  // ——————————————————————————————————————————————————————————————
+  function drawAll(){
+    cards.forEach(function(c){
+      render(c.ctx,c.meshes,c.W,c.H,c.scale,spin,
+        {wire:wireOn,sil:silOn,flash:c.flash&&!silOn,base:c.base});
+    });
+    document.getElementById("rotlbl").textContent=
+      "камера 45° / 30° · поворот модели "+Math.round(spin*180/Math.PI%360)+"° — ни одно направление не стоит ассета";
+  }
+  var rot=document.getElementById("rot");
+  rot.addEventListener("input",function(){spin=+rot.value*Math.PI/180;drawAll();});
+  function toggle(id,fn){
+    var b=document.getElementById(id);
+    b.addEventListener("click",function(){
+      var on=b.getAttribute("aria-pressed")!=="true";
+      b.setAttribute("aria-pressed",on?"true":"false");fn(on,b);
+    });
+  }
+  toggle("wire",function(on){wireOn=on;drawAll();});
+  toggle("sil",function(on){silOn=on;drawAll();});
+  toggle("spin",function(on,b){spinning=on;b.textContent=on?"Остановить":"Вращать";});
+
+  var last=0;
+  function loop(ts){
+    var dt=last?ts-last:16;last=ts;
+    if(spinning){spin+=dt/2600;rot.value=(spin*180/Math.PI)%360;drawAll();}
+    requestAnimationFrame(loop);
+  }
+  if(!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){
+    requestAnimationFrame(loop);
+  }
+  drawAll();
+})();
+</script>

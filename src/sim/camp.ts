@@ -72,12 +72,18 @@ export const BUILD_COST: Record<number, Partial<Resources>> = {
  * «до дна и обратно» и «полным обходом» (§12.2) — иначе локацию можно
  * зачистить целиком и решения «уйти или идти дальше» не существует.
  *
- * Замер на настоящем генераторе, 300 локаций на ярус: при доступе к ярусам 2
- * и 3 с Кухней 4 и 6 полный обход был по карману в 72–89% случаев.
- * При гейте 1/1/2/4 — в 0–2%. Кривые Кухни это не касается, дело только
- * в том, на каком её уровне ярус открывается.
+ * Замер на настоящем генераторе, 250–300 локаций на ярус: при доступе к ярусам
+ * 2 и 3 с Кухней 4 и 6 полный обход был по карману в 72–89% случаев.
+ * При гейте ниже — в 0–2%.
+ *
+ * Ярус 3 открыт Кухней 3, а не 4, по второму замеру. Ограничений в вылазке два,
+ * и они решают разное: рюкзак — что нести, провиант — как глубоко идти.
+ * Оба должны быть живыми. С Кухней 4 на реальном маршруте (в 1,4 раза длиннее
+ * идеального) забег упирался в рюкзак в 89% случаев, и провиант переставал
+ * значить что-либо; с Кухней 3 выходит 49 на 51. Полный обход при этом
+ * недоступен в обоих случаях, так что главная гарантия не страдает.
  */
-export const TIER_KITCHEN_GATE: Record<Tier, number> = { 0: 1, 1: 1, 2: 2, 3: 4 };
+export const TIER_KITCHEN_GATE: Record<Tier, number> = { 0: 1, 1: 1, 2: 2, 3: 3 };
 
 export type TierBlock = 'ok' | 'kitchen';
 
@@ -176,6 +182,46 @@ export function speedup(camp: CampState, now: number): boolean {
   camp.construction = { ...c, endsAt: now };
   completeIfDue(camp, now);
   return true;
+}
+
+/**
+ * Что предложить на экране возврата (§20.1: главная кнопка — трата, а не
+ * повтор). Берём самое дешёвое доступное улучшение: дорогое читается как
+ * «мне это не по карману» и подмену главного действия не выполняет.
+ *
+ * null означает, что покупки нет — слот занят или не хватает ресурсов.
+ * В документе на этот случай предусмотрен второй сток без таймера
+ * (снаряжение в Кузнице), но Кузницы в v0 нет — см. README.
+ */
+export function suggestUpgrade(camp: CampState): BuildingId | null {
+  let best: BuildingId | null = null;
+  let bestCost = Infinity;
+  for (const id of BUILDING_ORDER) {
+    if (upgradeBlock(camp, id) !== 'ok') continue;
+    const cost = BUILD_COST[camp.levels[id] + 1] ?? {};
+    const total = Object.values(cost).reduce((a, b) => a + b, 0);
+    if (total < bestCost) {
+      bestCost = total;
+      best = id;
+    }
+  }
+  return best;
+}
+
+/**
+ * Насколько игрок близок к следующему улучшению, 0..1 — по самому дефицитному
+ * ресурсу. §20.3 целится в «добыча одной вылазки ≈ 70% стоимости следующего
+ * улучшения», и эта доля показывает, попадаем ли мы туда.
+ */
+export function upgradeProgress(camp: CampState, id: BuildingId): number {
+  const cost = BUILD_COST[camp.levels[id] + 1];
+  if (cost === undefined) return 1;
+  let worst = 1;
+  for (const [kind, amount] of Object.entries(cost) as [keyof Resources, number][]) {
+    if (amount <= 0) continue;
+    worst = Math.min(worst, camp.resources[kind] / amount);
+  }
+  return Math.max(0, Math.min(1, worst));
 }
 
 /** camp.html: жителей два плюс по одному на каждые четыре уровня, потолок десять. */

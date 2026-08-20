@@ -46,6 +46,8 @@ export function createRaid(opts: RaidOptions): RaidState {
     path: [],
     status: 'running',
     steps: 0,
+    maxBack: 0,
+    elapsed: 0,
     inFight: false,
     starve: 0,
     events: [],
@@ -58,6 +60,17 @@ export function backSteps(state: RaidState): number {
   const cell = idx(loc.size, Math.round(hero.x), Math.round(hero.z));
   const d = loc.backSteps[cell];
   return d === undefined || d < 0 ? 0 : d;
+}
+
+/** Самая дальняя достижимая точка локации в шагах. Нужна, чтобы глубина
+ *  захода читалась долей, а не абсолютом: ярусы разного размера. */
+export function locationDepth(loc: GameLocation): number {
+  let max = 0;
+  for (let i = 0; i < loc.backSteps.length; i++) {
+    const d = loc.backSteps[i]!;
+    if (d > max) max = d;
+  }
+  return max;
 }
 
 /** §11.2 — под угрозой = ceil(добыча × доля яруса). */
@@ -224,6 +237,9 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
 export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge: number): void {
   if (state.status !== 'running') return;
   state.events.length = 0;
+  state.elapsed += dt;
+  const back = backSteps(state);
+  if (back > state.maxBack) state.maxBack = back;
 
   const vision = visionRadius(knowledge, night, true);
   stepMovement(state, dt);
@@ -259,6 +275,9 @@ export interface RaidResult {
   readonly foodLeft: number;
   readonly tier: Tier;
   readonly seed: number;
+  readonly maxBack: number;
+  readonly locMaxBack: number;
+  readonly durationSec: number;
 }
 
 /**
@@ -300,6 +319,9 @@ export function raidResult(state: RaidState): RaidResult {
     foodLeft: Math.max(0, Math.ceil(state.food)),
     tier: state.loc.tier,
     seed: state.loc.seed,
+    maxBack: state.maxBack,
+    locMaxBack: locationDepth(state.loc),
+    durationSec: state.elapsed,
   };
 }
 

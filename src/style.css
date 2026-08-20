@@ -10,7 +10,28 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* Игровой интерфейс не выделяется: случайный протяг по панели не должен
    превращаться в выделение текста и съедать нажатие. */
-#hud, #camp, #result { user-select: none; -webkit-user-select: none; }
+#hud, #camp, /* ---------- экран возврата (мокап 04) ---------- */
+#return {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 6;
+}
+#return.on { display: flex; }
+#return .panel { width: 100%; max-width: 360px; }
+#return h2 { margin: 0 0 2px; font-size: 20px; }
+#return p { margin: 4px 0; font-size: 13px; }
+#return .loot { margin: 12px 0 6px; display: flex; flex-direction: column; gap: 4px; }
+.loot-row { display: flex; justify-content: space-between; align-items: baseline; }
+.loot-row b { font-size: 20px; font-variant-numeric: tabular-nums; }
+/* «Полосы важнее добычи»: прогресс занимает больше места, чем ресурсы. */
+#return .progress { margin: 14px 0 16px; display: flex; flex-direction: column; gap: 6px; }
+#return .progress .bar { height: 10px; }
+#return .progress .bar > i { background: #c8a24a; }
+#return .acts { display: flex; flex-direction: column; gap: 7px; }
+#return button { width: 100%; padding: 12px; font-size: 14px; }
+#return .primary { background: #3c3320; border-color: #6d5a30; font-weight: 600; }
+#return .ghost { background: transparent; color: var(--dim); }
+
+#result { user-select: none; -webkit-user-select: none; }
 button { touch-action: manipulation; }
 html, body {
   margin: 0; height: 100%; overflow: hidden; background: #0b0a09; color: var(--ink);
@@ -34,7 +55,12 @@ canvas { display: block; touch-action: none; }
 .lbl { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .num { font-size: 12px; min-width: 56px; text-align: right; }
 .bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
-.bar > i { display: block; height: 100%; width: 100%; transition: width 0.15s linear; background: var(--dim); }
+/* Пустая полоса по умолчанию: незаполненная width читается как «полный»,
+   и это уже один раз выглядело как баг. */
+/* Без CSS-перехода: ширину пишет игровой цикл 60 раз в секунду, и переход
+   с ней дерётся — полоса застревает на промежуточном значении и никогда
+   не доезжает. Плавность даёт сам цикл. */
+.bar > i { display: block; height: 100%; width: 0; background: var(--dim); }
 .bar > i.good { background: var(--good); }
 .bar > i.warn { background: var(--warn); }
 .bar > i.bad { background: var(--bad); }
@@ -44,7 +70,6 @@ canvas { display: block; touch-action: none; }
 .bar.segmented { display: flex; gap: 3px; background: none; overflow: visible; }
 .bar.segmented > i {
   flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1);
-  transition: background 0.15s linear;
 }
 .bar.segmented > i.on { background: var(--bad); }
 .risk { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 12px; }
@@ -66,6 +91,27 @@ button {
   padding: 7px 11px; cursor: pointer;
 }
 button:active { background: rgba(255, 255, 255, 0.12); }
+
+/* ---------- экран возврата (мокап 04) ---------- */
+#return {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 6;
+}
+#return.on { display: flex; }
+#return .panel { width: 100%; max-width: 360px; }
+#return h2 { margin: 0 0 2px; font-size: 20px; }
+#return p { margin: 4px 0; font-size: 13px; }
+#return .loot { margin: 12px 0 6px; display: flex; flex-direction: column; gap: 4px; }
+.loot-row { display: flex; justify-content: space-between; align-items: baseline; }
+.loot-row b { font-size: 20px; font-variant-numeric: tabular-nums; }
+/* «Полосы важнее добычи»: прогресс занимает больше места, чем ресурсы. */
+#return .progress { margin: 14px 0 16px; display: flex; flex-direction: column; gap: 6px; }
+#return .progress .bar { height: 10px; }
+#return .progress .bar > i { background: #c8a24a; }
+#return .acts { display: flex; flex-direction: column; gap: 7px; }
+#return button { width: 100%; padding: 12px; font-size: 14px; }
+#return .primary { background: #3c3320; border-color: #6d5a30; font-weight: 600; }
+#return .ghost { background: transparent; color: var(--dim); }
 
 #result { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   background: rgba(8, 7, 6, 0.8); backdrop-filter: blur(4px); padding: 20px; z-index: 5; }
@@ -107,3 +153,21 @@ button:active { background: rgba(255, 255, 255, 0.12); }
 }
 #camp .raid .lbl { grid-column: 1 / -1; }
 button[disabled] { opacity: 0.4; cursor: default; }
+
+/* ---------- панель телеметрии ---------- */
+#stats-open {
+  position: fixed; right: 10px; top: calc(96px + env(safe-area-inset-top));
+  z-index: 4; font-size: 11px; padding: 5px 9px;
+}
+#stats-panel {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 7;
+}
+#stats-panel.on { display: flex; }
+#stats-panel .panel { width: 100%; max-width: 380px; max-height: 82vh; overflow-y: auto; }
+#stats-panel h2 { margin: 0 0 10px; font-size: 18px; }
+.sp-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.sp-row b { font-variant-numeric: tabular-nums; }
+.sp-note { font-size: 11px; color: var(--dim); margin: 0 0 8px; }
+#stats-panel .acts { display: flex; gap: 6px; margin-top: 12px; }
+#stats-panel .acts button { flex: 1; }

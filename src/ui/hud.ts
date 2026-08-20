@@ -1,7 +1,6 @@
 import { HERO_WOUNDS, TIER_NAME, TIER_RISK } from '../sim/config';
-import { CampHud } from './campHud';
 import { atRisk, backSteps } from '../sim/raid';
-import type { RaidResult, RaidState } from '../sim/raid';
+import type { RaidState } from '../sim/raid';
 
 /**
  * §6: UI — DOM поверх канваса, не внутри сцены.
@@ -13,8 +12,6 @@ export interface HudCallbacks {
   onZoom(delta: number): void;
   onEvacuate(): void;
   onNight(value: number): void;
-  /** Возврат в лагерь с экрана итогов. */
-  onToCamp(): void;
 }
 
 export class Hud {
@@ -31,7 +28,6 @@ export class Hud {
   private readonly tier: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly stats: HTMLElement;
-  private readonly overlay: HTMLElement;
   private hintTimer = 0;
 
   constructor(parent: HTMLElement, private readonly cb: HudCallbacks) {
@@ -72,10 +68,6 @@ export class Hud {
         </div>
       </div>`;
     parent.appendChild(this.root);
-
-    this.overlay = document.createElement('div');
-    this.overlay.id = 'result';
-    parent.appendChild(this.overlay);
 
     this.food = this.q('h-food');
     this.foodBar = this.q('h-food-bar');
@@ -147,7 +139,7 @@ export class Hud {
     this.backBar.className = needed > 0.9 ? 'bad' : needed > 0.6 ? 'warn' : 'dimbar';
     this.back.textContent = `${back} ш.`;
 
-    this.risk.innerHTML = `Под угрозой <b>${atRisk(state)}</b> из ${state.bag}`;
+    this.risk.innerHTML = `Под угрозой <b>${atRisk(state)}</b> из ${state.bagTotal}`;
     this.tier.textContent = `${TIER_NAME[tier]} · ставка ${Math.round(TIER_RISK[tier] * 100)}%`;
     this.tier.className = tier >= 3 ? 'bad' : tier === 2 ? 'warn' : 'dim';
 
@@ -167,29 +159,5 @@ export class Hud {
 
   setStats(text: string): void {
     this.stats.textContent = text;
-  }
-
-  showResult(result: RaidResult): void {
-    const ok = result.status === 'evacuated';
-    this.overlay.className = 'on';
-    this.overlay.innerHTML = `
-      <div class="panel">
-        <h2 class="${ok ? 'ok' : 'bad'}">${ok ? 'Эвакуация' : 'Провал'}</h2>
-        <div class="big ${ok ? 'ok' : 'bad'}">${result.carriedTotal} / ${result.bagTotal}</div>
-        <p>${CampHud.resourceSummary(result.carried)}</p>
-        <p>${
-          ok
-            ? 'Добыча зачислена на склад.'
-            : `Потеряно ${result.lost} — доля яруса ${Math.round(TIER_RISK[result.tier] * 100)}%.`
-        }</p>
-        <p class="dim">${TIER_NAME[result.tier]} · ${result.steps} шагов · провианта ${result.foodLeft} · сид ${result.seed}</p>
-        <button data-again="1">В лагерь</button>
-      </div>`;
-    this.overlay.querySelector('button')?.addEventListener('click', () => this.cb.onToCamp());
-  }
-
-  hideResult(): void {
-    this.overlay.className = '';
-    this.overlay.innerHTML = '';
   }
 }
