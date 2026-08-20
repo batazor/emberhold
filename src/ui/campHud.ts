@@ -5,12 +5,16 @@ import {
   BUILD_COST,
   BUILD_SECONDS,
   MAX_LEVEL,
+  gearBlock,
+  itemCap,
   speedupCost,
   TIER_KITCHEN_GATE,
   tierBlock,
   upgradeBlock,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
+import { GEAR, GEAR_COST, GEAR_ORDER, gearLine } from '../sim/gear';
+import type { GearSlot } from '../sim/gear';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
 import type { Tier } from '../sim/types';
@@ -19,13 +23,22 @@ export interface CampCallbacks {
   onUpgrade(id: BuildingId): void;
   onSpeedup(): void;
   onRaid(tier: Tier): void;
+  /** §14 — ковка и улучшение это одно действие: слот один, предмет один. */
+  onCraft(slot: GearSlot): void;
 }
 
 const BLOCK_TEXT: Record<string, string> = {
   max: 'Максимальный уровень',
+  locked: 'Нужен Штаб ур. 2',
   'hq-cap': 'Штаб не пускает выше',
   'slot-busy': 'Слот занят другой стройкой',
   resources: 'Не хватает ресурсов',
+};
+
+const GEAR_BLOCK_TEXT: Record<string, string> = {
+  max: 'Лучше не бывает',
+  'forge-cap': 'Кузница не тянет выше',
+  resources: 'Не хватает железа',
 };
 
 const RESOURCE_ORDER: readonly ResourceKind[] = ['salt', 'wood', 'iron', 'crystal'];
@@ -52,6 +65,9 @@ export class CampHud {
   private readonly root: HTMLElement;
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
+  private readonly gearRows = new Map<GearSlot, Row>();
+  /** Панель Кузницы: появляется вместе с самой Кузницей и не раньше. */
+  private readonly gearPanel: HTMLElement;
   private readonly tierButtons = new Map<Tier, HTMLButtonElement>();
   private readonly banner: HTMLElement;
   private bannerTimer = 0;
@@ -98,7 +114,18 @@ export class CampHud {
       raid.appendChild(b);
     }
 
-    this.root.append(res, this.banner, list, raid);
+    // §20.1 — сток без таймера. Панель стоит отдельно от списка построек
+    // именно поэтому: она работает тогда, когда список занят стройкой.
+    this.gearPanel = document.createElement('div');
+    this.gearPanel.className = 'panel list';
+    const gearLabel = document.createElement('span');
+    gearLabel.className = 'lbl';
+    gearLabel.textContent = 'Кузница · снаряжение';
+    this.gearPanel.appendChild(gearLabel);
+    for (const slot of GEAR_ORDER) this.gearPanel.appendChild(this.makeGearRow(slot));
+    this.gearPanel.style.display = 'none';
+
+    this.root.append(res, this.banner, list, this.gearPanel, raid);
     parent.appendChild(this.root);
   }
 
@@ -142,6 +169,71 @@ export class CampHud {
     box.append(top, effect, barWrap, bottom);
     this.rows.set(id, { level, effect, status, barWrap, bar, button });
     return box;
+  }
+
+  private makeGearRow(slot: GearSlot): HTMLElement {
+    const def = GEAR[slot];
+    const box = document.createElement('div');
+    box.className = 'b';
+
+    const top = document.createElement('div');
+    top.className = 'b-top';
+    const name = document.createElement('b');
+    name.textContent = def.name;
+    const level = document.createElement('span');
+    level.className = 'dim';
+    top.append(name, level);
+
+    const effect = document.createElement('div');
+    effect.className = 'b-eff';
+
+    const barWrap = document.createElement('div');
+    barWrap.className = 'bar';
+    barWrap.style.display = 'none';
+    const bar = document.createElement('i');
+    barWrap.appendChild(bar);
+
+    const bottom = document.createElement('div');
+    bottom.className = 'b-bot';
+    const status = document.createElement('span');
+    status.className = 'dim';
+    const button = document.createElement('button');
+    bottom.append(status, button);
+    button.addEventListener('click', () => this.cb.onCraft(slot));
+
+    box.append(top, effect, bottom);
+    this.gearRows.set(slot, { level, effect, status, barWrap, bar, button });
+    return box;
+  }
+
+  private gearCostLine(level: number): string {
+    const cost = GEAR_COST[level];
+    if (cost === undefined) return '';
+    return (Object.entries(cost) as [ResourceKind, number][])
+      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+      .join(' · ');
+  }
+
+  /** Панель Кузницы. Компромисс слота показывается всегда, а не только когда
+   *  предмет надет: §14 требует, чтобы цена была видна до покупки. */
+  private syncGear(camp: CampState): void {
+    const open = camp.levels.forge > 0;
+    this.gearPanel.style.display = open ? '' : 'none';
+    if (!open) return;
+    for (const slot of GEAR_ORDER) {
+      const row = this.gearRows.get(slot);
+      if (row === undefined) continue;
+      const level = camp.gear[slot];
+      const block = gearBlock(camp, slot);
+      row.level.textContent = level > 0 ? `ур. ${level} / ${itemCap(camp.levels.forge)}` : '—';
+      row.effect.textContent = `${gearLine(slot, level)} · ${GEAR[slot].tradeoff}`;
+      row.button.textContent = level > 0 ? 'Улучшить' : 'Выковать';
+      row.button.disabled = block !== 'ok';
+      row.status.textContent =
+        block === 'ok' || block === 'resources'
+          ? this.gearCostLine(level + 1)
+          : (GEAR_BLOCK_TEXT[block] ?? '');
+    }
   }
 
   setVisible(visible: boolean): void {
@@ -205,11 +297,12 @@ export class CampHud {
       }
 
       const block = upgradeBlock(camp, id);
-      row.level.textContent = `ур. ${level}`;
+      // Уровень 0 — не «ур. 0», а пустое место: цифра тут врала бы.
+      row.level.textContent = level > 0 ? `ур. ${level}` : 'не построена';
       row.effect.textContent = BUILDINGS[id].effect(level);
       row.barWrap.style.display = 'none';
       row.button.dataset['mode'] = 'upgrade';
-      row.button.textContent = 'Улучшить';
+      row.button.textContent = level > 0 ? 'Улучшить' : 'Построить';
       row.button.disabled = block !== 'ok';
       row.status.textContent =
         block === 'ok' || block === 'resources'
@@ -218,6 +311,8 @@ export class CampHud {
             }`
           : (BLOCK_TEXT[block] ?? '');
     }
+
+    this.syncGear(camp);
   }
 
   /** Итог вылазки: что зачислено на склад. */

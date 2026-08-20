@@ -12,6 +12,8 @@ import {
 import { ENEMY_STATS } from './enemies';
 import { DEFAULT_LOADOUT, FORAGE_FOOD, SKILLS, TRAIL_STEP_DISCOUNT } from './heroes';
 import type { HeroLoadout } from './heroes';
+import { NO_MODS, gearMods } from './gear';
+import type { GearState } from './gear';
 import { generateLocation } from './generate';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
@@ -31,14 +33,24 @@ export interface RaidOptions {
    * несравнимы с калибровкой §20.3.
    */
   readonly loadout?: HeroLoadout;
+  /**
+   * §14 — снаряжение из Кузницы. Тоже необязательное и по той же причине,
+   * что и класс: без него вылазка обязана считаться ровно так, как её
+   * измеряли при калибровке §20.3, иначе все прежние замеры несравнимы.
+   */
+  readonly gear?: GearState;
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
   const loc = generateLocation(opts.seed, opts.tier);
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
+  // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
+  // знать про слоты, ей нужны вместимость, раны и множители.
+  const mods = opts.gear === undefined ? NO_MODS : gearMods(opts.gear);
   return {
     loc,
     loadout,
+    mods,
     skillUsed: false,
     skillLeft: 0,
     hero: {
@@ -47,8 +59,8 @@ export function createRaid(opts: RaidOptions): RaidState {
       prevX: loc.evac.x,
       prevZ: loc.evac.z,
       facing: 0,
-      // Раны — от класса: у Ратника их четыре (§11.7).
-      wounds: loadout.wounds,
+      // Раны — от класса (§11.7) плюс броня (§14).
+      wounds: loadout.wounds + mods.wounds,
       cooldown: 0,
     },
     food: kitchenFood(opts.kitchenLevel),
@@ -57,7 +69,13 @@ export function createRaid(opts: RaidOptions): RaidState {
     bagTotal: 0,
     // Рюкзак класса: Следопыт −25%, Солевар +30% (§11.7). Не меньше единицы,
     // иначе на Складе ур. 1 Следопыт не смог бы унести ничего.
-    capacity: Math.max(1, Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul)),
+    // Склад × класс, потом снаряжение: сумка прибавляет, оружие отнимает (§14).
+    // Прибавка идёт после доли класса, иначе рюкзак Следопыта съедал бы
+    // четверть выкованного короба, о чём игроку никто не говорил.
+    capacity: Math.max(
+      1,
+      Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity,
+    ),
     path: [],
     status: 'running',
     steps: 0,
@@ -91,7 +109,9 @@ export function locationDepth(loc: GameLocation): number {
 
 /** §11.2 — под угрозой = ceil(добыча × доля яруса). */
 export function atRisk(state: RaidState): number {
-  return Math.ceil(state.bagTotal * TIER_RISK[state.loc.tier]);
+  // §11.2 — доля яруса, смягчённая кольцом (§14). Единственный предмет,
+  // трогающий ставку: ей владеет один слот, иначе риск перестаёт быть риском.
+  return Math.ceil(state.bagTotal * TIER_RISK[state.loc.tier] * state.mods.risk);
 }
 
 export function commandMove(state: RaidState, target: Cell): boolean {
@@ -135,7 +155,13 @@ function skillActive(state: RaidState, id: RaidState['loadout']['skill']): boole
  * глубину эвакуации, читается оно неправильно.
  */
 function stepFoodCost(state: RaidState): number {
-  return FOOD_COST.step * (skillActive(state, 'trail') ? 1 - TRAIL_STEP_DISCOUNT : 1);
+  // Тяжёлая броня дороже в дороге (§14): множители «Тропы» и брони
+  // перемножаются — умение сокращает и утяжелённый шаг тоже.
+  return (
+    FOOD_COST.step *
+    (skillActive(state, 'trail') ? 1 - TRAIL_STEP_DISCOUNT : 1) *
+    state.mods.foodStep
+  );
 }
 
 /** Умение применяется один раз за вылазку, отката нет (§11.7). */
@@ -276,7 +302,9 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
     const engageAt = Math.max(HERO_REACH, stats.reach);
     if (dist <= engageAt && hero.cooldown <= 0) {
       enemy.wounds -= 1;
-      hero.cooldown = HERO_ATTACK_INTERVAL;
+      // §14 — оружие ускоряет зачистку, а не увеличивает урон: удар остаётся
+      // одной раной, меняется только пауза между ударами.
+      hero.cooldown = HERO_ATTACK_INTERVAL * state.mods.attackInterval;
       if (enemy.wounds <= 0) {
         enemy.awake = false;
         state.events.push(`${stats.name} падёт`);
@@ -301,7 +329,9 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   const back = backSteps(state);
   if (back > state.maxBack) state.maxBack = back;
 
-  const vision = visionRadius(knowledge, night, true);
+  // Базовый фонарь героя (§11.4) остаётся у всех; выкованный фонарь
+  // прибавляется сверху и потому не ужесточает ярусы задним числом.
+  const vision = visionRadius(knowledge, night, true) + state.mods.vision;
   stepMovement(state, dt);
   if (state.status !== 'running') return;
   stepCombat(state, dt, vision);

@@ -1,5 +1,14 @@
-import { BUILDINGS, BUILD_COST, suggestUpgrade, upgradeProgress } from '../sim/camp';
+import {
+  BUILDINGS,
+  BUILD_COST,
+  gearAction,
+  suggestGear,
+  suggestUpgrade,
+  upgradeProgress,
+} from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
+import { GEAR, gearLine } from '../sim/gear';
+import type { GearSlot } from '../sim/gear';
 import { TIER_NAME } from '../sim/config';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
@@ -21,6 +30,11 @@ const ORDER: readonly ResourceKind[] = ['salt', 'wood', 'iron', 'crystal'];
 
 export interface ReturnCallbacks {
   onBuild(id: BuildingId): void;
+  /**
+   * §20.1 — вторая половина ответа на «слот занят». Постройка уходит в таймер,
+   * снаряжение доступно всегда, и главная кнопка остаётся тратой.
+   */
+  onCraft(slot: GearSlot): void;
   onRaid(tier: Tier): void;
   onCamp(): void;
 }
@@ -44,10 +58,13 @@ export class ReturnScreen {
   private shownAt = 0;
   private skipped = false;
   private suggestion: BuildingId | null = null;
+  /** Что предложить, когда постройка недоступна: слот занят или не по карману. */
+  private gearSuggestion: GearSlot | null = null;
   private tier: Tier = 0;
   /** Отчёт о выборе игрока уходит в телеметрию один раз за экран. */
   private reported = false;
-  private onChoice: ((chose: 'build' | 'raid' | 'camp', canBuy: boolean) => void) | null = null;
+  private onChoice: ((chose: 'build' | 'craft' | 'raid' | 'camp', canBuy: boolean) => void) | null =
+    null;
 
   constructor(parent: HTMLElement, private readonly cb: ReturnCallbacks) {
     this.root = document.createElement('div');
@@ -93,6 +110,9 @@ export class ReturnScreen {
       if (this.suggestion !== null) {
         this.report('build');
         this.cb.onBuild(this.suggestion);
+      } else if (this.gearSuggestion !== null) {
+        this.report('craft');
+        this.cb.onCraft(this.gearSuggestion);
       } else {
         this.report('raid');
         this.cb.onRaid(this.tier);
@@ -110,16 +130,18 @@ export class ReturnScreen {
     this.hide();
   }
 
-  private report(chose: 'build' | 'raid' | 'camp'): void {
+  private report(chose: 'build' | 'craft' | 'raid' | 'camp'): void {
     if (this.reported) return;
     this.reported = true;
-    this.onChoice?.(chose, this.suggestion !== null);
+    // «Покупка была доступна» теперь значит любую трату, а не только стройку:
+    // §20.1 меряет долю возвратов, на которых игроку было что купить.
+    this.onChoice?.(chose, this.suggestion !== null || this.gearSuggestion !== null);
   }
 
   show(
     result: RaidResult,
     camp: CampState,
-    onChoice: (chose: 'build' | 'raid' | 'camp', canBuy: boolean) => void,
+    onChoice: (chose: 'build' | 'craft' | 'raid' | 'camp', canBuy: boolean) => void,
   ): void {
     this.onChoice = onChoice;
     this.reported = false;
@@ -127,6 +149,9 @@ export class ReturnScreen {
     this.skipped = false;
     this.tier = result.tier;
     this.suggestion = suggestUpgrade(camp);
+    // Кузница предлагается только тогда, когда постройка не предлагается:
+    // две главные кнопки не бывают главными одновременно.
+    this.gearSuggestion = this.suggestion === null ? suggestGear(camp) : null;
 
     const ok = result.status === 'evacuated';
     this.title.textContent = ok ? 'Вылазка завершена' : 'Провал';
@@ -170,6 +195,10 @@ export class ReturnScreen {
       this.primary.textContent = `Построить: ${BUILDINGS[id].name} ур. ${camp.levels[id] + 1}`;
       this.secondary.textContent = 'Ещё вылазка';
       this.secondary.style.display = '';
+    } else if (this.gearSuggestion !== null) {
+      this.primary.textContent = gearAction(camp, this.gearSuggestion);
+      this.secondary.textContent = 'Ещё вылазка';
+      this.secondary.style.display = '';
     } else {
       this.primary.textContent = 'Ещё вылазка';
       this.secondary.style.display = 'none';
@@ -181,6 +210,15 @@ export class ReturnScreen {
 
   /** Полоса прогресса к следующему улучшению — то, ради чего играли. */
   private syncProgress(camp: CampState): void {
+    // Когда трата — снаряжение, полоса обязана показывать его же: полоса
+    // про недостижимую постройку рядом с кнопкой про кайло читается как ошибка.
+    if (this.suggestion === null && this.gearSuggestion !== null) {
+      const slot = this.gearSuggestion;
+      const next = camp.gear[slot] + 1;
+      this.progressLabel.textContent = `${GEAR[slot].name} ур. ${next} — ${gearLine(slot, next)}`;
+      this.progressBar.style.width = '100%';
+      return;
+    }
     const id = this.suggestion ?? this.cheapestLocked(camp);
     if (id === null) {
       this.progressLabel.textContent = 'Всё построено';
@@ -206,7 +244,7 @@ export class ReturnScreen {
   private cheapestLocked(camp: CampState): BuildingId | null {
     let best: BuildingId | null = null;
     let bestProgress = -1;
-    for (const id of ['hq', 'kitchen', 'storage'] as BuildingId[]) {
+    for (const id of ['hq', 'kitchen', 'storage', 'forge'] as BuildingId[]) {
       if (camp.levels[id] >= 6) continue;
       const p = upgradeProgress(camp, id);
       if (p > bestProgress) {

@@ -15,17 +15,27 @@ import {
   BUILDINGS,
   BUILD_SECONDS,
   completeIfDue,
+  craftGear,
   createCamp,
   startUpgrade,
+  suggestGear,
   suggestUpgrade,
   tierBlock,
   upgradeBlock,
 } from '../src/sim/camp';
+import { GEAR } from '../src/sim/gear';
 import type { BuildingId, CampState } from '../src/sim/camp';
 import { addResources } from '../src/sim/resources';
 import { events, setEvents, summarize, track } from '../src/sim/telemetry';
 import { BUILDING_ORDER } from '../src/sim/camp';
 import type { Tier } from '../src/sim/types';
+
+/**
+ * Прогон без Кузницы — чтобы «стало лучше» было измеримым, а не заявленным:
+ * NOFORGE=1 npm run play. Оставлено намеренно, этим же переключателем
+ * сравнивается любой следующий сток без таймера (§21).
+ */
+const FORGE = process.env['NOFORGE'] !== '1';
 
 const RAIDS = 20;
 const RAIDS_PER_SESSION = 5;
@@ -42,6 +52,8 @@ function bestTier(camp: CampState): Tier {
 
 /** Во что вкладываться: Кухня и Склад меняют вылазку, Штаб — только потолок. */
 function chooseUpgrade(camp: CampState): BuildingId | null {
+  // Кузница бесплатна и мгновенна: её ставят сразу, как только Штаб позволит.
+  if (FORGE && camp.levels.forge === 0 && upgradeBlock(camp, 'forge') === 'ok') return 'forge';
   for (const id of ['kitchen', 'storage'] as BuildingId[]) {
     if (upgradeBlock(camp, id) === 'ok') return id;
   }
@@ -87,6 +99,7 @@ for (let n = 1; n <= RAIDS; n++) {
       tier,
       kitchenLevel: camp.levels.kitchen,
       storageLevel: camp.levels.storage,
+      gear: camp.gear,
     },
     POLICIES.balanced,
     rng,
@@ -110,9 +123,15 @@ for (let n = 1; n <= RAIDS; n++) {
   addResources(camp.resources, raid.carried);
   camp.raids += 1;
 
-  // Экран возврата: что он предложил и что игрок выбрал.
-  const offer = suggestUpgrade(camp);
-  if (offer === null) {
+  // Экран возврата: что он предложил и что игрок выбрал. Предложений два вида —
+  // стройка по таймеру и ковка без него (§20.1), и второе существует ровно
+  // затем, чтобы первое могло быть занято.
+  // Без Кузницы её нельзя и предлагать: иначе бесплатная непостроенная
+  // Кузница вечно висит в предложениях и завышает базовый замер.
+  const raw = suggestUpgrade(camp);
+  const offer = !FORGE && raw === 'forge' ? null : raw;
+  const gearOffer = offer === null && FORGE ? suggestGear(camp) : null;
+  if (offer === null && gearOffer === null) {
     const reason =
       camp.construction !== null
         ? 'слот занят'
@@ -122,14 +141,18 @@ for (let n = 1; n <= RAIDS; n++) {
     noOffer[reason] = (noOffer[reason] ?? 0) + 1;
   }
   const plan = chooseUpgrade(camp);
-  const chose = plan !== null ? 'build' : 'raid';
-  track({ t: 'return_screen', at: now, canBuy: offer !== null, chose });
+  const chose = plan !== null ? 'build' : gearOffer !== null ? 'craft' : 'raid';
+  track({ t: 'return_screen', at: now, canBuy: offer !== null || gearOffer !== null, chose });
 
   let built = '—';
   if (plan !== null && startUpgrade(camp, plan, now)) {
     const toLevel = camp.levels[plan] + 1;
     track({ t: 'build_start', at: now, building: plan, toLevel, seconds: BUILD_SECONDS[toLevel] ?? 0 });
     built = `${BUILDINGS[plan].name} → ${toLevel}`;
+  } else if (gearOffer !== null && craftGear(camp, gearOffer)) {
+    const level = camp.gear[gearOffer];
+    track({ t: 'craft', at: now, slot: gearOffer, toLevel: level });
+    built = `${GEAR[gearOffer].name} → ${level}`;
   }
 
   rows.push(
@@ -139,7 +162,13 @@ for (let n = 1; n <= RAIDS; n++) {
       `${String(raid.lost).padStart(3)}  ` +
       `${String(Math.round(raid.durationSec)).padStart(4)} с  ` +
       `${String(Math.round((raid.maxBack / Math.max(1, raid.locMaxBack)) * 100)).padStart(4)}%  ` +
-      `${offer === null ? 'нечего купить' : BUILDINGS[offer].name.padEnd(7)}  ${built}`,
+      `${
+        offer !== null
+          ? BUILDINGS[offer].name.padEnd(7)
+          : gearOffer !== null
+            ? 'Кузница'
+            : 'нечего купить'
+      }  ${built}`,
   );
 
   now += CAMP_PAUSE;

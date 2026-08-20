@@ -32,7 +32,14 @@ export type TelemetryEvent =
       durationSec: number;
     }
   /** §20.1 — главная кнопка экрана возврата: трата или повтор. */
-  | { t: 'return_screen'; at: number; canBuy: boolean; chose: 'build' | 'raid' | 'camp' }
+  | {
+      t: 'return_screen';
+      at: number;
+      canBuy: boolean;
+      /** §20.1 — трата бывает двух видов: стройка по таймеру и ковка без него. */
+      chose: 'build' | 'craft' | 'raid' | 'camp';
+    }
+  | { t: 'craft'; at: number; slot: string; toLevel: number }
   | { t: 'build_start'; at: number; building: BuildingId; toLevel: number; seconds: number }
   | { t: 'build_done'; at: number; building: BuildingId; level: number }
   | { t: 'speedup'; at: number; building: BuildingId; cost: number; leftSec: number }
@@ -131,7 +138,12 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     avgLost: mean(ends.map((e) => e.lost)),
     avgFoodLeft: mean(ends.map((e) => e.foodLeft)),
     buyOfferRate: returns.length === 0 ? 0 : offered.length / returns.length,
-    buyTakeRate: offered.length === 0 ? 0 : offered.filter((r) => r.chose === 'build').length / offered.length,
+    // Взятая покупка — и стройка, и ковка: §20.1 меряет, потратил ли игрок,
+    // а не то, во что именно. Разделение видно по событию craft.
+    buyTakeRate:
+      offered.length === 0
+        ? 0
+        : offered.filter((r) => r.chose === 'build' || r.chose === 'craft').length / offered.length,
     firstBuilding: builds[0]?.building ?? null,
     // Время возвращения меряется только там, где таймер реально шёл: заходы
     // без незавершённой стройки к этому вопросу отношения не имеют.

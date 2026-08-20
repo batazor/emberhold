@@ -6,6 +6,9 @@
 import assert from 'node:assert/strict';
 import {
   BUILD_COST,
+  craftGear,
+  gearBlock,
+  suggestGear,
   campArea,
   completeIfDue,
   createCamp,
@@ -32,6 +35,8 @@ import {
 import { addResources } from '../src/sim/resources';
 import { events, setEvents, summarize } from '../src/sim/telemetry';
 import { load, save, wipe } from '../src/sim/save';
+import { createRoster } from '../src/sim/heroes';
+import { GEAR_COST, MAX_ITEM_LEVEL, emptyGear } from '../src/sim/gear';
 import { atRisk, backSteps, commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
 import { TICK } from '../src/core/loop';
 import { ENEMY_STATS, TIER_ROSTER } from '../src/sim/enemies';
@@ -57,7 +62,7 @@ check('§20.4 — здание не может превысить Штаб', () 
 
 check('§20.1 — слот один', () => {
   const camp = createCamp();
-  camp.levels = { hq: 3, kitchen: 1, storage: 1 };
+  camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 0 };
   camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
   assert.equal(startUpgrade(camp, 'kitchen', 1000), true);
   assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy');
@@ -117,7 +122,7 @@ check('§20.5 — бесплатное окно min(5 мин, 25% таймера
 
 check('ускорение длинной стройки тратит соль и завершает её', () => {
   const camp = createCamp();
-  camp.levels = { hq: 5, kitchen: 4, storage: 1 };
+  camp.levels = { hq: 5, kitchen: 4, storage: 1, forge: 0 };
   camp.resources = { salt: 9999, wood: 9999, iron: 9999, crystal: 9999 };
   startUpgrade(camp, 'kitchen', 0); // до ур. 5 — три часа
   const before = camp.resources.salt;
@@ -174,9 +179,9 @@ check('§2 — уровни зданий меняют вылазку', () => {
 check('camp.html — жителей 2 + по одному на четыре уровня, потолок 10', () => {
   const camp = createCamp();
   assert.equal(villagerCount(camp), 2);
-  camp.levels = { hq: 4, kitchen: 4, storage: 4 };
+  camp.levels = { hq: 4, kitchen: 4, storage: 4, forge: 0 };
   assert.equal(villagerCount(camp), 5);
-  camp.levels = { hq: 6, kitchen: 6, storage: 6 };
+  camp.levels = { hq: 6, kitchen: 6, storage: 6, forge: 0 };
   assert.equal(villagerCount(camp), 6);
 });
 
@@ -194,7 +199,7 @@ console.log('Сохранение');
 check('save/load не падают без localStorage (Node, приватный режим)', () => {
   const camp = createCamp();
   camp.levels.hq = 3;
-  save(camp, 123);
+  save(camp, createRoster(), 123);
   const loaded = load();
   assert.equal(loaded.camp.levels.hq, 1, 'без хранилища — чистый лагерь');
   wipe();
@@ -226,7 +231,7 @@ check('битый и чужой сейв не роняет игру', () => {
 check('сейв с раскладкой за границей чинится при загрузке', () => {
   const camp = createCamp();
   camp.layout.kitchen = { x: 9, z: 9 }; // площадь при Штабе ур. 1 — 6×6
-  save(camp, 0);
+  save(camp, createRoster(), 0);
   const back = load().camp;
   assert.deepEqual(back.layout.kitchen, createCamp().layout.kitchen);
   wipe();
@@ -234,11 +239,11 @@ check('сейв с раскладкой за границей чинится п�
 
 check('сейв переживает круг save → load', () => {
   const camp = createCamp();
-  camp.levels = { hq: 4, kitchen: 3, storage: 2 };
+  camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0 };
   camp.resources = { salt: 50, wood: 40, iron: 20, crystal: 3 };
   camp.layout.kitchen = { x: 6, z: 3 };
   assert.equal(startUpgrade(camp, 'storage', 500), true);
-  save(camp, 777);
+  save(camp, createRoster(), 777);
 
   const { camp: back, watermark } = load();
   assert.deepEqual(back.levels, camp.levels);
@@ -438,7 +443,10 @@ check('пустая телеметрия не ломает сводку', () => 
 
 check('§20.1 — экран возврата предлагает самое дешёвое доступное улучшение', () => {
   const camp = createCamp();
-  camp.levels = { hq: 3, kitchen: 1, storage: 1 };
+  // Кузница здесь уже стоит: её первый уровень бесплатен и мгновенен (§20.3),
+  // и пока её нет, она перебивает любое платное предложение — это проверяется
+  // отдельно ниже.
+  camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 };
   camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
   // У Кухни и Склада ур. 1 — одинаковая цена второго уровня, берётся первый
   // по порядку; главное, что предложение вообще есть.
@@ -482,8 +490,6 @@ check('§20.3 — цена растёт с уровнем', () => {
   }
 });
 
-console.log(`\n${checks} проверок пройдено`);
-
 check('§12.2 и §22 — запас на гейте лежит между «до дна» и «полным обходом»', () => {
   for (const tier of [0, 1, 2, 3] as const) {
     const d = deriveTier(TIER_SPEC[tier]);
@@ -499,3 +505,171 @@ check('§12.2 и §22 — запас на гейте лежит между «д�
     assert.ok(d.checks.survivable, `ярус ${tier}: забег непереживаем`);
   }
 });
+
+console.log('Кузница и снаряжение');
+
+check('§16 — Кузница закрыта до Штаба ур. 2 и говорит, чем закрыта', () => {
+  const camp = createCamp();
+  camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+  assert.equal(camp.levels.forge, 0, 'в новом лагере Кузницы нет');
+  assert.equal(upgradeBlock(camp, 'forge'), 'locked');
+  assert.equal(gearBlock(camp, 'weapon'), 'no-forge', 'ковать негде');
+  camp.levels.hq = 2;
+  assert.equal(upgradeBlock(camp, 'forge'), 'ok');
+});
+
+check('§20.3 — первый уровень Кузницы бесплатен и мгновенен', () => {
+  const camp = createCamp();
+  camp.levels.hq = 2;
+  assert.equal(startUpgrade(camp, 'forge', 1000), true);
+  assert.equal(camp.levels.forge, 1, 'выросла на глазах, без таймера');
+  assert.equal(camp.construction, null, 'слот стройки свободен');
+  assert.deepEqual(camp.resources, { salt: 0, wood: 0, iron: 0, crystal: 0 });
+});
+
+check('§20.1 — ковка работает, пока слот стройки занят', () => {
+  const camp = createCamp();
+  camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 };
+  camp.resources = { salt: 999, wood: 999, iron: 999, crystal: 999 };
+  assert.equal(startUpgrade(camp, 'kitchen', 0), true);
+  assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy', 'стройка встала в очередь');
+  // Это и есть ответ §20.1 на конфликт: главная кнопка экрана возврата
+  // не исчезает, она меняет предложение.
+  assert.equal(suggestUpgrade(camp), null);
+  assert.notEqual(suggestGear(camp), null, 'Кузница предлагает трату');
+  assert.equal(craftGear(camp, 'weapon'), true);
+  assert.equal(camp.gear.weapon, 1);
+  assert.notEqual(camp.construction, null, 'ковка не тронула стройку');
+});
+
+check('§14 — предмет не может быть лучше своей Кузницы', () => {
+  const camp = createCamp();
+  camp.levels = { hq: 2, kitchen: 1, storage: 1, forge: 1 };
+  camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+  assert.equal(craftGear(camp, 'bag'), true, 'ур. 1 доступен');
+  assert.equal(gearBlock(camp, 'bag'), 'forge-cap', 'ур. 2 требует Кузницу ур. 2');
+  camp.levels.forge = 5;
+  assert.equal(craftGear(camp, 'bag'), true);
+  camp.levels.forge = 6;
+  for (let i = camp.gear.bag; i < MAX_ITEM_LEVEL; i++) craftGear(camp, 'bag');
+  assert.equal(camp.gear.bag, MAX_ITEM_LEVEL);
+  assert.equal(gearBlock(camp, 'bag'), 'max', 'шестого уровня у предметов нет');
+});
+
+check('§14 — Кузница улучшает, а не рандомит', () => {
+  const a = createCamp();
+  const b = createCamp();
+  for (const camp of [a, b]) {
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 };
+    camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+    craftGear(camp, 'ring');
+    craftGear(camp, 'ring');
+  }
+  // Один и тот же вход даёт один и тот же выход: ни бросков, ни перебросов.
+  assert.deepEqual(a.gear, b.gear);
+  assert.equal(a.gear.ring, 2);
+  assert.deepEqual(a.resources, b.resources);
+});
+
+check('§14 — каждый слот меняет вылазку, и каждый чем-то платит', () => {
+  const bare = createRaid({ seed: 7, tier: 1, kitchenLevel: 2, storageLevel: 2 });
+  const gear = emptyGear();
+  gear.bag = 3;
+  const withBag = createRaid({ seed: 7, tier: 1, kitchenLevel: 2, storageLevel: 2, gear });
+  assert.equal(withBag.capacity, bare.capacity + 3, 'сумка расширяет рюкзак');
+
+  const armed = createRaid({
+    seed: 7,
+    tier: 1,
+    kitchenLevel: 2,
+    storageLevel: 2,
+    gear: { ...emptyGear(), weapon: 2 },
+  });
+  assert.ok(armed.mods.attackInterval < 1, 'оружие ускоряет удар');
+  assert.equal(armed.capacity, bare.capacity - 1, '§14 — тяжёлое оружие стоит места');
+
+  const armored = createRaid({
+    seed: 7,
+    tier: 1,
+    kitchenLevel: 2,
+    storageLevel: 2,
+    gear: { ...emptyGear(), armor: 3 },
+  });
+  assert.equal(armored.hero.wounds, bare.hero.wounds + 1, 'броня добавляет рану');
+  assert.ok(armored.mods.foodStep > 1, '§14 — тяжёлая броня дороже в дороге');
+
+  const lit = createRaid({
+    seed: 7,
+    tier: 1,
+    kitchenLevel: 2,
+    storageLevel: 2,
+    gear: { ...emptyGear(), torch: 4 },
+  });
+  assert.equal(lit.mods.vision, 2, 'фонарь прибавляет обзор');
+});
+
+check('§11.2 и §14 — кольцо смягчает ставку, но не отменяет её', () => {
+  const make = (ring: number) => {
+    const state = createRaid({
+      seed: 3,
+      tier: 3,
+      kitchenLevel: 3,
+      storageLevel: 3,
+      gear: { ...emptyGear(), ring },
+    });
+    state.bagTotal = 10;
+    return atRisk(state);
+  };
+  assert.equal(make(0), 10, 'на дне без кольца под угрозой всё');
+  assert.equal(make(5), 5, 'потолок кольца — половина');
+  assert.ok(make(5) > 0, 'ставка остаётся ставкой');
+});
+
+check('§14 — снаряжение не теряется при провале', () => {
+  const camp = createCamp();
+  camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 };
+  camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+  craftGear(camp, 'weapon');
+  craftGear(camp, 'armor');
+  const before = { ...camp.gear };
+  const raid = createRaid({ seed: 11, tier: 2, kitchenLevel: 2, storageLevel: 2, gear: camp.gear });
+  raid.bagTotal = 8;
+  raid.bag = { salt: 8, wood: 0, iron: 0, crystal: 0 };
+  raid.status = 'failed';
+  const result = raidResult(raid);
+  assert.ok(result.lost > 0, 'добыча теряется');
+  assert.deepEqual(camp.gear, before, 'снаряжение остаётся в лагере');
+});
+
+check('§14 — цена снаряжения только железо и кристалл', () => {
+  for (let level = 1; level <= MAX_ITEM_LEVEL; level++) {
+    const cost = GEAR_COST[level] ?? {};
+    assert.equal(cost.salt ?? 0, 0, `соль на уровне ${level}`);
+    assert.equal(cost.wood ?? 0, 0, `дерево на уровне ${level}`);
+    assert.ok((cost.iron ?? 0) > 0, `железо на уровне ${level}`);
+    // §13 — кристалл не входит в цену раньше своего яруса.
+    if (level < 3) assert.equal(cost.crystal ?? 0, 0, `кристалл на уровне ${level}`);
+  }
+  const totals = [1, 2, 3, 4, 5].map((l) =>
+    Object.values(GEAR_COST[l] ?? {}).reduce((a, b) => a + b, 0),
+  );
+  for (let i = 1; i < totals.length; i++) {
+    assert.ok(totals[i]! > totals[i - 1]!, `ступень ${i + 1} не дороже предыдущей`);
+  }
+});
+
+check('снаряжение переживает круг save → load', () => {
+  wipe();
+  const camp = createCamp();
+  camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 2 };
+  camp.resources = { salt: 0, wood: 0, iron: 999, crystal: 999 };
+  craftGear(camp, 'torch');
+  craftGear(camp, 'torch');
+  save(camp, createRoster(), 5);
+  const { camp: back } = load();
+  assert.equal(back.gear.torch, 2);
+  assert.equal(back.levels.forge, 2, 'непостроенное и построенное различимы');
+  wipe();
+});
+
+console.log(`\n${checks} проверок пройдено`);

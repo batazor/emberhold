@@ -5,6 +5,8 @@ import {
   BUILDINGS,
   BUILD_SECONDS,
   completeIfDue,
+  craftGear,
+  gearBlock,
   moveBuilding,
   speedup,
   speedupCost,
@@ -14,6 +16,8 @@ import {
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
+import { GEAR } from './sim/gear';
+import type { GearSlot } from './sim/gear';
 import { HERO_KNOWLEDGE, visionRadius } from './sim/config';
 import { commandMove, createRaid, raidResult, stepRaid } from './sim/raid';
 import type { RaidState } from './sim/raid';
@@ -98,6 +102,7 @@ const campHud = new CampHud(app, {
     persist();
   },
   onRaid: (tier) => toRaid(tier),
+  onCraft: (slot) => forge(slot),
 });
 
 const BLOCK_REASON: Record<string, string> = {
@@ -112,15 +117,47 @@ function upgradeReason(state: CampState, id: BuildingId): string {
   return BLOCK_REASON[upgradeBlock(state, id)] ?? 'не вышло';
 }
 
+const GEAR_REASON: Record<string, string> = {
+  'no-forge': 'нужна Кузница',
+  max: 'лучше не бывает',
+  'forge-cap': 'Кузница не тянет выше',
+  resources: 'не хватает железа',
+  ok: 'не вышло',
+};
+
+/**
+ * §20.1 — ковка. В отличие от стройки, она мгновенна и не занимает слот:
+ * это и есть то действие, которое экран возврата предлагает, пока идёт таймер.
+ */
+function forge(slot: GearSlot): boolean {
+  const block = gearBlock(camp, slot);
+  if (!craftGear(camp, slot)) {
+    campHud.notify(`${GEAR[slot].name}: ${GEAR_REASON[block] ?? 'не вышло'}`);
+    return false;
+  }
+  const level = camp.gear[slot];
+  track({ t: 'craft', at: clock.now(), slot, toLevel: level });
+  campHud.notify(`${GEAR[slot].name} ур. ${level}`);
+  persist();
+  return true;
+}
+
 const statsPanel = new StatsPanel(app);
 
 function persist(): void {
-  save(camp, clock.watermark);
+  // Отряд пришёл из load() и здесь только пересохраняется: main этого этапа
+  // им не управляет, а терять его при записи нельзя.
+  save(camp, loaded.roster, clock.watermark);
 }
 
 const returnScreen = new ReturnScreen(app, {
   onBuild: (id) => {
     beginUpgrade(id);
+    returnScreen.hide();
+    toCamp();
+  },
+  onCraft: (slot) => {
+    forge(slot);
     returnScreen.hide();
     toCamp();
   },
@@ -162,6 +199,7 @@ function toRaid(tier: Tier): void {
     tier,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
+    gear: camp.gear,
   });
   raidView = new RaidView(raid.loc);
   rig.world.add(raidView.group);

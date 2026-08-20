@@ -1,3 +1,4 @@
+import type { GearMods } from './gear';
 import type { HeroLoadout } from './heroes';
 import type { ResourceKind, Resources } from './resources';
 
@@ -76,6 +77,9 @@ export interface RaidState {
   readonly hero: Hero;
   /** Кем идём (§11.7). Вылазка знает о герое ровно это и ничего про лечение. */
   readonly loadout: HeroLoadout;
+  /** §14 — снаряжение, свёрнутое в числа на входе. Внутри вылазки не меняется:
+   *  перековаться посреди тракта нельзя, и это не упущение, а правило. */
+  readonly mods: GearMods;
   /** §11.7 — умение применяется один раз за вылазку, отката нет. */
   skillUsed: boolean;
   /** Сколько секунд умение ещё действует. 0 — не действует. */

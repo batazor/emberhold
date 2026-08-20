@@ -1,5 +1,7 @@
 import type { BuildingId, CampState } from './camp';
 import { BUILDING_ORDER, campArea, createCamp } from './camp';
+import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
+import type { GearSlot } from './gear';
 import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
 import type { HeroState, Roster } from './heroes';
 import { emptyResources } from './resources';
@@ -32,6 +34,12 @@ interface SaveV1 {
     active: number;
     list: { cls: string; level: number; xp: number; wounds: number; status: string; busyUntil: number | null }[];
   };
+  /**
+   * Снаряжение (§14). Тоже необязательное поле и по той же причине, что отряд:
+   * сейв прежних этапов обязан открываться, иначе игрок теряет лагерь на
+   * каждом шаге разработки, а мы — возможность сравнить замеры до и после.
+   */
+  gear?: Partial<Record<GearSlot, number>>;
 }
 
 export interface LoadResult {
@@ -50,6 +58,7 @@ export function save(camp: CampState, roster: Roster, watermark: number): void {
     resources: camp.resources,
     construction: camp.construction,
     raids: camp.raids,
+    gear: camp.gear,
     heroes: {
       active: roster.active,
       list: roster.heroes.map((h) => ({
@@ -88,7 +97,8 @@ export function load(): LoadResult {
 
     for (const id of BUILDING_ORDER) {
       const level = data.levels?.[id];
-      if (typeof level === 'number' && level >= 1 && level <= 6) camp.levels[id] = level;
+      // Нижняя граница 0, а не 1: непостроенная Кузница — законное состояние.
+      if (typeof level === 'number' && level >= 0 && level <= 6) camp.levels[id] = level;
       const pos = data.layout?.[id];
       if (pos !== undefined && typeof pos.x === 'number' && typeof pos.z === 'number') {
         camp.layout[id] = { x: pos.x, z: pos.z };
@@ -117,6 +127,13 @@ export function load(): LoadResult {
     const c = data.construction;
     if (c != null && BUILDING_ORDER.includes(c.building) && typeof c.endsAt === 'number') {
       camp.construction = c;
+    }
+
+    for (const slot of GEAR_ORDER) {
+      const level = data.gear?.[slot];
+      if (typeof level === 'number' && level >= 0 && level <= MAX_ITEM_LEVEL) {
+        camp.gear[slot] = Math.floor(level);
+      }
     }
 
     readRoster(roster, data.heroes);

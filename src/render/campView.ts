@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILDING_ORDER, campArea, villagerCount } from '../sim/camp';
+import { BUILDING_ORDER, builtBuildings, campArea, villagerCount } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { HERO_SPEED } from '../sim/config';
 import { PALETTE } from './palette';
@@ -23,6 +23,9 @@ const BUILDING_COLOR: Record<BuildingId, number> = {
   hq: 0x8a7a5c,
   kitchen: 0x8d6a4a,
   storage: 0x6f6a58,
+  // Кузница — единственная холодная постройка: сталь опознаётся раньше формы
+  // (buildart.html §05).
+  forge: 0x5e5a52,
 };
 
 export class CampView {
@@ -133,7 +136,9 @@ export class CampView {
     for (const [, g] of this.buildings) g.removeFromParent();
     this.buildings.clear();
 
-    for (const id of BUILDING_ORDER) {
+    // Уровень 0 — это пустое место, а не здание нулевого размера: Кузница
+    // до Штаба ур. 2 не рисуется вовсе.
+    for (const id of builtBuildings(this.camp)) {
       const g = this.makeBuilding(id, this.camp.levels[id]);
       const pos = this.camp.layout[id];
       g.position.set(pos.x + 0.5, 0, pos.z + 0.5);
@@ -188,7 +193,8 @@ export class CampView {
       const p = this.camp.layout[c.building];
       return { x: p.x + 0.5, z: p.z + 1.6 };
     }
-    const id = BUILDING_ORDER[Math.floor(Math.random() * BUILDING_ORDER.length)]!;
+    const built = builtBuildings(this.camp);
+    const id = built[Math.floor(Math.random() * built.length)] ?? 'hq';
     const p = this.camp.layout[id];
     const angle = Math.random() * Math.PI * 2;
     return { x: p.x + 0.5 + Math.cos(angle) * 1.3, z: p.z + 0.5 + Math.sin(angle) * 1.3 };
@@ -258,7 +264,7 @@ export class CampView {
 
   /** Тап по зданию — для перестановки (§20.4). Жители не откликаются намеренно. */
   buildingAt(x: number, z: number): BuildingId | null {
-    for (const id of BUILDING_ORDER) {
+    for (const id of builtBuildings(this.camp)) {
       const p = this.camp.layout[id];
       if (x >= p.x - 0.2 && x <= p.x + 2.2 && z >= p.z - 0.2 && z <= p.z + 2.2) return id;
     }
