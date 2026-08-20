@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { bakedGeometry, fitOf } from './baked';
+import { skinnedGeometry } from './rigged';
+import type { RiggedParts } from './rigged';
 import type { Part } from './baked';
 import { SKELETON_PALETTE } from './palette';
 import { SKELETON_MODELS, SKELETON_SLOTS } from './skeleton.data';
@@ -46,4 +48,32 @@ export function skeletonGeometry(
   const geometry = bakedGeometry(parts, fitOf(model, height));
   cache.set(key, geometry);
   return geometry;
+}
+
+const rigCache = new Map<string, RiggedParts>();
+
+/**
+ * Та же модель, но со скином: тело в единицах набора, предмет отдельно —
+ * его ставит кость кисти, а не матрица, вмерджённая в геометрию. Неподвижная
+ * версия выше остаётся для страниц и замеров; в игре противник двигается.
+ */
+export function skeletonParts(
+  name: SkeletonModelName,
+  height: number,
+  holds?: SkeletonModelName,
+): RiggedParts {
+  const key = `${name}+${holds ?? ''}@${height}`;
+  const hit = rigCache.get(key);
+  if (hit !== undefined) return hit;
+
+  const model: SkeletonModel = SKELETON_MODELS[name];
+  const parts: RiggedParts = {
+    body: skinnedGeometry([{ model, palette: SKELETON_PALETTE }]),
+    ...(holds === undefined
+      ? {}
+      : { held: bakedGeometry([{ model: SKELETON_MODELS[holds], palette: SKELETON_PALETTE }]) }),
+    fit: fitOf(model, height),
+  };
+  rigCache.set(key, parts);
+  return parts;
 }

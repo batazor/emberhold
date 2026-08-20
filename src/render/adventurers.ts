@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { ADVENTURERS_MODELS, ADVENTURERS_SLOTS } from './adventurers.data';
 import type { AdventurerModel, AdventurerModelName } from './adventurers.data';
 import { bakedGeometry, fitOf } from './baked';
+import { skinnedGeometry } from './rigged';
+import type { RiggedParts } from './rigged';
 import type { Part } from './baked';
 import { ADVENTURERS_PALETTE } from './palette';
 
@@ -52,4 +54,28 @@ export function adventurerGeometry(
   const geometry = bakedGeometry(parts, fitOf(model, height));
   cache.set(key, geometry);
   return geometry;
+}
+
+const rigCache = new Map<string, RiggedParts>();
+
+/** Та же модель со скином: героя тоже двигают кости, а не подмена кадра. */
+export function adventurerParts(
+  name: AdventurerModelName,
+  height: number,
+  holds?: AdventurerModelName,
+): RiggedParts {
+  const key = `${name}+${holds ?? ''}@${height}`;
+  const hit = rigCache.get(key);
+  if (hit !== undefined) return hit;
+
+  const model: AdventurerModel = ADVENTURERS_MODELS[name];
+  const parts: RiggedParts = {
+    body: skinnedGeometry([{ model, palette: ADVENTURERS_PALETTE }]),
+    ...(holds === undefined
+      ? {}
+      : { held: bakedGeometry([{ model: ADVENTURERS_MODELS[holds], palette: ADVENTURERS_PALETTE }]) }),
+    fit: fitOf(model, height),
+  };
+  rigCache.set(key, parts);
+  return parts;
 }

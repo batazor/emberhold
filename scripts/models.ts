@@ -101,11 +101,11 @@ interface Pack {
    */
   readonly pose?: { readonly file: string; readonly clip: string; readonly at: number };
   /**
-   * Клипы, которые едут в игру, и под каким состоянием §17.1 их там знают.
-   * Файл — относительно каталога набора; клипы общие на риг, поэтому лежат
-   * в соседнем наборе, а не в этом.
+   * Набор стоит на общем риге (`RIG`): в бандл едут кости и веса, а позу
+   * накладывает игра. Без этого запекается один кадр — модель, которая стоит,
+   * но не двигается.
    */
-  readonly clips?: readonly { readonly file: string; readonly clip: string; readonly as: string }[];
+  readonly rigged?: boolean;
   /**
    * Узлы скелета, мировая матрица которых сохраняется вместе с моделью.
    * Набор держит оружие в отдельном узле `handslot.r`; сохранив его,
@@ -243,6 +243,30 @@ const DUNGEON: Pack = {
 };
 
 /**
+ * Риг KayKit `Rig_Medium` — общий на все наборы: и скелеты, и герои стоят
+ * на нём, с теми же двадцатью тремя костями и той же позой привязки.
+ * Поэтому и скелет, и клипы пишутся один раз в свой файл, а наборы только
+ * приводят к нему свои индексы костей: две копии одних и тех же дорожек
+ * стоили бы сорок килобайт у каждого игрока за то же самое.
+ *
+ * Клипов пять и ни одним больше — состояния §17.1. На этом риге их 126,
+ * и «ещё пару на будущее» стоило бы килобайтов за механику, которой нет.
+ */
+const RIG = {
+  /** Откуда читается сам скелет: у любой модели на этом риге он одинаков. */
+  from: 'assets/kaykit-skeletons/gltf/Skeleton_Minion.glb',
+  file: 'src/render/rig.data.ts',
+  prefix: 'RIG',
+  clips: [
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', as: 'покой' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_MovementBasic.glb', clip: 'Walking_A', as: 'ходьба' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatMelee.glb', clip: 'Melee_1H_Attack_Chop', as: 'удар' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Hit_A', as: 'урон' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Death_A', as: 'падение' },
+  ],
+} as const;
+
+/**
  * Третий набор — противники. Разница с первыми двумя не в содержимом,
  * а в устройстве файла: скелеты приходят одним `.glb` со скином, скелетом
  * и встроенным атласом, а клипы лежат отдельно. Отсюда всё, что этот набор
@@ -317,18 +341,7 @@ const SKELETONS: Pack = {
    */
   pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
   attach: ['handslot.r'],
-  /**
-   * Пять состояний §17.1 и ни одним больше. Клипов на этом риге 126, и соблазн
-   * взять «ещё пару на будущее» стоит килобайтов у всех игроков за то, чего
-   * в игре нет: механики под прыжок, рыбалку и починку не существует.
-   */
-  clips: [
-    { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', as: 'покой' },
-    { file: '../kaykit-animations/gltf/Rig_Medium_MovementBasic.glb', clip: 'Walking_A', as: 'ходьба' },
-    { file: '../kaykit-animations/gltf/Rig_Medium_CombatMelee.glb', clip: 'Melee_1H_Attack_Chop', as: 'удар' },
-    { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Hit_A', as: 'урон' },
-    { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Death_A', as: 'падение' },
-  ],
+  rigged: true,
   categoryOf: (name) => SKELETON_CATEGORIES[name.split('_')[1]!] ?? 'Прочее',
   /**
    * Трое из четырёх и два предмета — по одному противнику §15 на скелет.
@@ -415,6 +428,7 @@ const ADVENTURERS: Pack = {
    */
   pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
   attach: ['handslot.r'],
+  rigged: true,
   categoryOf: (name) => ADVENTURER_CATEGORIES[name.split('_')[0]!.toLowerCase()] ?? 'Прочее',
   /**
    * Герой, которым играют с первой вылазки, и то, что у него в руке.
@@ -1486,7 +1500,61 @@ function bake(
 const b64 = (data: Int16Array | Uint16Array | Uint8Array | Float32Array): string =>
   Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64');
 
-function writeData(pack: Pack, models: Baked[], rig: Rig | null, clips: readonly BakedClip[]): string {
+/**
+ * Скелет и клипы — свой файл, потому что они общие: и скелеты, и герои стоят
+ * на одном риге, и вторая копия дорожек стоила бы сорок килобайт у каждого
+ * игрока за то же самое.
+ */
+function writeRig(rig: Rig, clips: readonly BakedClip[]): string {
+  return `/* СГЕНЕРИРОВАНО \`npm run models -- --write\`. Руками не править. */
+
+/**
+ * Риг KayKit \`Rig_Medium\` и состояния §17.1 на нём. Обратных матриц привязки
+ * здесь нет: three выводит их из позы костей сам, а совпадение вывода с тем,
+ * что записано в наборе, проверяет запекание.
+ */
+export const ${RIG.prefix}_BONES = [
+${rig.names.map((n) => `  '${n}',`).join('\n')}
+] as const;
+
+/** Родитель в терминах того же списка; −1 у корня. */
+export const ${RIG.prefix}_PARENT = [${rig.parent.join(', ')}] as const;
+
+/** base64 Float32Array: 10 чисел на кость — сдвиг, поворот, масштаб. */
+export const ${RIG.prefix}_BIND = '${b64(rig.bind)}';
+
+export interface RigClip {
+  readonly duration: number;
+  /** base64 Uint8Array: кость канала. */
+  readonly bone: string;
+  /** base64 Uint8Array: 0 — сдвиг, 1 — поворот. */
+  readonly path: string;
+  /** base64 Uint16Array: ключей в канале. */
+  readonly count: string;
+  /** base64 Uint16Array: время ключей, миллисекунды. */
+  readonly time: string;
+  /** base64 Int16Array: повороты долями единицы, сдвиги долями move. */
+  readonly value: string;
+  readonly move: number;
+}
+
+export const ${RIG.prefix}_CLIPS = {
+${clips.map((c) => `  '${c.as}': {
+    duration: ${Math.round(c.duration * 1000) / 1000},
+    bone: '${b64(c.bone)}',
+    path: '${b64(c.path)}',
+    count: '${b64(c.count)}',
+    time: '${b64(c.time)}',
+    value: '${b64(c.value)}',
+    move: ${Math.round(c.move * 10000) / 10000},
+  },`).join('\n')}
+} satisfies Record<string, RigClip>;
+
+export type RigClipName = keyof typeof ${RIG.prefix}_CLIPS;
+`;
+}
+
+function writeData(pack: Pack, models: Baked[], rig: Rig | null): string {
   const data = pack.data!;
   const chosen = pack.adopted.map((name) => {
     const m = models.find((x) => x.name === name);
@@ -1566,52 +1634,7 @@ ${body}
 } satisfies Record<string, ${data.type}Model>;
 
 export type ${data.type}ModelName = keyof typeof ${data.prefix}_MODELS;
-${rig === null ? '' : `
-/**
- * Скелет набора — один на все модели. Обратных матриц привязки здесь нет:
- * three выводит их из позы костей сам, а совпадение вывода с тем, что записано
- * в наборе, проверяет запекание.
- */
-export const ${data.prefix}_RIG = {
-  bones: [
-${rig.names.map((n) => `    '${n}',`).join('\n')}
-  ],
-  /** Родитель в терминах того же списка; −1 у корня. */
-  parent: [${rig.parent.join(', ')}],
-  /** base64 Float32Array: 10 чисел на кость — сдвиг, поворот, масштаб. */
-  bind: '${b64(rig.bind)}',
-} as const;
-
-/** Состояния §17.1. Дорожка масштаба отброшена — в наборе она всюду единичная. */
-export interface ${data.type}Clip {
-  readonly duration: number;
-  /** base64 Uint8Array: кость канала. */
-  readonly bone: string;
-  /** base64 Uint8Array: 0 — сдвиг, 1 — поворот. */
-  readonly path: string;
-  /** base64 Uint16Array: ключей в канале. */
-  readonly count: string;
-  /** base64 Uint16Array: время ключей, миллисекунды. */
-  readonly time: string;
-  /** base64 Int16Array: повороты долями единицы, сдвиги долями move. */
-  readonly value: string;
-  readonly move: number;
-}
-
-export const ${data.prefix}_CLIPS = {
-${clips.map((c) => `  '${c.as}': {
-    duration: ${Math.round(c.duration * 1000) / 1000},
-    bone: '${b64(c.bone)}',
-    path: '${b64(c.path)}',
-    count: '${b64(c.count)}',
-    time: '${b64(c.time)}',
-    value: '${b64(c.value)}',
-    move: ${Math.round(c.move * 10000) / 10000},
-  },`).join('\n')}
-} satisfies Record<string, ${data.type}Clip>;
-
-export type ${data.type}ClipName = keyof typeof ${data.prefix}_CLIPS;
-`}`;
+`;
 }
 
 /**
@@ -1776,15 +1799,12 @@ function report(pack: Pack, write: boolean): void {
   const usage = pack.range === 'used' ? usageOf(meshes.map((m) => m.mesh)) : undefined;
   const sampler = makeSampler(pack, images, usage);
 
-  // Скелет берётся у первой принятой модели со скином: он общий на набор,
-  // и читать его у каждой значило бы получить четыре одинаковых списка.
-  const rigged = meshes.find((m) => pack.adopted.includes(m.name) && m.mesh.skinned > 0);
-  const rig = pack.clips === undefined || rigged === undefined
-    ? null
-    : loadRig(join(dir, rigged.rel));
-  const clips = rig === null || pack.clips === undefined
+  // Скелет и клипы общие на все наборы, поэтому читаются из одного места,
+  // а не у каждого набора своего.
+  const rig = pack.rigged === true ? loadRig(join(ROOT, RIG.from)) : null;
+  const clips = rig === null
     ? []
-    : pack.clips.map((c) => loadClip(join(dir, c.file), c.clip, c.as, rig));
+    : RIG.clips.map((c) => loadClip(join(ROOT, c.file), c.clip, c.as, rig));
 
   const models = meshes.map((m) => bake(pack, m.name, m.rel, m.mesh, sampler, rig));
   const slots = pack.slots;
@@ -1899,8 +1919,12 @@ function report(pack: Pack, write: boolean): void {
   if (!write) return;
 
   const written: string[] = [];
+  if (rig !== null) {
+    writeFileSync(join(ROOT, RIG.file), writeRig(rig, clips), 'utf8');
+    written.push(RIG.file);
+  }
   if (pack.data !== undefined && pack.adopted.length > 0) {
-    writeFileSync(join(ROOT, pack.data.file), writeData(pack, models, rig, clips), 'utf8');
+    writeFileSync(join(ROOT, pack.data.file), writeData(pack, models, rig), 'utf8');
     written.push(pack.data.file);
   }
   const catalog = join(pack.dir, 'catalog.json');

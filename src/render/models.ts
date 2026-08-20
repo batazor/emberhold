@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
-import { adventurerGeometry } from './adventurers';
+import { adventurerGeometry, adventurerParts } from './adventurers';
 import type { AdventurerModelName } from './adventurers.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
-import { skeletonGeometry } from './skeleton';
+import type { RiggedParts } from './rigged';
+import { skeletonGeometry, skeletonParts } from './skeleton';
 
 /**
  * Модели из артбука. Формы взяты из `artbook.html` (раздел 03 — здания,
@@ -327,6 +328,8 @@ const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
   minion: () => skeletonGeometry('Skeleton_Minion', 0.72),
   warrior: () => skeletonGeometry('Skeleton_Warrior', 0.95, 'Skeleton_Axe'),
   mage: () => skeletonGeometry('Skeleton_Mage', 1, 'Skeleton_Staff'),
+  // Те же числа, что в ENEMY_HEIGHT ниже: неподвижная версия обязана стоять
+  // ровно там же, где стоит подвижная.
 };
 
 export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry =>
@@ -381,4 +384,31 @@ export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
 };
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
+
+/**
+ * То же, но со скелетом: вылазка ставит противника этим, а неподвижная
+ * геометрия выше остаётся страницам и замерам. Рост и предмет — те же,
+ * что у неподвижной версии, иначе подмена сдвинула бы силуэт.
+ */
+export const ENEMY_HEIGHT: Record<EnemyKind, number> = {
+  minion: 0.72,
+  warrior: 0.95,
+  mage: 1,
+};
+
+const ENEMY_PARTS: Record<EnemyKind, () => RiggedParts> = {
+  minion: () => skeletonParts('Skeleton_Minion', ENEMY_HEIGHT.minion),
+  warrior: () => skeletonParts('Skeleton_Warrior', ENEMY_HEIGHT.warrior, 'Skeleton_Axe'),
+  mage: () => skeletonParts('Skeleton_Mage', ENEMY_HEIGHT.mage, 'Skeleton_Staff'),
+};
+
+export const enemyParts = (kind: EnemyKind): RiggedParts => ENEMY_PARTS[kind]();
+
+/** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
+export function heroParts(cls: HeroClassId): RiggedParts | null {
+  const model = HERO_MODELS[cls];
+  return model === undefined
+    ? null
+    : adventurerParts(model, heroHeight(cls), HERO_HELD[cls]);
+}
 
