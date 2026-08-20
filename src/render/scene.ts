@@ -119,9 +119,13 @@ export class SceneRig {
   private readonly plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly hit = new THREE.Vector3();
 
-  screenToGround(clientX: number, clientY: number): { x: number; z: number } | null {
+  screenToGround(
+    clientX: number,
+    clientY: number,
+    camera: THREE.Camera = this.camera,
+  ): { x: number; z: number } | null {
     this.ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
-    this.ray.setFromCamera(this.ndc, this.camera);
+    this.ray.setFromCamera(this.ndc, camera);
     if (this.ray.ray.intersectPlane(this.plane, this.hit) === null) return null;
     return { x: this.hit.x, z: this.hit.z };
   }

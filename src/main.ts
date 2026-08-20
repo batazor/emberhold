@@ -56,6 +56,7 @@ import { load, save, wipe } from './sim/save';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
+import { CursorWind } from './render/cursorWind';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { TitleView } from './render/titleView';
@@ -782,6 +783,27 @@ function campTap(clientX: number, clientY: number): void {
 
 const canvas = rig.renderer.domElement;
 
+/**
+ * Курсор как источник ветра. Один на игру, а не по одному на сцену: рука
+ * у игрока одна, и порыв, посчитанный дважды, разошёлся бы силой между
+ * лагерем и вылазкой (render/cursorWind.ts).
+ */
+const wind = new CursorWind();
+
+/**
+ * Шаг ветра и раздача порыва сценам. Кадром, а не событием мыши: скорость
+ * курсора — это путь за кадр, а pointermove приходит пачкой по несколько
+ * штук на кадр, и посчитанная между ними скорость показывает частоту
+ * опроса мыши, а не руку.
+ */
+function stepWind(dt: number): void {
+  wind.step(dt);
+  const gust = wind.gust;
+  titleView?.setGust(gust);
+  raidView?.setGust(gust);
+  campView.setGust(gust);
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   play('tap');
   idleSeconds = 0;
@@ -799,14 +821,27 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  // Ветер от курсора — во всех трёх сценах: трава лагеря и заставки
+  // и есть та, на которую игрок смотрит дольше всего.
+  const camera = mode === 'title' && titleView !== null ? titleView.camera : undefined;
+  const hit = rig.screenToGround(e.clientX, e.clientY, camera);
+  if (hit === null) return;
+  wind.point(hit.x, hit.z);
+  // Лагерь замирает через 20 секунд без касаний. Мышь, ведомая по траве, —
+  // такое же касание: на телефоне наведения нет, и батарею это не трогает.
+  idleSeconds = 0;
+
   // Место под здание ведётся наведением, без нажатия: мышь показывает,
   // куда встанет, до того как игрок решится.
-  if (placing === null || raid === null) return;
-  const hit = rig.screenToGround(e.clientX, e.clientY);
-  if (hit === null) return;
+  if (mode !== 'raid' || placing === null || raid === null) return;
   const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
   raidView?.showSite(placing, cell.x, cell.z, siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok');
 });
+
+// Курсор ушёл с холста — ветру не за кем идти. Палец, снятый с экрана,
+// тоже уход: на телефоне наведения нет, и вести траву нечем.
+canvas.addEventListener('pointerleave', () => wind.away());
+canvas.addEventListener('pointercancel', () => wind.away());
 
 function moveSelected(x: number, z: number): boolean {
   if (selected === null) return false;
@@ -889,8 +924,11 @@ if (debugTier !== null) {
 if (debugParams.has('bench')) {
   installBench({
     rig,
-    // Кадр текущего режима, синхронно: тот же путь, что и в render ниже.
+    // Кадр текущего режима, синхронно: тот же путь, что и в render ниже,
+    // включая шаг ветра — иначе кадр стенда не стареет и порыв в нём висит
+    // вечно, чего в игре не бывает.
     draw: () => {
+      stepWind(1 / 60);
       if (mode === 'title' && titleView !== null) {
         titleView.update(performance.now() / 1000);
         rig.lookAt(titleView.center.x, titleView.center.z);
@@ -909,6 +947,7 @@ if (debugParams.has('bench')) {
       hud.setGrass(perTile);
     },
     blades: () => raidView?.grassBlades ?? 0,
+    cursor: (x, z) => wind.point(x, z),
   });
 }
 
@@ -998,6 +1037,7 @@ startLoop({
     lastRender = now;
 
     returnScreen.update();
+    stepWind(dt);
 
     if (mode === 'title' && titleView !== null) {
       // Полная частота, а не 30 кадров лагеря: камеру здесь тянут пальцем,

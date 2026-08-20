@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.js';
+import type { Gust } from './cursorWind';
 
 /**
  * Трава стартового экрана — перенос FluffyGrass (MIT, © 2023 Ebenezer,
@@ -12,14 +13,41 @@ import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.j
  * пришлось считаться со штатным светом. Здесь достаточно того, что уже
  * сделано и выглядит как надо.
  *
- * Три правки против оригинала, все вынужденные:
+ * Четыре правки против оригинала:
  *  1. `getShadow` в three 0.180 принимает shadowIntensity — в 0.159, на
  *     которой писался оригинал, этого довода не было;
  *  2. размер поля был числом 100. в шейдере — стал доводом, у нас поле своё;
- *  3. dat.gui выброшен: настройки задаются вызывающим.
+ *  3. dat.gui выброшен: настройки задаются вызывающим;
+ *  4. порыв от курсора (render/cursorWind.ts). Единственная правка не
+ *     вынужденная, а по делу: у оригинала ветер один на всё поле и ни на
+ *     что не отзывается, а курсор в лагере и на заставке — единственное,
+ *     чем игрок трогает картинку, пока ничего не нажал.
  */
 
 const ASSETS = 'grass/';
+
+/**
+ * Радиус порыва — пятно под курсором, а не погода на поле. Считается от
+ * кустика (он здесь впятеро крупнее травинки вылазки): три с небольшим
+ * единицы — это соседний куст, дальше ветер не идёт.
+ */
+const GUST_RADIUS = 2.4;
+
+/**
+ * Насколько порыв уводит верхушку, в мировых единицах. Меньше ширины
+ * куста: трава качнулась, а не легла.
+ */
+const GUST_PUSH = 0.5;
+
+/** Круговая частота отыгрыша, рад/с: качок туда-обратно за секунду. */
+const GUST_SWING = 7;
+
+/**
+ * Волновое число, рад на мировую единицу. Меньше, чем у травы вылазки:
+ * кустик здесь крупнее, и волна той же длины уложилась бы внутри одного
+ * куста, то есть пропала бы.
+ */
+const GUST_WAVE = 0.55;
 
 export interface FluffyGrassOptions {
   /** Сторона поля в мировых единицах: по ней считается глобальный UV шума. */
@@ -49,6 +77,9 @@ export class FluffyGrass {
     uTipColor2: { value: new THREE.Color('#1f352a') },
     uNoiseTexture: { value: null as THREE.Texture | null },
     uGrassAlphaTexture: { value: null as THREE.Texture | null },
+    // xy — где курсор, z — сила порыва (0 — ветра нет), w — его возраст.
+    uGust: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uGustDir: { value: new THREE.Vector2(1, 0) },
   };
 
   private readonly material: THREE.MeshLambertMaterial;
@@ -163,6 +194,16 @@ export class FluffyGrass {
     this.uniforms.uTime.value = timeSec;
   }
 
+  /** Порыв от курсора или null, если ветра нет (render/cursorWind.ts). */
+  setGust(gust: Gust | null): void {
+    if (gust === null) {
+      this.uniforms.uGust.value.set(0, 0, 0, 0);
+      return;
+    }
+    this.uniforms.uGust.value.set(gust.x, gust.z, gust.strength * GUST_PUSH, gust.age);
+    this.uniforms.uGustDir.value.set(gust.dirX, gust.dirZ);
+  }
+
   /**
    * Яркость по времени суток. У оригинала свет постоянный: трава там сама
    * себе освещение и на сцену не смотрит. В игре это заметно — вечерний
@@ -194,6 +235,8 @@ export class FluffyGrass {
       uniform float uNoiseScale;
       uniform float uTime;
       uniform float uTerrainSize;
+      uniform vec4 uGust;
+      uniform vec2 uGustDir;
 
       varying vec3 vColor;
       varying vec2 vGlobalUV;
@@ -233,6 +276,21 @@ export class FluffyGrass {
         float zDisp = sinWave;
         modelPosition.x += xDisp;
         modelPosition.z += zDisp;
+
+        // Порыв от курсора: по ходу курсора — сам ветер, врозь от точки —
+        // то, чем он обтекает препятствие. Гнётся верхушка, а не корень:
+        // (1. - uv.y) — та же доля высоты, что и у общей волны выше.
+        if (uGust.z > 0.0) {
+          vec2 gToBush = modelPosition.xz - uGust.xy;
+          float gDist = length(gToBush);
+          float gFall = exp(-gDist * gDist / (${GUST_RADIUS.toFixed(3)} * ${GUST_RADIUS.toFixed(3)}));
+          vec2 gFlow = uGustDir + (gToBush / (gDist + 1e-4)) * 0.5;
+          // Волна: толчок расходится от курсора и отыгрывает назад. Косинус
+          // уходит в минус — куст качается обратно, как после настоящего
+          // порыва, а не встаёт по линейке.
+          float gWave = cos(uGust.w * ${GUST_SWING.toFixed(3)} - gDist * ${GUST_WAVE.toFixed(3)});
+          modelPosition.xz += gFlow * uGust.z * gFall * gWave * (1. - uv.y);
+        }
 
         modelPosition.y += exp(texture2D(uNoiseTexture, vGlobalUV * uNoiseScale).r) * 0.5 * (1. - uv.y);
 

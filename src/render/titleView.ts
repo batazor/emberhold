@@ -7,6 +7,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 // в репозитории не заводим, чтобы она не разъехалась с версией three.
 // Лицензия — assets/LICENSES.md.
 import fontUrl from 'three/examples/fonts/droid/droid_sans_bold.typeface.json?url';
+import type { Gust } from './cursorWind';
 import { FluffyGrass } from './fluffyGrass';
 import type { SceneRig } from './scene';
 
@@ -227,6 +228,11 @@ export class TitleView {
       this.title = mesh;
       this.group.add(mesh);
     });
+  }
+
+  /** Порыв от курсора; null — ветра нет (render/cursorWind.ts). */
+  setGust(gust: Gust | null): void {
+    this.grass.setGust(gust);
   }
 
   update(timeSec: number): void {
