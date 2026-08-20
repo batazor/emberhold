@@ -92,7 +92,7 @@ const campHud = new CampHud(app, {
     const c = camp.construction;
     if (c === null) return;
     const left = Math.max(0, c.endsAt - now);
-    const cost = speedupCost(left);
+    const cost = speedupCost(left, c.endsAt - c.startedAt);
     if (!speedup(camp, now)) return;
     track({ t: 'speedup', at: now, building: c.building, cost, leftSec: left });
     persist();

@@ -1,4 +1,5 @@
 import { mulberry32, randInt } from '../core/rng';
+import type { Rng } from '../core/rng';
 import { TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
@@ -8,104 +9,187 @@ import type { Cell, Container, Enemy, GameLocation, Tier } from './types';
 /**
  * Локация целиком выводится из пары (seed, tier) — никаких скрытых состояний.
  * Это условие воспроизводимости багов из §6 и будущей серверной валидации.
- */
-/**
- * Раскладка камней одной попытки. Вынесена отдельно, потому что попыток может
- * быть несколько: см. generateLocation.
- */
-function carveBlocked(size: number, tier: Tier, evac: Cell, rng: () => number, density: number): Uint8Array {
-  const blocked = new Uint8Array(size * size);
-  const clusters = Math.round(size * size * density);
-  for (let i = 0; i < clusters; i++) {
-    const cx = randInt(rng, size);
-    const cz = randInt(rng, size);
-    const radius = 1 + randInt(rng, tier >= 2 ? 2 : 1);
-    for (let z = cz - radius; z <= cz + radius; z++) {
-      for (let x = cx - radius; x <= cx + radius; x++) {
-        if (!inBounds(size, x, z)) continue;
-        if (Math.hypot(x - cx, z - cz) > radius + rng() * 0.5) continue;
-        blocked[idx(size, x, z)] = 1;
-      }
-    }
-  }
-
-  for (let i = 0; i < size; i++) {
-    blocked[idx(size, i, 0)] = 1;
-    blocked[idx(size, i, size - 1)] = 1;
-    blocked[idx(size, 0, i)] = 1;
-    blocked[idx(size, size - 1, i)] = 1;
-  }
-  for (let z = evac.z - 1; z <= evac.z + 1; z++) {
-    for (let x = evac.x - 1; x <= evac.x + 1; x++) {
-      if (inBounds(size, x, z) && x > 0 && z > 0 && x < size - 1 && z < size - 1) {
-        blocked[idx(size, x, z)] = 0;
-      }
-    }
-  }
-  return blocked;
-}
-
-/** Доля проходимых клеток внутри рамки, достижимых от эвакуации. */
-function reachableShare(size: number, blocked: Uint8Array, evac: Cell): number {
-  const dist = distanceField(size, blocked, evac);
-  let reachable = 0;
-  for (let i = 0; i < dist.length; i++) if (dist[i]! >= 0) reachable++;
-  const inner = (size - 2) * (size - 2);
-  return reachable / inner;
-}
-
-/**
- * Локация целиком выводится из пары (seed, tier) — никаких скрытых состояний.
- * Это условие воспроизводимости багов из §6 и будущей серверной валидации.
  *
- * Плотность камней подбирается попытками: на малых картах (§11.1: ярус 0 — это
- * всего 8×8) один неудачный кластер запечатывает эвакуацию, и после отсечения
- * недостижимого локация превращается в глухой карман. Проверять долю
- * достижимого дешевле, чем ловить это как баг генератора у игрока.
+ * Форма локации подчинена единственному решению игры — идти глубже или назад,
+ * — и строится из четырёх частей:
+ *
+ * 1. Спинной ход от эвакуации к дальнему углу. Глубина обязана быть
+ *    направлением, а не следствием блужданий: без него «дальше» ничего
+ *    не значит и путь назад не читается.
+ * 2. Залы вдоль хода. Ориентиры: без них игрок не понимает, где был,
+ *    и не может оценить, сколько прошёл.
+ * 3. Ответвления в тупики. Заход в тупик стоит вдвое — туда и обратно,
+ *    — и это та же жадность, что и вся игра, но в миниатюре.
+ * 4. Циклы с яруса 2. Второй путь назад превращает возврат в выбор,
+ *    а не в обратную перемотку.
+ *
+ * Прежний генератор разбрасывал случайные кляксы камня. Он давал проходимую
+ * пещеру, но бесформенную: ни направления, ни развилок, ни мест, где
+ * принимают решение.
  */
+
+interface Pt {
+  x: number;
+  z: number;
+}
+
+/** Круглая кисть: пещера, а не коридор с прямыми углами. */
+function carveDisc(size: number, floor: Uint8Array, cx: number, cz: number, r: number): void {
+  const r2 = (r + 0.35) * (r + 0.35);
+  for (let z = cz - r; z <= cz + r; z++) {
+    for (let x = cx - r; x <= cx + r; x++) {
+      // Рамка не вскрывается никогда: край карты обязан оставаться стеной.
+      if (x < 1 || z < 1 || x > size - 2 || z > size - 2) continue;
+      const dx = x - cx;
+      const dz = z - cz;
+      if (dx * dx + dz * dz <= r2) floor[idx(size, x, z)] = 1;
+    }
+  }
+}
+
+/**
+ * Ход от точки к точке со случайным отклонением. Возвращает пройденные клетки:
+ * они же — места, откуда потом растут ответвления.
+ */
+function carvePath(
+  size: number,
+  floor: Uint8Array,
+  rng: Rng,
+  from: Pt,
+  to: Pt,
+  radius: number,
+  chamberEvery: number,
+  chamberRadius: number,
+): Pt[] {
+  const pts: Pt[] = [];
+  const cur: Pt = { x: from.x, z: from.z };
+  const limit = size * 6;
+
+  for (let step = 0; step < limit; step++) {
+    carveDisc(size, floor, cur.x, cur.z, radius);
+    pts.push({ x: cur.x, z: cur.z });
+    if (chamberEvery > 0 && step > 0 && step % chamberEvery === 0) {
+      carveDisc(size, floor, cur.x, cur.z, chamberRadius);
+    }
+    if (cur.x === to.x && cur.z === to.z) break;
+
+    const dx = Math.sign(to.x - cur.x);
+    const dz = Math.sign(to.z - cur.z);
+    // 0.88 к цели, остальное вбок: ход виляет, но всегда приходит.
+    // Чистая случайность дала бы клубок, чистая прямая — коридор.
+    if (rng() < 0.88 && (dx !== 0 || dz !== 0)) {
+      if (dx !== 0 && (dz === 0 || rng() < 0.5)) cur.x += dx;
+      else cur.z += dz;
+    } else if (rng() < 0.5) {
+      cur.x += rng() < 0.5 ? 1 : -1;
+    } else {
+      cur.z += rng() < 0.5 ? 1 : -1;
+    }
+    cur.x = Math.max(1, Math.min(size - 2, cur.x));
+    cur.z = Math.max(1, Math.min(size - 2, cur.z));
+  }
+  return pts;
+}
+
+/**
+ * Сглаживание, которое только добавляет пол. Убирает одиночные зубцы стены,
+ * торчащие в проход, и не может разорвать связность — в отличие от обычного
+ * клеточного автомата, после которого пришлось бы чинить карту.
+ */
+function smoothFloor(size: number, floor: Uint8Array): void {
+  const add: number[] = [];
+  for (let z = 2; z < size - 2; z++) {
+    for (let x = 2; x < size - 2; x++) {
+      const i = idx(size, x, z);
+      if (floor[i]) continue;
+      let n = 0;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dz === 0) continue;
+          if (floor[idx(size, x + dx, z + dz)]) n++;
+        }
+      }
+      if (n >= 7) add.push(i);
+    }
+  }
+  for (const i of add) floor[i] = 1;
+}
+
+/** Число проходимых соседей по четырём сторонам. */
+function degree(size: number, blocked: Uint8Array, x: number, z: number): number {
+  let n = 0;
+  for (const [dx, dz] of NEIGHBORS_4) {
+    if (inBounds(size, x + dx, z + dz) && !blocked[idx(size, x + dx, z + dz)]) n++;
+  }
+  return n;
+}
+
 export function generateLocation(seed: number, tier: Tier): GameLocation {
   const size = TIER_SIZE[tier];
   // Эвакуация в углу: «путь назад» обязан расти вместе с глубиной захода,
   // а из центра карты любая точка одинаково близка.
   const evac: Cell = { x: 1, z: 1 };
-  const MIN_SHARE = 0.45;
+  const rng = mulberry32(seed ^ (tier * 0x9e3779b9));
 
-  let rng = mulberry32(seed ^ (tier * 0x9e3779b9));
-  let blocked = carveBlocked(size, tier, evac, rng, 0.06);
-  for (let attempt = 0; attempt < 8; attempt++) {
-    // Каждая попытка — свой поток чисел, иначе повтор даёт ту же раскладку.
-    rng = mulberry32((seed ^ (tier * 0x9e3779b9)) + attempt * 0x85ebca6b);
-    const density = 0.06 - attempt * 0.007;
-    blocked = carveBlocked(size, tier, evac, rng, Math.max(0.015, density));
-    if (reachableShare(size, blocked, evac) >= MIN_SHARE) break;
+  const floor = new Uint8Array(size * size);
+  const far = size - 2;
+
+  // 1. Спинной ход. Цель — дальний угол с небольшим разбросом, чтобы дно
+  //    не оказывалось каждый раз в одной точке.
+  const target: Pt = {
+    x: far - randInt(rng, Math.max(1, (size / 4) | 0)),
+    z: far - randInt(rng, Math.max(1, (size / 4) | 0)),
+  };
+  const chamberEvery = tier === 0 ? 6 : 10 + randInt(rng, 5);
+  const spine = carvePath(size, floor, rng, evac, target, 0, chamberEvery, tier === 0 ? 1 : 2);
+  carveDisc(size, floor, target.x, target.z, tier === 3 ? 3 : 2); // дно — самый большой зал
+
+  // 2. Ответвления. Растут из дальней половины хода: тупик у самого входа
+  //    ничего не стоит и не создаёт решения.
+  const branchCount = [1, 3, 5, 7][tier]!;
+  const cycles = tier >= 2 ? (tier === 3 ? 2 : 1) : 0;
+  for (let b = 0; b < branchCount; b++) {
+    const from = spine[Math.floor(spine.length * (0.3 + rng() * 0.65))] ?? spine[spine.length - 1]!;
+    if (b < cycles && spine.length > 8) {
+      // Цикл: ветка уходит и возвращается на ход далеко от места старта.
+      const backTo = spine[Math.floor(spine.length * (0.15 + rng() * 0.35))]!;
+      carvePath(size, floor, rng, from, backTo, 0, 0, 0);
+      continue;
+    }
+    const len = 3 + randInt(rng, 4 + tier);
+    const dir = randInt(rng, 4);
+    const end: Pt = {
+      x: Math.max(1, Math.min(size - 2, from.x + (dir === 0 ? len : dir === 1 ? -len : 0))),
+      z: Math.max(1, Math.min(size - 2, from.z + (dir === 2 ? len : dir === 3 ? -len : 0))),
+    };
+    carvePath(size, floor, rng, from, end, 0, 0, 0);
+    // Половина тупиков заканчивается залом — там место, ради которого шли.
+    // Вторая половина обрывается голым проходом: он читается как ошибка
+    // маршрута, и это тоже нужно, иначе каждый тупик выглядит наградой.
+    if (rng() < 0.5) carveDisc(size, floor, end.x, end.z, 1);
   }
 
-  // Недостижимые клетки замуровываются: добыча в кармане, куда нет прохода,
+  smoothFloor(size, floor);
+
+  const blocked = new Uint8Array(size * size);
+  for (let i = 0; i < size * size; i++) blocked[i] = floor[i] ? 0 : 1;
+  carveDisc(size, floor, evac.x, evac.z, 1);
+  blocked[idx(size, evac.x, evac.z)] = 0;
+
+  // Страховка: недостижимое замуровывается. Добыча в кармане, куда нет прохода,
   // читается игроком как баг генератора, а не как решение.
-  const reachable = distanceField(size, blocked, evac);
-  for (let i = 0; i < size * size; i++) {
-    if (reachable[i] === -1) blocked[i] = 1;
-  }
+  const reach = distanceField(size, blocked, evac);
+  for (let i = 0; i < size * size; i++) if (reach[i] === -1) blocked[i] = 1;
 
   const backSteps = distanceField(size, blocked, evac);
   const open: number[] = [];
-  for (let i = 0; i < size * size; i++) {
-    if (!blocked[i] && backSteps[i]! > 2) open.push(i);
-  }
-  // Дальние клетки — первыми: и добыча, и враги должны стоять там, куда идти
-  // страшно, иначе глубина ничего не значит.
+  for (let i = 0; i < size * size; i++) if (!blocked[i] && backSteps[i]! > 2) open.push(i);
   open.sort((a, b) => backSteps[b]! - backSteps[a]!);
 
-  const containers: Container[] = [];
-  const containerCount = 3 + tier * 2;
-  const enemies: Enemy[] = [];
-  const roster = TIER_ROSTER[tier];
-
   const taken = new Set<number>();
-  const takeCell = (poolFrom: number, poolTo: number): number | null => {
-    const span = Math.max(1, poolTo - poolFrom);
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const c = open[poolFrom + randInt(rng, span)];
+  const takeFrom = (pool: readonly number[]): number | null => {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const c = pool[randInt(rng, pool.length)];
       if (c === undefined || taken.has(c)) continue;
       taken.add(c);
       return c;
@@ -113,21 +197,27 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
     return null;
   };
 
-  // open отсортирован по убыванию пути назад, поэтому дальняя клетка — первая.
+  // Тупики — главная приманка: заход туда стоит вдвое, и добыча в них
+  // должна это оправдывать.
+  const deadEnds = open.filter((i) => degree(size, blocked, i % size, (i / size) | 0) === 1);
+  const chokes = open.filter((i) => {
+    const d = degree(size, blocked, i % size, (i / size) | 0);
+    return d === 2 && backSteps[i]! > 4;
+  });
+
+  const containers: Container[] = [];
+  const containerCount = 3 + tier * 2;
   const maxBack = open.length > 0 ? backSteps[open[0]!]! : 0;
 
   for (let i = 0; i < containerCount; i++) {
-    // Полосы по всей глубине, от дальней к ближней: если все находки лежат
-    // глубоко, кривая ценности не с чем сравнивается, а у игрока нет дешёвой
-    // добычи, ради которой можно уйти рано. Выбор «взять мелочь и выйти»
-    // обязан существовать, иначе решения об эвакуации не возникает.
+    // Половина находок — в тупиках, остальные полосами по всей глубине:
+    // у игрока должна быть и дешёвая добыча по пути, и дорогая в стороне.
+    const useDeadEnd = deadEnds.length > 0 && i % 2 === 0;
     const lo = Math.floor((open.length * i) / containerCount);
-    const hi = Math.floor((open.length * (i + 1)) / containerCount);
-    const cell = takeCell(lo, Math.max(lo + 1, hi));
+    const hi = Math.max(lo + 1, Math.floor((open.length * (i + 1)) / containerCount));
+    const cell = useDeadEnd ? takeFrom(deadEnds) : takeFrom(open.slice(lo, hi));
     if (cell === null) continue;
     // §12.1: ценность — функция глубины, а не случайное число по ярусу.
-    // Разброс ±1 оставлен, чтобы находки не были одинаковыми, но он мельче
-    // шага кривой и не смазывает её.
     const depth = maxBack > 0 ? backSteps[cell]! / maxBack : 0;
     const scale = 1 + (TIER_DEPTH_VALUE[tier] - 1) * depth;
     const amount = Math.max(1, Math.round(TIER_CONTAINER_BASE[tier] * scale) + randInt(rng, 3) - 1);
@@ -141,9 +231,13 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
     });
   }
 
-  roster.forEach((kind, i) => {
+  const enemies: Enemy[] = [];
+  TIER_ROSTER[tier].forEach((kind, i) => {
     const stats = ENEMY_STATS[kind];
-    const cell = takeCell(0, Math.max(1, Math.floor(open.length * 0.8)));
+    // §15 — голем перекрывает маршрут, а не гонится. Значит его место
+    // в узком проходе: там обход стоит шагов, а прорыв — ран.
+    const pool = kind === 'golem' && chokes.length > 0 ? chokes : open;
+    const cell = takeFrom(pool);
     if (cell === null) return;
     const x = cell % size;
     const z = (cell / size) | 0;
@@ -166,9 +260,5 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
 
 /** Проходимые соседи клетки — нужен генератору и отладке. */
 export function walkableNeighbors(loc: GameLocation, x: number, z: number): number {
-  let n = 0;
-  for (const [dx, dz] of NEIGHBORS_4) {
-    if (inBounds(loc.size, x + dx, z + dz) && !loc.blocked[idx(loc.size, x + dx, z + dz)]) n++;
-  }
-  return n;
+  return degree(loc.size, loc.blocked, x, z);
 }

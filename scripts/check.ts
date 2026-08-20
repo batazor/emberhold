@@ -14,6 +14,7 @@ import {
   speedup,
   speedupCost,
   startUpgrade,
+  freeWindow,
   storageCapacity,
   suggestUpgrade,
   upgradeBlock,
@@ -86,12 +87,20 @@ check('оффлайн-прогресс: стройка завершается «
   assert.equal(camp.levels.hq, 2);
 });
 
-check('§20.5 — последние пять минут бесплатны, час дороже минуты', () => {
-  assert.equal(speedupCost(300), 0);
-  assert.equal(speedupCost(0), 0);
-  assert.ok(speedupCost(600) > 0);
+check('§20.5 — бесплатное окно min(5 мин, 25% таймера)', () => {
+  const threeMin = 3 * 60;
+  const eightHours = 8 * 3600;
+  assert.equal(freeWindow(threeMin), 45, 'у трёхминутной стройки окно 45 секунд');
+  assert.equal(freeWindow(12 * 60), 180, 'у двенадцатиминутной — три минуты');
+  assert.equal(freeWindow(45 * 60), 300, 'дальше упирается в потолок пяти минут');
+  assert.equal(freeWindow(eightHours), 300, 'у длинных окно прежнее');
+
+  assert.equal(speedupCost(45, threeMin), 0, 'внутри окна даром');
+  assert.ok(speedupCost(threeMin, threeMin) > 0, 'с первой секунды — уже нет');
+  assert.equal(speedupCost(300, eightHours), 0, 'для длинной стройки пять минут даром');
+  assert.equal(speedupCost(0, eightHours), 0);
   // ×1.5 за каждый час: ускорять ночную стройку невыгодно.
-  assert.ok(speedupCost(8 * 3600) > speedupCost(3 * 3600) * 10);
+  assert.ok(speedupCost(eightHours, eightHours) > speedupCost(3 * 3600, 3 * 3600) * 10);
 });
 
 check('ускорение длинной стройки тратит соль и завершает её', () => {
@@ -107,21 +116,24 @@ check('ускорение длинной стройки тратит соль и
 });
 
 /**
- * Найденное столкновение правил, а не ошибка кода.
- * §20.2: ур. 2 строится 3 минуты, «та же сессия, игрок дожидается».
- * §20.5: последние пять минут бесплатны.
- * Три минуты целиком лежат внутри бесплатного окна, поэтому первый таймер
- * игры пропускается даром — ждать его незачем. Тест фиксирует поведение
- * как есть, по документу; решение о правке — за дизайном.
+ * Столкновение §20.2 и §20.5, которое чинит долевое окно.
+ * Раньше трёхминутная стройка целиком лежала внутри плоских пяти минут,
+ * и первый таймер игры пропускался даром. Теперь у неё есть 2 мин 15 с,
+ * которые действительно надо ждать или оплачивать.
  */
-check('трёхминутная стройка достраивается бесплатно с первой секунды', () => {
+check('первый таймер игры больше не пропускается даром', () => {
   const camp = createCamp();
-  camp.resources = { salt: 10, wood: 10, iron: 0, crystal: 0 };
+  camp.resources = { salt: 100, wood: 10, iron: 0, crystal: 0 };
   startUpgrade(camp, 'hq', 0);
-  assert.equal(speedupCost(camp.construction!.endsAt - 0), 0);
+  const c = camp.construction!;
+  const total = c.endsAt - c.startedAt;
+
+  assert.ok(speedupCost(total, total) > 0, 'сразу после начала ускорение платное');
+  assert.equal(speedupCost(40, total), 0, 'последние 45 секунд — бесплатны');
+
   const salt = camp.resources.salt;
   assert.equal(speedup(camp, 0), true);
-  assert.equal(camp.resources.salt, salt, 'соль не потрачена');
+  assert.ok(camp.resources.salt < salt, 'соль потрачена');
   assert.equal(camp.levels.hq, 2);
 });
 

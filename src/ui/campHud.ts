@@ -191,7 +191,7 @@ export class CampHud {
       if (c !== null && c.building === id) {
         const left = Math.max(0, c.endsAt - now);
         const total = Math.max(1, c.endsAt - c.startedAt);
-        const price = speedupCost(left);
+        const price = speedupCost(left, total);
         row.level.textContent = `ур. ${level} → ${c.toLevel}`;
         row.effect.textContent = BUILDINGS[id].effect(c.toLevel);
         row.barWrap.style.display = '';

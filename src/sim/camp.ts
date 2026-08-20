@@ -162,12 +162,24 @@ export function completeIfDue(camp: CampState, now: number): BuildingId | null {
 }
 
 /**
- * §20.5 — 2 соли за минуту, ×1.5 за каждый час: дёшево для коротких таймеров,
- * дорого для длинных. Последние пять минут бесплатны — это убирает худшее
- * состояние жанра, «осталось четыре минуты, зайду позже».
+ * §20.5 — бесплатное окно: min(5 минут, 25% таймера).
+ *
+ * Плоские «последние пять минут» сталкивались с §20.2: стройка второго
+ * уровня идёт ровно три минуты и целиком лежала внутри окна, поэтому первый
+ * таймер игры — тот, на котором игрок должен впервые почувствовать
+ * ожидание, — пропускался даром с первой секунды. Доля от таймера чинит
+ * это, ничего не меняя для длинных: у трёхчасовой и восьмичасовой стройки
+ * 25% всё равно упираются в потолок пяти минут.
  */
-export function speedupCost(remainingSeconds: number): number {
-  if (remainingSeconds <= 5 * 60) return 0;
+export const freeWindow = (totalSeconds: number): number =>
+  Math.min(5 * 60, totalSeconds * 0.25);
+
+/**
+ * §20.5 — 2 соли за минуту, ×1.5 за каждый час: дёшево для коротких таймеров,
+ * дорого для длинных. Ускорять ночную стройку невыгодно.
+ */
+export function speedupCost(remainingSeconds: number, totalSeconds: number): number {
+  if (remainingSeconds <= freeWindow(totalSeconds)) return 0;
   const minutes = Math.ceil(remainingSeconds / 60);
   const hours = Math.floor(remainingSeconds / 3600);
   return Math.ceil(2 * minutes * Math.pow(1.5, hours));
@@ -176,7 +188,7 @@ export function speedupCost(remainingSeconds: number): number {
 export function speedup(camp: CampState, now: number): boolean {
   const c = camp.construction;
   if (c === null) return false;
-  const cost = speedupCost(c.endsAt - now);
+  const cost = speedupCost(c.endsAt - now, c.endsAt - c.startedAt);
   if (camp.resources.salt < cost) return false;
   camp.resources.salt -= cost;
   camp.construction = { ...c, endsAt: now };
