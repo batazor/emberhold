@@ -1,23 +1,35 @@
+import { readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 // Порт назначает среда через PORT: в проекте нет ничего, что требовало бы
 // конкретный 5173 — ни OAuth-возвратов, ни вебхуков, ни списков CORS.
-// @types/node не подключены, поэтому до process добираемся через globalThis.
-const rawPort = Number(
-  (globalThis as { process?: { env?: Record<string, string | undefined> } })
-    .process?.env?.PORT,
-);
+const rawPort = Number(process.env.PORT);
 const port = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : undefined;
+
+/**
+ * Сборка многостраничная: игра — index.html, рядом артбуки и их оглавление.
+ * Список страниц читается из папки, а не перечисляется здесь: перечисленный
+ * молча отстаёт, и новая книга оказывается в оглавлении собранного сайта
+ * ссылкой в 404. Папку уже сторожит npm run arch — она и есть источник.
+ */
+const pages = Object.fromEntries(
+  readdirSync(import.meta.dirname)
+    .filter((name) => name.endsWith('.html'))
+    .map((name) => [name.slice(0, -'.html'.length), resolve(import.meta.dirname, name)]),
+);
 
 export default defineConfig({
   base: './',
   server: { host: true, ...(port ? { port } : {}) },
+  preview: { host: true, ...(port ? { port } : {}) },
   build: {
     target: 'es2022',
-    // three тянет ~160 КБ gzip — держим его отдельным чанком, чтобы код игры
-    // инвалидировался без него
     rollupOptions: {
+      input: pages,
       output: {
+        // three тянет ~160 КБ gzip — держим его отдельным чанком, чтобы код игры
+        // инвалидировался без него
         manualChunks: { three: ['three'] },
       },
     },
