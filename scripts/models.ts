@@ -113,6 +113,12 @@ interface Pack {
    * на глаз смещению.
    */
   readonly attach?: readonly string[];
+  /**
+   * Разлиновка атласа: набор, у которого картинка расчерчена на клетки, а
+   * каждая клетка — свой градиент. Объявляется, а не угадывается, и после
+   * объявления меряется: в каталог уходит, какие клетки набор задел и чем.
+   */
+  readonly grid?: { readonly cols: number; readonly rows: number };
 }
 
 /**
@@ -446,7 +452,118 @@ const ADVENTURERS: Pack = {
   data: { file: 'src/render/adventurers.data.ts', prefix: 'ADVENTURERS', type: 'Adventurer' },
 };
 
-const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS];
+/** Категория ресурсов — по первому слову имени файла набора. */
+const RESOURCE_CATEGORIES: Record<string, string> = {
+  wood: 'Дерево', pallet: 'Дерево',
+  stone: 'Камень',
+  iron: 'Железо', parts: 'Детали',
+  copper: 'Медь', silver: 'Серебро', gold: 'Золото',
+  textiles: 'Ткань', fuel: 'Топливо',
+};
+
+/**
+ * Пятый набор — ресурсы (§6.1.5): слитки, самородки, брёвна, доски, тюки,
+ * поддоны, бочки. Первый набор, у которого предмет назван материалом,
+ * а не формой: «медь», «серебро», «железо» — это и есть имена моделей.
+ *
+ * Атлас устроен третьим способом. У леса это три ровных градиента, у
+ * подземелья — раскрашенная картинка; здесь картинка расчерчена на 32 клетки
+ * 128×128, и каждая клетка — свой вертикальный градиент. Модель не смешивает
+ * цвета: она берёт одну клетку целиком, поэтому «какой материал» здесь
+ * читается не по оттенку треугольника, а по тому, в какую клетку он попал.
+ * Тридцать третьей клетки нет: одна из тридцати двух подписана автором
+ * «место под будущие цвета» и не задета ни одной моделью.
+ *
+ * Из этого следует главное ограничение набора, и оно не про палитру.
+ * Железо и камень набор красит двумя разными клетками, а клетки эти почти
+ * совпадают: светлый конец железа — #a7b6bd, светлый конец камня — #aab8be,
+ * и вся разница между ними — одна сотая насыщенности, 0,12 против 0,11.
+ * Набор различает их местом в картинке, а инструмент читает цвет — окно
+ * приходится ставить по этой сотой. Серебру повезло больше: оно из той же
+ * холодной клетки, но светлее, и внутри одного градиента расходится
+ * с железом само (сталь против металла).
+ *
+ * День, когда этого станет мало, назван заранее: если набор поедет в игру,
+ * читать придётся клетку, а не цвет. Пока набор меряется — не придётся.
+ */
+const RESOURCES: Pack = {
+  id: 'resources',
+  title: 'KayKit Resource Bits 1.0 FREE',
+  dir: 'assets/kaykit-resources',
+  atlas: 'resource_bits_texture.png',
+  ramps: [
+    // Медь и золото — оба оранжевые, и порядок примерки решает: у меди тон
+    // ниже (13–22° против 37–43°), и она идёт первой. Ступени берутся у огня:
+    // своей меди в палитре нет, а уголь-жар-пламя — ровно тот же градиент.
+    { id: 'copper', title: 'медь', slots: ['уголь', 'жар', 'пламя'], hue: [8, 26], sat: [0.7, 1] },
+    // Золото — одна ступень, и это не экономия: золотого цвета в палитре ровно
+    // один, латунь. Второй ступенью тут была солома, и она уводила три четверти
+    // золота в цвет кровли; теперь солома целиком у дерева, где она и нужна.
+    { id: 'gold', title: 'золото', slots: ['латунь'], hue: [26, 52], sat: [0.6, 1] },
+    // Дерево делит тон и с медью, и с золотом — тёплый угол атласа занят втроём.
+    // Разводит их насыщенность: медь 0,73–0,77, золото 0,61–0,75, дерево 0,35–0,65.
+    // Поэтому оба металла примеряются раньше, а дереву достаётся всё тёплое,
+    // что осталось ниже их порогов.
+    //
+    // Ступеней пять, а не четыре: доски набора светлее нашего дерева, и на
+    // четырёх ступенях светлая половина набора складывалась в тёмную половину
+    // палитры. Пятой стоит солома — светлее её тёплого в артбуке нет.
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома'], hue: [8, 52], sat: [0.28, 1] },
+    // Тюки ткани набор красит двумя клетками сразу: насыщенной (там же, где
+    // светлое дерево) и приглушённой. В сукно уходит вторая — по потолку
+    // насыщенности, а не по тону: тон у них общий.
+    { id: 'cloth', title: 'сукно', slots: ['сукно-тень', 'сукно', 'сукно-свет'], hue: [0, 60], sat: [0.02, 0.28] },
+    { id: 'moss', title: 'зелень', slots: ['хвоя-тень', 'хвоя', 'мох', 'трава'], hue: [60, 170], sat: [0.25, 1] },
+    /*
+     * Краска бочек — своё окно, и заведено оно не ради краски, а ради шкал
+     * соседей. Чистые алый, синий и жёлтый в палитре не значат ничего, и раньше
+     * они падали в запасной градиент: алое растягивало шкалу камня до 0,20–0,92,
+     * синее шкалу металла до 0,17. Настоящий камень набора живёт на 0,37–0,71
+     * и в такой растянутой шкале занимал две ступени из четырёх вместо всех.
+     *
+     * Теперь всё насыщеннее 0,6, что не забрали медь, золото, дерево и зелень,
+     * уходит сюда, а сюда — это два самых тёмных серых артбука. Бочка в игре
+     * была бы тёмной: мид-тона для краски в палитре нет, и придумывать его
+     * ради чужой бочки — значит заводить цвет под набор, который не едет.
+     */
+    { id: 'paint', title: 'краска', slots: ['тень', 'камень-тень'], hue: [0, 360], sat: [0.6, 1] },
+    // Железо, серебро и детали — одно окно на троих: см. комментарий выше.
+    // Четвёртая ступень, иней, — для светлого конца серебра: без неё серебро
+    // упиралось в сталь и переставало быть светлее железа.
+    { id: 'steel', title: 'металл', slots: ['металл-тень', 'металл', 'сталь', 'иней'], hue: [170, 300], sat: [0.115, 1] },
+    // Порог между металлом и камнем — одна сотая насыщенности, и это не выбор,
+    // а замер: светлый конец железа 0,12, светлый конец камня 0,11.
+    { id: 'stone', title: 'камень', slots: ['камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет'], hue: [0, 360], sat: [0, 0.115] },
+  ],
+  slots: [
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома',
+    'сукно-тень', 'сукно', 'сукно-свет',
+    'камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет',
+    'металл-тень', 'металл', 'сталь', 'иней',
+    'хвоя-тень', 'хвоя', 'мох', 'трава',
+    'уголь', 'жар', 'пламя', 'латунь',
+    'тень', 'камень-тень',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  /** Восемь колонок на четыре ряда — так расчерчена картинка набора. */
+  grid: { cols: 8, rows: 4 },
+  /**
+   * Порог серого опущен почти до нуля по той же причине, что у скелетов:
+   * серое здесь — материал. Камень набора живёт на насыщенности 3–14%,
+   * и с порогом по умолчанию он весь считался бы пустым полем атласа.
+   */
+  grey: 0.02,
+  categoryOf: (name) => RESOURCE_CATEGORIES[name.split('_')[0]!.toLowerCase()] ?? 'Прочее',
+  /**
+   * Пусто, как у подземелья, и по той же причине: добыча в игре — значок,
+   * а не предмет на земле. Набор измерен и ждёт дня, когда ресурс придётся
+   * показать вещью.
+   */
+  adopted: [],
+};
+
+const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES];
 
 /* ---------- png ---------- */
 
@@ -1304,6 +1421,62 @@ interface Sampler {
  * одинаковая кожа обязана попасть в одну ступень, с картинки рыцаря она
  * прочитана или с картинки мага.
  */
+/** Клетка разлинованного атласа: чем задета и каким градиентом закрашена. */
+interface CellUse {
+  readonly row: number;
+  readonly col: number;
+  readonly tris: number;
+  /** Цвет по центру клетки сверху и снизу — это и есть её градиент. */
+  readonly top: string;
+  readonly bottom: string;
+  readonly categories: Record<string, number>;
+}
+
+/**
+ * Какие клетки атласа набор задел. Считается только у наборов с объявленной
+ * разлиновкой: у остальных картинка не расчерчена, и клетка там ничего
+ * не значит.
+ */
+function cellsOf(
+  pack: Pack,
+  meshes: readonly { readonly name: string; readonly mesh: Mesh }[],
+  atlas: Image,
+): CellUse[] | undefined {
+  const grid = pack.grid;
+  if (grid === undefined) return undefined;
+  const cw = atlas.width / grid.cols;
+  const ch = atlas.height / grid.rows;
+  const out = new Map<string, { row: number; col: number; tris: number; categories: Record<string, number> }>();
+  for (const { name, mesh } of meshes) {
+    const category = pack.categoryOf(name);
+    for (let t = 0; t < mesh.tris; t++) {
+      const x = Math.min(atlas.width - 1, Math.max(0, Math.floor(mesh.uvs[t * 2]! * atlas.width)));
+      const y = Math.min(atlas.height - 1, Math.max(0, Math.floor(mesh.uvs[t * 2 + 1]! * atlas.height)));
+      const col = Math.min(grid.cols - 1, Math.floor(x / cw));
+      const row = Math.min(grid.rows - 1, Math.floor(y / ch));
+      const key = `${row}:${col}`;
+      const cell = out.get(key) ?? { row, col, tris: 0, categories: {} };
+      cell.tris++;
+      cell.categories[category] = (cell.categories[category] ?? 0) + 1;
+      out.set(key, cell);
+    }
+  }
+  const hex = (x: number, y: number): string => {
+    const o = (y * atlas.width + x) * 4;
+    return `#${[0, 1, 2].map((c) => atlas.rgba[o + c]!.toString(16).padStart(2, '0')).join('')}`;
+  };
+  return [...out.values()]
+    .sort((a, b) => b.tris - a.tris)
+    .map((c) => ({
+      row: c.row,
+      col: c.col,
+      tris: c.tris,
+      top: hex(Math.floor((c.col + 0.5) * cw), Math.floor(c.row * ch + ch * 0.1)),
+      bottom: hex(Math.floor((c.col + 0.5) * cw), Math.floor(c.row * ch + ch * 0.9)),
+      categories: c.categories,
+    }));
+}
+
 function makeSampler(pack: Pack, atlases: readonly Image[], usage: Usage | undefined): Sampler {
   const ranges = rampRanges(pack, atlases, usage);
   const index = new Map(pack.slots.map((s, i) => [s, i]));
@@ -1647,6 +1820,7 @@ function writeCatalog(
   sampler: Sampler,
   models: Baked[],
   usage: Usage | undefined,
+  cells: readonly CellUse[] | undefined,
 ): string {
   return JSON.stringify({
     pack: pack.title,
@@ -1728,6 +1902,8 @@ function writeCatalog(
             };
           })(),
         }),
+    // Разлиновка атласа: клетки, которые набор задел, и чем именно.
+    ...(cells === undefined ? {} : { grid: pack.grid, cells }),
     // Потолки, чтобы отчёт в консоли и страница артбука брали их из одного места.
     budgets: { hero: HERO_BUDGET, model: BUDGET },
     models: models.map((m) => ({
@@ -1807,6 +1983,7 @@ function report(pack: Pack, write: boolean): void {
     : RIG.clips.map((c) => loadClip(join(ROOT, c.file), c.clip, c.as, rig));
 
   const models = meshes.map((m) => bake(pack, m.name, m.rel, m.mesh, sampler, rig));
+  const cells = cellsOf(pack, meshes, images[0]!);
   const slots = pack.slots;
 
 
@@ -1844,6 +2021,14 @@ function report(pack: Pack, write: boolean): void {
       return `${name} ${share}%`;
     });
     console.log(`  ${ramp.title.padEnd(8)} ${parts.join(' · ')}`);
+  }
+
+  if (cells !== undefined) {
+    const grid = pack.grid!;
+    console.log(
+      `\nклеток атласа задето: ${cells.length} из ${grid.cols * grid.rows}` +
+        ` — самая занятая r${cells[0]!.row}c${cells[0]!.col}, ${cells[0]!.tris} треугольников`,
+    );
   }
 
   const grey = models.reduce((s, m) => s + m.grey, 0);
@@ -1928,7 +2113,7 @@ function report(pack: Pack, write: boolean): void {
     written.push(pack.data.file);
   }
   const catalog = join(pack.dir, 'catalog.json');
-  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlases, sampler, models, usage), 'utf8');
+  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlases, sampler, models, usage, cells), 'utf8');
   written.push(catalog);
   console.log(`\nзаписано: ${written.join(', ')}`);
 }

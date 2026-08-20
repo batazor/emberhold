@@ -47,6 +47,11 @@ function makeBones(): THREE.Bone[] {
     const up = RIG_PARENT[at]!;
     if (up >= 0) bones[up]!.add(bone);
   });
+  // Мировые матрицы позы привязки — руками: three обновляет их на отрисовке,
+  // а обратные матрицы `THREE.Skeleton` выводит из них прямо в конструкторе.
+  // Без этого он выводит их из единичных, скин остаётся в позе набора и по нему
+  // едут кости — руки уходят в тело, ноги в пол.
+  bones[0]!.updateMatrixWorld(true);
   return bones;
 }
 
@@ -151,8 +156,8 @@ export class Rigged {
 
   constructor(parts: RiggedParts, material: THREE.Material) {
     this.bones = makeBones();
-    // Обратные матрицы three выводит из позы костей сам; запекание проверило,
-    // что вывод сходится с тем, что записано в наборе.
+    // Обратные матрицы three выводит из позы костей сам — но только если поза
+    // уже посчитана в мировых координатах, чем и занят `makeBones`.
     this.skeleton = new THREE.Skeleton(this.bones);
 
     const mesh = new THREE.SkinnedMesh(parts.body, material);

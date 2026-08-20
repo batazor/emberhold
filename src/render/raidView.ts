@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
 import { ENEMY_HEIGHT, buildingGeometry, enemyParts, heroGeometry, heroParts } from './models';
+import { Fire } from './fire';
+import { fireOf } from './models';
 import { Rigged } from './rigged';
 import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
@@ -128,6 +130,8 @@ export class RaidView {
   private evacRing: THREE.Mesh | null = null;
   /** Здания, поставленные в конце пролога. До него их нет вовсе. */
   private readonly placed = new Map<BuildingId, THREE.Mesh>();
+  /** Свет поставленного костра. Тот же, что потом горит в лагере. */
+  private readonly fire = new Fire();
   /** Пятно под курсором в режиме выбора места и призрак здания над ним. */
   private site: THREE.Mesh | null = null;
   private ghost: THREE.Mesh | null = null;
@@ -280,6 +284,14 @@ export class RaidView {
     mesh.position.set(x, 0, z);
     this.placed.set(id, mesh);
     this.group.add(mesh);
+    // Костёр ставится горящим: огонь, который не светит, читается как макет
+    // костра. Палатка света не даёт — `FireLight` знает это по модели.
+    // Условие здесь, а не в свете: палатка ставится после костра только
+    // в чужом порядке, но гасить чужой огонь она не должна и тогда.
+    if (fireOf(id, 1) !== null) {
+      this.fire.set(id, 1, x, z, BUILDING_SCALE);
+      this.group.add(this.fire.group);
+    }
     this.grass?.clearCell(x, z);
   }
 
@@ -526,7 +538,10 @@ export class RaidView {
   }
 
   /** alpha — доля между прошлым и текущим тиком симуляции (см. core/loop). */
-  sync(state: RaidState, alpha: number, dt: number, time: number): void {
+  sync(state: RaidState, alpha: number, dt: number, time: number, day = 0): void {
+    // Костёр мерцает и в прологе, и в вылазке: день приходит числом, потому
+    // что поляна — это поверхность, а вылазка — ночь под землёй.
+    this.fire.update(time, day);
     if (this.hintRing.visible) {
       const pulse = 1 + Math.sin(time / 260) * 0.16;
       this.hintRing.scale.setScalar(pulse);
@@ -668,6 +683,7 @@ export class RaidView {
 
   dispose(): void {
     this.grass?.dispose();
+    this.fire.dispose();
     this.grass = null;
     this.group.removeFromParent();
     this.group.traverse((o) => {
