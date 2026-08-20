@@ -1,5 +1,5 @@
 /**
- * Правила звука. Проверяются не тембры — их слушают в `sound.html`, — а то,
+ * Правила звука. Проверяются не тембры — их слушают в `audioart.html`, — а то,
  * что записано в §18 как решение: пульс провианта молчит в начале, ускоряется
  * и повышается к концу и никогда не идёт вспять.
  *
@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CAMP_PHRASES, SFX, foodPulse, midiHz, phraseSec } from './audio';
+import { CAMP_PHRASES, SAMPLES, SFX, foodPulse, midiHz, phraseSec, sampleFile } from './audio';
 
 describe('Звук: пульс провианта (§18.2)', () => {
   test('выше 60% пульса нет вовсе — тишина это состояние', () => {
@@ -56,6 +56,59 @@ describe('Звук: библиотека (§18.3)', () => {
   test('звук без контекста не падает в Node — симуляция гоняется headless', () => {
     for (const name of Object.keys(SFX) as (keyof typeof SFX)[]) {
       assert.doesNotThrow(() => SFX[name](), `${name} упал без AudioContext`);
+    }
+  });
+});
+
+describe('Звук: сэмплы чужого набора (§18.5)', () => {
+  /**
+   * Восемь имён, которым набор не годится по существу, а не по случаю: их
+   * тембр выведен из разнесения по частоте (§18.1), а пульс провианта вдобавок
+   * задан таблицей §18.2 и проверяется числами. Сэмпл сюда не заходит — иначе
+   * проверять станет нечего, а решение уедет в чужой файл.
+   */
+  const SIGNAL = ['wound', 'kill', 'tick', 'evac', 'fail', 'levelup', 'tap', 'deny'];
+
+  test('сэмпл есть только у имени из библиотеки', () => {
+    for (const spec of SAMPLES) {
+      assert.ok(spec.name in SFX, `${spec.name} — не имя §18.3`);
+    }
+  });
+
+  test('сигнальные звуки остаются синтезом', () => {
+    for (const spec of SAMPLES) {
+      assert.ok(!SIGNAL.includes(spec.name), `${spec.name} сигнальный, сэмплу там не место`);
+    }
+  });
+
+  test('у каждого имени есть варианты, и они разные — иначе метроном', () => {
+    for (const spec of SAMPLES) {
+      assert.ok(spec.files.length > 0, `${spec.name} без файлов`);
+      assert.equal(
+        new Set(spec.files).size,
+        spec.files.length,
+        `${spec.name}: один файл записан дважды`,
+      );
+    }
+  });
+
+  test('громкость сэмпла не выше ранения — §18.3 про порядок, а не про набор', () => {
+    // Ранение — самый громкий звук игры, его тон идёт с gain 0.34.
+    for (const spec of SAMPLES) {
+      assert.ok(spec.gain <= 0.34, `${spec.name} громче ранения: ${spec.gain}`);
+    }
+  });
+
+  test('имена файлов не сталкиваются — сборка кладёт их в одну папку', () => {
+    const all = SAMPLES.flatMap((s) => s.files.map((_, i) => sampleFile(s.name, i)));
+    assert.equal(new Set(all).size, all.length, 'два сэмпла метят в один файл');
+  });
+
+  test('рецепт остаётся на месте: без загруженных сэмплов игра звучит', () => {
+    // Тот же прогон, что и для всей библиотеки, но названный отдельно:
+    // именно это свойство делает загрузку сэмплов необязательной.
+    for (const spec of SAMPLES) {
+      assert.doesNotThrow(() => SFX[spec.name](), `${spec.name} упал без сэмпла`);
     }
   });
 });

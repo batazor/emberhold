@@ -1,6 +1,6 @@
 /**
  * Звук (DESIGN §18). Процедурный синтез, ноль ассетов: рецепты перенесены
- * из артбука `sound.html` один в один, чтобы игра звучала ровно так, как
+ * из артбука `audioart.html` один в один, чтобы игра звучала ровно так, как
  * её слушали на странице, а не «примерно так же».
  *
  * Модуль намеренно лежит в core рядом с часами и циклом: как и они, он —
@@ -17,7 +17,7 @@ export type Bus = 'sfx' | 'ui' | 'amb';
 
 /**
  * Микшер (§18.5): общая громкость и три шины. Значения по умолчанию — те же,
- * что в артбуке `sound.html`: игра запускается не в наушниках и часто при людях.
+ * что в артбуке `audioart.html`: игра запускается не в наушниках и часто при людях.
  */
 export interface Mix {
   readonly master: number;
@@ -118,6 +118,7 @@ export function unlockAudio(): void {
     }
   }
   if (ac.state === 'suspended') void ac.resume();
+  loadSamples();
 }
 
 const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
@@ -249,6 +250,46 @@ function tn(o: ToneOpts): void {
   hold(() => osc.stop(), t + dur);
 }
 
+/* ---------- сэмплы (§18.5) ---------- */
+
+/**
+ * Загруженные сэмплы и громкость к ним. Пусты, пока файлы не приехали, —
+ * и это рабочее состояние, а не сбой: рецепт §18.3 остаётся на месте и играет
+ * сам, пока сэмпла нет. Поэтому звук есть с первого кадра, а не с первой
+ * удачной загрузки.
+ */
+const sampled = new Map<string, AudioBuffer[]>();
+const sampleGain = new Map<string, number>();
+const sampleTurn = new Map<string, number>();
+
+/**
+ * Сыграть сэмпл вместо рецепта. Возвращает false, если сэмпла нет, —
+ * вызывающий рецепт тогда синтезирует, как раньше.
+ *
+ * Варианты идут по кругу по той же причине, по которой у синтезированного
+ * шага их два (§18.3): буквально повторяемый звук слышится метрономом.
+ */
+function sample(name: string): boolean {
+  const list = sampled.get(name);
+  const out = busOf('sfx');
+  if (ac === null || out === null || list === undefined || list.length === 0) return false;
+
+  const i = (sampleTurn.get(name) ?? 0) % list.length;
+  sampleTurn.set(name, i + 1);
+  const buf = list[i]!;
+
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const g = ac.createGain();
+  // Файл нормализован по пику на запекании, громкость назначает §18.3.
+  g.gain.value = sampleGain.get(name) ?? 0.1;
+  src.connect(g);
+  g.connect(out);
+  src.start();
+  hold(() => src.stop(), ac.currentTime + buf.duration);
+  return true;
+}
+
 let stepFlip = 0;
 
 /**
@@ -258,6 +299,7 @@ let stepFlip = 0;
 export const SFX = {
   /** Поверхность под ногами. Два варианта по очереди — иначе метроном. */
   step: (): void => {
+    if (sample('step')) return;
     stepFlip ^= 1;
     nz({ f0: stepFlip ? 1150 : 900, f1: 520, dur: 0.055, gain: 0.09, q: 1.2 });
   },
@@ -265,6 +307,7 @@ export const SFX = {
   swing: (): void => nz({ type: 'highpass', f0: 900, f1: 2600, dur: 0.09, gain: 0.11, q: 0.7 }),
   /** Урон нанесён. Не громче ранения: иначе успех звучит опаснее неудачи. */
   hit: (): void => {
+    if (sample('hit')) return;
     nz({ f0: 1600, f1: 400, dur: 0.09, gain: 0.2, q: 1.4 });
     tn({ type: 'triangle', f0: 180, f1: 90, dur: 0.12, gain: 0.16 });
   },
@@ -281,12 +324,17 @@ export const SFX = {
   },
   /** Добыча получена. Единственный по-настоящему приятный звук в вылазке. */
   chest: (): void => {
-    nz({ f0: 600, f1: 1400, dur: 0.07, gain: 0.12, q: 2 });
+    // Рецепт §18.3 — «щелчок + тона 880 и 1320». Сэмпл заменяет щелчок,
+    // тона остаются синтезом: они и есть награда, а награду набор не привёз.
+    if (!sample('chest')) nz({ f0: 600, f1: 1400, dur: 0.07, gain: 0.12, q: 2 });
     tn({ type: 'triangle', f0: 880, dur: 0.18, gain: 0.14, at: 0.05 });
     tn({ type: 'triangle', f0: 1320, dur: 0.26, gain: 0.12, at: 0.12 });
   },
   /** Ресурс зачислен — по одному на строку экрана возврата. */
-  pick: (): void => tn({ type: 'sine', f0: 1180, f1: 1560, dur: 0.09, gain: 0.12 }),
+  pick: (): void => {
+    if (sample('pick')) return;
+    tn({ type: 'sine', f0: 1180, f1: 1560, dur: 0.09, gain: 0.12 });
+  },
   /** −10% провианта. Тихий, но регулярный: расход считается не глядя. */
   tick: (): void => tn({ type: 'sine', f0: 640, dur: 0.05, gain: 0.09 }),
   /** Вылазка удалась. Вверх и светлее: выход — облегчение, а не конец. */
@@ -302,6 +350,7 @@ export const SFX = {
   },
   /** Работа началась. Один раз на старте, а не циклом: стук утомляет. */
   build: (): void => {
+    if (sample('build')) return;
     nz({ f0: 420, f1: 260, dur: 0.11, gain: 0.18, q: 2.4 });
     nz({ f0: 700, f1: 300, dur: 0.08, gain: 0.12, q: 2, at: 0.1 });
   },
@@ -318,6 +367,70 @@ export const SFX = {
 } as const;
 
 export type SfxName = keyof typeof SFX;
+
+/**
+ * Что берётся из чужого набора (§18.5). Правило отбора то же, что у самой
+ * библиотеки: сэмпл заменяет рецепт только там, где он **сообщает то же
+ * самое**. Восемь сигнальных имён — ранение, смерть, тик провианта,
+ * эвакуация, провал, уровень здания, тап, отказ — остаются синтезом: их тембр
+ * выведен из разнесения по частоте (§18.1), и записанного звука, который
+ * сообщал бы то же, в наборе нет.
+ *
+ * Взмах тоже остался синтезом, хотя кандидат был: `drawKnife` — это
+ * извлечение клинка, а §18.3 просит свист начатой атаки. Разные события.
+ *
+ * Громкость не подбиралась на слух: файл нормализован по пику на запекании,
+ * а `gain` — то же число, что стоит в рецепте §18.3, который сэмпл заменяет.
+ * Так порядок громкостей игры остаётся решением §18.3, а сэмпл приносит
+ * только тембр.
+ */
+export interface SampleSpec {
+  readonly name: SfxName;
+  /** Файлы набора без расширения; играются по кругу. */
+  readonly files: readonly string[];
+  readonly gain: number;
+}
+
+export const SAMPLES: readonly SampleSpec[] = [
+  // Четыре шага из десяти в наборе: десять вариантов звучат лучше, но каждый
+  // едет в бандл, а метроном ломается уже на четырёх.
+  { name: 'step', files: ['footstep00', 'footstep03', 'footstep06', 'footstep09'], gain: 0.09 },
+  { name: 'hit', files: ['knifeSlice', 'knifeSlice2'], gain: 0.2 },
+  { name: 'chest', files: ['metalLatch'], gain: 0.12 },
+  { name: 'pick', files: ['handleCoins2'], gain: 0.12 },
+  { name: 'build', files: ['chop'], gain: 0.18 },
+];
+
+/** Где лежат запечённые сэмплы. `npm run audio -- --write` пишет их туда. */
+const SFX_DIR = './sfx/';
+
+/** Имя файла в сборке: имя §18.3 плюс номер варианта. */
+export const sampleFile = (name: SfxName, i: number): string => `${name}${i}.m4a`;
+
+let samplesAsked = false;
+
+/**
+ * Забрать сэмплы. Вызывается из `unlockAudio`, то есть после первого жеста
+ * (§18.5), и ничего не блокирует: пока файлы едут — и если они не доедут
+ * вовсе, — играют рецепты §18.3. Отсюда и молчаливый catch: неудачная
+ * загрузка это не потеря звука, а потеря тембра.
+ */
+export function loadSamples(): void {
+  if (samplesAsked || ac === null) return;
+  samplesAsked = true;
+  for (const spec of SAMPLES) {
+    sampleGain.set(spec.name, spec.gain);
+    void Promise.all(
+      spec.files.map(async (_, i) => {
+        const res = await fetch(SFX_DIR + sampleFile(spec.name, i));
+        if (!res.ok) throw new Error(String(res.status));
+        return await ac!.decodeAudioData(await res.arrayBuffer());
+      }),
+    )
+      .then((bufs) => sampled.set(spec.name, bufs))
+      .catch(() => {});
+  }
+}
 
 export function play(name: SfxName): void {
   if (ac === null) return;

@@ -83,22 +83,44 @@
   .guard p{margin:0;font-size:14px;color:var(--dim);}
   .guard p b{color:var(--text);font-weight:600;}
 
+  /* карточки набора: волна вместо иконки, вся карточка — кнопка */
+  .pack{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:14px;}
+  .s{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;
+    padding:0;text-align:left;border-radius:0;color:var(--text);}
+  .s:hover{background:var(--surface-2);color:var(--text);}
+  .s[aria-pressed="true"]{background:var(--surface-2);color:var(--text);border-color:var(--brass);}
+  .s.take{border-color:var(--brass);}
+  .s .wave{background:#12100c;display:block;width:100%;height:56px;}
+  .s b{font-family:var(--ff-display);font-weight:400;font-size:14px;padding:8px 11px 1px;
+    overflow-wrap:anywhere;}
+  .s u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
+    padding:0 11px 10px;display:flex;justify-content:space-between;gap:8px;}
+  .s u s{text-decoration:none;}
+  .s u s.take{color:var(--brass);}
+  .filters{position:sticky;top:0;z-index:5;background:var(--ground);padding:12px 0;
+    border-bottom:1px solid var(--line);}
+
   table{border-collapse:collapse;width:100%;font-size:13.5px;}
   th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
   th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
     color:var(--dim);font-weight:600;}
   td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;}
+  td.numr{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.no{color:var(--dim);}
   .scroll{overflow-x:auto;}
+  .fail{color:var(--blood);}
 </style>
 
 <div class="wrap">
   <header>
     <div class="eyebrow">Звук · Emberhold</div>
     <h1>Звук, который <em>что-то сообщает</em></h1>
-    <p class="lede">Все звуки ниже синтезируются прямо на странице — ни одного файла.
-      Это не демонстрация технологии, а рабочий формат: для прототипа процедурный звук
-      весит ноль, правится параметром и не требует ждать композитора. Нажимайте —
-      всё звучит так, как задумано в игре.</p>
+    <p class="lede">Библиотека игры синтезируется прямо на странице — четырнадцать
+      рецептов, ни одного файла. Поверх них лежат девять сэмплов из чужого набора
+      (§18.6): пять имён из четырнадцати игра сегодня играет записью, а не синтезом.
+      У таких карточек две кнопки — <b>рецепт</b> и <b>то, что играет в игре</b>;
+      разницу здесь и слушают. Ниже по странице — сам набор целиком, с замерами.</p>
     <div class="bar">
       <button id="unlock" type="button">Включить звук</button>
       <label class="note">громкость <input type="range" id="vol" min="0" max="100" value="55"></label>
@@ -170,7 +192,9 @@
   <div class="sec">
     <div class="hd"><div class="eyebrow">03</div><h2>Библиотека</h2></div>
     <p>Каждая карточка — рецепт синтеза и то, что этот звук сообщает игроку.
-      Звук, которому нечего написать в строке «сообщает», из игры вырезается.</p>
+      Звук, которому нечего написать в строке «сообщает», из игры вырезается.
+      Там, где рядом стоит кнопка <b>«В игре»</b>, рецепт заменён сэмплом —
+      целиком или, как у сундука, наполовину.</p>
     <div id="lib" style="display:flex;flex-direction:column;gap:26px"></div>
   </div>
 
@@ -190,14 +214,137 @@
   </div>
 
   <div class="sec">
-    <div class="hd"><div class="eyebrow">05</div><h2>Техническая часть</h2></div>
+    <div class="hd"><div class="eyebrow">05</div><h2>Набор, из которого взяты сэмплы</h2></div>
+    <p>Kenney RPG Audio, лицензия CC0. Ниже — не пересказ витрины: страница читает сами
+      файлы из <code>assets/kenney-rpg-audio</code>, декодирует их и считает длительность
+      и пик по семплам. На витрине набор назван «50 звуков» — файлов в архиве <b>51</b>,
+      и это первое, что здесь измерено, а не переписано.</p>
+    <p class="note fail" id="warn" style="display:none"></p>
+    <div class="scroll">
+      <table id="cats"><thead><tr>
+        <th>Категория</th><th class="numr">Файлов</th><th class="numr">Всего, с</th>
+        <th class="numr">Средний, с</th><th class="numr">Вес, КБ</th><th>Самый длинный</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <p class="note" id="total">Читаю и декодирую 51 файл…</p>
+
+    <h3 style="margin:26px 0 8px">Каталог</h3>
+    <p>Карточка играет по нажатию. Волна — огибающая декодированного буфера.
+      Обведённые <b>взяты в игру</b>: девять файлов из 51. Здесь они звучат как
+      в наборе; в игре они приведены к одному пику и играют с громкостью §18.3.</p>
+    <div class="bar filters" id="filters"></div>
+    <div class="pack" id="grid"></div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">06</div><h2>Что взято в игру</h2></div>
+    <p>Правило отбора то же, что у самой библиотеки: сэмпл заменяет рецепт только там,
+      где сообщает <b>то же самое</b>. Так закрыто пять имён из четырнадцати. Восемь —
+      сигнальные: их тембр выведен из разнесения по частоте, и записанного фоли,
+      которое сообщало бы то же, в наборе нет. Четырнадцатое, взмах, кандидата имело
+      и всё равно осталось синтезом — по существу, а не по весу.</p>
+    <div class="scroll">
+      <table><thead><tr>
+        <th>Имя</th><th>Что сообщает</th><th>Что играет в игре</th>
+      </tr></thead><tbody>
+        <tr><td class="mono">step</td><td>поверхность под ногами</td><td class="mono">footstep00, 03, 06, 09 — четыре из десяти, по кругу</td></tr>
+        <tr><td class="mono">hit</td><td>урон нанесён</td><td class="mono">knifeSlice, knifeSlice2 — по очереди</td></tr>
+        <tr><td class="mono">chest</td><td>добыча получена</td><td class="mono">metalLatch вместо щелчка; тона 880 и 1320 синтез</td></tr>
+        <tr><td class="mono">pick</td><td>ресурс зачислен</td><td class="mono">handleCoins2</td></tr>
+        <tr><td class="mono">build</td><td>работа началась</td><td class="mono">chop</td></tr>
+        <tr><td class="mono">swing</td><td>атака началась</td><td class="no">синтез: drawKnife — извлечение клинка, а не свист атаки</td></tr>
+        <tr><td class="mono">wound</td><td>потеряна рана</td><td class="no">синтез: самый низкий и громкий звук игры</td></tr>
+        <tr><td class="mono">kill</td><td>путь свободен</td><td class="no">синтез: нисходящий шум 2200→260</td></tr>
+        <tr><td class="mono">tick</td><td>−10% провианта</td><td class="no">синтез: пульс задан в герцах и проверяется</td></tr>
+        <tr><td class="mono">evac</td><td>вылазка удалась</td><td class="no">синтез: трезвучие</td></tr>
+        <tr><td class="mono">fail</td><td>добыча потеряна</td><td class="no">синтез: нисходящие тона</td></tr>
+        <tr><td class="mono">levelup</td><td>здание выросло</td><td class="no">синтез: единственное созвучие игры</td></tr>
+        <tr><td class="mono">tap</td><td>касание принято</td><td class="no">синтез: верхние частоты, 28 мс</td></tr>
+        <tr><td class="mono">deny</td><td>действие невозможно</td><td class="no">синтез: прямоугольник 150→120</td></tr>
+      </tbody></table>
+    </div>
+    <p class="note">Сверх библиотеки набор приносит то, чего в ней нет вовсе: двери,
+      книгу, ткань, утварь. Это не повод их взять — правило то же: звук, которому нечего
+      написать в строке «сообщает», не берётся.</p>
+
+    <h3 style="margin:26px 0 8px">Уровни у файлов разные</h3>
+    <p>Синтез сведён по решению: ранение громче попадания, потому что ран всего три.
+      У набора такого решения нет — каждый файл записан сам по себе. Часть файлов
+      вдобавок декодируется <b>выше нуля</b>: это не ошибка измерения, а свойство
+      Vorbis — сведённый в ноль исходник после сжатия выходит за полную шкалу,
+      и такой файл клиппует.</p>
+    <p>Поэтому взятые девять проходят через <code>npm run audio -- --write</code>:
+      он приводит их к пику −2 dBFS и складывает в <code>public/sfx</code>. Не в один
+      проход — AAC тоже выходит за пик исходника, на 1–3,5 дБ, поэтому поправка
+      уточняется по замеру результата. Два децибела, а не ноль, — запас на пересчёт
+      частоты в AudioContext устройства: он добавляет ещё до 0,8 дБ. Разброс пика
+      падает с 12,3 дБ до 0,7 дБ, и <b>громкость назначает библиотека</b>, а не чужой файл.</p>
+    <div class="scroll">
+      <table id="peaks"><thead><tr>
+        <th>Файл</th><th class="numr">Пик, dBFS</th><th class="numr">Длительность, с</th><th class="numr">Частота, Гц</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <p class="note" id="spread"></p>
+
+    <h3 style="margin:26px 0 8px">Решения, которые это потребовало</h3>
+    <div class="guard">
+      <div class="key">
+        <h3>Сэмпл не обязателен</h3>
+        <p>Файлы едут после первого жеста, и пока они едут — и если не доедут вовсе, —
+          играют рецепты. <b>Загрузка звука не может сломать звук.</b></p>
+      </div>
+      <div class="key">
+        <h3>Громкость осталась решением библиотеки</h3>
+        <p>Файл нормализован по пику, а <code>gain</code> сэмплу назначает <b>то же
+          число</b>, что стояло в рецепте, который он заменил. Набор приносит тембр
+          и только его.</p>
+      </div>
+      <div class="key">
+        <h3>Сундук взят наполовину</h3>
+        <p>Рецепт — «щелчок и тона 880 и 1320». Сэмпл заменил щелчок; тона остались
+          синтезом, потому что <b>они и есть награда</b>, а награду набор не привёз.</p>
+      </div>
+      <div>
+        <h3>В бандль поехало 28,8 КБ</h3>
+        <p>Девять файлов из 51. Остальные 42 остаются в <code>assets/</code>
+          источником, как подземелье и анимации: <b>взвешены, но не взяты</b>.</p>
+      </div>
+      <div>
+        <h3>Ogg перегнан в m4a</h3>
+        <p>Safari научился Ogg Vorbis только в 18.4 (март 2025), а запуск на iOS
+          оговорён отдельно. В игру файлы поехали <b>моно, 32 кГц</b>; в наборе они
+          лежат как пришли.</p>
+      </div>
+      <div>
+        <h3>Шагов взято четыре из десяти</h3>
+        <p>Рецепт держал два варианта и чередовал их — против метронома. Десять решают
+          это лучше, но каждый едет в бандл. <b>Четыре</b> — там, где метроном уже
+          не слышен, а вес ещё не заметен.</p>
+      </div>
+      <div>
+        <h3>Пульс провианта не заменяется</h3>
+        <p>Таблица пульса задана в герцах и секундах и проверяется правилом.
+          У сэмпла проверять нечего — <b>его можно только слушать</b>, а пульс обязан
+          оставаться измеримым.</p>
+      </div>
+      <div>
+        <h3>Из архива взято не всё</h3>
+        <p>Выброшены <code>Preview.ogg</code> — 321 КБ витринной нарезки тех же звуков
+          подряд — и два ярлыка <code>.url</code>. Осталось 51 звук
+          и <code>License.txt</code> как пришёл.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">07</div><h2>Техническая часть</h2></div>
     <div class="scroll">
       <table>
         <tr><th>Вопрос</th><th>Решение</th><th>Почему</th></tr>
         <tr><td><b>Запуск на iOS</b></td><td>первый тап игрока</td>
             <td>Safari не даёт запустить звук без жеста. Первый тап в игре — это шаг из первого кадра раскадровки; отдельного экрана «включить звук» не нужно.</td></tr>
-        <tr><td><b>Источник звуков</b></td><td>процедурный синтез в прототипе</td>
-            <td>Ноль ассетов, ноль веса, правится параметром. Позже заменяется сэмплами через тот же интерфейс вызова.</td></tr>
+        <tr><td><b>Источник звуков</b></td><td>синтез, поверх него сэмплы на пять имён</td>
+            <td>Синтез правится параметром и не весит ничего; сэмпл приносит тембр, которого синтезом не собрать. Приходит он через тот же вызов <code>play(name)</code> — так и было задумано.</td></tr>
         <tr><td><b>Одновременных голосов</b></td><td class="num">8</td>
             <td>Пул с вытеснением самого старого. Без предела бой в тесной комнате превращается в шум.</td></tr>
         <tr><td><b>Шины</b></td><td>бой · интерфейс · амбиент</td>
@@ -214,7 +361,10 @@
 <script>
 (function(){
   var ac=null,master=null,busSfx=null,busUi=null,busAmb=null,voices=0;
-  function AC(){
+  // Создать граф и запустить его — разные вещи. Декодировать сэмплы можно
+  // в приостановленном контексте, до всякого жеста; звучать он начнёт только
+  // с AC(). Поэтому страница успевает всё прочитать и посчитать заранее.
+  function ensure(){
     if(!ac){
       ac=new (window.AudioContext||window.webkitAudioContext)();
       master=ac.createGain(); master.gain.value=0.55; master.connect(ac.destination);
@@ -222,6 +372,10 @@
       busUi =ac.createGain(); busUi.gain.value=0.7; busUi.connect(master);
       busAmb=ac.createGain(); busAmb.gain.value=0.5; busAmb.connect(master);
     }
+    return ac;
+  }
+  function AC(){
+    ensure();
     if(ac.state==="suspended")ac.resume();
     document.getElementById("status").textContent="аудио запущено";
     return ac;
@@ -288,6 +442,51 @@
     deny:function(){ tn({type:"square",f0:150,f1:120,dur:0.14,gain:0.09,bus:busUi}); }
   };
 
+  /* ——— сэмплы: ровно то, что играет игра ———
+     Числа повторяют SAMPLES из src/core/audio.ts. Страница читает файлы,
+     а не модуль игры, поэтому связь здесь названа, а не импортирована;
+     расхождение видно на слух — обе кнопки стоят рядом. */
+  var SFX_DIR="./sfx/";
+  var TAKEN={step:4,hit:2,chest:1,pick:1,build:1};
+  var GAIN={step:0.09,hit:0.2,chest:0.12,pick:0.12,build:0.18};
+  var samples={},turn={};
+
+  function loadSamples(){
+    ensure();
+    Object.keys(TAKEN).forEach(function(name){
+      var reqs=[];
+      for(var i=0;i<TAKEN[name];i++){
+        reqs.push(fetch(SFX_DIR+name+i+".m4a")
+          .then(function(r){ if(!r.ok)throw new Error(r.status); return r.arrayBuffer(); })
+          .then(function(b){ return ac.decodeAudioData(b); }));
+      }
+      // Молча: не доехавший сэмпл — потеря тембра, а не потеря звука.
+      Promise.all(reqs).then(function(bufs){ samples[name]=bufs; }).catch(function(){});
+    });
+  }
+
+  function playSample(name){
+    var list=samples[name];
+    if(!list||!list.length)return false;
+    var i=(turn[name]||0)%list.length; turn[name]=i+1;
+    var src=ac.createBufferSource(); src.buffer=list[i];
+    var g=ac.createGain(); g.gain.value=GAIN[name];
+    src.connect(g); g.connect(busSfx); src.start();
+    return true;
+  }
+
+  /** Что услышит игрок в игре: сэмпл, а без него — рецепт. */
+  function inGame(name){
+    if(name==="chest"){
+      // Сэмпл заменяет только щелчок: тона и есть награда.
+      if(!playSample("chest"))nz({f0:600,f1:1400,dur:0.07,gain:0.12,q:2});
+      tn({type:"triangle",f0:880,dur:0.18,gain:0.14,at:0.05});
+      tn({type:"triangle",f0:1320,dur:0.26,gain:0.12,at:0.12});
+      return;
+    }
+    if(!playSample(name))SOUNDS[name]();
+  }
+
   var LIB=[
     ["Вылазка",[
       ["Шаг","step","шум 900–1150 Гц · 55 мс · чередование","Самый тихий звук игры: он звучит постоянно. Два варианта по очереди, иначе шаг превращается в стук метронома.","Поверхность под ногами"],
@@ -324,9 +523,15 @@
         '<div class="rec">'+S[2]+'</div><p>'+S[3]+'</p>'+
         '<p class="says"><s>Сообщает</s>'+S[4]+'</p>';
       var btn=document.createElement("button"); btn.type="button"; btn.className="play";
-      btn.textContent="Слушать";
+      btn.textContent=TAKEN[S[1]]?"Рецепт":"Слушать";
       btn.addEventListener("click",function(){AC();SOUNDS[S[1]]();});
       card.querySelector(".top").appendChild(btn);
+      if(TAKEN[S[1]]){
+        var inGameBtn=document.createElement("button");
+        inGameBtn.type="button"; inGameBtn.className="play"; inGameBtn.textContent="В игре";
+        inGameBtn.addEventListener("click",function(){AC();inGame(S[1]);});
+        card.querySelector(".top").appendChild(inGameBtn);
+      }
       grid.appendChild(card);
     });
     g.appendChild(grid); lib.appendChild(g);
@@ -480,12 +685,182 @@
       b.setAttribute("aria-pressed","false"); b.textContent="Слушать";});
   }
 
+
+  /* ——— набор целиком: читается с диска и меряется здесь ——— */
+  var CATEGORIES=[
+    ["Шаги",["footstep00","footstep01","footstep02","footstep03","footstep04",
+      "footstep05","footstep06","footstep07","footstep08","footstep09"]],
+    ["Двери и петли",["doorOpen_1","doorOpen_2","doorClose_1","doorClose_2",
+      "doorClose_3","doorClose_4","creak1","creak2","creak3"]],
+    ["Ткань и ремни",["cloth1","cloth2","cloth3","cloth4","clothBelt","clothBelt2",
+      "beltHandle1","beltHandle2"]],
+    ["Книга",["bookOpen","bookClose","bookFlip1","bookFlip2","bookFlip3",
+      "bookPlace1","bookPlace2","bookPlace3"]],
+    ["Клинок",["drawKnife1","drawKnife2","drawKnife3","knifeSlice","knifeSlice2"]],
+    ["Руки и добыча",["handleCoins","handleCoins2","handleSmallLeather",
+      "handleSmallLeather2","dropLeather"]],
+    ["Утварь",["metalPot1","metalPot2","metalPot3"]],
+    ["Замки",["metalClick","metalLatch"]],
+    ["Топор",["chop"]]
+  ];
+
+  /* Что взято в игру и под каким именем. Обводка карточки — про это. */
+  var NAMED={footstep00:"step",footstep03:"step",footstep06:"step",footstep09:"step",
+    knifeSlice:"hit",knifeSlice2:"hit",metalLatch:"chest",handleCoins2:"pick",chop:"build"};
+
+  var PACK_DIR="./assets/kenney-rpg-audio/audio/";
+  var dB=function(v){return (20*Math.log10(v)).toFixed(1);};
+  var kb=function(b){return (b/1024).toFixed(1);};
+  function plural(n,one,few,many){
+    var t=n%100,u=n%10;
+    return n+" "+(t>10&&t<20?many:u===1?one:u>1&&u<5?few:many);
+  }
+
+  function measurePack(name,category){
+    return fetch(PACK_DIR+name+".ogg").then(function(r){
+      if(!r.ok)throw new Error(name+": "+r.status);
+      return r.arrayBuffer();
+    }).then(function(bytes){
+      return ensure().decodeAudioData(bytes.slice(0)).then(function(buf){
+        var d=buf.getChannelData(0),peak=0;
+        for(var i=0;i<d.length;i++){var v=Math.abs(d[i]);if(v>peak)peak=v;}
+        return {name:name,category:category,bytes:bytes.byteLength,buf:buf,peak:peak,
+          sec:buf.duration,hz:buf.sampleRate,ch:buf.numberOfChannels};
+      });
+    });
+  }
+
+  /** Огибающая: столбик на пиксель ширины, максимум по окну. */
+  function drawWave(canvas,buf){
+    var w=canvas.width,h=canvas.height,g=canvas.getContext("2d"),d=buf.getChannelData(0);
+    var step=Math.max(1,Math.floor(d.length/w));
+    g.clearRect(0,0,w,h);
+    g.fillStyle=getComputedStyle(canvas).getPropertyValue("--brass").trim()||"#8A6A12";
+    for(var x=0;x<w;x++){
+      var peak=0,from=x*step;
+      for(var i=from;i<from+step&&i<d.length;i++){var v=Math.abs(d[i]);if(v>peak)peak=v;}
+      var bar=Math.max(1,peak*(h-4));
+      g.fillRect(x,(h-bar)/2,1,bar);
+    }
+  }
+
+  var packLive=null;
+  function playPack(s,cards,card){
+    AC();
+    if(packLive)packLive.stop();
+    var src=ac.createBufferSource(); src.buffer=s.buf;
+    src.connect(busSfx);
+    src.onended=function(){
+      if(packLive===src)packLive=null;
+      cards.forEach(function(c){c.card.setAttribute("aria-pressed","false");});
+    };
+    src.start(); packLive=src;
+    cards.forEach(function(c){c.card.setAttribute("aria-pressed","false");});
+    card.setAttribute("aria-pressed","true");
+  }
+
+  function buildPack(sounds){
+    var by={}; sounds.forEach(function(s){by[s.name]=s;});
+
+    var tbody=document.querySelector("#cats tbody");
+    CATEGORIES.forEach(function(C){
+      var list=C[1].map(function(f){return by[f];});
+      var sec=list.reduce(function(a,x){return a+x.sec;},0);
+      var bytes=list.reduce(function(a,x){return a+x.bytes;},0);
+      var longest=list.reduce(function(a,b){return b.sec>a.sec?b:a;});
+      var tr=document.createElement("tr");
+      tr.innerHTML="<td>"+C[0]+"</td><td class=\"numr\">"+list.length+
+        "</td><td class=\"numr\">"+sec.toFixed(2)+"</td><td class=\"numr\">"+(sec/list.length).toFixed(2)+
+        "</td><td class=\"numr\">"+kb(bytes)+"</td><td class=\"mono\">"+longest.name+
+        " · "+longest.sec.toFixed(2)+" с</td>";
+      tbody.appendChild(tr);
+    });
+
+    var totalSec=sounds.reduce(function(a,x){return a+x.sec;},0);
+    var totalBytes=sounds.reduce(function(a,x){return a+x.bytes;},0);
+    var rates={},chans={};
+    sounds.forEach(function(s){rates[s.hz]=1;chans[s.ch]=1;});
+    var chanList=Object.keys(chans);
+    document.getElementById("total").textContent=
+      plural(sounds.length,"файл","файла","файлов")+" · "+totalSec.toFixed(1)+" с звука · "+
+      kb(totalBytes)+" КБ файлами · "+Object.keys(rates).join("/")+" Гц · "+
+      (chanList.length===1?(chanList[0]==="1"?"моно":"стерео"):"моно и стерео")+
+      " · Ogg Vorbis · CC0, Kenney";
+
+    var grid=document.getElementById("grid"),cards=[];
+    sounds.forEach(function(s){
+      var card=document.createElement("button");
+      card.className="s"+(NAMED[s.name]?" take":"");
+      card.setAttribute("aria-pressed","false");
+      var canvas=document.createElement("canvas");
+      canvas.className="wave"; canvas.width=188; canvas.height=56;
+      card.innerHTML="<b>"+s.name+"</b><u><s>"+s.sec.toFixed(2)+" с</s><s>"+dB(s.peak)+" dB</s>"+
+        (NAMED[s.name]?"<s class=\"take\">"+NAMED[s.name]+"</s>":"")+"</u>";
+      card.prepend(canvas);
+      drawWave(canvas,s.buf);
+      card.addEventListener("click",function(){playPack(s,cards,card);});
+      grid.appendChild(card);
+      cards.push({sound:s,card:card});
+    });
+
+    var bar=document.getElementById("filters");
+    function press(b){
+      [].forEach.call(bar.children,function(o){o.setAttribute("aria-pressed","false");});
+      b.setAttribute("aria-pressed","true");
+    }
+    function addFilter(label,keep,on){
+      var b=document.createElement("button"); b.type="button";
+      b.textContent=label; b.setAttribute("aria-pressed",on?"true":"false");
+      b.addEventListener("click",function(){
+        press(b);
+        cards.forEach(function(c){c.card.style.display=keep(c.sound)?"":"none";});
+      });
+      bar.appendChild(b);
+    }
+    addFilter("Всё",function(){return true;},true);
+    CATEGORIES.forEach(function(C){
+      addFilter(C[0],function(s){return s.category===C[0];},false);
+    });
+    addFilter("Взято в игру",function(s){return !!NAMED[s.name];},false);
+
+    var loud=sounds.slice().sort(function(a,b){return b.peak-a.peak;});
+    var peaksBody=document.querySelector("#peaks tbody");
+    loud.slice(0,3).concat(loud.slice(-3)).forEach(function(s){
+      var tr=document.createElement("tr");
+      tr.innerHTML="<td class=\"mono\">"+s.name+"</td><td class=\"numr\">"+dB(s.peak)+
+        "</td><td class=\"numr\">"+s.sec.toFixed(2)+"</td><td class=\"numr\">"+s.hz+"</td>";
+      peaksBody.appendChild(tr);
+    });
+    var over=sounds.filter(function(s){return s.peak>1;}).length;
+    document.getElementById("spread").textContent=
+      "Три самых громких и три самых тихих файла набора. Разброс пика — "+
+      (Number(dB(loud[0].peak))-Number(dB(loud[loud.length-1].peak))).toFixed(1)+
+      " дБ. Выше нуля, то есть с клиппингом после декода, декодируется "+
+      plural(over,"файл","файла","файлов")+" из "+sounds.length+".";
+  }
+
+  Promise.all(CATEGORIES.reduce(function(acc,C){
+    return acc.concat(C[1].map(function(f){return measurePack(f,C[0]);}));
+  },[])).then(buildPack).catch(function(e){
+    // Каталог читает файлы репозитория, а библиотека и пульс — нет: страница
+    // обязана остаться рабочей и там, где набора рядом нет.
+    var w=document.getElementById("warn");
+    w.textContent="Каталог набора читает файлы проекта и работает только "+
+      "на dev-сервере: npm run dev, затем /audioart.html. Библиотека, пульс "+
+      "и амбиент выше работают везде. "+e;
+    w.style.display="";
+    document.getElementById("total").textContent="—";
+  });
+
+  loadSamples();
+
   document.getElementById("unlock").addEventListener("click",function(){AC();SOUNDS.tap();});
   document.getElementById("vol").addEventListener("input",function(e){
     if(master)master.gain.value=e.target.value/100;
   });
   document.addEventListener("visibilitychange",function(){
     if(document.hidden){running=false;clearTimeout(timer);stopAmb();stopTune();
+      if(packLive){try{packLive.stop();}catch(e){}packLive=null;}
       pulseBtn.setAttribute("aria-pressed","false");pulseBtn.textContent="Запустить пульс";
       if(ac&&ac.state==="running")ac.suspend();
       document.getElementById("status").textContent="аудио приостановлено";}
