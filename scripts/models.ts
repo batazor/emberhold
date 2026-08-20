@@ -119,6 +119,16 @@ interface Pack {
    * объявления меряется: в каталог уходит, какие клетки набор задел и чем.
    */
   readonly grid?: { readonly cols: number; readonly rows: number };
+  /**
+   * Модульный набор: деталь ставится в клетку сетки, и главный вопрос к ней
+   * не «какого она цвета», а «чем она стыкуется с соседней». Объявляется
+   * размер клетки; меряется остальное — высота хода поверху и то, какие рёбра
+   * клетки деталь оставляет открытыми, а какие закрывает парапетом.
+   *
+   * Меряется рельефом, а не габаритом: габарит у прямой стены и у угла один
+   * и тот же, различает их только то, где стоят зубцы.
+   */
+  readonly modular?: { readonly cell: number };
 }
 
 /**
@@ -573,7 +583,108 @@ const RESOURCES: Pack = {
   data: { file: 'src/render/resources.data.ts', prefix: 'RESOURCES', type: 'Resource' },
 };
 
-const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES];
+/**
+ * Категория замка — по первому слову имени файла набора. Имена здесь
+ * через дефис, а не через подчёркивание: это не набор KayKit, и разделитель
+ * у него свой.
+ */
+const CASTLE_CATEGORIES: Record<string, string> = {
+  wall: 'Стены',
+  tower: 'Башни',
+  gate: 'Ворота', door: 'Ворота', metal: 'Ворота',
+  bridge: 'Мосты',
+  stairs: 'Лестницы',
+  flag: 'Знамёна',
+  siege: 'Осада',
+  ground: 'Ландшафт', rocks: 'Ландшафт', tree: 'Ландшафт',
+};
+
+/**
+ * Шестой набор — замок (§6.1.6), и первый не от KayKit: автор другой, сетка
+ * другая, атлас устроен четвёртым способом. Картинка расчерчена на клетки,
+ * как у ресурсов, но хранит не цвет, а номер в таблице — палитровый PNG;
+ * из тридцати двух клеток набор задевает девять, остальные оставлены
+ * под цветовые варианты, которых в наборе нет.
+ *
+ * Читается набор тем же способом, что и остальные: по цвету треугольника.
+ * Здесь это дороже, чем у KayKit, и вот чем именно.
+ *
+ * Первое. Замок у Kenney песочный, а не серый: главный камень стен — тёплый
+ * (тон 22–26°), и в нашей палитре тёплого камня нет вовсе. Он уходит в серый
+ * камень артбука — то же решение, каким знамёна подземелья ушли туда же
+ * (§6.1.2). Замок в нашей палитре серый, и это ответ про палитру,
+ * а не дефект набора.
+ *
+ * Второе. Тёплый угол атласа занят вдвоём: дерево осадных машин стоит
+ * на 17–19°, песчаник стен — на 22–26°. Между ними два градуса тона,
+ * и граница окна поставлена по замеру, а не по круглому числу.
+ *
+ * Третье, и оно тяжелее остальных. Скалы и металл набор красит двумя разными
+ * клетками, но цвета этих клеток перекрываются: тон у обеих 228–230°,
+ * насыщенность 0,17–0,26 у скал против 0,19–0,20 у решётки. Ни одно окно
+ * по цвету их не разведёт — набор различает их местом в картинке. Обе уходят
+ * в металл, и скала в этом наборе стального цвета. День, когда этого станет
+ * мало, назван так же, как у ресурсов (§6.1.5): если набор поедет в игру,
+ * читать придётся клетку, а не цвет.
+ */
+const CASTLE: Pack = {
+  id: 'castle',
+  title: 'Kenney Castle Kit 2.0',
+  dir: 'assets/kenney-castle-kit',
+  atlas: 'colormap.png',
+  sources: ['glb'],
+  ramps: [
+    // Синее — крыши шатров, знамёна и полотно осадных машин. Ступень одна:
+    // синего в палитре ровно один, краска бочек (§6.1.5).
+    { id: 'blue', title: 'синее', slots: ['краска-синяя'], hue: [190, 265], sat: [0.35, 1] },
+    { id: 'moss', title: 'зелень', slots: ['хвоя-тень', 'хвоя', 'мох', 'трава'], hue: [90, 190], sat: [0.25, 1] },
+    // Дерево — 17–19°, песчаник — 22–26°. Граница между ними 20,6°: не выбор,
+    // а замер, и порядок примерки здесь ничего не решает, окна не пересекаются.
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [8, 20.6], sat: [0.3, 1] },
+    // Песчаник стен и башен — главный материал набора, и ступеней ему шесть:
+    // это две клетки атласа подряд, тёмная стена и светлые зубцы,
+    // и на четырёх ступенях они складывались в одну.
+    {
+      id: 'sand', title: 'песчаник',
+      slots: ['камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет'],
+      hue: [20.6, 50], sat: [0.15, 1],
+    },
+    // Металл и скалы — одно окно на двоих, развести их цветом нельзя.
+    { id: 'steel', title: 'металл', slots: ['металл-тень', 'металл', 'сталь'], hue: [190, 265], sat: [0.13, 0.35] },
+    // Тёмное железо башен и белое полотно знамён — один холодный столбец
+    // атласа с провалом посередине: между яркостью 0,28 и 0,75 набор
+    // не красит ничего. Поэтому ступеней две, а не четыре.
+    { id: 'iron', title: 'железо и белила', slots: ['камень-тень', 'иней'], hue: [0, 360], sat: [0, 0.13] },
+  ],
+  slots: [
+    'камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'металл-тень', 'металл', 'сталь',
+    'камень-тень', 'иней',
+    'хвоя-тень', 'хвоя', 'мох', 'трава',
+    'краска-синяя',
+  ],
+  range: 'used',
+  fallback: 'sand',
+  /** Восемь колонок на четыре ряда — так расчерчена картинка набора. */
+  grid: { cols: 8, rows: 4 },
+  /** Клетка набора — единица. Единственное, что здесь объявлено, а не измерено. */
+  modular: { cell: 1 },
+  /**
+   * Порог серого опущен почти до нуля: белое полотно знамён — материал набора,
+   * а не пустое поле атласа. Пустое поле здесь чёрное и не задето вовсе.
+   */
+  grey: 0.005,
+  categoryOf: (name) => CASTLE_CATEGORIES[name.split('-')[0]!] ?? 'Прочее',
+  /**
+   * Пусто, как у подземелья (§6.1.2): набор измерен, страница есть, в бандл
+   * не едет ничего. Замок игре пока негде поставить — в лагере строят сараи,
+   * а не крепость, и восемьдесят килобайт стен ждут решения, а не забыты.
+   */
+  adopted: [],
+};
+
+const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE];
 
 /* ---------- png ---------- */
 
@@ -586,7 +697,12 @@ interface Image {
 
 /**
  * Минимальный декодер PNG: 8 бит на канал, без чересстрочности — ровно то,
- * чем являются оба атласа. Внешней зависимости ради двух картинок не берём.
+ * чем являются атласы наборов. Внешней зависимости ради нескольких картинок
+ * не берём.
+ *
+ * Пятый тип цвета — палитровый: атлас замка (§6.1.6) не хранит цвет в пикселе,
+ * а хранит номер в таблице `PLTE`. Для остального кода разницы нет, он
+ * разворачивается здесь же в те же RGBA.
  */
 function decodePng(file: string): Image {
   return decodePngBytes(readFileSync(file));
@@ -598,6 +714,9 @@ function decodePngBytes(buf: Buffer): Image {
   let width = 0;
   let height = 0;
   let channels = 0;
+  /** Таблица цветов палитрового PNG: по три байта на номер. */
+  let plte: Buffer | null = null;
+  let indexed = false;
   const parts: Buffer[] = [];
 
   while (at < buf.length) {
@@ -611,9 +730,12 @@ function decodePngBytes(buf: Buffer): Image {
       const depth = data[8]!;
       const colorType = data[9]!;
       if (depth !== 8) throw new Error(`PNG: глубина ${depth}, ожидалось 8`);
-      channels = { 0: 1, 2: 3, 4: 2, 6: 4 }[colorType as 0 | 2 | 4 | 6] ?? 0;
+      channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colorType as 0 | 2 | 3 | 4 | 6] ?? 0;
       if (channels === 0) throw new Error(`PNG: тип цвета ${colorType} не поддержан`);
       if (data[12] !== 0) throw new Error('PNG: чересстрочный не поддержан');
+      indexed = colorType === 3;
+    } else if (type === 'PLTE') {
+      plte = Buffer.from(data);
     } else if (type === 'IDAT') {
       parts.push(Buffer.from(data));
     } else if (type === 'IEND') break;
@@ -652,6 +774,17 @@ function decodePngBytes(buf: Buffer): Image {
 
   if (channels === 4) return { width, height, rgba: out };
   const rgba = new Uint8Array(width * height * 4);
+  if (indexed) {
+    if (plte === null) throw new Error('PNG: палитровый без PLTE');
+    for (let i = 0; i < width * height; i++) {
+      const s = out[i]! * 3;
+      rgba[i * 4] = plte[s]!;
+      rgba[i * 4 + 1] = plte[s + 1]!;
+      rgba[i * 4 + 2] = plte[s + 2]!;
+      rgba[i * 4 + 3] = 255;
+    }
+    return { width, height, rgba };
+  }
   for (let i = 0; i < width * height; i++) {
     const s = i * channels;
     rgba[i * 4] = out[s]!;
@@ -1099,9 +1232,11 @@ function atlasOf(doc: Doc, pack: Pack, packDir: string): { name: string; image: 
   if (uri !== undefined) {
     // Модель зовёт атлас соседним файлом, а в репозитории он лежит в корне
     // набора: одна картинка на сотню моделей рядом с каждой не нужна.
+    // Замок зовёт его ещё и подпапкой (`Textures/colormap.png`) — имя файла
+    // при этом то же, поэтому третьей попыткой берётся оно одно.
     const named = decodeURIComponent(uri);
-    const beside = join(doc.file, '..', named);
-    const path = existsSync(beside) ? beside : join(packDir, named);
+    const candidates = [join(doc.file, '..', named), join(packDir, named), join(packDir, basename(named))];
+    const path = candidates.find((c) => existsSync(c)) ?? candidates[0]!;
     let decoded = atlasCache.get(path);
     if (decoded === undefined) {
       decoded = decodePng(path);
@@ -1487,6 +1622,124 @@ function cellsOf(
     }));
 }
 
+/** Рельеф детали модульного набора: где по ней ходят и куда пускают соседа. */
+interface Deck {
+  /** Самая высокая точка детали в пределах клетки. */
+  readonly top: number;
+  /** Высота хода поверху; `null` — ходить не по чему. */
+  readonly deck: number | null;
+  /** Рёбра клетки в порядке −x, +x, −z, +z: `true` — ход продолжается. */
+  readonly open: readonly boolean[];
+}
+
+/**
+ * Разрешение рельефа: клетка режется на 16 на 16. Меньше — зубец шириной
+ * в одну восьмую клетки проскакивает между отсчётами, больше — считается
+ * дольше, чем весь остальной обмер набора.
+ */
+const RELIEF = 16;
+
+/**
+ * Высотная карта детали: для каждой точки клетки — самая высокая геометрия
+ * над ней. Считается растеризацией треугольников сверху вниз, потому что
+ * вопрос к модульному набору именно такой: «на какой высоте здесь поверхность».
+ *
+ * Отсутствие геометрии — `-Infinity`, а не ноль: у половинной стены полклетки
+ * пусты, и ноль означал бы там пол.
+ */
+function reliefOf(mesh: Mesh, cell: number): Float64Array {
+  const map = new Float64Array(RELIEF * RELIEF).fill(-Infinity);
+  const step = cell / RELIEF;
+  const half = cell / 2;
+  for (let t = 0; t < mesh.tris; t++) {
+    const o = t * 9;
+    const ax = mesh.positions[o]!, ay = mesh.positions[o + 1]!, az = mesh.positions[o + 2]!;
+    const bx = mesh.positions[o + 3]!, by = mesh.positions[o + 4]!, bz = mesh.positions[o + 5]!;
+    const cx = mesh.positions[o + 6]!, cy = mesh.positions[o + 7]!, cz = mesh.positions[o + 8]!;
+    const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if (Math.abs(det) < 1e-9) continue;
+    const gx0 = Math.max(0, Math.floor((Math.min(ax, bx, cx) + half) / step));
+    const gx1 = Math.min(RELIEF - 1, Math.floor((Math.max(ax, bx, cx) + half) / step));
+    const gz0 = Math.max(0, Math.floor((Math.min(az, bz, cz) + half) / step));
+    const gz1 = Math.min(RELIEF - 1, Math.floor((Math.max(az, bz, cz) + half) / step));
+    for (let gz = gz0; gz <= gz1; gz++) {
+      const z = -half + (gz + 0.5) * step;
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const x = -half + (gx + 0.5) * step;
+        const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
+        const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+        const l3 = 1 - l1 - l2;
+        if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+        const y = l1 * ay + l2 * by + l3 * cy;
+        const at = gz * RELIEF + gx;
+        if (y > map[at]!) map[at] = y;
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * Высота хода и открытые рёбра — то, из чего складывается модель стройки.
+ *
+ * Ход — не «пол детали», а площадка под зубцами: у стены набора верх 1,31,
+ * а ходят по 1,18. Поэтому ищется он не среди всех высот, а в узкой полосе
+ * под самой высокой точкой: площадка, над которой парапет поднимается
+ * не выше чем на `PARAPET`. Там, где такой полосы нет, детали просто нет
+ * хода — так отличается этаж башни от стены.
+ *
+ * Ребро считается открытым, если половина его **занятых** отсчётов стоит
+ * на высоте хода: зубец на ребре — стена, ход на ребре — продолжение
+ * в соседнюю клетку. Считается от занятых, а не от всех: узкая стена держит
+ * полклетки, и от шестнадцати отсчётов ребра ей не набрать половины никогда.
+ */
+const PARAPET = 0.2;
+
+function deckOf(mesh: Mesh, cell: number): Deck {
+  const map = reliefOf(mesh, cell);
+  let top = -Infinity;
+  for (const y of map) if (y > top) top = y;
+  if (!Number.isFinite(top)) return { top: 0, deck: null, open: [false, false, false, false] };
+
+  // Мода высот в полосе под верхом — это и есть площадка. Голосуют отсчёты:
+  // у прямой стены ход занимает две трети клетки, скаты зубцов — остальное.
+  const votes = new Map<number, number>();
+  for (const y of map) {
+    if (y > top - 0.02 || y < top - PARAPET) continue;
+    const key = Math.round(y * 100) / 100;
+    votes.set(key, (votes.get(key) ?? 0) + 1);
+  }
+  let deck: number | null = null;
+  let best = 0;
+  for (const [y, n] of votes) {
+    if (n > best) {
+      best = n;
+      deck = y;
+    }
+  }
+
+  const open = [false, false, false, false];
+  if (deck !== null) {
+    const at = (gx: number, gz: number): number => map[gz * RELIEF + gx]!;
+    const side = (pick: (i: number) => number): boolean => {
+      let walk = 0;
+      let filled = 0;
+      for (let i = 0; i < RELIEF; i++) {
+        const y = pick(i);
+        if (!Number.isFinite(y)) continue;
+        filled++;
+        if (Math.abs(y - deck!) <= 0.03) walk++;
+      }
+      return filled * 4 >= RELIEF && walk * 2 >= filled;
+    };
+    open[0] = side((i) => at(0, i));
+    open[1] = side((i) => at(RELIEF - 1, i));
+    open[2] = side((i) => at(i, 0));
+    open[3] = side((i) => at(i, RELIEF - 1));
+  }
+  return { top: Math.round(top * 100) / 100, deck, open };
+}
+
 function makeSampler(pack: Pack, atlases: readonly Image[], usage: Usage | undefined): Sampler {
   const ranges = rampRanges(pack, atlases, usage);
   const index = new Map(pack.slots.map((s, i) => [s, i]));
@@ -1831,6 +2084,7 @@ function writeCatalog(
   models: Baked[],
   usage: Usage | undefined,
   cells: readonly CellUse[] | undefined,
+  decks: Map<string, Deck> | undefined,
 ): string {
   return JSON.stringify({
     pack: pack.title,
@@ -1914,6 +2168,9 @@ function writeCatalog(
         }),
     // Разлиновка атласа: клетки, которые набор задел, и чем именно.
     ...(cells === undefined ? {} : { grid: pack.grid, cells }),
+    // Сетка модульного набора: размер клетки объявлен, остальное измерено
+    // и лежит у каждой модели в `deck` и `open`.
+    ...(pack.modular === undefined ? {} : { module: pack.modular }),
     // Потолки, чтобы отчёт в консоли и страница артбука брали их из одного места.
     budgets: { hero: HERO_BUDGET, model: BUDGET },
     models: models.map((m) => ({
@@ -1925,9 +2182,16 @@ function writeCatalog(
       size: [m.max[0] - m.min[0], m.max[1] - m.min[1], m.max[2] - m.min[2]].map(
         (v) => Math.round(v * 100) / 100,
       ),
+      // Габарит говорит, какая модель, но не говорит, где у неё ноль. Модульному
+      // набору (§6.1.6) это и есть главный вопрос: деталь ставится в клетку
+      // сетки, и стыкуется она началом координат, а не серединой габарита.
+      min: m.min.map((v) => Math.round(v * 100) / 100),
       // Модель со скелетом читается иначе: страница обязана уметь показать,
       // что габарит снят с позы, а не с того, как модель лежит в файле.
       ...(m.skinned > 0 ? { skinned: m.skinned } : {}),
+      // Рельеф детали модульного набора: высота хода поверху и рёбра клетки,
+      // через которые ход продолжается к соседу.
+      ...(decks === undefined ? {} : { deck: decks.get(m.name)!.deck, open: decks.get(m.name)!.open }),
       ...(Object.keys(m.attach).length === 0
         ? {}
         : { attach: Object.fromEntries(
@@ -1994,6 +2258,11 @@ function report(pack: Pack, write: boolean): void {
 
   const models = meshes.map((m) => bake(pack, m.name, m.rel, m.mesh, sampler, rig));
   const cells = cellsOf(pack, meshes, images[0]!);
+  // Рельеф — только у модульного набора: у остальных деталь не встаёт в клетку,
+  // и «открытое ребро» у них ничего не значит.
+  const decks = pack.modular === undefined
+    ? undefined
+    : new Map(meshes.map((m) => [m.name, deckOf(m.mesh, pack.modular!.cell)]));
   const slots = pack.slots;
 
 
@@ -2039,6 +2308,45 @@ function report(pack: Pack, write: boolean): void {
       `\nклеток атласа задето: ${cells.length} из ${grid.cols * grid.rows}` +
         ` — самая занятая r${cells[0]!.row}c${cells[0]!.col}, ${cells[0]!.tris} треугольников`,
     );
+  }
+
+  if (decks !== undefined) {
+    const cell = pack.modular!.cell;
+    const walk = [...decks.values()].filter((d) => d.deck !== null);
+    const heights = new Map<number, number>();
+    for (const d of decks.values()) heights.set(d.top, (heights.get(d.top) ?? 0) + 1);
+    const common = [...heights].sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const fits = models.filter(
+      (m) => m.max[0] - m.min[0] <= cell + 0.06 && m.max[2] - m.min[2] <= cell + 0.06,
+    ).length;
+    console.log(
+      `\nмодуль: клетка ${cell}, в неё входит ${fits} моделей из ${models.length};` +
+        ` ход поверху у ${walk.length}` +
+        (walk.length > 0
+          ? `, высота ${[...new Set(walk.map((d) => d.deck))].sort((a, b) => a! - b!).join(', ')}`
+          : ''),
+    );
+    console.log(
+      `  частые высоты: ${common.map(([h, n]) => `${h} — ${n}`).join(' · ')}`,
+    );
+    const byOpen = new Map<string, string[]>();
+    for (const [name, d] of decks) {
+      if (d.deck === null) continue;
+      const key = d.open.map((o) => (o ? '1' : '0')).join('');
+      byOpen.set(key, [...(byOpen.get(key) ?? []), name]);
+    }
+    const SHAPE: Record<string, string> = {
+      '0011': 'прямая вдоль z', '1100': 'прямая вдоль x',
+      '1001': 'угол −x→+z', '1010': 'угол −x→−z', '0101': 'угол +x→+z', '0110': 'угол +x→−z',
+      '1000': 'тупик с −x', '0100': 'тупик с +x', '0010': 'тупик с −z', '0001': 'тупик с +z',
+      '0111': 'вдоль z, парапет −x', '1011': 'вдоль z, парапет +x',
+      '1101': 'вдоль x, парапет −z', '1110': 'вдоль x, парапет +z',
+      '1111': 'перекрёсток', '0000': 'глухая',
+    };
+    console.log('  рёбра под соседа (−x +x −z +z):');
+    for (const [key, names] of [...byOpen].sort((a, b) => b[1].length - a[1].length)) {
+      console.log(`    ${key}  ${(SHAPE[key] ?? '?').padEnd(15)} ${names.join(', ')}`);
+    }
   }
 
   const grey = models.reduce((s, m) => s + m.grey, 0);
@@ -2127,7 +2435,7 @@ function report(pack: Pack, write: boolean): void {
     written.push(pack.data.file);
   }
   const catalog = join(pack.dir, 'catalog.json');
-  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlases, sampler, models, usage, cells), 'utf8');
+  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlases, sampler, models, usage, cells, decks), 'utf8');
   written.push(catalog);
   console.log(`\nзаписано: ${written.join(', ')}`);
 }

@@ -1,0 +1,1071 @@
+<meta charset="utf-8">
+<title>Набор моделей: замок</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;
+    background:var(--ground);padding:12px 0;border-bottom:1px solid var(--line);}
+  .bar hr{border:0;border-left:1px solid var(--line);height:20px;margin:0 4px;}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
+
+  .models{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;}
+  .m{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
+  .m .stage{background:#12100c;display:flex;justify-content:center;padding:8px 0;}
+  .m b{font-family:var(--ff-display);font-weight:400;font-size:14px;padding:8px 11px 1px;
+    overflow-wrap:anywhere;}
+  .m u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
+    padding:0 11px 10px;display:flex;justify-content:space-between;gap:8px;}
+  .m u s{text-decoration:none;}
+  .m u s.over{color:var(--blood);}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.miss{color:var(--ember);}
+  tr.new td{background:color-mix(in srgb, var(--brass) 9%, transparent);}
+  .chip{display:inline-flex;align-items:center;gap:8px;}
+  .chip i{width:30px;height:16px;border:1px solid var(--line);display:block;}
+  .ramp{display:inline-block;width:22px;height:16px;border:1px solid var(--line);vertical-align:-3px;}
+
+  .atlas{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;}
+  .atlas figure{margin:0;display:flex;flex-direction:column;gap:9px;}
+  .atlas figcaption{font-family:var(--ff-mono);font-size:11px;color:var(--dim);max-width:44ch;}
+  .atlas canvas{border:1px solid var(--line);max-width:100%;height:auto;background:var(--surface-2);}
+  .atlas .side{flex:1;min-width:280px;overflow-x:auto;}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+  .fail{color:var(--blood);}
+
+  /* Значок рёбер клетки: толстое ребро — парапет, тонкое — ход к соседу. */
+  .edges{display:inline-block;width:22px;height:22px;vertical-align:-6px;}
+  .edges rect{fill:none;}
+
+  .yardgrid{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;}
+  .yardgrid canvas{border:1px solid var(--line);background:var(--surface);max-width:100%;height:auto;}
+  .scene{border:1px solid var(--line);background:#12100c;max-width:100%;height:auto;}
+  .facts{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--ff-mono);font-size:11.5px;color:var(--dim);}
+  .facts b{color:var(--text);font-weight:600;}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Артбук · готовый набор</div>
+  <h1>Замок, <em>собранный из клеток</em></h1>
+  <p class="lede">Kenney Castle Kit 2.0, лицензия CC0: стены, углы, башни, ворота, мосты,
+    лестницы, знамёна и осадные машины. Страница показывает не витрину, а сами файлы
+    из <code>assets/kenney-castle-kit</code>: геометрия читается из <code>.glb</code>,
+    числа считает <code>npm run models</code>, цвет берётся из палитры игры.</p>
+  <p class="lede"><b>Первый набор не от KayKit</b> — и первый, у которого главный вопрос
+    не про цвет. Пять прежних наборов давали предметы: их надо было раскрасить и поставить.
+    Здесь предмет — <b>деталь конструктора</b>, и вопрос к ней другой: <b>чем она стыкуется
+    с соседней</b>. Ответ на него измерен так же, как раньше мерялся цвет, и из этого
+    замера собран генератор — он внизу страницы, и он живой.</p>
+  <p class="lede"><b>В бандл не едет ничего.</b> Набор измерен и лежит: замок игре пока
+    негде поставить — в лагере строят сараи, а не крепость. Страница и есть взвешивание,
+    как страница подземелья (§6.1.2).</p>
+  <p class="lede fail" id="warn" style="display:none"></p>
+</header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что в наборе</h2>
+    <p>Категории — по первому слову имени файла; имена здесь через дефис, а не через
+      подчёркивание, и разделитель пришлось завести свой. Треугольники посчитаны
+      по индексам примитивов, габарит — по позициям вершин.</p>
+  </div>
+  <table id="cats"><thead><tr>
+    <th>Категория</th><th class="num">Моделей</th><th class="num">Треугольников</th>
+    <th class="num">В среднем</th><th class="num">Самая тяжёлая</th><th>Она же</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="total"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Модуль: клетка, этаж и ход поверху</h2>
+    <p>Всё, что нужно знать про сетку набора, — четыре числа, и три из них измерены.
+      Объявлена только клетка: <b>единица</b>, поле <code>modular</code>
+      в <code>scripts/models.ts</code>. Остальное посчитано по геометрии.</p>
+    <p><b>Стена набора — не панель на ребре клетки, а сплошной блок в клетку.</b>
+      По ней ходят поверху: у прямой стены зубцы стоят по двум противоположным
+      рёбрам, а между ними площадка. Отсюда и три высоты, которые считает обмер:
+      этаж башни, площадка хода и верх зубцов.</p>
+  </div>
+  <div class="facts" id="moduleFacts"></div>
+  <div class="yardgrid">
+    <figure style="margin:0;display:flex;flex-direction:column;gap:9px;">
+      <canvas id="relief" width="430" height="240"></canvas>
+      <figcaption class="note" style="max-width:46ch">Разрез по клетке: слева прямая стена,
+        справа угол. Тёмное — зубцы, светлое — площадка хода. Карта высот снимается
+        растеризацией треугольников сверху, 16 на 16 отсчётов на клетку.</figcaption>
+    </figure>
+    <div class="side" style="flex:1;min-width:300px;overflow-x:auto">
+      <table id="module"><thead><tr>
+        <th>Деталь</th><th class="num">Верх</th><th class="num">Ход</th>
+        <th>Рёбра</th><th>Что это за форма</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <p class="note" id="moduleNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Модель строительства стен</h2>
+    <p>Она вся укладывается в одну фразу: <b>стена — замкнутая цепь клеток, у каждой
+      ровно два соседа, и деталь выбирается тем, где эти соседи стоят.</b> Напротив
+      друг друга — прямая. Рядом — угол. Больше решать нечего.</p>
+    <p><b>Поворот при этом не выбирается, а выводится.</b> У детали измерено, какие
+      её рёбра открыты под соседа; поворот — единственная четверть, при которой
+      открытые рёбра смотрят ровно на соседей по цепи. Из этого следует то, ради чего
+      модель и стоило записывать: <b>новую деталь набора достаточно измерить</b> —
+      ни описывать её форму словами, ни подбирать ей поворот не придётся.</p>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Цепь, а не линия</h3>
+      <p>Кольцо стен обходится по клеткам, и соседи по списку — соседи по сетке.
+        Клетка с одним соседом означала бы разрыв, с тремя — развилку; правило
+        <code>castle.rules.ts</code> не пускает ни то, ни другое.</p>
+    </div>
+    <div class="key">
+      <h3>Восемь соседей, а не четыре</h3>
+      <p>Стеной считается клетка участка, у которой есть сосед снаружи <b>по восьми</b>
+        направлениям. Разница не косметическая: у плана со срезанным углом внутренний
+        угол стены соприкасается с наружным по диагонали, и по четырём направлениям
+        цепь там рвётся.</p>
+    </div>
+    <div>
+      <h3>Угол с башенкой — тот же угол</h3>
+      <p>Он занимает полторы клетки и вылезает наружу, и открытые рёбра у него другие,
+        чем у простого угла. Поворот из-за этого выходит другим — но искать его
+        всё равно не приходится.</p>
+    </div>
+    <div>
+      <h3>Башня разрывает ход</h3>
+      <p>Это измерено, а не решено: у шапки башни зубцы по всем четырём рёбрам.
+        Поэтому донжон стоит во дворе, а не в кольце, — иначе ход поверху упирался бы
+        в глухую стену.</p>
+    </div>
+  </div>
+  <table id="fit"><thead><tr>
+    <th>Соседи</th><th>Деталь</th><th>Открытые рёбра детали</th>
+    <th class="num">Поворот</th><th>Куда смотрят после поворота</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note">Таблица считается тем же кодом, каким считает генератор:
+    <code>fitTurn</code> из <code>src/sim/castle.ts</code>. Если для формы стыка
+    поворота нет, деталь не ставится — вертеть её дальше значило бы врать.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Генератор замковых стен</h2>
+    <p>Сид — и замок. Участок прямоугольный, до двух углов сид вырезает; вырез
+      отменяется сам, если после него цепь стен перестаёт быть цепью. Ворота встают
+      только на прямом участке, лестница — во дворе у прямой стены, донжон — в середине
+      двора. Знамёна достаются угловым башенкам и донжону.</p>
+    <p>Генератор живёт в <code>src/sim/castle.ts</code> и не знает ни про three,
+      ни про DOM: это числа, а не картинка. Страница берёт у него список деталей
+      и рисует его сама — тем же плоским затенением, каким рисуются карточки выше.</p>
+  </div>
+  <div class="bar" id="genBar"></div>
+  <div class="yardgrid">
+    <canvas id="scene" class="scene" width="660" height="420"></canvas>
+    <figure style="margin:0;display:flex;flex-direction:column;gap:9px;">
+      <canvas id="plan" width="300" height="300"></canvas>
+      <figcaption class="note" style="max-width:36ch" id="planCap">План: кольцо стен,
+        двор, ворота и лестница.</figcaption>
+    </figure>
+  </div>
+  <div class="facts" id="genFacts"></div>
+  <table id="bill"><thead><tr>
+    <th>Роль</th><th class="num">Деталей</th><th>Какими моделями</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="genNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Атлас, расчерченный на клетки</h2>
+    <p>Четвёртый способ раскрасить набор — после трёх ровных градиентов леса,
+      раскрашенной картинки подземелья и клеток ресурсов. Здесь картинка тоже
+      расчерчена — <b><span id="gridSize">…</span></b>, — но хранит она не цвет,
+      а номер в таблице: <b>палитровый PNG</b>, и декодер обмера пришлось этому учить.</p>
+    <p>Задето девять клеток из тридцати двух. Остальные — не «место под будущие цвета»,
+      как у ресурсов, а просто чёрное поле: варианты раскраски автор оставил
+      платным наборам.</p>
+  </div>
+  <div class="atlas">
+    <figure>
+      <canvas id="atlasMap" width="424" height="424"></canvas>
+      <figcaption id="atlasCap">Атлас набора с разлиновкой. Обведённые клетки — задетые
+        моделями; цифра — сколько треугольников в клетке.</figcaption>
+    </figure>
+    <div class="side">
+      <table id="cells"><thead><tr>
+        <th>Клетка</th><th>Градиент</th><th class="num">Треугольников</th><th>Чем задета</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+  <p class="note" id="cellNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Слоты: было → стало</h2>
+    <p><b>Замок у Kenney песочный, а у нас серый</b> — и это ответ про палитру,
+      а не дефект набора. Главный камень стен тёплый, тон 22–26°, а тёплого камня
+      в артбуке нет вовсе: он уходит в серый, ровно как ушли туда знамёна
+      подземелья (§6.1.2). Единый список цветов — условие сильнее, чем удобство
+      отдельного набора.</p>
+    <p>Шкала яркости считается по задетому, а не по всей картинке: под треугольниками
+      <span id="touched">…</span>. Подсвечены строки со слотами, которых
+      не занимал ни один прежний набор.</p>
+  </div>
+  <table id="slots"><thead><tr>
+    <th>Градиент</th><th>Слот</th><th>Было в атласе</th><th>Стало в игре</th>
+    <th class="num">Треугольников</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="slotNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Три места, где цвет читается тяжело</h2>
+    <p>Набор различает материалы <b>клеткой</b>, а инструмент читает <b>цвет</b>. Там,
+      где клетки разошлись по тону, всё сходится само; там, где они сошлись, окно
+      приходится ставить по замеру.</p>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Дерево против песчаника</h3>
+      <p id="woodSand">…</p>
+    </div>
+    <div class="key">
+      <h3>Скала против решётки</h3>
+      <p id="rockSteel">…</p>
+    </div>
+    <div>
+      <h3>Железо и белила — один столбец</h3>
+      <p id="ironChalk">…</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что в наборе есть</h2>
+    <p>Карточки читают <code>.glb</code> прямо из набора. Переключатель показывает
+      одну и ту же геометрию дважды: в цветах атласа набора и в палитре игры.</p>
+  </div>
+  <div class="bar" id="filters"></div>
+  <div class="models" id="grid"></div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Границы: что здесь не решено</h2>
+    <p>Страница отвечает за обмер и за модель стройки. Всё, что ниже, — открыто,
+      и открыто намеренно.</p>
+  </div>
+  <div class="guard">
+    <div>
+      <h3>Замок в игре</h3>
+      <p>Ни одной модели набора игра не берёт. Где в игре стоял бы замок и чем бы он
+        был — постройкой лагеря, локацией вылазки или задником — <b>не решено</b>.
+        Пока не решено, восемьдесят килобайт стен ждут, а не забыты.</p>
+    </div>
+    <div>
+      <h3>Узкая стена</h3>
+      <p>У набора две семьи стен: толстая в клетку и узкая в полклетки, со своими
+        углом, воротами и лестницей. Генератор строит толстой. Узкая измерена,
+        но её детали сидят не в центре клетки, и <b>смещения под неё не написаны</b>.</p>
+    </div>
+    <div>
+      <h3>Осадные машины</h3>
+      <p>Десять моделей, <span id="siegeShare">…</span> треугольников набора — почти
+        половина. Каждая вдвое тяжелее нашего потолка на здание. Что с ними делать,
+        <b>вопрос не к артбуку</b>: осады в игре нет.</p>
+    </div>
+    <div>
+      <h3>Ров и мост</h3>
+      <p>Мосты и подъёмный мост в наборе есть, и генератор их не ставит: ров —
+        это уже не стена, а план участка, и его пришлось бы придумывать,
+        а не выводить из обмера.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script type="module">
+const PACK = './assets/kenney-castle-kit/';
+const CATALOG = PACK + 'catalog.json';
+const GLB = PACK + 'glb/';
+const ATLAS = PACK + 'colormap.png';
+/** Прежние наборы — чтобы «слот занят впервые» считался, а не утверждался. */
+const EARLIER = ['kaykit-forest', 'kaykit-dungeon', 'kaykit-skeletons', 'kaykit-adventurers', 'kaykit-resources'];
+
+function fail(text){
+  const w = document.getElementById('warn');
+  w.textContent = text;
+  w.style.display = '';
+}
+
+let MATERIAL, cat, earlierSlots, castleMod;
+try{
+  // Палитра и генератор берутся из самих модулей игры: копия списка или копия
+  // правила разошлись бы молча, а страница именно про то, что список один
+  // и правило одно.
+  MATERIAL = (await import('/src/render/palette.ts')).MATERIAL;
+  castleMod = await import('/src/sim/castle.ts');
+  cat = await (await fetch(CATALOG)).json();
+  const others = await Promise.all(
+    EARLIER.map((dir) => fetch('./assets/' + dir + '/catalog.json').then((r) => r.json())),
+  );
+  earlierSlots = new Set(others.flatMap((o) => o.slots ?? []));
+}catch(e){
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /castleart.html. ' + e);
+  throw e;
+}
+
+const {generateCastle, fitTurn, turnDir, DIRS, STRAIGHT, CORNER, STAIRS, FLOOR, WALK, WALL_TOP} = castleMod;
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const pct = (n, of) => (n / of * 100).toFixed(1) + '%';
+const ru = (n) => String(n).replace('.', ',');
+
+/* Русский счёт: «1 модель», «2 модели», «5 моделей». */
+const plural = (n, one, few, many) => {
+  const t = Math.abs(n) % 100, u = t % 10;
+  if(t > 10 && t < 20) return many;
+  if(u > 1 && u < 5) return few;
+  return u === 1 ? one : many;
+};
+const models = (n) => n + ' ' + plural(n, 'модель', 'модели', 'моделей');
+const cells = (n) => n + ' ' + plural(n, 'клетка', 'клетки', 'клеток');
+const parts = (n) => n + ' ' + plural(n, 'деталь', 'детали', 'деталей');
+
+const byName = new Map(cat.models.map((m) => [m.name, m]));
+
+/* ---------- атлас ---------- */
+let atlas = null, atlasWaiting = null;
+const ensureAtlas = () => (atlasWaiting ??= loadAtlas().then((a) => { atlas = a; return a; }));
+
+async function loadAtlas(){
+  const img = new Image();
+  img.src = ATLAS;
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const ctx = c.getContext('2d', {willReadFrequently:true});
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, img.width, img.height).data;
+  return {
+    image:img, width:img.width, height:img.height,
+    // UV в glTF считаются от верхнего края — это и есть порядок строк в PNG.
+    at(u, v){
+      const x = Math.min(img.width - 1, Math.max(0, Math.floor(u * img.width)));
+      const y = Math.min(img.height - 1, Math.max(0, Math.floor(v * img.height)));
+      const o = (y * img.width + x) * 4;
+      return 'rgb(' + data[o] + ',' + data[o+1] + ',' + data[o+2] + ')';
+    },
+  };
+}
+
+/* ---------- сводка по категориям ---------- */
+const totalTris = cat.models.reduce((s, m) => s + m.tris, 0);
+const cats = new Map();
+for(const m of cat.models){
+  const c = cats.get(m.category) ?? {n:0, tris:0, worst:m};
+  c.n++; c.tris += m.tris;
+  if(m.tris > c.worst.tris) c.worst = m;
+  cats.set(m.category, c);
+}
+const catsBody = document.querySelector('#cats tbody');
+for(const [key, c] of [...cats].sort((a, b) => b[1].tris - a[1].tris)){
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + key + '</td><td class="num">' + c.n + '</td><td class="num">' + c.tris +
+    '</td><td class="num">' + Math.round(c.tris / c.n) + '</td><td class="num">' + c.worst.tris +
+    '</td><td class="mono">' + c.worst.name + '</td>';
+  catsBody.appendChild(tr);
+}
+const over = cat.models.filter(m => m.tris > cat.budgets.model);
+document.getElementById('total').textContent =
+  'Всего ' + models(cat.models.length) + ' и ' + totalTris + ' треугольников. ' +
+  'Тяжелее потолка на здание (' + cat.budgets.model + ') — ' + parts(over.length) + ': ' +
+  over.map(m => m.name + ' ' + m.tris).join(', ') + '. Потолок этот про модель, ' +
+  'которую рисуют руками, и к готовому набору отношения не имеет: его цена — килобайты в бандле.';
+
+const siege = cats.get('Осада');
+document.getElementById('siegeShare').textContent = pct(siege.tris, totalTris);
+
+/* ---------- модуль ---------- */
+const MODULE_ROWS = [
+  ['wall', 'прямая: зубцы по двум противоположным рёбрам'],
+  ['wall-pillar', 'та же прямая, с контрфорсом'],
+  ['wall-corner', 'угол: зубцы по двум смежным'],
+  ['wall-corner-half-tower', 'угол с круглой башенкой, полторы клетки'],
+  ['wall-narrow-stairs', 'лестница со двора: ход выходит одним ребром'],
+  ['tower-square-base', 'этаж башни: хода нет вовсе'],
+  ['tower-square-top', 'шапка башни: зубцы по всем четырём'],
+  ['tower-square-arch', 'арка ворот: проезд насквозь'],
+];
+
+const SHAPE = {
+  '0011':'прямая вдоль z', '1100':'прямая вдоль x',
+  '1001':'угол −x→+z', '1010':'угол −x→−z', '0101':'угол +x→+z', '0110':'угол +x→−z',
+  '1000':'тупик с −x', '0100':'тупик с +x', '0010':'тупик с −z', '0001':'тупик с +z',
+  '0111':'вдоль z, парапет −x', '1011':'вдоль z, парапет +x',
+  '1101':'вдоль x, парапет −z', '1110':'вдоль x, парапет +z',
+  '1111':'перекрёсток', '0000':'глухая',
+};
+const shapeKey = (open) => open.map(o => o ? '1' : '0').join('');
+
+/** Значок рёбер: толстое ребро — парапет, тонкое пунктиром — ход к соседу. */
+function edgesGlyph(open){
+  const S = 22, m = 3, k = S - m;
+  const line = (x1, y1, x2, y2, on) =>
+    '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' +
+    (on ? 'var(--brass)' : 'currentColor') + '" stroke-width="' + (on ? 1 : 3) +
+    '" stroke-dasharray="' + (on ? '2 2' : '') + '"/>';
+  return '<svg class="edges" viewBox="0 0 ' + S + ' ' + S + '">' +
+    line(m, m, m, k, open[0]) + line(k, m, k, k, open[1]) +
+    line(m, m, k, m, open[2]) + line(m, k, k, k, open[3]) + '</svg>';
+}
+
+const moduleBody = document.querySelector('#module tbody');
+for(const [name, what] of MODULE_ROWS){
+  const m = byName.get(name);
+  if(m === undefined) continue;
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="mono">' + name + '</td>' +
+    '<td class="num">' + ru(m.size[1]) + '</td>' +
+    '<td class="num">' + (m.deck === null ? '—' : ru(m.deck)) + '</td>' +
+    '<td>' + edgesGlyph(m.open) + ' <span class="note">' + shapeKey(m.open) + '</span></td>' +
+    '<td>' + what + '</td>';
+  moduleBody.appendChild(tr);
+}
+
+const walkers = cat.models.filter(m => m.deck !== null);
+const inCell = cat.models.filter(m => m.size[0] <= cat.module.cell + 0.06 && m.size[2] <= cat.module.cell + 0.06);
+document.getElementById('moduleFacts').innerHTML = [
+  ['клетка', ru(cat.module.cell) + ' — объявлена'],
+  ['этаж', ru(byName.get('tower-square-base').size[1])],
+  ['ход поверху', ru(byName.get('wall').deck)],
+  ['верх стены', ru(byName.get('wall').size[1])],
+  ['парапет', ru(Math.round((byName.get('wall').size[1] - byName.get('wall').deck) * 100) / 100)],
+].map(([k, v]) => '<span>' + k + ' <b>' + v + '</b></span>').join('');
+document.getElementById('moduleNote').textContent =
+  'В клетку набора входит ' + models(inCell.length) + ' из ' + cat.models.length + '; ход поверху ' +
+  'измерен у ' + models(walkers.length) + '. Высота хода и высота этажа — разные числа: ' +
+  'по башне ходят на ' + ru(FLOOR) + ', по стене на ' + ru(WALK) + ', и разница в том, ' +
+  'что у стены сверху ещё зубцы.';
+
+/** Разрез: карта высот прямой стены и угла, снятая с самой геометрии. */
+async function drawRelief(){
+  const canvas = document.getElementById('relief');
+  const ctx = canvas.getContext('2d');
+  const css = getComputedStyle(document.body);
+  const ink = css.getPropertyValue('--text').trim();
+  const dim = css.getPropertyValue('--dim').trim();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const shown = ['wall', 'wall-corner'];
+  const N = 16;
+  for(let s = 0; s < shown.length; s++){
+    const {tris} = await loadModel(shown[s]);
+    const map = new Float64Array(N * N).fill(-Infinity);
+    for(const t of tris){
+      const minX = Math.min(t[0][0], t[1][0], t[2][0]), maxX = Math.max(t[0][0], t[1][0], t[2][0]);
+      const minZ = Math.min(t[0][2], t[1][2], t[2][2]), maxZ = Math.max(t[0][2], t[1][2], t[2][2]);
+      const det = (t[1][2] - t[2][2]) * (t[0][0] - t[2][0]) + (t[2][0] - t[1][0]) * (t[0][2] - t[2][2]);
+      if(Math.abs(det) < 1e-9) continue;
+      for(let gz = Math.max(0, Math.floor((minZ + 0.5) * N)); gz <= Math.min(N - 1, Math.floor((maxZ + 0.5) * N)); gz++){
+        const z = -0.5 + (gz + 0.5) / N;
+        for(let gx = Math.max(0, Math.floor((minX + 0.5) * N)); gx <= Math.min(N - 1, Math.floor((maxX + 0.5) * N)); gx++){
+          const x = -0.5 + (gx + 0.5) / N;
+          const l1 = ((t[1][2] - t[2][2]) * (x - t[2][0]) + (t[2][0] - t[1][0]) * (z - t[2][2])) / det;
+          const l2 = ((t[2][2] - t[0][2]) * (x - t[2][0]) + (t[0][0] - t[2][0]) * (z - t[2][2])) / det;
+          const l3 = 1 - l1 - l2;
+          if(l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+          const y = l1 * t[0][1] + l2 * t[1][1] + l3 * t[2][1];
+          if(y > map[gz * N + gx]) map[gz * N + gx] = y;
+        }
+      }
+    }
+    const size = 176, ox = 20 + s * 216, oy = 26, cell = size / N;
+    const lo = WALK - 0.02, hi = WALL_TOP;
+    for(let gz = 0; gz < N; gz++) for(let gx = 0; gx < N; gx++){
+      const y = map[gz * N + gx];
+      const k = !isFinite(y) ? 0 : Math.max(0, Math.min(1, (y - lo) / (hi - lo)));
+      ctx.fillStyle = 'rgb(' + Math.round(214 - k * 150) + ',' + Math.round(206 - k * 148) + ',' + Math.round(186 - k * 140) + ')';
+      ctx.fillRect(ox + gx * cell, oy + gz * cell, cell + 0.5, cell + 0.5);
+    }
+    ctx.strokeStyle = dim;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ox, oy, size, size);
+    ctx.fillStyle = ink;
+    ctx.font = '12px ' + css.getPropertyValue('--ff-mono');
+    ctx.fillText(shown[s], ox, oy - 10);
+    ctx.fillStyle = dim;
+    ctx.font = '10px ' + css.getPropertyValue('--ff-mono');
+    ctx.fillText(SHAPE[shapeKey(byName.get(shown[s]).open)], ox, oy + size + 14);
+  }
+}
+
+/* ---------- модель стройки: таблица подбора ---------- */
+const DIR_NAME = ['−x', '+x', '−z', '+z'];
+const FIT_ROWS = [
+  [[2, 3], STRAIGHT[0]],
+  [[0, 1], STRAIGHT[0]],
+  [[0, 3], CORNER[0]],
+  [[1, 2], CORNER[0]],
+  [[0, 3], CORNER[2]],
+  [[2], STAIRS],
+];
+const fitBody = document.querySelector('#fit tbody');
+for(const [want, part] of FIT_ROWS){
+  const measured = byName.get(part.model).open;
+  const turn = fitTurn(measured, want);
+  const after = measured.map((o, d) => o ? turnDir(d, turn) : -1).filter(d => d >= 0);
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td class="mono">' + want.map(d => DIR_NAME[d]).join(' и ') + '</td>' +
+    '<td class="mono">' + part.model + '</td>' +
+    '<td>' + edgesGlyph(measured) + ' <span class="note">' +
+      measured.map((o, d) => o ? DIR_NAME[d] : null).filter(Boolean).join(', ') + '</span></td>' +
+    '<td class="num">' + (turn < 0 ? '—' : turn + '×90°') + '</td>' +
+    '<td class="mono">' + after.map(d => DIR_NAME[d]).join(', ') + '</td>';
+  fitBody.appendChild(tr);
+}
+
+/* ---------- отрисовщик: ортокамера 45°/30°, плоское затенение ---------- */
+const AZ = 45 * Math.PI / 180, EL = 30 * Math.PI / 180;
+const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map(c => c / l); })();
+
+function project(p){
+  const ca = Math.cos(AZ), sa = Math.sin(AZ), ce = Math.cos(EL), se = Math.sin(EL);
+  const x = p[0] * ca - p[2] * sa, y = p[1], z = p[0] * sa + p[2] * ca;
+  return [x, y * ce - z * se, y * se + z * ce];
+}
+function shade(color, k){
+  const rgb = color.startsWith('#')
+    ? [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16))
+    : color.slice(4, -1).split(',').map(Number);
+  return 'rgb(' + rgb.map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
+}
+
+function draw(canvas, tris, colors){
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const view = tris.map(t => t.map(project));
+
+  let min = [Infinity, Infinity], max = [-Infinity, -Infinity];
+  for(const t of view) for(const p of t){
+    if(p[0] < min[0]) min[0] = p[0];
+    if(p[0] > max[0]) max[0] = p[0];
+    if(p[1] < min[1]) min[1] = p[1];
+    if(p[1] > max[1]) max[1] = p[1];
+  }
+  const scale = Math.min((w - 16) / (max[0] - min[0] || 1), (h - 16) / (max[1] - min[1] || 1));
+  const ox = w / 2 - (min[0] + max[0]) / 2 * scale, oy = h / 2 + (min[1] + max[1]) / 2 * scale;
+
+  // Художник: дальние треугольники первыми. Z-буфера здесь нет и не нужно.
+  const order = view.map((t, i) => [i, (t[0][2] + t[1][2] + t[2][2]) / 3]).sort((a, b) => b[1] - a[1]);
+  for(const [i] of order){
+    const t = tris[i];
+    const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+    const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+    const n = [u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0]];
+    const len = Math.hypot(...n) || 1;
+    const lit = Math.max(0, (n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]) / len);
+    ctx.fillStyle = shade(colors[i], 0.42 + lit * 0.85);
+    ctx.beginPath();
+    const p = view[i];
+    ctx.moveTo(ox + p[0][0]*scale, oy - p[0][1]*scale);
+    ctx.lineTo(ox + p[1][0]*scale, oy - p[1][1]*scale);
+    ctx.lineTo(ox + p[2][0]*scale, oy - p[2][1]*scale);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/* ---------- чтение .glb: позиции, UV и трансформы узлов ---------- */
+const SIZE = {SCALAR:1, VEC2:2, VEC3:3, VEC4:4};
+const READER = {5121:'getUint8', 5123:'getUint16', 5125:'getUint32', 5126:'getFloat32'};
+const BYTES = {5121:1, 5123:2, 5125:4, 5126:4};
+const IDENT = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+
+function mul(a, b){
+  const out = new Array(16).fill(0);
+  for(let c = 0; c < 4; c++) for(let r = 0; r < 4; r++){
+    let s = 0;
+    for(let k = 0; k < 4; k++) s += a[k*4 + r] * b[c*4 + k];
+    out[c*4 + r] = s;
+  }
+  return out;
+}
+function local(node){
+  if(node.matrix) return node.matrix;
+  const [x, y, z, w] = node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = node.scale ?? [1, 1, 1];
+  const [tx, ty, tz] = node.translation ?? [0, 0, 0];
+  const r = [
+    1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+    2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+    2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y),
+  ];
+  return [r[0]*sx, r[1]*sx, r[2]*sx, 0, r[3]*sy, r[4]*sy, r[5]*sy, 0,
+          r[6]*sz, r[7]*sz, r[8]*sz, 0, tx, ty, tz, 1];
+}
+const apply = (m, p) => [0, 1, 2].map(c => m[c]*p[0] + m[4+c]*p[1] + m[8+c]*p[2] + m[12+c]);
+
+/** Набор пришёл одними `.glb`: JSON и буфер лежат кусками в одном файле. */
+async function loadDoc(url){
+  const buf = await (await fetch(url)).arrayBuffer();
+  const dv = new DataView(buf);
+  if(dv.getUint32(0, true) !== 0x46546c67) throw new Error(url + ': не GLB');
+  let at = 12, gltf = null, bin = null;
+  while(at + 8 <= buf.byteLength){
+    const length = dv.getUint32(at, true);
+    const type = dv.getUint32(at + 4, true);
+    const data = buf.slice(at + 8, at + 8 + length);
+    if(type === 0x4e4f534a) gltf = JSON.parse(new TextDecoder().decode(data));
+    else if(type === 0x004e4942) bin = data;
+    at += 8 + length;
+  }
+  return {gltf, dv:new DataView(bin)};
+}
+
+const modelCache = new Map();
+function loadModel(name){
+  if(!modelCache.has(name)) modelCache.set(name, readModel(name));
+  return modelCache.get(name);
+}
+
+async function readModel(name){
+  const {gltf, dv} = await loadDoc(GLB + name + '.glb');
+  const read = (index) => {
+    const acc = gltf.accessors[index], bv = gltf.bufferViews[acc.bufferView];
+    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
+    const stride = bv.byteStride ?? size * bytes;
+    const start = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = [];
+    for(let i = 0; i < acc.count; i++){
+      const row = [];
+      for(let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
+      out.push(size === 1 ? row[0] : row);
+    }
+    return out;
+  };
+  const tris = [], uvs = [];
+  const walk = (at, parent) => {
+    const node = gltf.nodes[at];
+    const world = mul(parent, local(node));
+    if(node.mesh !== undefined) for(const prim of gltf.meshes[node.mesh].primitives){
+      const pos = read(prim.attributes.POSITION), uv = read(prim.attributes.TEXCOORD_0), idx = read(prim.indices);
+      for(let i = 0; i < idx.length; i += 3){
+        tris.push([0, 1, 2].map(k => apply(world, pos[idx[i+k]])));
+        uvs.push([
+          (uv[idx[i]][0] + uv[idx[i+1]][0] + uv[idx[i+2]][0]) / 3,
+          (uv[idx[i]][1] + uv[idx[i+1]][1] + uv[idx[i+2]][1]) / 3,
+        ]);
+      }
+    }
+    for(const child of node.children ?? []) walk(child, world);
+  };
+  for(const root of gltf.scenes[gltf.scene ?? 0].nodes) walk(root, IDENT);
+  return {tris, uvs};
+}
+
+/* ---------- слоты палитры ---------- */
+const slots = new Map();
+const slotTris = new Array(cat.slots.length).fill(0);
+for(const m of cat.models){
+  const raw = atob(m.slot);
+  const list = new Uint8Array(raw.length);
+  for(let i = 0; i < raw.length; i++){ list[i] = raw.charCodeAt(i); slotTris[list[i]]++; }
+  slots.set(m.name, list);
+}
+const colorOfSlot = (name) => MATERIAL[name];
+const rampOfSlot = (name) => cat.ramps.find(r => r.slots.includes(name));
+const missing = cat.slots.filter(name => MATERIAL[name] === undefined);
+if(missing.length > 0) fail('Слотов нет в палитре игры: ' + missing.join(', '));
+
+const slotsBody = document.querySelector('#slots tbody');
+cat.slots.forEach((name, at) => {
+  const ramp = rampOfSlot(name);
+  const first = ramp.slots[0] === name;
+  const source = ramp.source[ramp.slots.indexOf(name)];
+  const fresh = !earlierSlots.has(name);
+  const color = colorOfSlot(name);
+  const tr = document.createElement('tr');
+  if(fresh) tr.className = 'new';
+  const was = slotTris[at] === 0
+    ? '<td class="miss">не задет ни одним треугольником</td>'
+    : '<td><span class="chip"><i style="background:' + source + '"></i>' + source + '</span></td>';
+  tr.innerHTML =
+    '<td>' + (first ? ramp.title : '') + '</td>' +
+    '<td class="mono">' + name + '</td>' + was +
+    '<td><span class="chip"><i style="background:' + hex(color) + '"></i>' + hex(color) +
+      (fresh ? ' · впервые' : '') + '</span></td>' +
+    '<td class="num">' + slotTris[at] + ' · ' + pct(slotTris[at], totalTris) + '</td>';
+  slotsBody.appendChild(tr);
+});
+document.getElementById('touched').textContent =
+  cat.touched.colors + ' цветов из ' + cat.touched.atlasColors + ', а сами эти цвета занимают ' +
+  Math.round(cat.touched.share * 100) + '% картинки';
+const freshSlots = cat.slots.filter(name => !earlierSlots.has(name));
+document.getElementById('slotNote').textContent = freshSlots.length === 0
+  ? 'Ни одного нового слота: все ' + cat.slots.length + ' имён набор взял у прежних пяти. ' +
+    'Шестой набор не потребовал от артбука ни одного цвета — впервые.'
+  : 'Подсвечено ' + freshSlots.length + ': ' + freshSlots.join(', ') + '.';
+
+/* ---------- клетки атласа ---------- */
+document.getElementById('gridSize').textContent =
+  cat.grid.cols + ' на ' + cat.grid.rows + ', ' + cells(cat.grid.cols * cat.grid.rows);
+const cellsBody = document.querySelector('#cells tbody');
+for(const c of cat.cells){
+  const list = Object.entries(c.categories).sort((a, b) => b[1] - a[1]);
+  const shown = list.slice(0, 2).map(([k, v]) => k + ' ' + Math.round(v / c.tris * 100) + '%');
+  if(list.length > 2) shown.push('и ещё ' + (list.length - 2));
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td class="mono">r' + c.row + 'c' + c.col + '</td>' +
+    '<td><span class="ramp" style="background:linear-gradient(' + c.top + ',' + c.bottom + ')"></span> ' +
+      '<span class="note">' + c.top + ' → ' + c.bottom + '</span></td>' +
+    '<td class="num">' + c.tris + '</td><td>' + shown.join(' · ') + '</td>';
+  cellsBody.appendChild(tr);
+}
+const grid = cat.grid;
+document.getElementById('cellNote').textContent =
+  'Задето ' + cells(cat.cells.length) + ' из ' + (grid.cols * grid.rows) + '. Верхняя половина ' +
+  'картинки чёрная и не задета ни одним треугольником: цветовые варианты автор оставил ' +
+  'платным наборам.';
+
+async function drawAtlasMap(){
+  const a = await ensureAtlas();
+  const canvas = document.getElementById('atlasMap');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.drawImage(a.image, 0, 0, w, h);
+  const cw = w / grid.cols, ch = h / grid.rows;
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,.25)';
+  for(let c = 1; c < grid.cols; c++){ ctx.beginPath(); ctx.moveTo(c * cw, 0); ctx.lineTo(c * cw, h); ctx.stroke(); }
+  for(let r = 1; r < grid.rows; r++){ ctx.beginPath(); ctx.moveTo(0, r * ch); ctx.lineTo(w, r * ch); ctx.stroke(); }
+  ctx.font = '10px ui-monospace, Menlo, monospace';
+  ctx.textBaseline = 'top';
+  for(const c of cat.cells){
+    const x = c.col * cw, y = c.row * ch;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#fff';
+    ctx.strokeRect(x + 2, y + 2, cw - 4, ch - 4);
+    const label = String(c.tris);
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(0,0,0,.62)';
+    ctx.fillRect(x + 4, y + 4, tw + 8, 15);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 8, y + 6);
+  }
+}
+drawAtlasMap().catch(() => { document.getElementById('atlasCap').textContent = 'Атлас не прочитан.'; });
+
+/* ---------- три тесных места: числа считаются, а не называются ---------- */
+const hsv = (h) => {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  return {sat: max === 0 ? 0 : (max - min) / max, hue: hueOf(r, g, b)};
+};
+function hueOf(r, g, b){
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if(d === 0) return 0;
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return h * 60;
+}
+const cellTop = (row, col) => cat.cells.find(c => c.row === row && c.col === col);
+const around = (id) => {
+  const ramp = cat.ramps.find(r => r.id === id);
+  const hues = ramp.source.filter(Boolean).map(s => hsv(s).hue);
+  return [Math.min(...hues), Math.max(...hues)];
+};
+const woodHue = around('wood'), sandHue = around('sand');
+document.getElementById('woodSand').innerHTML =
+  'Дерево осадных машин и песчаник стен стоят в одном тёплом углу атласа: тон дерева ' +
+  '<b>' + woodHue.map(h => h.toFixed(0)).join('–') + '°</b>, тон песчаника ' +
+  '<b>' + sandHue.map(h => h.toFixed(0)).join('–') + '°</b>. Граница окна поставлена ' +
+  'между ними — по замеру, а не по круглому числу.';
+
+const rockCell = cellTop(3, 1), steelCell = cellTop(3, 2);
+document.getElementById('rockSteel').innerHTML =
+  'Скалы и решётка ворот — <b>разные клетки атласа с перекрывающимся цветом</b>: ' +
+  rockCell.top + ' и ' + steelCell.top + ', тон у обеих около 229°, насыщенность ' +
+  ru(hsv(rockCell.top).sat.toFixed(2)) + ' против ' + ru(hsv(steelCell.top).sat.toFixed(2)) + '. ' +
+  'Развести их окном по цвету нельзя вовсе — набор различает их местом в картинке. ' +
+  'Обе уходят в металл, и скала в этом наборе стального цвета.';
+
+const darkCell = cellTop(3, 0), whiteCell = cellTop(3, 3);
+document.getElementById('ironChalk').innerHTML =
+  'Тёмное железо башен (' + darkCell.top + ') и белое полотно знамён (' + whiteCell.top + ') — ' +
+  'один холодный столбец с провалом посередине: между ними набор не красит ничего. ' +
+  'Поэтому у этого градиента <b>две ступени, а не четыре</b>: ступени, которым нечего ' +
+  'было бы достаться, не заводятся.';
+
+/* ---------- генератор ---------- */
+const sceneCanvas = document.getElementById('scene');
+const planCanvas = document.getElementById('plan');
+let seed = 7;
+
+const ROLE_COLOR = {
+  'стена':'#8a8a7e', 'угол':'#c6c6b6', 'ворота':'#dfa53c',
+  'башня':'#7d8892', 'лестница':'#b06b45', 'знамя':'#d83f35',
+};
+
+/** Поворот на четверть вокруг вертикали: (x, z) → (z, −x). */
+function spin(p, turn){
+  let [x, y, z] = p;
+  for(let i = 0; i < ((turn % 4) + 4) % 4; i++){ const nx = z, nz = -x; x = nx; z = nz; }
+  return [x, y, z];
+}
+
+async function drawCastle(castle){
+  const cell = cat.module.cell;
+  const wanted = [...new Set(castle.pieces.map(p => p.model))];
+  const loaded = new Map(await Promise.all(wanted.map(async (n) => [n, await loadModel(n)])));
+
+  const tris = [], colors = [];
+  for(const piece of castle.pieces){
+    const geom = loaded.get(piece.model);
+    const list = slots.get(piece.model);
+    for(let i = 0; i < geom.tris.length; i++){
+      tris.push(geom.tris[i].map((v) => {
+        const r = spin(v, piece.turn);
+        return [r[0] + piece.x * cell, r[1] + piece.y, r[2] + piece.z * cell];
+      }));
+      colors.push(hex(colorOfSlot(cat.slots[list[i]])));
+    }
+  }
+  draw(sceneCanvas, tris, colors);
+
+  // План рисуется по тем же клеткам, из которых собран замок: это не схема
+  // «как задумано», а тот же список деталей, разложенный сверху.
+  const ctx = planCanvas.getContext('2d');
+  const css = getComputedStyle(document.body);
+  const W = planCanvas.width, H = planCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const step = Math.min((W - 20) / castle.width, (H - 20) / castle.depth);
+  const ox = (W - step * castle.width) / 2, oy = (H - step * castle.depth) / 2;
+  ctx.strokeStyle = css.getPropertyValue('--line').trim();
+  for(const s of castle.yard){
+    ctx.fillStyle = 'color-mix(in srgb, ' + css.getPropertyValue('--moss').trim() + ' 14%, transparent)';
+    ctx.fillRect(ox + s.x * step, oy + s.z * step, step, step);
+  }
+  const ground = castle.pieces.filter(p => p.y === 0 && p.model !== 'gate');
+  for(const p of ground){
+    ctx.fillStyle = ROLE_COLOR[p.role] ?? '#888';
+    ctx.fillRect(ox + p.x * step + 1, oy + p.z * step + 1, step - 2, step - 2);
+  }
+  ctx.strokeStyle = css.getPropertyValue('--dim').trim();
+  ctx.lineWidth = 1;
+  for(let i = 0; i <= castle.width; i++){
+    ctx.beginPath(); ctx.moveTo(ox + i * step, oy); ctx.lineTo(ox + i * step, oy + castle.depth * step); ctx.stroke();
+  }
+  for(let i = 0; i <= castle.depth; i++){
+    ctx.beginPath(); ctx.moveTo(ox, oy + i * step); ctx.lineTo(ox + castle.width * step, oy + i * step); ctx.stroke();
+  }
+  ctx.fillStyle = css.getPropertyValue('--text').trim();
+  ctx.font = '11px ' + css.getPropertyValue('--ff-mono');
+  ctx.fillText('ворота', ox + castle.gate.x * step - 8, oy + castle.gate.z * step - 3);
+
+  document.getElementById('planCap').innerHTML =
+    'План сида <b>' + castle.seed + '</b>: ' + Object.entries(ROLE_COLOR)
+      .map(([k, v]) => '<span style="color:' + v + '">■</span> ' + k).join(' · ');
+
+  const bill = new Map();
+  for(const p of castle.pieces){
+    const row = bill.get(p.role) ?? {n:0, models:new Map()};
+    row.n++;
+    row.models.set(p.model, (row.models.get(p.model) ?? 0) + 1);
+    bill.set(p.role, row);
+  }
+  const billBody = document.querySelector('#bill tbody');
+  billBody.innerHTML = '';
+  for(const [role, row] of [...bill].sort((a, b) => b[1].n - a[1].n)){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><span style="color:' + (ROLE_COLOR[role] ?? '#888') + '">■</span> ' + role +
+      '</td><td class="num">' + row.n + '</td><td class="mono">' +
+      [...row.models].sort((a, b) => b[1] - a[1]).map(([m, n]) => m + (n > 1 ? ' ×' + n : '')).join(', ') + '</td>';
+    billBody.appendChild(tr);
+  }
+
+  const sceneTris = castle.pieces.reduce((s, p) => s + byName.get(p.model).tris, 0);
+  document.getElementById('genFacts').innerHTML = [
+    ['сид', castle.seed],
+    ['участок', castle.width + '×' + castle.depth],
+    ['кольцо', cells(castle.ring.length)],
+    ['двор', cells(castle.yard.length)],
+    ['деталей', castle.pieces.length],
+    ['треугольников', sceneTris],
+  ].map(([k, v]) => '<span>' + k + ' <b>' + v + '</b></span>').join('');
+
+  const straight = castle.pieces.filter(p => p.role === 'стена').length;
+  const corners = castle.pieces.filter(p => p.role === 'угол').length;
+  document.getElementById('genNote').textContent =
+    'Кольцо из ' + cells(castle.ring.length) + ' разошлось на ' + straight + ' прямых и ' +
+    corners + ' углов. Ни один поворот в этом списке не выбран: каждый выведен из того, ' +
+    'какие рёбра детали открыты и где стоят соседи. Весь замок — ' + sceneTris +
+    ' треугольников, и в бандл он не едет: набор измерен, а не взят.';
+}
+
+function rebuild(){
+  const castle = generateCastle(seed);
+  drawCastle(castle).catch((e) => fail('Модели набора не прочитаны: ' + e));
+}
+
+const genBar = document.getElementById('genBar');
+const nextBtn = document.createElement('button');
+nextBtn.textContent = 'Другой замок';
+nextBtn.addEventListener('click', () => { seed = (seed * 7 + 13) % 99991; rebuild(); });
+genBar.appendChild(nextBtn);
+for(const s of [7, 42, 1337, 2718]){
+  const b = document.createElement('button');
+  b.textContent = 'сид ' + s;
+  b.addEventListener('click', () => { seed = s; rebuild(); });
+  genBar.appendChild(b);
+}
+rebuild();
+drawRelief().catch(() => {});
+
+/* ---------- сетка карточек ---------- */
+const BUDGET = cat.budgets.model;
+const gridEl = document.getElementById('grid');
+const cards = [];
+let mode = 'palette';
+
+for(const m of cat.models){
+  const card = document.createElement('div');
+  card.className = 'm';
+  card.dataset.category = m.category;
+  const canvas = document.createElement('canvas');
+  canvas.width = 168; canvas.height = 148;
+  const stage = document.createElement('div');
+  stage.className = 'stage';
+  stage.appendChild(canvas);
+  card.innerHTML = '<b>' + m.name + '</b>' +
+    '<u><s' + (m.tris > BUDGET ? ' class="over"' : '') + '>' + m.tris + ' тр.</s>' +
+    '<s>' + m.size.join('×') + '</s></u>';
+  card.prepend(stage);
+  gridEl.appendChild(card);
+  cards.push({model:m, card, canvas, loaded:null});
+}
+
+function paint(item){
+  if(item.loaded === null) return;
+  const {tris, uvs} = item.loaded;
+  const list = slots.get(item.model.name);
+  const colors = mode === 'pack' && atlas !== null
+    ? tris.map((_, i) => atlas.at(uvs[i][0], uvs[i][1]))
+    : tris.map((_, i) => hex(colorOfSlot(cat.slots[list[i]])));
+  draw(item.canvas, tris, colors);
+}
+
+const repaint = () => { for(const c of cards) paint(c); };
+
+const seen = new IntersectionObserver((entries) => {
+  for(const entry of entries){
+    if(!entry.isIntersecting) continue;
+    const item = cards.find(c => c.card === entry.target);
+    seen.unobserve(entry.target);
+    if(item.loaded !== null) continue;
+    loadModel(item.model.name).then((data) => {
+      item.loaded = data;
+      paint(item);
+      if(mode === 'pack') ensureAtlas().then(() => paint(item));
+    }).catch(() => { item.card.querySelector('.stage').textContent = '—'; });
+  }
+}, {rootMargin:'400px'});
+for(const c of cards) seen.observe(c.card);
+
+/* ---------- фильтр и переключатель цвета ---------- */
+const bar = document.getElementById('filters');
+const press = (group, on) => { for(const b of group) b.setAttribute('aria-pressed', b === on ? 'true' : 'false'); };
+
+const filters = [];
+for(const key of ['Всё', ...cats.keys()]){
+  const b = document.createElement('button');
+  b.textContent = key;
+  b.setAttribute('aria-pressed', key === 'Всё' ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(filters, b);
+    for(const c of cards) c.card.style.display = (key === 'Всё' || c.model.category === key) ? '' : 'none';
+  });
+  filters.push(b);
+  bar.appendChild(b);
+}
+bar.appendChild(document.createElement('hr'));
+
+const modes = [];
+for(const [key, label] of [['palette', 'В нашей палитре'], ['pack', 'В цветах набора']]){
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.setAttribute('aria-pressed', key === mode ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    press(modes, b);
+    mode = key;
+    if(key === 'pack') ensureAtlas().then(repaint);
+    else repaint();
+  });
+  modes.push(b);
+  bar.appendChild(b);
+}
+</script>
