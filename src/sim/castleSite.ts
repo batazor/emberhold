@@ -1,0 +1,132 @@
+/**
+ * Площадка замка — локация мировой карты (§4), собранная конструктором стен
+ * (§6.1.6). Пока по ней только ходят: ни добычи, ни противников здесь нет,
+ * и это состояние объявлено, а не забыто — локация показывает постройку,
+ * а чем её наполнить, решается отдельно.
+ *
+ * Устройство простое и всё выводится из сида:
+ *
+ * 1. `generateCastle` даёт план — кольцо стен, двор, ворота, донжон.
+ * 2. План раскладывается по клеткам локации с шагом `CASTLE_CELL`: клетка
+ *    набора — четыре клетки локации, потому что стена обязана быть выше
+ *    героя вдвое, а не вровень с ним.
+ * 3. Вокруг — поле, вокруг поля — лес. Лес держит границу локации: рамка
+ *    и так не вскрывается никогда, и честнее, когда её видно деревьями.
+ * 4. Эвакуация — снаружи, перед воротами. Войти в замок можно только через
+ *    них, и это не декорация: проверяется волной по проходимым клеткам.
+ *
+ * Занятость клетки берётся у деталей, а не назначается: стена, башня
+ * и лестница — сплошные, ворота проезжие, знамёна и мощение двора не мешают
+ * никому. Список сплошных ролей — единственное, что здесь объявлено.
+ */
+import { distanceField, idx } from './grid';
+import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
+import type { Cell, GameLocation } from './types';
+
+/** Поле между лесом и стеной: место, где замок видно целиком. */
+export const FIELD = 4;
+/** Толщина леса по краю локации. */
+export const WOOD = 3;
+
+/**
+ * Роли, которые занимают клетку. Ворота в списке нет намеренно: под аркой
+ * проезжают, и если её закрыть, замок станет коробкой без входа.
+ */
+const SOLID: ReadonlySet<Role> = new Set<Role>(['стена', 'угол', 'башня', 'лестница']);
+
+export interface CastleSite {
+  readonly loc: GameLocation;
+  readonly castle: Castle;
+  /** Где стоит клетка (0, 0) плана — в клетках локации. */
+  readonly at: Spot;
+  /** Клетки леса: рендеру они деревья, симуляции — просто занятые клетки. */
+  readonly trees: readonly Spot[];
+  /** Ворота в клетках локации — сюда приходят снаружи. */
+  readonly gate: Cell;
+}
+
+/** Клетка локации, в которую попадает деталь плана. */
+export const spotAt = (site: { at: Spot }, piece: { x: number; z: number }): Cell => ({
+  x: site.at.x + piece.x * CASTLE_CELL,
+  z: site.at.z + piece.z * CASTLE_CELL,
+});
+
+/**
+ * Площадка по сиду. Размер локации — от размера замка, а не наоборот:
+ * замок «произвольного размера» и есть то, ради чего локация существует.
+ */
+export function generateCastleSite(seed: number): CastleSite {
+  const castle = generateCastle(seed);
+  const plan = Math.max(castle.width, castle.depth) * CASTLE_CELL;
+  const size = plan + 2 * (FIELD + WOOD);
+  const at: Spot = {
+    x: WOOD + FIELD + Math.floor((plan - castle.width * CASTLE_CELL) / 2),
+    z: WOOD + FIELD + Math.floor((plan - castle.depth * CASTLE_CELL) / 2),
+  };
+
+  const blocked = new Uint8Array(size * size);
+
+  // Лес по периметру. Он же рамка локации: край карты обязан оставаться
+  // стеной, и здесь эта стена — деревья.
+  const trees: Spot[] = [];
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      if (x >= WOOD && z >= WOOD && x < size - WOOD && z < size - WOOD) continue;
+      blocked[idx(size, x, z)] = 1;
+      trees.push({ x, z });
+    }
+  }
+
+  // Детали замка. Клетка набора — квадрат `CASTLE_CELL` на `CASTLE_CELL`,
+  // и занимает он весь квадрат: стена в клетку — это сплошной блок,
+  // а не панель по ребру.
+  const gatePiece: Piece | undefined = castle.pieces.find((p) => p.role === 'ворота');
+  for (const piece of castle.pieces) {
+    if (!SOLID.has(piece.role)) continue;
+    const base = spotAt({ at }, piece);
+    for (let dz = 0; dz < CASTLE_CELL; dz++) {
+      for (let dx = 0; dx < CASTLE_CELL; dx++) {
+        const x = base.x + dx;
+        const z = base.z + dz;
+        if (x < 0 || z < 0 || x >= size || z >= size) continue;
+        blocked[idx(size, x, z)] = 1;
+      }
+    }
+  }
+
+  const gate: Cell = gatePiece === undefined
+    ? { x: at.x + castle.gate.x * CASTLE_CELL, z: at.z + castle.gate.z * CASTLE_CELL }
+    : spotAt({ at }, gatePiece);
+
+  /**
+   * Эвакуация — снаружи, напротив ворот. Наружу смотрит та сторона ворот,
+   * с которой нет двора: двор известен планом, и гадать не приходится.
+   */
+  const yard = new Set(castle.yard.map((s) => `${s.x}:${s.z}`));
+  const out = [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ].find(([dx, dz]) => !yard.has(`${castle.gate.x + dx!}:${castle.gate.z + dz!}`)
+    && !castle.ring.some((s) => s.x === castle.gate.x + dx! && s.z === castle.gate.z + dz!)) ?? [0, 1];
+
+  const evac: Cell = {
+    x: Math.max(WOOD, Math.min(size - WOOD - 1, gate.x + out[0]! * (FIELD - 1) + (out[0] === 0 ? 0 : 0))),
+    z: Math.max(WOOD, Math.min(size - WOOD - 1, gate.z + out[1]! * (FIELD - 1))),
+  };
+  // Точка выхода обязана быть свободной: она же место, куда игрок приходит.
+  blocked[idx(size, evac.x, evac.z)] = 0;
+
+  const loc: GameLocation = {
+    seed,
+    tier: 0,
+    size,
+    blocked,
+    evac,
+    containers: [],
+    enemies: [],
+    backSteps: distanceField(size, blocked, evac),
+  };
+  return { loc, castle, at, trees, gate };
+}

@@ -109,6 +109,13 @@ const NODES_MAX = 22;
 const GRID_X = 6;
 const GRID_Y = 4;
 
+/**
+ * Что это за место. Вылазка — то, ради чего карта и заведена (§4). Замок
+ * (§6.1.6) — постройка, по которой пока только ходят: ни добычи, ни
+ * противников там нет, и ярус у него ничего не значит.
+ */
+export type NodeKind = 'вылазка' | 'замок';
+
 export interface WorldNode {
   readonly id: number;
   readonly name: string;
@@ -116,6 +123,7 @@ export interface WorldNode {
   readonly x: number;
   readonly y: number;
   readonly tier: Tier;
+  readonly kind: NodeKind;
 }
 
 export interface Region {
@@ -182,7 +190,32 @@ export function regionAt(day: number): Region {
     // нечитаемыми обе.
     const y = 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6;
     const name = names.splice(Math.floor(rng() * names.length), 1)[0] ?? `Место ${i}`;
-    nodes.push({ id: i, name, x, y, tier: Math.floor(rng() * 4) as Tier });
+    nodes.push({ id: i, name, x, y, tier: Math.floor(rng() * 4) as Tier, kind: 'вылазка' });
+  }
+
+  /**
+   * Замок дня (§6.1.6). Одна точка, и она добавляется сверх раздачи вылазок,
+   * а не вместо одной из них: ярусы, богатство и весь счёт §4 обязаны остаться
+   * такими же, какими были до замка.
+   *
+   * Клетка сетки берётся следующая из той же перетасованной колоды — значит,
+   * поверх вылазки замок не сядет никогда. Имя — та же рабочая подпись
+   * местности (§0.1), в кавычках: склонять её было бы враньём про язык мира,
+   * которого нет.
+   */
+  const keepCell = cells[nodes.length];
+  if (keepCell !== undefined) {
+    const col = keepCell % GRID_X;
+    const row = (keepCell / GRID_X) | 0;
+    const where = names.splice(Math.floor(rng() * names.length), 1)[0] ?? 'Пустошь';
+    nodes.push({
+      id: nodes.length,
+      name: `Замок «${where}»`,
+      x: (col + 0.5) / GRID_X + (rng() - 0.5) / GRID_X / 2.2,
+      y: 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6,
+      tier: 0,
+      kind: 'замок',
+    });
   }
   cached = { day, nodes, camp: CAMP_SPOT };
   return cached;
