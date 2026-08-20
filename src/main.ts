@@ -44,16 +44,7 @@ import {
   trainBlock,
 } from './sim/heroes';
 import type { HeroState, Roster } from './sim/heroes';
-import {
-  ONB_HINT,
-  firstTapCell,
-  grantFirstBuilding,
-  isRaidStep,
-  nextRaidStep,
-  openEvacWhenEarned,
-  reveal,
-  scriptWound,
-} from './sim/onboarding';
+import { ONB_HINT, firstTapCell, grantFirstBuilding, reveal } from './sim/onboarding';
 import type { OnbStep } from './sim/onboarding';
 import { firstGladeCell, generateGlade, gladeFood, siteBlock } from './sim/prologue';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
@@ -78,6 +69,7 @@ import { Hud } from './ui/hud';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
 import { bindCampInput } from './features/campInput';
+import { createDirector } from './features/onboarding';
 import { createRaidEar } from './features/raidAudio';
 
 const app = document.getElementById('app');
@@ -105,21 +97,6 @@ const finishedOffline = completeIfDue(camp, startedAt); // стройка мог
 if (finishedOffline !== null) {
   track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
 }
-
-/**
- * Кадр онбординга (`onboarding.html`, §16). Пока он не 'done', игра идёт
- * по раскадровке: открывается сразу в вылазке, показывает по одной полосе
- * за раз и приводит в лагерь только после первой эвакуации.
- */
-let onb: OnbStep = loaded.onboarding;
-/** Время начала кадра — им разводятся открытия, идущие от одного события. */
-let stepAt = 0;
-/** Сколько контейнеров вскрыто в первой вылазке: кадры 4 и 6 считают по ним. */
-let onbLooted = 0;
-/** Скриптовая рана кадра 3 выдаётся ровно один раз. */
-let onbWounded = false;
-/** С чего начали: по этому числу видно, что героя задели по-настоящему. */
-let onbStartWounds = 0;
 
 let mode: 'title' | 'camp' | 'raid' = 'title';
 let raid: RaidState | null = null;
@@ -213,7 +190,7 @@ const campHud = new CampHud(app, {
   onUpgrade: (id) => {
     // Кадр 9: первое здание вырастает на глазах — бесплатно и без таймера
     // (§20.2, §20.3). Ожиданию и ценнику учит уже вторая постройка.
-    if (onb === 'build' && id === 'kitchen') {
+    if (onboarding.step === 'build' && id === 'kitchen') {
       if (grantFirstBuilding(camp, 'kitchen')) {
         track({
           t: 'build_done',
@@ -221,7 +198,7 @@ const campHud = new CampHud(app, {
           building: 'kitchen',
           level: camp.levels.kitchen,
         });
-        setOnb('tier');
+        onboarding.set('tier');
         play('levelup');
         campHud.notify(`${BUILDINGS.kitchen.name} ур. ${camp.levels.kitchen}`);
       }
@@ -246,7 +223,7 @@ const campHud = new CampHud(app, {
   },
   onRaid: (tier) => {
     // Вторая вылазка — конец раскадровки: дальше игра работает как обычно.
-    if (onb === 'tier') setOnb('done');
+    if (onboarding.step === 'tier') onboarding.set('done');
     toRaid(tier);
   },
   onCraft: (slot) => forge(slot),
@@ -330,7 +307,7 @@ function forge(slot: GearSlot): boolean {
 const startScreen = new StartScreen(app, {
   // До лагеря игрок доходит сам: кнопка открывает поляну, а лагерь
   // появляется в конце пролога как его результат.
-  onPlay: () => (onb === 'glade' ? toGlade() : toCamp()),
+  onPlay: () => (onboarding.step === 'glade' ? toGlade() : toCamp()),
 });
 
 const campPrompt = new CampPrompt(app, {
@@ -370,23 +347,23 @@ function buy(id: ConsumableId): boolean {
 
 function persist(): void {
   if (wiped) return;
-  save(camp, roster, clock.watermark, onb);
+  save(camp, roster, clock.watermark, onboarding.step);
 }
 
 /**
- * Смена кадра — единственное место, где онбординг что-то показывает или
+ * Показ кадра — единственное место, где онбординг что-то показывает или
  * прячет. Полосы включаются здесь, а не в цикле: сравнивать состояние
  * каждый тик значило бы драться с игроком за видимость элементов.
  */
-function applyOnb(): void {
-  hud.setReveal(reveal(onb));
-  hud.setHint(ONB_HINT[onb] ?? '');
-  campHud.setOnboarding(onb);
+function showOnb(step: OnbStep): void {
+  hud.setReveal(reveal(step));
+  hud.setHint(ONB_HINT[step] ?? '');
+  campHud.setOnboarding(step);
   // Точка тапа нужна ровно в первом кадре: дальше игрок уже знает жест.
-  if (onb === 'glade' && raid !== null) {
+  if (step === 'glade' && raid !== null) {
     const cell = firstGladeCell(raid.loc, raid.hero);
     if (cell !== null) raidView?.showHint(cell.x, cell.z);
-  } else if (onb === 'move' && raid !== null) {
+  } else if (step === 'move' && raid !== null) {
     const cell = firstTapCell(raid.loc, raid.hero);
     if (cell !== null) raidView?.showHint(cell.x, cell.z);
   } else {
@@ -394,14 +371,20 @@ function applyOnb(): void {
   }
 }
 
-function setOnb(step: OnbStep): void {
-  if (onb === step) return;
-  onb = step;
-  stepAt = clock.now();
-  applyOnb();
-  track({ t: 'onboarding', at: clock.now(), step });
-  persist();
-}
+/**
+ * Раскадровка (§16) живёт в features/onboarding: кадр, его время, скриптовая
+ * рана и счётчик вскрытого — там. Здесь остаётся показ и то, что смена кадра
+ * значит для сессии.
+ */
+const onboarding = createDirector(loaded.onboarding, {
+  now: () => clock.now(),
+  show: showOnb,
+  shake: () => shake(),
+  changed: (step) => {
+    track({ t: 'onboarding', at: clock.now(), step });
+    persist();
+  },
+});
 
 /** Кадр 3: экран коротко дёргается. Рана обязана быть замечена телом. */
 function shake(): void {
@@ -436,7 +419,7 @@ const returnScreen = new ReturnScreen(app, {
   onCamp: () => {
     returnScreen.hide();
     // Кадр 9 начинается ровно здесь: лагерь открывается как награда.
-    if (onb === 'return') setOnb('build');
+    if (onboarding.step === 'return') onboarding.set('build');
     toCamp();
   },
 });
@@ -533,7 +516,7 @@ function toRaid(tier: Tier): boolean {
     // §21 — расходники: что взято в эту вылазку и сгорит на выходе.
     consumables: camp.loadout,
     // Первая вылазка держит выход закрытым до первой добычи (см. onboarding).
-    evacOpen: !isRaidStep(onb),
+    evacOpen: !onboarding.inRaid,
   });
   // §21 — купленное уходит в вылазку и не возвращается: сгорает независимо
   // от того, пригодилось или нет. Копить нечего.
@@ -559,13 +542,7 @@ function toRaid(tier: Tier): boolean {
   returnScreen.hide();
   // Счётчики первой вылазки обнуляются вместе с ней: перезапуск возвращает
   // игрока к первому кадру, а не к середине раскадровки.
-  if (isRaidStep(onb)) {
-    onbLooted = 0;
-    onbWounded = false;
-    onbStartWounds = raid.hero.wounds;
-    stepAt = clock.now();
-  }
-  applyOnb();
+  onboarding.enterRaid(raid);
   track({ t: 'raid_start', at: clock.now(), tier, food: raid.foodMax, capacity: raid.capacity });
   // §11.8 — ротация меряется здесь: сменил героя или дождался лечения.
   track({ t: 'hero_pick', at: clock.now(), cls: hero.cls, level: hero.level, rotated });
@@ -715,7 +692,7 @@ function toGlade(): void {
   statsPanel.setVisible(false);
   returnScreen.hide();
   campPrompt.setVisible(false);
-  applyOnb();
+  onboarding.apply();
   track({ t: 'raid_start', at: clock.now(), tier: 0, food: raid.foodMax, capacity: raid.capacity });
 }
 
@@ -753,10 +730,10 @@ function toCamp(): void {
   hud.setVisible(false);
   campHud.setVisible(true);
   // Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
-  const quiet = onb === 'build' || onb === 'tier';
+  const quiet = onboarding.step === 'build' || onboarding.step === 'tier';
   rosterPanel.setVisible(!quiet);
   statsPanel.setVisible(!quiet);
-  applyOnb();
+  onboarding.apply();
   persist();
 }
 
@@ -886,32 +863,6 @@ function tickHeroes(now: number): boolean {
   return changed;
 }
 
-/**
- * Кадры 1–7 двигаются событиями вылазки, а не секундомером: полоса рюкзака
- * появляется тогда, когда в рюкзаке что-то есть. Пауза участвует только там,
- * где два открытия идут от одного события (добыча → цена возврата → ставка).
- */
-function driveOnboarding(state: RaidState): void {
-  openEvacWhenEarned(state, onb);
-  // Кадр 3: первый противник обязан задеть. Раны показываются до того,
-  // как станут опасными, — на нулевом ярусе это ничего не стоит.
-  if (onb === 'approach' && !onbWounded && scriptWound(state)) {
-    onbWounded = true;
-    shake();
-  }
-  let looted = 0;
-  for (const c of state.loc.containers) if (c.opened) looted++;
-  onbLooted = looted;
-
-  const next = nextRaidStep(onb, {
-    moved: state.steps > 0,
-    wounded: onbWounded || state.hero.wounds < onbStartWounds,
-    looted: onbLooted,
-    sinceStep: clock.now() - stepAt,
-  });
-  if (next !== null) setOnb(next);
-}
-
 /* ---------- цикл ---------- */
 let fpsAcc = 0;
 let fpsFrames = 0;
@@ -924,9 +875,9 @@ let lastRender = performance.now();
 //
 // Кадры вылазки по-прежнему открываются в вылазке: они перезапуск не
 // переживают, и заставка посреди раскадровки уводила бы игрока из неё.
-if (onb === 'glade' || onb === 'done') {
+if (onboarding.step === 'glade' || onboarding.step === 'done') {
   toTitle();
-} else if (!isRaidStep(onb) || !toRaid(0)) {
+} else if (!onboarding.inRaid || !toRaid(0)) {
   // Вход мог не открыться (сейв от прежних правил) — тогда честно в лагерь,
   // а не в пустой экран.
   toCamp();
@@ -991,7 +942,7 @@ startLoop({
         }
         return;
       }
-      if (isRaidStep(onb)) driveOnboarding(raid);
+      if (onboarding.inRaid) onboarding.drive(raid);
       hud.sync(raid, dt);
       if (raid.status !== 'running' && !resultShown) {
         resultShown = true;
@@ -1019,8 +970,8 @@ startLoop({
         hud.setVisible(false);
         // Кадр 8: в первый раз выбора нет — путь ведёт в лагерь, иначе
         // игрок его не увидит.
-        const firstReturn = isRaidStep(onb);
-        if (firstReturn) setOnb('return');
+        const firstReturn = onboarding.inRaid;
+        if (firstReturn) onboarding.set('return');
         returnScreen.show(
           result,
           camp,
