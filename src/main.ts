@@ -6,6 +6,7 @@ import {
   play,
   startAmbient,
   startCampTune,
+  onPulseBeat,
   startPulse,
   stopAmbient,
   stopCampTune,
@@ -790,6 +791,10 @@ const canvas = rig.renderer.domElement;
  */
 const wind = new CursorWind();
 
+// Голод слышно пульсом (§18.2) — пусть будет и видно: на каждый удар по
+// траве идёт круг от героя, тем чаще, чем меньше провианта.
+onPulseBeat(() => raidView?.beat());
+
 /**
  * Шаг ветра и раздача порыва сценам. Кадром, а не событием мыши: скорость
  * курсора — это путь за кадр, а pointermove приходит пачкой по несколько
@@ -948,6 +953,7 @@ if (debugParams.has('bench')) {
     },
     blades: () => raidView?.grassBlades ?? 0,
     cursor: (x, z) => wind.point(x, z),
+    beat: () => raidView?.beat(),
   });
 }
 
