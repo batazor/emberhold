@@ -1,0 +1,28 @@
+{
+  "note": "Золотой мастер петли. Перезаписывать только вместе с намеренным изменением игры: npm run baseline",
+  "seeds": [
+    20260820,
+    7,
+    42,
+    1337,
+    90210,
+    555,
+    31337,
+    2718
+  ],
+  "raidsPerSession": 20,
+  "metrics": {
+    "failRate": 0.0375,
+    "avgDepthShare": 0.7673,
+    "buyOfferRate": 0.2375,
+    "buyTakeRate": 1,
+    "avgCarried": 7.4,
+    "avgLost": 0.0875,
+    "avgFoodLeft": 16.6063,
+    "medianReturnMin": 330,
+    "hq": 2.75,
+    "kitchen": 2,
+    "storage": 2,
+    "elapsedHours": 14.9006
+  }
+}

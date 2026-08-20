@@ -18,6 +18,7 @@ import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
 import { distanceField, idx } from './grid';
 import { findPath, nearestWalkable } from './pathfinding';
 import { commandMove, createRaid, raidResult, stepRaid } from './raid';
+import type { RaidOptions } from './raid';
 import type { RaidResult, RaidState } from './raid';
 import { addResources, totalOf } from './resources';
 import type { Cell, Tier } from './types';
@@ -119,7 +120,10 @@ function heroCell(state: RaidState): { x: number; z: number } {
 
 /** Один забег: бот ставит цель, симуляция её отрабатывает, бот решает заново. */
 export function playRaid(
-  opts: { seed: number; tier: Tier; kitchenLevel: number; storageLevel: number },
+  // Тип берётся из вылазки, а не переписывается здесь: иначе каждое новое
+  // поле (снаряжение §14 — уже второе после класса героя) приходится
+  // добавлять дважды и однажды забыть.
+  opts: RaidOptions,
   policy: Policy,
   rng: Rng,
 ): BotRaid {
