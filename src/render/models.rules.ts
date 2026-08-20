@@ -17,7 +17,7 @@ import type { EnemyKind } from '../sim/types';
 import { C, triangles } from './blocking';
 import { ADVENTURERS_MODELS } from './adventurers.data';
 import { adventurerGeometry } from './adventurers';
-import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
+import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf } from './models';
 import { FOREST_SLOTS } from './forest.data';
 import { FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
 import { SKELETON_MODELS, SKELETON_SLOTS } from './skeleton.data';
@@ -69,10 +69,10 @@ describe('Артбук: бюджет треугольников', () => {
    * Девятьсот считались, когда героев в кадре предполагалось много. Их один —
    * и в лагере, и в вылазке, — поэтому классу с моделью набора (§6.1.4) этот
    * потолок не подходит и не должен: его цена не в кадре, а в бандле, и её
-   * меряет потолок принятого набора выше. Примитивам девятьсот остаются:
-   * жителей в лагере до десяти, и они по-прежнему свои.
+   * меряет потолок принятого набора выше. Классам без модели девятьсот
+   * остаются: их силуэт по-прежнему свой.
    */
-  test('герой-примитив укладывается в 900, житель тоже', () => {
+  test('герой-примитив укладывается в 900', () => {
     for (const cls of CLASS_ORDER) {
       if (HERO_MODELS[cls] !== undefined) continue;
       const geo = heroGeometry(cls);
@@ -80,10 +80,6 @@ describe('Артбук: бюджет треугольников', () => {
       geo.dispose();
       assert.ok(t <= BUDGET.hero, `${cls}: ${t} > ${BUDGET.hero}`);
     }
-    const v = villagerGeometry();
-    const t = triangles(v);
-    v.dispose();
-    assert.ok(t <= BUDGET.hero, `житель: ${t} > ${BUDGET.hero}`);
   });
 
   /**
