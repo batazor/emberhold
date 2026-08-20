@@ -44,11 +44,13 @@ import type { Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
+import { TitleView } from './render/titleView';
 import { CampHud } from './ui/campHud';
 import { RosterPanel } from './ui/rosterPanel';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
 import { Hud } from './ui/hud';
+import { StartScreen } from './ui/startScreen';
 
 const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
@@ -76,8 +78,9 @@ if (finishedOffline !== null) {
   track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
 }
 
-let mode: 'camp' | 'raid' = 'camp';
+let mode: 'title' | 'camp' | 'raid' = 'title';
 let raid: RaidState | null = null;
+let titleView: TitleView | null = null;
 /** Герой, который сейчас в локации: раны и опыт зачисляются ему. */
 let raidHero: HeroState | null = null;
 let raidView: RaidView | null = null;
@@ -86,6 +89,17 @@ let resultShown = false;
 let idleSeconds = 0;
 let lastCampFrame = 0;
 let selected: BuildingId | null = null;
+
+/**
+ * Отладка, а не механика — как ползунок «Ночь». Плотность травы меряется
+ * ползунком и задаётся в адресе (?grass=N), чтобы замер повторялся.
+ */
+const debugParams = new URLSearchParams(location.search);
+let grassPerTile = Number(debugParams.get('grass') ?? 24);
+if (!Number.isFinite(grassPerTile)) grassPerTile = 24;
+grassPerTile = Math.max(0, Math.min(64, Math.round(grassPerTile)));
+const seedParam = Number(debugParams.get('seed'));
+const debugSeed = Number.isFinite(seedParam) && debugParams.has('seed') ? seedParam | 0 : null;
 
 /**
  * Кем идём в вылазку. Выбранный герой может быть занят (ушёл лечиться,
@@ -114,6 +128,10 @@ const hud = new Hud(app, {
   },
   onNight: (value) => {
     rig.night = value;
+  },
+  onGrass: (perTile) => {
+    grassPerTile = perTile;
+    raidView?.setGrassDensity(perTile);
   },
   onSkill: () => {
     if (raid === null) return;
@@ -212,6 +230,10 @@ function forge(slot: GearSlot): boolean {
   persist();
   return true;
 }
+
+const startScreen = new StartScreen(app, {
+  onPlay: () => toCamp(),
+});
 
 const statsPanel = new StatsPanel(app);
 
@@ -322,7 +344,8 @@ function toRaid(tier: Tier): void {
 
   raidView?.dispose();
   raid = createRaid({
-    seed: (Math.random() * 1e9) | 0,
+    // ?seed=N повторяет ту же локацию: §6 — воспроизводимость багов и замеров.
+    seed: debugSeed ?? ((Math.random() * 1e9) | 0),
     tier,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
@@ -337,7 +360,8 @@ function toRaid(tier: Tier): void {
   // от того, пригодилось или нет. Копить нечего.
   camp.loadout = [];
   persist();
-  raidView = new RaidView(raid.loc);
+  raidView = new RaidView(raid.loc, grassPerTile);
+  hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
   rig.lookAt(raid.hero.x, raid.hero.z, true);
@@ -355,7 +379,32 @@ function toRaid(tier: Tier): void {
   track({ t: 'hero_pick', at: clock.now(), cls: hero.cls, level: hero.level, rotated });
 }
 
+/**
+ * Заставка. Показывается на холодном старте и больше нигде: возврат из
+ * вылазки ведёт на экран возврата (§20.1), а не сюда — между вылазкой
+ * и тратой добычи ничего вставлять нельзя.
+ */
+function toTitle(): void {
+  titleView = new TitleView(rig);
+  rig.world.add(titleView.group);
+  campView.group.visible = false;
+  rig.lookAt(titleView.center.x, titleView.center.z, true);
+  rig.setZoom(21, true);
+  // Ранний вечер: тени от букв уже длинные, но поле ещё зелёное, а не серое.
+  rig.night = 0.08;
+  mode = 'title';
+  hud.setVisible(false);
+  campHud.setVisible(false);
+  rosterPanel.setVisible(false);
+  statsPanel.setVisible(false);
+  returnScreen.hide();
+  startScreen.setVisible(true);
+}
+
 function toCamp(): void {
+  titleView?.dispose();
+  titleView = null;
+  startScreen.setVisible(false);
   raidView?.dispose();
   raidView = null;
   raid = null;
@@ -380,6 +429,7 @@ function toCamp(): void {
 
 /* ---------- ввод ---------- */
 rig.renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (mode === 'title') return;
   const hit = rig.screenToGround(e.clientX, e.clientY);
   if (hit === null) return;
   idleSeconds = 0;
@@ -458,19 +508,117 @@ let fpsAcc = 0;
 let fpsFrames = 0;
 let lastRender = performance.now();
 
-toCamp();
+toTitle();
 
 // Отладочный вход: ?tier=N открывает игру сразу в вылазке нужного яруса.
 // Нужен, чтобы проверять вылазку и экран возврата, не проходя лагерь заново.
-const debugTier = new URLSearchParams(location.search).get('tier');
+const debugTier = debugParams.get('tier');
 if (debugTier !== null) {
   const t = Number(debugTier);
   if (t >= 0 && t <= 3) toRaid(t as Tier);
 }
 
+/**
+ * Замерный вход (?bench=1). Кадры гонятся синхронно, без requestAnimationFrame,
+ * по двум причинам: fps упирается в частоту экрана и прячет запас, а
+ * миллисекунды на кадр — нет; и скрытая вкладка кадров вообще не рисует,
+ * поэтому замер из панели предпросмотра иначе меряет замерший кадр.
+ *
+ * Это отладочный орган, как ?tier и ползунок «Ночь», — не механика.
+ */
+if (debugParams.has('bench')) {
+  const gl = rig.renderer.getContext();
+  const draw = (): void => {
+    if (mode === 'title' && titleView !== null) {
+      titleView.update(performance.now() / 1000);
+      rig.lookAt(titleView.center.x, titleView.center.z);
+      rig.update(1 / 60, titleView.center.x, titleView.center.z, 12);
+      rig.renderWith(titleView.camera);
+      return;
+    } else if (mode === 'raid' && raid !== null && raidView !== null) {
+      raidView.sync(raid, 0, 1 / 60, performance.now());
+      rig.update(1 / 60, raid.hero.x, raid.hero.z, visionRadius(raid.loadout.knowledge, rig.night > 0.5, true));
+    }
+    rig.render();
+  };
+  (window as unknown as Record<string, unknown>)['bench'] = {
+    /** Нарисовать один кадр: скриншот скрытой вкладки иначе показывает старый. */
+    frame: draw,
+    rig,
+    state: (): unknown => ({ mode, night: rig.night, sun: rig.sunIntensity, bg: rig.backgroundHex }),
+    /**
+     * Яркость кадра сеткой cols×rows, 0–255. Скрытая вкладка не отдаёт
+     * скриншот, а буфер отдаёт: «темно» становится числом.
+     */
+    luma(cols = 24, rows = 14): number[][] {
+      draw();
+      const w = gl.drawingBufferWidth;
+      const h = gl.drawingBufferHeight;
+      const px = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      const out: number[][] = [];
+      for (let r = 0; r < rows; r++) {
+        const line: number[] = [];
+        for (let c = 0; c < cols; c++) {
+          let sum = 0;
+          let n = 0;
+          const x0 = Math.floor((c * w) / cols);
+          const x1 = Math.floor(((c + 1) * w) / cols);
+          // Строки буфера идут снизу вверх — переворачиваем, чтобы сетка
+          // читалась так же, как экран.
+          const y0 = Math.floor(((rows - 1 - r) * h) / rows);
+          const y1 = Math.floor(((rows - r) * h) / rows);
+          for (let y = y0; y < y1; y += 4) {
+            for (let x = x0; x < x1; x += 4) {
+              const i = (y * w + x) * 4;
+              sum += 0.2126 * px[i]! + 0.7152 * px[i + 1]! + 0.0722 * px[i + 2]!;
+              n++;
+            }
+          }
+          line.push(n === 0 ? 0 : Math.round(sum / n));
+        }
+        out.push(line);
+      }
+      return out;
+    },
+    night(value: number): void {
+      rig.night = value;
+      draw();
+    },
+    /** Средние миллисекунды на кадр при данной плотности травы. */
+    run(perTile: number, frames = 120): unknown {
+      raidView?.setGrassDensity(perTile);
+      hud.setGrass(perTile);
+      // Барьер — чтение пикселя, а не gl.finish: finish в браузере не ждёт
+      // конца кадра, и замер вырождается во время выдачи команд.
+      const sync = new Uint8Array(4);
+      const wait = (): void => {
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, sync);
+      };
+      for (let i = 0; i < 20; i++) draw(); // прогрев: шейдер компилируется один раз
+      wait();
+      const t0 = performance.now();
+      for (let i = 0; i < frames; i++) {
+        draw();
+        wait();
+      }
+      const ms = (performance.now() - t0) / frames;
+      return {
+        perTile,
+        blades: raidView?.grassBlades ?? 0,
+        ms: Number(ms.toFixed(3)),
+        draw: rig.drawCalls,
+      };
+    },
+  };
+}
+
 startLoop({
   update: (dt) => {
     const now = clock.now();
+    // На заставке не тикает ничего: таймеры стройки досчитываются при входе
+    // в лагерь тем же completeIfDue, что и после закрытой вкладки.
+    if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
       hud.sync(raid, dt);
@@ -524,6 +672,16 @@ startLoop({
 
     returnScreen.update();
 
+    if (mode === 'title' && titleView !== null) {
+      // Полная частота, а не 30 кадров лагеря: камеру здесь тянут пальцем,
+      // и половинная частота читается как залипание, а не как экономия.
+      titleView.update(now / 1000);
+      rig.lookAt(titleView.center.x, titleView.center.z);
+      rig.update(dt, titleView.center.x, titleView.center.z, 12);
+      rig.renderWith(titleView.camera);
+      return;
+    }
+
     if (mode === 'raid' && raid !== null && raidView !== null) {
       raidView.sync(raid, alpha, dt, now);
       rig.lookAt(raid.hero.x, raid.hero.z);
@@ -542,7 +700,7 @@ startLoop({
       if (now - lastCampFrame < 1000 / 30) return;
       const campDt = Math.min(0.1, (now - lastCampFrame) / 1000);
       lastCampFrame = now;
-      campView.update(campDt, now);
+      campView.update(campDt, now, rig.dayFactor);
       const c = campView.center;
       rig.lookAt(c.x + 4.5, c.z + 4.5);
       rig.update(campDt, c.x, c.z, 12);
@@ -552,7 +710,11 @@ startLoop({
     fpsAcc += dt;
     fpsFrames++;
     if (fpsAcc > 0.5) {
-      hud.setStats(`${Math.round(fpsFrames / fpsAcc)} fps · ${rig.drawCalls} draw`);
+      const blades = raidView?.grassBlades ?? 0;
+      hud.setStats(
+        `${Math.round(fpsFrames / fpsAcc)} fps · ${rig.drawCalls} draw` +
+          (blades > 0 ? ` · ${blades} трав.` : ''),
+      );
       fpsAcc = 0;
       fpsFrames = 0;
     }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BUILDING_ORDER, builtBuildings, campArea, villagerCount } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { HERO_SPEED } from '../sim/config';
+import { FluffyGrass } from './fluffyGrass';
 import { PALETTE } from './palette';
 
 /**
@@ -40,6 +41,7 @@ export class CampView {
 
   constructor(private camp: CampState) {
     this.buildGround();
+    this.buildMeadow();
     this.buildHero();
     this.rebuildBuildings();
   }
@@ -76,6 +78,73 @@ export class CampView {
   }
 
   private groundMesh!: THREE.InstancedMesh;
+  private meadow: FluffyGrass | null = null;
+
+  /**
+   * Луг вокруг лагеря — та же трава, что на заставке. Растёт снаружи
+   * площадки, а не на ней: площадка застраивается и переставляется (§20.4),
+   * и трава под Штабом торчала бы сквозь него.
+   *
+   * Уровень луга — вровень с крышкой площадки, а не ниже: опущенный луг
+   * превращал лагерь в висящую плиту с чёрным ребром. Вровень трава
+   * подходит к клеткам вплотную, а опущенные клетки за границей площади
+   * прячутся под ним.
+   */
+  private buildMeadow(): void {
+    // Радиус — по видимой земле, а не по площадке: при ортокамере в 30°
+    // полоса земли уходит вглубь на две высоты кадра, и круг поменьше
+    // обрывался краем в нижней части экрана.
+    const RADIUS = 30;
+    const RINGS = 26;
+    const SEGMENTS = 72;
+    const cx = 5;
+    const cz = 5;
+    const y = -0.02;
+
+    const position: number[] = [];
+    const index: number[] = [];
+    for (let ring = 0; ring <= RINGS; ring++) {
+      const r = (ring / RINGS) * RADIUS;
+      for (let seg = 0; seg < SEGMENTS; seg++) {
+        const a = (seg / SEGMENTS) * Math.PI * 2;
+        position.push(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r);
+      }
+    }
+    for (let ring = 0; ring < RINGS; ring++) {
+      for (let seg = 0; seg < SEGMENTS; seg++) {
+        const next = (seg + 1) % SEGMENTS;
+        const a = ring * SEGMENTS + seg;
+        const b = ring * SEGMENTS + next;
+        const c = (ring + 1) * SEGMENTS + seg;
+        const d = (ring + 1) * SEGMENTS + next;
+        index.push(a, b, c, b, d, c);
+      }
+    }
+
+    const geo = this.track(new THREE.BufferGeometry());
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+    geo.setIndex(index);
+    geo.computeVertexNormals();
+    const terrain = new THREE.Mesh(
+      geo,
+      this.track(new THREE.MeshLambertMaterial({ color: 0x4f6b45 })),
+    );
+    terrain.receiveShadow = true;
+    this.group.add(terrain);
+
+    this.meadow = new FluffyGrass(terrain, {
+      fieldSize: RADIUS * 2,
+      count: 11000,
+      scale: 4,
+      // Запрет читает текущую площадь: она растёт со Штабом, и после роста
+      // луг пересевается (rebuildBuildings).
+      reject: (x, z) => {
+        const edge = this.area - 0.5 + 0.7;
+        return x > -1.2 && x < edge && z > -1.2 && z < edge;
+      },
+    });
+    this.group.add(this.meadow.group);
+  }
 
   private buildHero(): void {
     this.hero = new THREE.Mesh(
@@ -159,6 +228,8 @@ export class CampView {
       }
     }
     this.groundMesh.instanceMatrix.needsUpdate = true;
+    // Площадь изменилась — трава отступает с новых клеток.
+    this.meadow?.replant();
     this.syncVillagers();
   }
 
@@ -200,8 +271,12 @@ export class CampView {
     return { x: p.x + 0.5 + Math.cos(angle) * 1.3, z: p.z + 0.5 + Math.sin(angle) * 1.3 };
   }
 
-  update(dt: number, now: number): void {
+  update(dt: number, now: number, day = 1): void {
     this.rebuildBuildings();
+    this.meadow?.update(now / 1000);
+    // Трава FluffyGrass сама себе освещение, поэтому время суток ей
+    // передаётся числом: иначе вечерний лагерь стоит в полуденной траве.
+    this.meadow?.setLight(0.35 + day * 0.65);
 
     const hqPos = this.camp.layout.hq;
     this.hero.position.set(hqPos.x + 1.9, 0.55, hqPos.z + 0.5);
@@ -283,6 +358,8 @@ export class CampView {
 
   dispose(): void {
     this.group.removeFromParent();
+    this.meadow?.dispose();
+    this.meadow = null;
     this.groundMesh.dispose();
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
