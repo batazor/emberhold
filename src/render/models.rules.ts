@@ -15,10 +15,19 @@ import { BUILDING_ORDER } from '../sim/camp';
 import { CLASS_ORDER } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
 import { C, triangles } from './blocking';
-import { buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
+import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
 
 /** Артбук, раздел 03: здание ≤ 1500, герой ≤ 900, враг ≤ 700. */
 const BUDGET = { building: 1500, hero: 900, enemy: 700 } as const;
+
+/**
+ * §6.1.3: у класса с моделью набора цена не в кадре, а в бандле. В кадре
+ * такой герой один — и в лагере, и в вылазке, — поэтому треугольники его
+ * не ограничивают; ограничивают килобайты, которые скачивает каждый игрок.
+ * Потолок на одного персонажа, а не на всех: сколько их взять — решение,
+ * и оно должно приниматься строкой в HERO_MODELS, а не молча.
+ */
+const BAKED_KB = 200;
 
 /** По одному уровню на каждую стадию роста. */
 const LEVEL_OF_STAGE = [1, 3, 5] as const;
@@ -37,8 +46,10 @@ describe('Артбук: бюджет треугольников', () => {
     }
   });
 
-  test('герой укладывается в 900, житель тоже', () => {
+  test('герой-примитив укладывается в 900, житель тоже', () => {
     for (const cls of CLASS_ORDER) {
+      // Класс с моделью набора мерится не здесь: у него другой бюджет.
+      if (HERO_MODELS[cls] !== undefined) continue;
       const geo = heroGeometry(cls);
       const t = triangles(geo);
       geo.dispose();
@@ -48,6 +59,19 @@ describe('Артбук: бюджет треугольников', () => {
     const t = triangles(v);
     v.dispose();
     assert.ok(t <= BUDGET.hero, `житель: ${t} > ${BUDGET.hero}`);
+  });
+
+  test(`запечённый персонаж стоит не дороже ${BAKED_KB} КБ в бандле`, () => {
+    // Меряется сам файл данных: в бандл едет он, а не геометрия в памяти.
+    const src = readFileSync(new URL('./adventurers.data.ts', import.meta.url), 'utf8');
+    const blocks = [...src.matchAll(/'([^']+)': \{[\s\S]*?pos: '([^']*)',[\s\S]*?slot: '([^']*)',/g)];
+    assert.ok(blocks.length > 0, 'в adventurers.data.ts нет ни одной модели');
+    for (const [, name, pos, slot] of blocks) {
+      const kb = (pos!.length + slot!.length) / 1024;
+      assert.ok(kb <= BAKED_KB, `${name}: ${kb.toFixed(0)} КБ > ${BAKED_KB} КБ`);
+    }
+    // И столько же моделей, сколько вписано классам: лишняя едет молча.
+    assert.equal(blocks.length, Object.keys(HERO_MODELS).length, 'запечено не то, что вписано');
   });
 
   test('противник укладывается в 700', () => {
@@ -87,7 +111,22 @@ describe('Артбук: палитра', () => {
     assert.deepEqual([...new Set(stray)], [], 'цвет мимо 28 из артбука');
   });
 
-  test('палитра — ровно 28 цветов', () => {
-    assert.equal(Object.keys(C).length, 28);
+  test('палитра — ровно 32 цвета', () => {
+    assert.equal(Object.keys(C).length, 32);
+  });
+
+  /**
+   * Список цветов написан руками дважды: здесь он код, в `artbook.html` — арт-байбл
+   * с образцами. Такие копии расходятся молча, и однажды уже разошлись: сталь
+   * завелась в коде вторым списком под другим именем, отличаясь на три единицы
+   * из семисот шестидесяти пяти. Сверяются значения, а не подписи: подписи
+   * на странице человеческие, в коде — короткие, и приводить их друг к другу
+   * значило бы завести третий список.
+   */
+  test('палитра артбука и палитра кода — один список', () => {
+    const src = readFileSync(new URL('../../artbook.html', import.meta.url), 'utf8');
+    const shown = [...src.matchAll(/\["[^"]+","(#[0-9a-f]{6})"\]/g)].map((m) => m[1]!);
+    const code = Object.values(C).map((c) => c.toLowerCase());
+    assert.deepEqual([...shown].sort(), [...code].sort(), 'artbook.html и colors.ts разошлись');
   });
 });

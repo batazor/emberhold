@@ -18,15 +18,7 @@ import * as THREE from 'three';
  */
 
 /** 28 цветов на всю игру (артбук, раздел 02). Ключи те же, что в `buildart.html`. */
-export const C = {
-  mrak: '#0e0d0a', ten: '#1a1813', kamT: '#2b2a24', kam: '#3f3d34', kamS: '#57544a',
-  skol: '#6f6c60', solT: '#8a8a7e', sol: '#a6a698', solS: '#c6c6b6', iney: '#e2e2d6',
-  zemT: '#2a1d14', zem: '#3f2c1d', derT: '#543922', der: '#6f4d2c', derS: '#8f6a3f',
-  solom: '#b08f56',
-  hvoT: '#1f2b1a', hvo: '#31432a', moh: '#465c39', trav: '#5d7a49', travS: '#7fa361',
-  metT: '#2b3138', met: '#474f58', stal: '#7d8892',
-  ugol: '#4d2a10', zhar: '#8e4a17', plam: '#c9722a', lat: '#dfa53c',
-} as const;
+export { C } from './colors';
 
 export type V3 = readonly [number, number, number];
 

@@ -46,8 +46,9 @@ npm run arch       # границы: слои, headless, изоляция фич
 npm run verify     # золотой мастер петли: сдвинулась ли игра
 npm run baseline   # перезаписать мастер намеренным изменением
 npm run measure    # замер добычи и провалов по ярусам, 300 вылазок ботом
-npm run models     # обмер наборов моделей; -- --write пересобирает forest.data.ts
-                   # и каталоги; -- --pack=dungeon — один набор
+npm run models     # обмер наборов моделей и клипов; -- --write пересобирает
+                   # forest.data.ts, adventurers.data.ts и каталоги;
+                   # -- --pack=dungeon — один набор
 npm run play       # одна сессия из двадцати вылазок, отчёт для чтения
                    # NOFORGE=1 npm run play — та же сессия без Кузницы (§20.1.2)
 npm run build      # typecheck + check + arch + verify + vite build
@@ -56,7 +57,7 @@ npm run typecheck
 
 ## Артбуки
 
-Шестнадцать книг — раскадровки, арт-байбл, живые прототипы механик — лежат
+Семнадцать книг — раскадровки, арт-байбл, живые прототипы механик — лежат
 в корне обычными страницами, и вход в них один:
 **[artbooks.html](https://batazor.github.io/emberhold/artbooks.html)**.
 Слева оглавление с разделами каждой книги и поиском по ним, справа сама книга;
@@ -76,8 +77,8 @@ src/
   sim/       config, types, grid, pathfinding, generate, enemies, raid,
              resources, camp, heroes, gear (снаряжение §14), save, session
   render/    scene (камера, свет, ночь), raidView, campView, titleView,
-             palette, forest (готовые модели),
-             forest.data.ts — генерируется, не править
+             palette, baked (общее для готовых наборов), forest, adventurers,
+             *.data.ts — генерируются, не править
   ui/        hud (вылазка), campHud (лагерь), rosterPanel, startScreen —
              DOM поверх канваса
   **/*.rules.ts  проверки лежат рядом с тем, что проверяют
@@ -85,6 +86,7 @@ assets/
   LICENSES.md            реестр лицензий (§6.1): чужие ассеты и чужой код
   kaykit-forest/         набор моделей окружения (CC0), источник для запекания
   kaykit-dungeon/        набор предметов подземелья (CC0), измерен, в бандл не едет
+  kaykit-adventurers/    набор персонажей и клипов (CC0), в игру взят варвар
 scripts/
   arch.ts        границы, которые раньше приходилось помнить в ревью
   baseline.ts    золотой мастер петли
