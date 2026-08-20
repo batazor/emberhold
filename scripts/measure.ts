@@ -10,13 +10,15 @@
  * Запуск: npm run measure
  */
 import { TICK } from '../src/core/loop';
+import { ENEMY_STATS } from '../src/sim/enemies';
 import { idx } from '../src/sim/grid';
 import { findPath } from '../src/sim/pathfinding';
 import { commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
 import type { RaidState } from '../src/sim/raid';
 import { emptyResources, RESOURCE_NAME } from '../src/sim/resources';
 import type { ResourceKind, Resources } from '../src/sim/resources';
-import type { Tier } from '../src/sim/types';
+import type { Cell, Tier } from '../src/sim/types';
+import { HERO_KNOWLEDGE, visionRadius } from '../src/sim/config';
 
 const RUNS = 300;
 const MAX_SECONDS = 240;
@@ -24,37 +26,85 @@ const MAX_SECONDS = 240;
 const SAFETY = 3;
 
 /**
- * Политика бота: идти к ближайшему контейнеру, до которого хватает провианта
- * с учётом дороги назад, иначе — на выход. Жадности сверх этого нет: бот
- * не рискует, поэтому его добыча — нижняя граница, а не средний игрок.
+ * Карта опасности: клетки рядом с замеченными противниками бот считает
+ * непроходимыми. Это модель того, что предписывает §15 — голем «перекрывает
+ * маршрут, обходится по кругу», а копейщик «делает проход через комнату
+ * платным». Бот, идущий напролом, меряет не игру, а собственную глупость.
  */
-function decide(state: RaidState): void {
+function avoidMap(state: RaidState, vision: number): Uint8Array {
+  const { loc, hero } = state;
+  const avoid = Uint8Array.from(loc.blocked);
+  for (const e of loc.enemies) {
+    if (e.wounds <= 0) continue;
+    // Замеченным считается тот, кто попал в круг света.
+    if (Math.hypot(e.x - hero.x, e.z - hero.z) > vision) continue;
+    const r = 2;
+    for (let z = Math.round(e.z) - r; z <= Math.round(e.z) + r; z++) {
+      for (let x = Math.round(e.x) - r; x <= Math.round(e.x) + r; x++) {
+        if (x < 0 || z < 0 || x >= loc.size || z >= loc.size) continue;
+        if (Math.hypot(x - e.x, z - e.z) <= r) avoid[idx(loc.size, x, z)] = 1;
+      }
+    }
+  }
+  return avoid;
+}
+
+/** Путь в обход опасности, а если обхода нет — напрямик. */
+function route(state: RaidState, avoid: Uint8Array, from: Cell, to: Cell): number {
+  const { loc } = state;
+  const safe = findPath(loc.size, avoid, from, to);
+  if (safe.length > 0) return safe.length;
+  return findPath(loc.size, loc.blocked, from, to).length;
+}
+
+/**
+ * Политика бота: идти к ближайшему контейнеру, до которого хватает провианта
+ * с учётом дороги назад, обходя замеченных противников. На одной ране —
+ * уходить. Это осторожный игрок, а не оптимальный: его добыча — нижняя
+ * граница, а не средний результат.
+ */
+function decide(state: RaidState, vision: number): void {
   const { loc, hero } = state;
   const from = { x: Math.round(hero.x), z: Math.round(hero.z) };
+  const avoid = avoidMap(state, vision);
 
-  if (state.bagTotal >= state.capacity) {
-    commandMove(state, loc.evac);
+  // Раненый герой не жадничает: §11.3 делает раны видимыми именно затем,
+  // чтобы это решение принималось.
+  if (state.bagTotal >= state.capacity || hero.wounds <= 1) {
+    moveAvoiding(state, avoid, loc.evac);
     return;
   }
 
-  let best: { x: number; z: number } | null = null;
+  let best: Cell | null = null;
   let bestLen = Infinity;
   for (const c of loc.containers) {
     if (c.opened) continue;
-    const path = findPath(loc.size, loc.blocked, from, c);
-    if (path.length === 0) continue;
+    const len = route(state, avoid, from, c);
+    if (len === 0) continue;
     const back = loc.backSteps[idx(loc.size, c.x, c.z)] ?? -1;
     if (back < 0) continue;
     // шаги туда + вскрытие + шаги обратно + запас
-    const need = path.length + 5 + back + SAFETY;
+    const need = len + 5 + back + SAFETY;
     if (need > state.food) continue;
-    if (path.length < bestLen) {
-      bestLen = path.length;
+    if (len < bestLen) {
+      bestLen = len;
       best = c;
     }
   }
 
-  commandMove(state, best ?? loc.evac);
+  moveAvoiding(state, avoid, best ?? loc.evac);
+}
+
+/** Сначала пробует безопасный путь, и только потом — прямой. */
+function moveAvoiding(state: RaidState, avoid: Uint8Array, to: Cell): void {
+  const { loc, hero } = state;
+  const from = { x: Math.round(hero.x), z: Math.round(hero.z) };
+  const safe = findPath(loc.size, avoid, from, to);
+  if (safe.length > 0) {
+    state.path = safe;
+    return;
+  }
+  commandMove(state, to);
 }
 
 interface TierStat {
@@ -70,6 +120,7 @@ interface TierStat {
   /** §11.3 требует соотношения причин провала 65% провиант / 35% бой. */
   byFood: number;
   byCombat: number;
+  byKind: Record<string, number>;
 }
 
 function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierStat {
@@ -85,13 +136,15 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     foodLeft: 0,
     byFood: 0,
     byCombat: 0,
+    byKind: {},
   };
 
   for (let seed = 1; seed <= RUNS; seed++) {
     const state = createRaid({ seed, tier, kitchenLevel, storageLevel });
     const limit = Math.round(MAX_SECONDS / TICK);
+    const vision = visionRadius(HERO_KNOWLEDGE, true, true);
     for (let i = 0; i < limit && state.status === 'running'; i++) {
-      if (state.path.length === 0) decide(state);
+      if (state.path.length === 0) decide(state, vision);
       // Ночь: вылазки в документе ночные, и это влияет на радиус и на врагов.
       stepRaid(state, TICK, true, 5);
       if (state.path.length === 0 && state.status === 'running' && state.food <= 0) {
@@ -107,8 +160,11 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     stat.foodLeft += r.foodLeft;
     if (r.status !== 'evacuated') {
       // Раны кончились — бой; иначе героя добил голод.
-      if (state.hero.wounds <= 0 && state.food > 0) stat.byCombat += 1;
-      else stat.byFood += 1;
+      if (state.hero.wounds <= 0 && state.food > 0) {
+        stat.byCombat += 1;
+        const kind = state.lastHitBy ?? 'неизвестно';
+        stat.byKind[kind] = (stat.byKind[kind] ?? 0) + 1;
+      } else stat.byFood += 1;
     }
     if (r.status === 'evacuated') {
       stat.success += 1;
@@ -155,7 +211,13 @@ for (const s of stats) {
   }
   console.log(
     `  ярус ${s.tier}: провалов ${((fails / s.runs) * 100).toFixed(0)}% — ` +
-      `провиант ${((s.byFood / fails) * 100).toFixed(0)}% · бой ${((s.byCombat / fails) * 100).toFixed(0)}%`,
+      `провиант ${((s.byFood / fails) * 100).toFixed(0)}% · бой ${((s.byCombat / fails) * 100).toFixed(0)}%` +
+      (s.byCombat > 0
+        ? ` (${Object.entries(s.byKind)
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, n]) => `${ENEMY_STATS[k as keyof typeof ENEMY_STATS]?.name ?? k} ${n}`)
+            .join(' · ')})`
+        : ''),
   );
 }
 

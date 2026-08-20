@@ -26,6 +26,10 @@ import { events, setEvents, summarize } from '../src/sim/telemetry';
 import { load, save, wipe } from '../src/sim/save';
 import { atRisk, backSteps, commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
 import { TICK } from '../src/core/loop';
+import { ENEMY_STATS, TIER_ROSTER } from '../src/sim/enemies';
+import { generateLocation } from '../src/sim/generate';
+import { distanceField, idx } from '../src/sim/grid';
+import { HERO_REACH } from '../src/sim/config';
 
 let checks = 0;
 const check = (name: string, fn: () => void): void => {
@@ -313,6 +317,44 @@ check('добыча доезжает до лагеря', () => {
   raid.status = 'evacuated';
   addResources(camp.resources, raidResult(raid).carried);
   assert.deepEqual(camp.resources, { salt: 4, wood: 3, iron: 1, crystal: 0 });
+});
+
+console.log('Бой');
+
+check('§15 — герой достаёт до каждого противника', () => {
+  for (const stats of Object.values(ENEMY_STATS)) {
+    // Противник останавливается на reach × 0.9; если герой не достаёт туда,
+    // враг неуязвим, а не «бьёт первым».
+    const engageAt = Math.max(HERO_REACH, stats.reach);
+    assert.ok(engageAt >= stats.reach * 0.9, `${stats.name} недосягаем`);
+  }
+});
+
+check('бюджет ран: не больше четырёх противников на локацию', () => {
+  for (const [tier, roster] of Object.entries(TIER_ROSTER)) {
+    assert.ok(roster.length <= 4, `ярус ${tier}: ${roster.length} противников`);
+  }
+});
+
+check('§15 — голем не встаёт в единственный проход', () => {
+  // Проверяем на десяти сидах: от эвакуации до каждого контейнера должен
+  // существовать путь, даже если зону голема считать непроходимой.
+  for (let seed = 1; seed <= 10; seed++) {
+    const loc = generateLocation(seed, 3);
+    const walled = Uint8Array.from(loc.blocked);
+    for (const e of loc.enemies) {
+      if (e.kind !== 'golem') continue;
+      for (let z = Math.round(e.z) - 1; z <= Math.round(e.z) + 1; z++) {
+        for (let x = Math.round(e.x) - 1; x <= Math.round(e.x) + 1; x++) {
+          if (x >= 0 && z >= 0 && x < loc.size && z < loc.size) walled[idx(loc.size, x, z)] = 1;
+        }
+      }
+    }
+    const reach = distanceField(loc.size, walled, loc.evac);
+    for (const c of loc.containers) {
+      assert.ok(reach[idx(loc.size, c.x, c.z)]! >= 0, `сид ${seed}: контейнер отрезан големом`);
+    }
+  }
 });
 
 console.log('Телеметрия и экран возврата');

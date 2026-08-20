@@ -39,6 +39,14 @@ export const FOOD_COST = {
 export const visionRadius = (knowledge: number, night: boolean, torch: boolean): number =>
   3 + Math.floor(knowledge / 5) + (night ? -1 : 0) + (torch ? 2 : 0);
 
+/**
+ * Доля радиуса света, на которой противник просыпается. Меньше единицы —
+ * значит игрок видит врага раньше, чем враг видит его, и у прохода через
+ * комнату появляется решение: обойти, проскочить или драться (§15).
+ * При единице все, кто попал в свет, кидаются разом, и решения нет.
+ */
+export const ENEMY_WAKE_SHARE = 0.6;
+
 /** §11.3 — здоровье героя это раны, а не полоска. */
 export const HERO_WOUNDS = 3;
 export const HERO_ATTACK_INTERVAL = 1.2;

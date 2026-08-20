@@ -1,5 +1,6 @@
 import { kitchenFood, storageCapacity } from './camp';
 import {
+  ENEMY_WAKE_SHARE,
   FOOD_COST,
   HERO_ATTACK_INTERVAL,
   HERO_REACH,
@@ -50,6 +51,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     elapsed: 0,
     inFight: false,
     starve: 0,
+    lastHitBy: null,
     events: [],
   };
 }
@@ -178,10 +180,11 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
     const dz = hero.z - enemy.z;
     const dist = Math.hypot(dx, dz);
 
-    // Видишь ты — видят и тебя: круг пробуждения равен кругу света.
-    if (!enemy.awake && dist <= vision) enemy.awake = true;
+    // Игрок видит дальше, чем его видят: только так «проход через комнату»
+    // становится платным решением, а не внезапной смертью (§15).
+    if (!enemy.awake && dist <= vision * ENEMY_WAKE_SHARE) enemy.awake = true;
     if (!enemy.awake) continue;
-    if (dist > vision + 4) {
+    if (dist > vision + 2) {
       enemy.awake = false;
       enemy.telegraph = 0;
       continue;
@@ -194,6 +197,7 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
         enemy.telegraph -= dt;
         if (enemy.telegraph <= 0) {
           hero.wounds -= 1;
+          state.lastHitBy = enemy.kind;
           enemy.cooldown = stats.attackInterval;
           state.events.push(`${stats.name} бьёт`);
         }
@@ -215,7 +219,12 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
       }
     }
 
-    if (dist <= HERO_REACH && hero.cooldown <= 0) {
+    // Противник держит дистанцию своего оружия (reach × 0.9), поэтому герой
+    // обязан доставать до неё. Иначе копейщик и голем не «бьют первым»
+    // (§15), а просто неуязвимы: их досягаемость больше геройской, и удар
+    // не проходит ни разу. Замер ловил это как 70% провалов в бою.
+    const engageAt = Math.max(HERO_REACH, stats.reach);
+    if (dist <= engageAt && hero.cooldown <= 0) {
       enemy.wounds -= 1;
       hero.cooldown = HERO_ATTACK_INTERVAL;
       if (enemy.wounds <= 0) {

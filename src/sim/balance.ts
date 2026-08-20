@@ -1,0 +1,196 @@
+import { HERO_WOUNDS, FOOD_COST } from './config';
+import type { EnemyKind, Tier } from './types';
+
+/**
+ * Модель баланса яруса. Числа не назначаются руками, а выводятся из описания
+ * сложности — иначе правка одного яруса ломает соседние, что и происходило.
+ *
+ * Все коэффициенты ниже измерены на настоящей симуляции ботом (§22), а не
+ * подобраны. Если генератор или бой поменяются, коэффициенты нужно
+ * перемерить — но формулы останутся.
+ */
+
+/* ---------- измеренные постоянные ---------- */
+
+/** Глубина локации в шагах на единицу стороны: D ≈ 1.6·N. */
+export const DEPTH_PER_N = 1.6;
+/** Перегон между соседними находками: s ≈ 0.58·N. */
+export const HOP_PER_N = 0.58;
+/** Крюк живого игрока: 1.0 у аккуратного, 1.38 у небрежного. Планируем по среднему. */
+export const DETOUR = 1.15;
+
+/**
+ * Раны, которые стоит одна доведённая до конца стычка. Значения измерены и
+ * оказались целыми: герой убивает падальщика раньше, чем тот бьёт, копейщик
+ * успевает ударить один раз за счёт длины копья, голем — дважды.
+ *
+ * Отсюда разделение, на котором держится вся модель:
+ * **падальщик — налог на провиант, копейщик и голем — налог на раны.**
+ */
+export const WOUND_COST: Record<EnemyKind, number> = {
+  scavenger: 0,
+  spearman: 1,
+  golem: 2,
+};
+
+/** Доля врагов, с которыми игрок всё же дерётся, несмотря на обходы. */
+export const ENGAGE_RATE = 0.55;
+
+/* ---------- вход ---------- */
+
+export interface TierSpec {
+  /** Сторона локации. Единственный источник геометрии. */
+  readonly size: number;
+  /** Сколько находок разложить. */
+  readonly containers: number;
+  /** Щедрость провианта, 0..1: 0 — едва хватает дойти до дна и вернуться,
+   *  1 — почти хватает обойти всё. Главный регулятор напряжения. */
+  readonly generosity: number;
+  /** Связь рюкзака с добычей. 1 — оба ограничения связывают поровну,
+   *  <1 — чаще упирается рюкзак, >1 — чаще провиант. */
+  readonly capacityRatio: number;
+  /** Доля ран героя, которую забирает средний забег. Задаёт состав врагов. */
+  readonly woundBudget: number;
+  /** Во сколько раз находка у дна ценнее находки у входа. */
+  readonly depthValue: number;
+  /** Доля добычи, теряемая при провале. */
+  readonly risk: number;
+  /** Базовая величина находки у входа. */
+  readonly base: number;
+}
+
+export interface TierNumbers {
+  readonly food: number;
+  readonly capacity: number;
+  readonly containers: number;
+  readonly roster: readonly EnemyKind[];
+  readonly geometry: { depth: number; hop: number; deepAndBack: number; fullTour: number };
+  readonly expected: { haul: number; reachable: number; woundsTaken: number };
+  readonly checks: { deepReachable: boolean; fullTourImpossible: boolean; survivable: boolean };
+}
+
+/* ---------- вывод ---------- */
+
+export function deriveTier(spec: TierSpec): TierNumbers {
+  const depth = DEPTH_PER_N * spec.size;
+  const hop = HOP_PER_N * spec.size;
+
+  // Дойти до дна и вернуться: путь туда-обратно с крюком плюс вскрытие.
+  const deepAndBack = 2 * depth * DETOUR + FOOD_COST.container;
+  // Обойти всё: выход к дну, перегоны между находками, возврат.
+  const fullTour = 2 * depth + (spec.containers - 1) * hop + spec.containers * FOOD_COST.container;
+
+  // §12.2 — запас обязан лежать между этими границами. Нижняя со зазором 0.85,
+  // иначе дно недостижимо; верхняя строгая, иначе локацию можно зачистить.
+  const floor = deepAndBack / 0.85;
+  const ceil = fullTour;
+  const food = Math.round(floor + Math.max(0, Math.min(1, spec.generosity)) * Math.max(0, ceil - floor));
+
+  // Сколько находок реально успеть: после дороги до дна остаток делится
+  // на перегон плюс вскрытие.
+  const reachable = Math.max(1, Math.min(spec.containers, Math.floor((food - 2 * depth * DETOUR) / (hop + FOOD_COST.container)) + 1));
+  // Средняя ценность находки: кривая глубины линейна, среднее — в середине.
+  const meanValue = spec.base * (1 + (spec.depthValue - 1) / 2);
+  const haul = reachable * meanValue;
+
+  // Рюкзак связывает ровно тогда, когда его вместимость сравнима с тем,
+  // что позволяет унести провиант. Это и есть «оба ограничения живые».
+  const capacity = Math.max(4, Math.round(haul * spec.capacityRatio));
+
+  // Состав врагов. Раны и провиант набираются раздельно: копейщики и големы
+  // до бюджета ран, падальщики — сколько нужно давления на провиант.
+  const woundPoints = spec.woundBudget * HERO_WOUNDS;
+  const roster: EnemyKind[] = [];
+  let spent = 0;
+  while (spent + WOUND_COST.golem <= woundPoints && spec.size >= 18) {
+    roster.push('golem');
+    spent += WOUND_COST.golem;
+  }
+  while (spent + WOUND_COST.spearman <= woundPoints) {
+    roster.push('spearman');
+    spent += WOUND_COST.spearman;
+  }
+  // Падальщики: по одному на каждые полтора перегона — столько стычек,
+  // сколько маршрут естественно пересекает.
+  const scavengers = Math.max(1, Math.round(reachable * 0.8));
+  for (let i = 0; i < scavengers; i++) roster.push('scavenger');
+
+  const woundsTaken = spent * ENGAGE_RATE;
+
+  return {
+    food,
+    capacity,
+    containers: spec.containers,
+    roster,
+    geometry: {
+      depth: +depth.toFixed(1),
+      hop: +hop.toFixed(1),
+      deepAndBack: Math.round(deepAndBack),
+      fullTour: Math.round(fullTour),
+    },
+    expected: { haul: +haul.toFixed(1), reachable, woundsTaken: +woundsTaken.toFixed(2) },
+    checks: {
+      deepReachable: deepAndBack <= food * 0.85,
+      fullTourImpossible: fullTour > food,
+      // Забег обязан переживаться: если ожидаемые раны дотягивают до потолка,
+      // провал становится не риском, а расписанием.
+      survivable: woundsTaken < HERO_WOUNDS - 0.5,
+    },
+  };
+}
+
+/* ---------- теория игр: когда идти дальше ---------- */
+
+/**
+ * Правило остановки. Игрок продолжает, пока ожидаемая ценность продолжения
+ * выше синицы в руке:
+ *
+ *   EV(идти) = (B + g)·(1 − p·ρ)      EV(уйти) = B
+ *   идти, если  g > B·p·ρ / (1 − p·ρ)
+ *
+ * где B — уже собранное, g — ценность следующей находки, p — вероятность
+ * не дойти, ρ — доля добычи, теряемая при провале.
+ *
+ * Отсюда условие живого решения: **точка безразличия обязана попадать внутрь
+ * забега.** Если g всегда больше порога — игрок всегда идёт дальше, и решения
+ * нет; если всегда меньше — он уходит сразу, и глубины нет. Ставка ρ и кривая
+ * ценности μ связаны через это неравенство и не настраиваются порознь.
+ */
+export function shouldContinue(bag: number, gain: number, failChance: number, risk: number): boolean {
+  const pr = failChance * risk;
+  if (pr >= 1) return false;
+  return gain > (bag * pr) / (1 - pr);
+}
+
+/** Сколько добычи в рюкзаке делает следующий шаг невыгодным. */
+export function indifferenceBag(gain: number, failChance: number, risk: number): number {
+  const pr = failChance * risk;
+  if (pr <= 0) return Infinity;
+  return (gain * (1 - pr)) / pr;
+}
+
+/* ---------- готовые описания ярусов ---------- */
+
+/**
+ * Сложность растёт по трём независимым осям, а не одним числом:
+ * размер (сколько идти), щедрость (насколько жмёт провиант) и бюджет ран
+ * (насколько опасен бой). Ярус 0 обучающий — там щедрость намеренно высокая.
+ */
+export const TIER_SPEC: Record<Tier, TierSpec> = {
+  0: { size: 8, containers: 3, generosity: 0.9, capacityRatio: 1.5, woundBudget: 0, depthValue: 1.4, risk: 0, base: 2 },
+  1: { size: 12, containers: 5, generosity: 0.5, capacityRatio: 1.7, woundBudget: 0.35, depthValue: 1.8, risk: 0.3, base: 2 },
+  2: { size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.7, depthValue: 2.6, risk: 0.6, base: 3 },
+  3: { size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.75, depthValue: 3.5, risk: 1, base: 3 },
+};
+
+/**
+ * Подобрано ботом, 120 забегов на точку. Все три параметра оказались
+ * монотонными и почти независимыми — это и есть условие пригодности модели:
+ *
+ * λ  1.0 → рюкзак связывает в 98% забегов; 2.0 → провиант в 73%
+ * ω  0.33 → 1% провалов; 0.67 → 22%; 1.0 → 44%
+ * θ  двигает запас и вместе с ним добычу, не трогая двух остальных
+ *
+ * Поэтому ярус задаётся описанием сложности, а не четвёркой чисел,
+ * подогнанных друг под друга.
+ */

@@ -314,16 +314,90 @@
   </div>
 
   <div class="sec">
-    <div class="hd"><div class="eyebrow">06</div><h2>Четыре силуэта рядом</h2></div>
+    <div class="hd"><div class="eyebrow">06</div><h2>Лазарет</h2></div>
+    <p>Лечение — <b>6 минут за рану, максимум 18</b> (§11.8), и всё это время герой
+      занят. Значит от Лазарета игроку нужен ровно один ответ: <b>сколько коек занято
+      и когда освободится</b>. Отсюда решение, которое не повторяется больше нигде
+      в лагере: у Лазарета <b>намеренно нет фасада</b> — сторона, обращённая к камере,
+      открыта, и койки видно снаружи.</p>
+    <div class="models" id="wards"></div>
+    <div class="guard">
+      <div class="key">
+        <h3>Стена, которой нет</h3>
+        <p>Все остальные здания закрыты, и занятость показывает интерфейс.
+          Здесь занятость — это состояние мира: <b>герой лежит и его видно</b>.
+          Дверь заставила бы открывать карточку, чтобы узнать то,
+          на что игрок и так смотрит.</p>
+      </div>
+      <div>
+        <h3>Иней — только тут</h3>
+        <p><code>#e2e2d6</code>, самый светлый цвет палитры, отдан постелям
+          и больше не встречается в лагере ни на чём. Холодное пятно среди тёплого
+          дерева опознаётся раньше формы — как сталь у Кузницы.</p>
+      </div>
+      <div>
+        <h3>Три койки на ур. 2 — это три героя</h3>
+        <p>Не декор: героев в ротации трое (§11.8), и коек ровно столько же.
+          <b>Мебель считается</b>, поэтому полный Лазарет читается как «ротация встала»
+          без единой цифры.</p>
+      </div>
+      <div class="warn">
+        <h3>Никакого креста</h3>
+        <p>Красный крест и склянки — иконография, вырванная из другого мира,
+          и она мгновенно ломает соляной тракт. Читаемость даёт мебель:
+          койка узнаётся быстрее любого символа.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">07</div><h2>Плац</h2></div>
+    <p>Плац поднимает уровень запасного героя <b>без вылазок: 1 уровень за 2 часа</b>,
+      с потолком на два уровня ниже лучшего (§11.8). Это догоняющая механика,
+      и она единственная в лагере ничего не даёт прямо сейчас. Арт обязан
+      это признавать: Плац — не здание, а <b>площадка</b>, и выглядит он как место,
+      а не как постройка.</p>
+    <div class="models" id="yards"></div>
+    <div class="guard">
+      <div class="key">
+        <h3>Единственная горизонталь в лагере</h3>
+        <p>У Плаца нет крыши и нет ни одного объёма выше человека.
+          <b>Он читается площадью, а не силуэтом</b>, и поэтому не спорит
+          ни с одним соседом: его можно ставить между зданиями, не ломая композицию.</p>
+      </div>
+      <div>
+        <h3>Занятость показывает житель</h3>
+        <p>У Лазарета занятость — это койка, здесь — <b>человек у столба</b>.
+          Оба решения об одном: состояние здания видно в мире.
+          Пустой Плац с брошенным оружием на стойке — тоже сообщение.</p>
+      </div>
+      <div>
+        <h3>Ур. 2 — ограда, а не стены</h3>
+        <p>Рост показывается не высотой, а <b>границей</b>: жерди по периметру,
+          второй столб, мишени. Постройка, растущая вширь, а не вверх, —
+          это то, чем Плац отличается от всех пяти остальных.</p>
+      </div>
+      <div>
+        <h3>Столб, а не манекен-человек</h3>
+        <p>Соломенный чурбан на жерди. Человекообразная фигура для битья
+          в лагере, где ходят живые жители, читается жутко и отвлекает
+          ровно в тот момент, когда должна объяснять функцию.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">08</div><h2>Шесть силуэтов рядом</h2></div>
     <p>Настоящая проверка правила «уровень и тип читаются по силуэту» — не карточка
       с одной моделью, а лагерь целиком. Включите «Силуэт» на панели выше:
-      треугольник палатки, низкое кольцо костра, коробка помоста и вертикаль
-      кузнечной трубы не путаются между собой ни под одним углом поворота.</p>
+      треугольник палатки, низкое кольцо костра, коробка помоста, вертикаль
+      кузнечной трубы, открытый бок Лазарета и плоское пятно Плаца
+      не путаются между собой ни под одним углом поворота.</p>
     <div class="models" id="lineup"></div>
   </div>
 
   <div class="sec">
-    <div class="hd"><div class="eyebrow">07</div><h2>Что эта прорисовка добавила к правилам</h2></div>
+    <div class="hd"><div class="eyebrow">09</div><h2>Что эта прорисовка добавила к правилам</h2></div>
     <div class="guard">
       <div class="key">
         <h3>Стройка — это три модели, а не одна</h3>
@@ -361,6 +435,10 @@
             <td class="num" id="tri-store">—</td><td class="num">1500</td></tr>
         <tr><td><b>Кузница (ур. 1 · 2)</b></td><td>открытый горн · цех, наковальня снаружи</td>
             <td class="num" id="tri-forge">—</td><td class="num">1500</td></tr>
+        <tr><td><b>Лазарет (ур. 1 · 2)</b></td><td>полевой навес · палата без фасада</td>
+            <td class="num" id="tri-ward">—</td><td class="num">1500</td></tr>
+        <tr><td><b>Плац (ур. 1 · 2)</b></td><td>столб и стойка · огороженная площадка</td>
+            <td class="num" id="tri-yard">—</td><td class="num">1500</td></tr>
         <tr><td><b>Стройплощадка</b></td><td>одна на все здания</td>
             <td class="num" id="tri-site">—</td><td class="num">400</td></tr>
       </table>
@@ -563,6 +641,95 @@
     m.push(rod([-1.5,0,-0.9],[-1.5,1.1,-0.9],0.05,4,C.derT));
     m.push(box(-1.5,0.64,-0.9,0.36,0.42,0.3,C.der));
     m.push(box(-1.5,0.78,-0.9,0.38,0.06,0.32,C.travS));
+    return m;
+  }
+
+  // Лазарет. Лечение 6 мин за рану, максимум 18 (§11.8): игроку нужно видеть,
+  // сколько коек занято. Поэтому у здания нет фасада — койки видно снаружи.
+  function ward(level,busy){
+    var m=[pad(cyl(0,-0.04,0,2.05,0.05,16,C.zem))];
+    function bunk(x,z,taken){
+      var b=[];
+      b.push(rod([x-0.55,0,z],[x-0.55,0.32,z],0.07,5,C.derT));       // ножки
+      b.push(rod([x+0.55,0,z],[x+0.55,0.32,z],0.07,5,C.derT));
+      b.push(box(x,0.32,z,1.35,0.1,0.62,C.der));                     // рама
+      b.push(box(x,0.42,z,1.25,0.09,0.54,taken?C.iney:C.solS));      // постель
+      b.push(box(x-0.5,0.51,z,0.28,0.1,0.4,C.iney));                 // подушка
+      if(taken)b.push(box(x+0.1,0.51,z,0.85,0.12,0.5,C.sol));        // укрыт: одеяло выше
+      return b;
+    }
+    if(level===1){
+      [[-1.2,-0.9],[1.2,-0.9],[1.2,0.9],[-1.2,0.9]].forEach(function(p){
+        m.push(rod([p[0],0,p[1]],[p[0],1.45,p[1]],0.055,5,C.derT));  // стойки навеса
+      });
+      m.push(wedge(0,1.45,0,2.75,0.42,2.1,C.solom));                 // навес без стен
+      bunk(-0.15,0.35,busy!==false).forEach(function(x){m.push(x);});
+      m.push(rod([-1.2,1.15,-0.9],[1.2,1.15,-0.9],0.025,3,C.solT));  // сушилка трав
+      [-0.6,0,0.6].forEach(function(dx){
+        m.push(box(dx,0.92,-0.9,0.16,0.22,0.1,C.moh));
+      });
+      m.push(cyl(1.05,0,0.75,0.28,0.36,8,C.der));                    // жбан с водой
+      m.push(cyl(1.05,0.36,0.75,0.26,0.04,8,C.metT));
+      return m;
+    }
+    m.push(box(0,0,0,2.6,0.18,2.1,C.der));                           // настил
+    m.push(box(-1.25,0.18,0,0.14,1.1,2.1,C.der));                    // задняя стена
+    m.push(box(0,0.18,-1.0,2.6,1.1,0.14,C.der));                     // боковые
+    m.push(box(0,0.18,1.0,2.6,1.1,0.14,C.der));
+    m.push(wedge(0,1.28,0,2.95,0.8,2.4,C.solom));                    // крыша
+    m.push(rod([1.28,0.18,-1.0],[1.28,1.28,-1.0],0.07,5,C.derT));    // угловые стойки
+    m.push(rod([1.28,0.18,1.0],[1.28,1.28,1.0],0.07,5,C.derT));      // фасада между ними нет
+    bunk(-0.1,-0.55,true).forEach(function(x){m.push(x);});          // три койки = три героя
+    bunk(-0.1,0.15,busy!==false).forEach(function(x){m.push(x);});
+    bunk(-0.1,0.85,false).forEach(function(x){m.push(x);});
+    m.push(rod([-1.1,1.05,-0.95],[-1.1,1.05,0.95],0.025,3,C.solT));
+    [-0.6,0,0.6].forEach(function(dz){m.push(box(-1.1,0.82,dz,0.1,0.22,0.16,C.moh));});
+    return m;
+  }
+
+  // Плац. Догоняющая механика: 1 уровень за 2 часа, ничего не даёт прямо сейчас.
+  // Поэтому это площадка, а не постройка — единственная горизонталь в лагере.
+  function yard(level){
+    var m=[pad(cyl(0,-0.04,0,level===1?2.0:2.5,0.05,18,C.zem))];
+    function pell(x,z,a){                                            // столб для битья
+      var b=[rod([x,0,z],[x,1.4,z],0.14,6,C.derT)];
+      b.push(put(box(0,0,0,0.44,0.62,0.44,C.solom),a,x,0.72,z));     // соломенный чурбан
+      b.push(put(rod([-0.42,0,0],[0.42,0,0],0.06,4,C.derT),a,x,1.12,z)); // перекладина
+      return b;
+    }
+    function rack(x,z){                                              // стойка с оружием
+      var b=[rod([x,0,z-0.4],[x,1.05,z-0.4],0.05,4,C.derT),
+             rod([x,0,z+0.4],[x,1.05,z+0.4],0.05,4,C.derT),
+             rod([x,1.0,z-0.4],[x,1.0,z+0.4],0.035,4,C.derT)];
+      b.push(rod([x-0.06,0.2,z-0.22],[x+0.04,0.98,z-0.22],0.04,4,C.stal));
+      b.push(rod([x-0.06,0.2,z+0.06],[x+0.04,0.98,z+0.06],0.04,4,C.derT));
+      b.push(rod([x-0.06,0.2,z+0.3],[x+0.04,0.98,z+0.3],0.04,4,C.stal));
+      return b;
+    }
+    if(level===1){
+      pell(-0.5,-0.2,0.4).forEach(function(x){m.push(x);});
+      rack(1.35,0.3).forEach(function(x){m.push(x);});
+      m.push(put(box(0,0,0,0.5,0.34,0.44,C.derS),0.3,-1.4,0,0.9));   // ящик
+      m.push(cyl(0.3,0,1.1,0.62,0.09,12,C.solT));                    // круг утоптанного песка
+      m.push(rod([-1.75,0.12,-0.7],[-0.55,0.12,-1.15],0.12,5,C.der)); // бревно вместо скамьи
+      return m;
+    }
+    var post=[[-2.1,-1.5],[-0.7,-2.1],[0.7,-2.1],[2.1,-1.5],[2.25,0],[2.1,1.5],
+              [0.7,2.1],[-0.7,2.1],[-2.1,1.5],[-2.25,0]];
+    post.forEach(function(p,i){                                      // ограда: рост вширь
+      m.push(rod([p[0],0,p[1]],[p[0],0.85,p[1]],0.06,5,C.derT));
+      var q=post[(i+1)%post.length];
+      if(i!==post.length-1&&i!==4)m.push(rod([p[0],0.68,p[1]],[q[0],0.68,q[1]],0.03,4,C.der));
+    });
+    pell(-0.9,-0.5,0.4).forEach(function(x){m.push(x);});
+    pell(0.6,-0.9,-0.9).forEach(function(x){m.push(x);});
+    rack(1.55,0.75).forEach(function(x){m.push(x);});
+    m.push(cyl(-0.2,0,0.95,0.85,0.09,12,C.solT));                    // утоптанный круг
+    m.push(rod([-1.9,0,0.6],[-1.9,1.25,0.6],0.05,4,C.derT));         // мишень на жердях
+    m.push(rod([-1.9,0,1.4],[-1.9,1.25,1.4],0.05,4,C.derT));
+    m.push(box(-1.9,0.55,1.0,0.08,0.62,0.72,C.solom));
+    m.push(box(-1.88,0.8,1.0,0.06,0.16,0.18,C.zhar));
+    m.push(put(box(0,0,0,1.1,0.3,0.34,C.der),0,1.0,0,1.75));         // скамья
     return m;
   }
 
@@ -858,7 +1025,7 @@
     d.insertAdjacentHTML("beforeend",'<b>'+name+'</b><p>'+note+'</p>'+
       (opt.foot||'<u><s>блокинг '+t+'</s><s class="'+(t>budget?"over":"ok")+'">бюджет '+budget+'</s></u>'));
     document.getElementById(host).appendChild(d);
-    CARDS.push({ctx:ctx,W:W,H:H,build:build,scale:scale,extra:opt.extra||{}});
+    CARDS.push({ctx:ctx,W:W,H:H,build:build,scale:scale,cyf:opt.cyf||0.74,extra:opt.extra||{}});
     return t;
   }
   var tTent=mkModel("tents","Стадия 1 · площадка","Колышки вбиты, ткань и жерди лежат рядом",
@@ -882,7 +1049,7 @@
       fire(2,t).forEach(function(x){m.push(put(x,0,1.5,0,0.7));});
       person(0.45,0.35,2.3).forEach(function(x){m.push(x);});
       return m;
-    },40,1500,{w:500,h:290,
+    },40,1500,{w:500,h:290,cyf:0.68,
       extra:{night:1,lamp:{p:[1.5,0.45,0.7],r:2.6,k:1.35},glow:{p:[1.5,0.35,0.7],r:2.2,k:1}},
       foot:'<u><s>сцена, а не модель: бюджет считается по объектам выше</s>'+
            '<s class="ok">свет — один точечный источник</s></u>'});
@@ -901,24 +1068,43 @@
     "Цех закрылся, наковальня осталась снаружи: витрина стока без таймера",
     function(t){return forge(2,t);},40,1500);
 
-  mkModel("lineup","Лагерь целиком · четыре силуэта",
-    "Палатка, костёр, склад, кузница под одной камерой — включите «Силуэт»",
+  var tWard1=mkModel("wards","Лазарет ур. 1 · полевой навес",
+    "Четыре стойки, крыша, одна койка и сушилка трав — стен нет вовсе",
+    function(){return ward(1,true);},44,1500);
+  var tWard2=mkModel("wards","Лазарет ур. 2 · палата без фасада",
+    "Три стены, три койки по числу героев, открытая сторона к камере",
+    function(){return ward(2,true);},44,1500);
+
+  var tYard1=mkModel("yards","Плац ур. 1 · столб и стойка",
+    "Утоптанная земля, столб для битья, оружие на стойке",
+    function(){return yard(1);},52,1500);
+  var tYard2=mkModel("yards","Плац ур. 2 · огороженная площадка",
+    "Рост вширь: жерди по периметру, второй столб, мишень, скамья",
+    function(){return yard(2);},40,1500);
+
+  mkModel("lineup","Лагерь целиком · шесть силуэтов",
+    "Палатка, костёр, склад, кузница, лазарет, плац под одной камерой — включите «Силуэт»",
     function(t){
-      var m=groundGrid(9);
-      tent(2).forEach(function(x){m.push(put(x,-PI/2,-3.0,0,-1.5));});
-      storage(1).forEach(function(x){m.push(put(x,PI,1.5,0,-2.9));});
-      forge(1,t).forEach(function(x){m.push(put(x,-PI/2,3.2,0,1.0));});
-      fire(2,t).forEach(function(x){m.push(put(x,0,-1.1,0,2.2));});
-      person(0.1,0.1,2.4).forEach(function(x){m.push(x);});
+      var m=groundGrid(11);
+      tent(2).forEach(function(x){m.push(put(x,-PI/2,-3.7,0,-1.9));});
+      storage(1).forEach(function(x){m.push(put(x,PI,0.4,0,-3.6));});
+      forge(1,t).forEach(function(x){m.push(put(x,-PI/2,3.9,0,-0.9));});
+      fire(2,t).forEach(function(x){m.push(put(x,0,0.1,0,1.5));});
+      ward(2,true).forEach(function(x){m.push(put(x,-PI/2,3.4,0,2.6));});
+      yard(1).forEach(function(x){m.push(put(x,0,-3.5,0,2.6));});
+      person(1.6,0.1,2.4).forEach(function(x){m.push(x);});
+      person(-3.2,1.5,0.6).forEach(function(x){m.push(x);});         // занятость Плаца — житель
       return m;
-    },34,1500,{w:500,h:300,
-      foot:'<u><s>сцена: четыре здания одной камерой</s>'+
+    },28,1500,{w:500,h:320,cyf:0.62,
+      foot:'<u><s>сцена: шесть построек одной камерой</s>'+
            '<s class="ok">ни одного повторяющегося габарита</s></u>'});
 
   var tSite=tris(site());
   document.getElementById("tri-tent").textContent=tTent+" / "+tris(tent(1))+" / "+tTentFull;
   document.getElementById("tri-fire").textContent=
     tris(fire(0,0))+" / "+tris(fire(1,0))+" / "+tFire;
+  document.getElementById("tri-ward").textContent=tWard1+" / "+tWard2;
+  document.getElementById("tri-yard").textContent=tYard1+" / "+tYard2;
   document.getElementById("tri-store").textContent=tStore1+" / "+tStore2;
   document.getElementById("tri-forge").textContent=tForge1+" / "+tForge2;
   document.getElementById("tri-site").textContent=tSite;
@@ -927,7 +1113,7 @@
   var spin=30*PI/180, spinning=false, wire=false, sil=false;
   function drawCards(t){
     CARDS.forEach(function(c){
-      var cfg={scale:c.scale,cx:c.W/2,cy:c.H*0.74,spin:spin,wire:wire,sil:sil};
+      var cfg={scale:c.scale,cx:c.W/2,cy:c.H*c.cyf,spin:spin,wire:wire,sil:sil};
       for(var k in c.extra)cfg[k]=c.extra[k];
       if(sil){cfg.night=0;cfg.glow=null;cfg.lamp=null;}
       render(c.ctx,c.W,c.H,c.build(t),cfg);

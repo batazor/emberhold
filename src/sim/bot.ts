@@ -194,16 +194,21 @@ export function playRaid(
     decisions.push({ kind, foodLeft: state.food, backSteps: back });
     if (!moveAvoiding(state, target, danger)) break;
 
-    // Крутим симуляцию до цели, но пересматриваем решение каждые полсекунды:
+    // Крутим симуляцию до цели, пересматривая решение по мере продвижения:
     // враг мог проснуться, и маршрут, безопасный минуту назад, уже не такой.
+    //
+    // Пересмотр считается в пройденных клетках, а не в секундах. По времени
+    // он ломал движение: клетка проходится за 0,6 с, и путь подменялся раньше,
+    // чем шаг завершался, — герой топтался на месте, делая два шага за десять
+    // минут.
     let guard = 0;
-    const recheck = Math.round(0.5 / TICK);
+    const stepsAtPlan = state.steps;
     while (state.status === 'running' && state.path.length > 0 && guard < 60 * 120) {
       stepRaid(state, TICK, true, HERO_KNOWLEDGE);
       seconds += TICK;
       guard++;
       if (seconds >= MAX_SECONDS) break;
-      if (policy.keepAway > 0 && guard % recheck === 0) break;
+      if (policy.keepAway > 0 && state.steps - stepsAtPlan >= 3) break;
     }
     if (guard === 0) break;
   }

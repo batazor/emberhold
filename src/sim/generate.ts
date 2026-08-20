@@ -231,12 +231,21 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
     });
   }
 
+  // «Обходится по кругу» — обещание, которое обязано выполняться: узкий
+  // проход годится голему только если обход существует. Замер ловил обратное
+  // как 80 смертей от голема на ярусе 3: он вставал в единственный проход,
+  // и обойти его было нельзя — только умереть об него.
+  const golemChokes =
+    TIER_ROSTER[tier].includes('golem')
+      ? chokes.filter((c) => hasDetour(size, blocked, evac, containers, c % size, (c / size) | 0))
+      : chokes;
+
   const enemies: Enemy[] = [];
   TIER_ROSTER[tier].forEach((kind, i) => {
     const stats = ENEMY_STATS[kind];
     // §15 — голем перекрывает маршрут, а не гонится. Значит его место
     // в узком проходе: там обход стоит шагов, а прорыв — ран.
-    const pool = kind === 'golem' && chokes.length > 0 ? chokes : open;
+    const pool = kind === 'golem' && golemChokes.length > 0 ? golemChokes : open;
     const cell = takeFrom(pool);
     if (cell === null) return;
     const x = cell % size;
@@ -256,6 +265,30 @@ export function generateLocation(seed: number, tier: Tier): GameLocation {
   });
 
   return { seed, tier, size, blocked, evac, containers, enemies, backSteps };
+}
+
+/**
+ * Есть ли путь в обход клетки: перекрываем её вместе с ближайшими соседями
+ * (голем занимает не точку, а зону досягаемости) и проверяем, что от точки
+ * эвакуации по-прежнему достижим каждый контейнер.
+ */
+function hasDetour(
+  size: number,
+  blocked: Uint8Array,
+  evac: Cell,
+  containers: readonly Container[],
+  gx: number,
+  gz: number,
+): boolean {
+  const walled = Uint8Array.from(blocked);
+  for (let z = gz - 1; z <= gz + 1; z++) {
+    for (let x = gx - 1; x <= gx + 1; x++) {
+      if (inBounds(size, x, z)) walled[idx(size, x, z)] = 1;
+    }
+  }
+  if (walled[idx(size, evac.x, evac.z)]) return false;
+  const reach = distanceField(size, walled, evac);
+  return containers.every((c) => reach[idx(size, c.x, c.z)]! >= 0);
 }
 
 /** Проходимые соседи клетки — нужен генератору и отладке. */
