@@ -10,10 +10,17 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* Игровой интерфейс не выделяется: случайный протяг по панели не должен
    превращаться в выделение текста и съедать нажатие. */
-#hud, #camp, /* ---------- экран возврата (мокап 04) ---------- */
-#return {
+#hud, #camp, #return {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 6;
+  padding: 18px; z-index: 6;
+}
+/* Сцену гасит только экран возврата (мокап 04): он приходит вместо игры,
+   а не поверх неё. HUD вылазки и панели лагеря стоят над сценой и обязаны
+   её показывать — пока они делили это правило с возвратом, вся игра шла
+   под тёмным стеклом на 86% с размытием. Отсюда же брались «темно и
+   размыто» в вылазке и «а где лагерь» после кнопки «Играть». */
+#return {
+  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px);
 }
 #return.on { display: flex; }
 #return .panel { width: 100%; max-width: 360px; }

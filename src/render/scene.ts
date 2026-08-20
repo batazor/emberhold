@@ -14,9 +14,6 @@ const SKY_NIGHT = new THREE.Color(0x27324d);
 const SKY_DAY = new THREE.Color(0xbcd2e8);
 const FOG_NIGHT = new THREE.Color(PALETTE.night);
 const FOG_DAY = new THREE.Color(PALETTE.day);
-/* Подсвет снизу: ночью это отражённый лунный свет, днём — тёплая земля. */
-const MOON_GROUND = new THREE.Color(PALETTE.moon).multiplyScalar(0.35);
-const DAY_GROUND = new THREE.Color(0x2b2519);
 
 export class SceneRig {
   readonly scene = new THREE.Scene();
@@ -131,17 +128,15 @@ export class SceneRig {
   update(dt: number, heroX: number, heroZ: number, visionRadius: number): void {
     const day = 1 - this.night;
 
-    // §11.4 — обзор держится на фонаре, но не на полной черноте. Без лунного
-    // подсвета вне круга света нет даже силуэта: игрок упирается в камень
-    // вслепую, а это не риск, а слепота. Луна даёт силуэт и не даёт детали —
-    // добыча и враг по-прежнему читаются только в фонаре. Две константы ниже
-    // и есть весь рычаг: 0.2 и 0.16 — потолок, при котором жёлтый контейнер
-    // ещё не выступает из темноты (см. комментарий у материала контейнера).
-    this.sun.intensity = 0.2 + day * 1.6;
+    // §11.4 — вне фонаря темно, и это механика: обзор и есть дальность света.
+    // Пробовал добавить лунный подсвет ради силуэтов (0.2 и 0.16 вместо
+    // 0.05 и 0.07) — не понадобилось: чернил экран не свет, а тёмное стекло
+    // в style.css, общее у HUD с экраном возврата. Если силуэты за кругом
+    // света всё-таки нужны, весь рычаг — эти две константы.
+    this.sun.intensity = 0.05 + day * 1.75;
     this.sun.color.setHSL(0.09 + this.night * 0.5, 0.55 - day * 0.25, 0.55 + day * 0.12);
-    this.hemi.intensity = 0.16 + day * 0.49;
+    this.hemi.intensity = 0.07 + day * 0.58;
     this.hemi.color.lerpColors(SKY_NIGHT, SKY_DAY, day);
-    this.hemi.groundColor.lerpColors(MOON_GROUND, DAY_GROUND, day);
 
     const sunAngle = (0.25 + day * 0.5) * Math.PI;
     this.sun.position.set(heroX + Math.cos(sunAngle) * 24, 12 + day * 20, heroZ + 14);

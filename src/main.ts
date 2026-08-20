@@ -324,6 +324,7 @@ function finishRaidForHero(
 
 /* ---------- переходы между сценами ---------- */
 function toRaid(tier: Tier): void {
+  leaveTitle();
   // Кнопка уже заблокирована, но вход закрыт и здесь: ярус не должен
   // открываться в обход Кухни ни через отладку, ни через сохранение
   // от прежней сборки.
@@ -401,10 +402,19 @@ function toTitle(): void {
   startScreen.setVisible(true);
 }
 
-function toCamp(): void {
+/**
+ * Уход с заставки. Одной функцией на оба выхода: заставка держит свою камеру,
+ * свой туман и поле травы, и забытая при выходе она остаётся в сцене — что
+ * и случилось при отладочном входе ?tier, где заставка минуется.
+ */
+function leaveTitle(): void {
   titleView?.dispose();
   titleView = null;
   startScreen.setVisible(false);
+}
+
+function toCamp(): void {
+  leaveTitle();
   raidView?.dispose();
   raidView = null;
   raid = null;
