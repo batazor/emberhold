@@ -5,6 +5,8 @@ import type { GearSlot } from './gear';
 import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
 import type { HeroState, Roster } from './heroes';
 import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
+import { ONB_ORDER, isRaidStep } from './onboarding';
+import type { OnbStep } from './onboarding';
 import { emptyResources } from './resources';
 import type { ResourceKind } from './resources';
 
@@ -42,15 +44,28 @@ interface SaveV1 {
    * каждом шаге разработки, а мы — возможность сравнить замеры до и после.
    */
   gear?: Partial<Record<GearSlot, number>>;
+  /**
+   * Кадр онбординга (`onboarding.html`). Тоже необязательное поле: сейв,
+   * записанный до онбординга, принадлежит игроку, который уже играл, —
+   * его нельзя возвращать в первые три минуты. Отсутствие поля читается
+   * как «пройдено», а не как «начать заново».
+   */
+  onb?: OnbStep;
 }
 
 export interface LoadResult {
   readonly camp: CampState;
   readonly roster: Roster;
   readonly watermark: number;
+  readonly onboarding: OnbStep;
 }
 
-export function save(camp: CampState, roster: Roster, watermark: number): void {
+export function save(
+  camp: CampState,
+  roster: Roster,
+  watermark: number,
+  onboarding: OnbStep = 'done',
+): void {
   const data: SaveV1 = {
     version: VERSION,
     savedAt: Date.now() / 1000,
@@ -62,6 +77,7 @@ export function save(camp: CampState, roster: Roster, watermark: number): void {
     loadout: camp.loadout,
     raids: camp.raids,
     gear: camp.gear,
+    onb: onboarding,
     heroes: {
       active: roster.active,
       list: roster.heroes.map((h) => ({
@@ -91,12 +107,13 @@ export function load(): LoadResult {
   } catch {
     raw = null;
   }
-  if (raw === null) return { camp, roster, watermark: 0 };
+  // Хранилища нет вовсе — это первый запуск: игра начинается с первого кадра.
+  if (raw === null) return { camp, roster, watermark: 0, onboarding: 'move' };
 
   try {
     const data = JSON.parse(raw) as Partial<SaveV1>;
     // Чужая или будущая версия — начинаем заново, но не роняем игру.
-    if (data.version !== VERSION) return { camp, roster, watermark: 0 };
+    if (data.version !== VERSION) return { camp, roster, watermark: 0, onboarding: 'move' };
 
     for (const id of BUILDING_ORDER) {
       const level = data.levels?.[id];
@@ -147,10 +164,26 @@ export function load(): LoadResult {
     // где гейты §11.8 стояли иначе, и отряд не должен от этого рассыпаться.
     while (syncRoster(roster, camp.levels.hq) !== null) { /* добираем по одному */ }
 
-    return { camp, roster, watermark: typeof data.watermark === 'number' ? data.watermark : 0 };
+    return {
+      camp,
+      roster,
+      watermark: typeof data.watermark === 'number' ? data.watermark : 0,
+      onboarding: readStep(data.onb),
+    };
   } catch {
-    return { camp, roster, watermark: 0 };
+    return { camp, roster, watermark: 0, onboarding: 'move' };
   }
+}
+
+/**
+ * Кадр из сейва. Вылазка перезапуск не переживает (см. readRoster), поэтому
+ * кадр, идущий в локации, откатывается к началу: доигрывать первую вылазку
+ * с середины не на чем.
+ */
+function readStep(saved: unknown): OnbStep {
+  const step = ONB_ORDER.find((s) => s === saved);
+  if (step === undefined) return 'done';
+  return isRaidStep(step) ? 'move' : step;
 }
 
 const STATUSES: readonly HeroState['status'][] = ['ready', 'raid', 'healing', 'training'];

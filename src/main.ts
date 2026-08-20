@@ -4,6 +4,7 @@ import { startLoop } from './core/loop';
 import {
   BUILDINGS,
   BUILD_SECONDS,
+  campArea,
   completeIfDue,
   craftGear,
   gearBlock,
@@ -33,6 +34,17 @@ import {
   trainBlock,
 } from './sim/heroes';
 import type { HeroState, Roster } from './sim/heroes';
+import {
+  ONB_HINT,
+  firstTapCell,
+  grantFirstBuilding,
+  isRaidStep,
+  nextRaidStep,
+  openEvacWhenEarned,
+  reveal,
+  scriptWound,
+} from './sim/onboarding';
+import type { OnbStep } from './sim/onboarding';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
@@ -75,6 +87,21 @@ const finishedOffline = completeIfDue(camp, startedAt); // стройка мог
 if (finishedOffline !== null) {
   track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
 }
+
+/**
+ * Кадр онбординга (`onboarding.html`, §16). Пока он не 'done', игра идёт
+ * по раскадровке: открывается сразу в вылазке, показывает по одной полосе
+ * за раз и приводит в лагерь только после первой эвакуации.
+ */
+let onb: OnbStep = loaded.onboarding;
+/** Время начала кадра — им разводятся открытия, идущие от одного события. */
+let stepAt = 0;
+/** Сколько контейнеров вскрыто в первой вылазке: кадры 4 и 6 считают по ним. */
+let onbLooted = 0;
+/** Скриптовая рана кадра 3 выдаётся ровно один раз. */
+let onbWounded = false;
+/** С чего начали: по этому числу видно, что героя задели по-настоящему. */
+let onbStartWounds = 0;
 
 let mode: 'camp' | 'raid' = 'camp';
 let raid: RaidState | null = null;
@@ -123,6 +150,21 @@ const hud = new Hud(app, {
 
 const campHud = new CampHud(app, {
   onUpgrade: (id) => {
+    // Кадр 9: первое здание вырастает на глазах — бесплатно и без таймера
+    // (§20.2, §20.3). Ожиданию и ценнику учит уже вторая постройка.
+    if (onb === 'build' && id === 'kitchen') {
+      if (grantFirstBuilding(camp, 'kitchen')) {
+        track({
+          t: 'build_done',
+          at: clock.now(),
+          building: 'kitchen',
+          level: camp.levels.kitchen,
+        });
+        setOnb('tier');
+        campHud.notify(`${BUILDINGS.kitchen.name} ур. ${camp.levels.kitchen}`);
+      }
+      return;
+    }
     // Отказ обязан быть слышен: молчащая кнопка читается как поломка.
     beginUpgrade(id);
   },
@@ -140,8 +182,18 @@ const campHud = new CampHud(app, {
     track({ t: 'speedup', at: now, building: c.building, cost, leftSec: left });
     persist();
   },
-  onRaid: (tier) => toRaid(tier),
+  onRaid: (tier) => {
+    // Вторая вылазка — конец раскадровки: дальше игра работает как обычно.
+    if (onb === 'tier') setOnb('done');
+    toRaid(tier);
+  },
   onCraft: (slot) => forge(slot),
+  // §20.4 — карточка вооружает перестановку, дальше игрок бьёт по клетке.
+  onMove: (id) => {
+    selected = id;
+    campView.highlight(selected);
+    campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
+  },
 });
 
 const rosterPanel = new RosterPanel(campHud.slot, {
@@ -227,7 +279,44 @@ function buy(id: ConsumableId): boolean {
 }
 
 function persist(): void {
-  save(camp, roster, clock.watermark);
+  save(camp, roster, clock.watermark, onb);
+}
+
+/**
+ * Смена кадра — единственное место, где онбординг что-то показывает или
+ * прячет. Полосы включаются здесь, а не в цикле: сравнивать состояние
+ * каждый тик значило бы драться с игроком за видимость элементов.
+ */
+function applyOnb(): void {
+  hud.setReveal(reveal(onb));
+  hud.setHint(ONB_HINT[onb] ?? '');
+  campHud.setOnboarding(onb);
+  // Точка тапа нужна ровно в первом кадре: дальше игрок уже знает жест.
+  if (onb === 'move' && raid !== null) {
+    const cell = firstTapCell(raid.loc, raid.hero);
+    if (cell !== null) raidView?.showHint(cell.x, cell.z);
+  } else {
+    raidView?.hideHint();
+  }
+}
+
+function setOnb(step: OnbStep): void {
+  if (onb === step) return;
+  onb = step;
+  stepAt = clock.now();
+  applyOnb();
+  track({ t: 'onboarding', at: clock.now(), step });
+  persist();
+}
+
+/** Кадр 3: экран коротко дёргается. Рана обязана быть замечена телом. */
+function shake(): void {
+  const canvas = rig.renderer.domElement;
+  canvas.classList.remove('shake');
+  // Пересчёт стилей между снятием и возвратом класса — иначе вторая
+  // анимация подряд не запускается вовсе.
+  void canvas.offsetWidth;
+  canvas.classList.add('shake');
 }
 
 const returnScreen = new ReturnScreen(app, {
@@ -252,6 +341,8 @@ const returnScreen = new ReturnScreen(app, {
   },
   onCamp: () => {
     returnScreen.hide();
+    // Кадр 9 начинается ровно здесь: лагерь открывается как награда.
+    if (onb === 'return') setOnb('build');
     toCamp();
   },
 });
@@ -301,19 +392,19 @@ function finishRaidForHero(
 }
 
 /* ---------- переходы между сценами ---------- */
-function toRaid(tier: Tier): void {
+function toRaid(tier: Tier): boolean {
   // Кнопка уже заблокирована, но вход закрыт и здесь: ярус не должен
   // открываться в обход Кухни ни через отладку, ни через сохранение
   // от прежней сборки.
   if (tierBlock(camp, tier) !== 'ok') {
     campHud.notify(`Ярус ${tier}: нужна Кухня ур. ${TIER_KITCHEN_GATE[tier]}`);
-    return;
+    return false;
   }
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
   if (hero === null) {
     campHud.notify('Все герои заняты — ждём лечения или тренировки');
-    return;
+    return false;
   }
   const rotated = hero !== activeHero(roster);
   if (rotated) selectHero(roster, roster.heroes.indexOf(hero));
@@ -332,6 +423,8 @@ function toRaid(tier: Tier): void {
     gear: camp.gear,
     // §21 — расходники: что взято в эту вылазку и сгорит на выходе.
     consumables: camp.loadout,
+    // Первая вылазка держит выход закрытым до первой добычи (см. onboarding).
+    evacOpen: !isRaidStep(onb),
   });
   // §21 — купленное уходит в вылазку и не возвращается: сгорает независимо
   // от того, пригодилось или нет. Копить нечего.
@@ -350,9 +443,19 @@ function toRaid(tier: Tier): void {
   rosterPanel.setVisible(false);
   statsPanel.setVisible(false);
   returnScreen.hide();
+  // Счётчики первой вылазки обнуляются вместе с ней: перезапуск возвращает
+  // игрока к первому кадру, а не к середине раскадровки.
+  if (isRaidStep(onb)) {
+    onbLooted = 0;
+    onbWounded = false;
+    onbStartWounds = raid.hero.wounds;
+    stepAt = clock.now();
+  }
+  applyOnb();
   track({ t: 'raid_start', at: clock.now(), tier, food: raid.foodMax, capacity: raid.capacity });
   // §11.8 — ротация меряется здесь: сменил героя или дождался лечения.
   track({ t: 'hero_pick', at: clock.now(), cls: hero.cls, level: hero.level, rotated });
+  return true;
 }
 
 function toCamp(): void {
@@ -362,10 +465,17 @@ function toCamp(): void {
   campView.group.visible = true;
   campView.setCamp(camp);
   const c = campView.center;
-  // Смещение к югу: панель занимает нижнюю половину экрана, и лагерь
-  // выводится над ней, а не под неё.
-  rig.lookAt(c.x + 4.5, c.z + 4.5, true);
-  rig.setZoom(17, true);
+  // По центру экрана: прежний сдвиг к югу выводил лагерь над панелью, которая
+  // занимала нижнюю половину. Панели больше нет — лагерю принадлежит весь экран.
+  // Возвращение показывает лагерь целиком: куда игрок уехал камерой
+  // в прошлый раз — это состояние осмотра, а не то, что он хочет увидеть,
+  // открыв игру.
+  camPan.x = 0;
+  camPan.z = 0;
+  rig.lookAt(c.x, c.z, true);
+  // Кадр растёт вместе с площадью (§20.4): фиксированный зум либо резал
+  // лагерь на Штабе ур. 5, либо оставлял пустое поле на первом.
+  rig.setZoom(campArea(camp.levels.hq) * 2.8, true);
   // Лагерь — вечер, а не полдень: тёплый свет и длинные тени читаются лучше
   // на плоском затенении, чем прямое солнце.
   rig.night = 0.22;
@@ -373,35 +483,174 @@ function toCamp(): void {
   idleSeconds = 0;
   hud.setVisible(false);
   campHud.setVisible(true);
-  rosterPanel.setVisible(true);
-  statsPanel.setVisible(true);
+  // Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
+  const quiet = onb === 'build' || onb === 'tier';
+  rosterPanel.setVisible(!quiet);
+  statsPanel.setVisible(!quiet);
+  applyOnb();
   persist();
 }
 
 /* ---------- ввод ---------- */
-rig.renderer.domElement.addEventListener('pointerdown', (e) => {
-  const hit = rig.screenToGround(e.clientX, e.clientY);
+
+/**
+ * Камера лагеря. Лагерь растёт до 10×10 (§20.4) и в один экран телефона
+ * целиком не влезает, поэтому его можно возить пальцем и приближать щипком.
+ *
+ * Смещение живёт здесь, а не в SceneRig: рига возит камеру за героем в вылазке,
+ * и общее состояние сделало бы «где мы смотрим» зависимым от того, в каком
+ * режиме игра. В лагере цель — центр площадки плюс это смещение, и только.
+ */
+const camPan = { x: 0, z: 0 };
+/** Сколько можно отъехать от края площадки, в клетках. */
+const PAN_MARGIN = 4;
+/** Тап или протяг: ниже порога — это тап, и он открывает карточку. */
+const DRAG_SLOP = 8;
+
+const pointers = new Map<number, { x: number; y: number }>();
+let dragged = false;
+let downAt: { x: number; y: number } | null = null;
+/** Расстояние между пальцами и зум на начало щипка. */
+let pinchFrom = 0;
+let pinchZoom = 0;
+
+function clampPan(): void {
+  const limit = campArea(camp.levels.hq) / 2 + PAN_MARGIN;
+  camPan.x = Math.max(-limit, Math.min(limit, camPan.x));
+  camPan.z = Math.max(-limit, Math.min(limit, camPan.z));
+}
+
+/** Точка под пальцем должна оставаться под пальцем — отсюда разница по земле,
+ *  а не пересчёт пикселей в клетки: он зависел бы от азимута и зума. */
+function panByDrag(from: { x: number; y: number }, to: { x: number; y: number }): void {
+  const a = rig.screenToGround(from.x, from.y);
+  const b = rig.screenToGround(to.x, to.y);
+  if (a === null || b === null) return;
+  camPan.x += a.x - b.x;
+  camPan.z += a.z - b.z;
+  clampPan();
+  // Без сглаживания: палец ведёт камеру ровно за собой, а плавность рига
+  // нужна там, где цель ставит игра, — за героем в вылазке.
+  const c = campView.center;
+  rig.lookAt(c.x + camPan.x, c.z + camPan.z, true);
+}
+
+function campTap(clientX: number, clientY: number): void {
+  const hit = rig.screenToGround(clientX, clientY);
   if (hit === null) return;
+  const picked = campView.buildingAt(hit.x, hit.z);
+
+  // §20.4 — перестановка бесплатна и мгновенна: она вооружена из карточки,
+  // и тогда следующий тап по свободному месту ставит здание.
+  if (selected !== null) {
+    if (moveSelected(hit.x, hit.z)) {
+      selected = null;
+      campView.highlight(null);
+      return;
+    }
+    // Отказ обязан быть слышен: молчащий тап читается как непопадание.
+    campHud.notify(`${BUILDINGS[selected].name}: здесь не встанет`);
+    selected = null;
+    campView.highlight(null);
+    return;
+  }
+
+  // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо
+  // закрывает лист — то есть возвращает игроку весь экран с лагерем.
+  campView.highlight(picked);
+  if (picked === null) campHud.close();
+  else campHud.openBuilding(picked);
+}
+
+const canvas = rig.renderer.domElement;
+
+canvas.addEventListener('pointerdown', (e) => {
   idleSeconds = 0;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
   if (mode === 'raid') {
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    if (hit === null) return;
     if (raid === null || raid.status !== 'running') return;
     const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
     if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
     return;
   }
 
-  // §20.4 — перестановка бесплатна и мгновенна. Тап по зданию берёт его,
-  // тап по свободной клетке ставит. Жители на тап не откликаются намеренно.
-  const picked = campView.buildingAt(hit.x, hit.z);
-  if (selected === null) {
-    selected = picked;
-  } else {
-    const moved = moveSelected(hit.x, hit.z);
-    selected = moved ? null : picked;
+  if (pointers.size === 1) {
+    downAt = { x: e.clientX, y: e.clientY };
+    dragged = false;
+  } else if (pointers.size === 2) {
+    // Второй палец отменяет тап: щипок — это не промах по зданию.
+    dragged = true;
+    pinchFrom = pointerSpread();
+    pinchZoom = rig.zoomLevel;
   }
-  campView.highlight(selected);
+  // Захват — удобство, а не условие: палец, ушедший за край канваса, должен
+  // продолжать вести камеру. Но он же и необязателен, и на отказ браузера
+  // жест ломаться не должен.
+  try {
+    canvas.setPointerCapture(e.pointerId);
+  } catch {
+    /* без захвата ведём по событиям канваса */
+  }
 });
+
+function pointerSpread(): number {
+  const [a, b] = [...pointers.values()];
+  if (a === undefined || b === undefined) return 0;
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+canvas.addEventListener('pointermove', (e) => {
+  const prev = pointers.get(e.pointerId);
+  if (prev === undefined || mode !== 'camp') return;
+  const cur = { x: e.clientX, y: e.clientY };
+  idleSeconds = 0;
+
+  if (pointers.size >= 2) {
+    pointers.set(e.pointerId, cur);
+    const spread = pointerSpread();
+    // Пальцы разъезжаются — кадр сужается: щипок приближает, а не отдаляет.
+    if (pinchFrom > 8 && spread > 8) rig.setZoom((pinchZoom * pinchFrom) / spread);
+    return;
+  }
+
+  if (!dragged && downAt !== null) {
+    if (Math.hypot(cur.x - downAt.x, cur.y - downAt.y) < DRAG_SLOP) {
+      pointers.set(e.pointerId, cur);
+      return;
+    }
+    dragged = true;
+  }
+  if (dragged) panByDrag(prev, cur);
+  pointers.set(e.pointerId, cur);
+});
+
+function endPointer(e: PointerEvent): void {
+  if (mode === 'camp' && pointers.has(e.pointerId) && pointers.size === 1 && !dragged) {
+    campTap(e.clientX, e.clientY);
+  }
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) {
+    downAt = null;
+    dragged = false;
+  }
+}
+
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+canvas.addEventListener(
+  'wheel',
+  (e) => {
+    if (mode !== 'camp') return;
+    e.preventDefault();
+    idleSeconds = 0;
+    rig.zoom(Math.sign(e.deltaY) * 2);
+  },
+  { passive: false },
+);
 
 function moveSelected(x: number, z: number): boolean {
   if (selected === null) return false;
@@ -453,12 +702,42 @@ function tickHeroes(now: number): boolean {
   return changed;
 }
 
+/**
+ * Кадры 1–7 двигаются событиями вылазки, а не секундомером: полоса рюкзака
+ * появляется тогда, когда в рюкзаке что-то есть. Пауза участвует только там,
+ * где два открытия идут от одного события (добыча → цена возврата → ставка).
+ */
+function driveOnboarding(state: RaidState): void {
+  openEvacWhenEarned(state, onb);
+  // Кадр 3: первый противник обязан задеть. Раны показываются до того,
+  // как станут опасными, — на нулевом ярусе это ничего не стоит.
+  if (onb === 'approach' && !onbWounded && scriptWound(state)) {
+    onbWounded = true;
+    shake();
+  }
+  let looted = 0;
+  for (const c of state.loc.containers) if (c.opened) looted++;
+  onbLooted = looted;
+
+  const next = nextRaidStep(onb, {
+    moved: state.steps > 0,
+    wounded: onbWounded || state.hero.wounds < onbStartWounds,
+    looted: onbLooted,
+    sinceStep: clock.now() - stepAt,
+  });
+  if (next !== null) setOnb(next);
+}
+
 /* ---------- цикл ---------- */
 let fpsAcc = 0;
 let fpsFrames = 0;
 let lastRender = performance.now();
 
-toCamp();
+// Раскадровка кадра 1: ни одного экрана меню до того, как игрок сыграет.
+// Приложение открывается сразу в вылазке, лагерь появляется как награда.
+// Вход мог не открыться (сейв от прежних правил) — тогда честно в лагерь,
+// а не в пустой экран.
+if (!isRaidStep(onb) || !toRaid(0)) toCamp();
 
 // Отладочный вход: ?tier=N открывает игру сразу в вылазке нужного яруса.
 // Нужен, чтобы проверять вылазку и экран возврата, не проходя лагерь заново.
@@ -473,6 +752,7 @@ startLoop({
     const now = clock.now();
     if (mode === 'raid' && raid !== null) {
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
+      if (isRaidStep(onb)) driveOnboarding(raid);
       hud.sync(raid, dt);
       if (raid.status !== 'running' && !resultShown) {
         resultShown = true;
@@ -498,9 +778,18 @@ startLoop({
           durationSec: Math.round(result.durationSec),
         });
         hud.setVisible(false);
-        returnScreen.show(result, camp, (chose, canBuy) => {
-          track({ t: 'return_screen', at: clock.now(), canBuy, chose });
-        });
+        // Кадр 8: в первый раз выбора нет — путь ведёт в лагерь, иначе
+        // игрок его не увидит.
+        const firstReturn = isRaidStep(onb);
+        if (firstReturn) setOnb('return');
+        returnScreen.show(
+          result,
+          camp,
+          (chose, canBuy) => {
+            track({ t: 'return_screen', at: clock.now(), canBuy, chose });
+          },
+          firstReturn,
+        );
       }
       return;
     }
@@ -544,7 +833,8 @@ startLoop({
       lastCampFrame = now;
       campView.update(campDt, now);
       const c = campView.center;
-      rig.lookAt(c.x + 4.5, c.z + 4.5);
+      // Тот же кадр, что и в toCamp, плюс то, куда игрок увёз камеру.
+      rig.lookAt(c.x + camPan.x, c.z + camPan.z);
       rig.update(campDt, c.x, c.z, 12);
       rig.render();
     }

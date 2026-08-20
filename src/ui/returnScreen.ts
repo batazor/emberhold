@@ -66,6 +66,11 @@ export class ReturnScreen {
   private gearSuggestion: GearSlot | null = null;
   private consumable: ConsumableId | null = null;
   private tier: Tier = 0;
+  /**
+   * Кадр 8 раскадровки: в первый раз выбора нет. Кнопки «Ещё вылазка» здесь
+   * не существует — иначе игрок не увидит лагерь, ради которого играл.
+   */
+  private onlyCamp = false;
   /** Отчёт о выборе игрока уходит в телеметрию один раз за экран. */
   private reported = false;
   private onChoice: ((chose: 'build' | 'craft' | 'raid' | 'camp', canBuy: boolean) => void) | null =
@@ -112,6 +117,11 @@ export class ReturnScreen {
     });
 
     this.primary.addEventListener('click', () => {
+      if (this.onlyCamp) {
+        this.report('camp');
+        this.cb.onCamp();
+        return;
+      }
       if (this.suggestion !== null) {
         this.report('build');
         this.cb.onBuild(this.suggestion);
@@ -155,8 +165,10 @@ export class ReturnScreen {
     result: RaidResult,
     camp: CampState,
     onChoice: (chose: 'build' | 'craft' | 'raid' | 'camp', canBuy: boolean) => void,
+    onlyCamp = false,
   ): void {
     this.onChoice = onChoice;
+    this.onlyCamp = onlyCamp;
     this.reported = false;
     this.shownAt = performance.now();
     this.skipped = false;
@@ -231,6 +243,16 @@ export class ReturnScreen {
     }
 
     this.syncProgress(camp);
+
+    // Первое возвращение ведёт в лагерь и никуда больше.
+    if (onlyCamp) {
+      this.primary.textContent = 'В лагерь';
+      this.secondary.style.display = 'none';
+      this.progressLabel.textContent = 'Лагерь открыт';
+      this.progressBar.style.width = '100%';
+    }
+    this.tertiary.style.display = onlyCamp ? 'none' : '';
+
     this.root.classList.add('on');
   }
 

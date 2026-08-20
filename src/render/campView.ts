@@ -125,9 +125,21 @@ export class CampView {
     return g;
   }
 
-  /** Пересобирает постройки, только если изменились уровни или площадь. */
+  /**
+   * Пересобирает постройки, только если что-то изменилось.
+   *
+   * Положение входит в подпись наравне с уровнем. Раньше подпись состояла
+   * из одних уровней, и перестановка (§20.4) уровня не меняет — вид оставлял
+   * здание на прежнем месте, пока кто-нибудь не позовёт setCamp. Здание,
+   * переехавшее в данных и оставшееся на экране, читается как призрак,
+   * поэтому условие должно совпадать с тем, что рисуется, а не с тем,
+   * что обычно меняется.
+   */
   rebuildBuildings(): void {
-    const signature = BUILDING_ORDER.map((id) => `${id}${this.camp.levels[id]}`).join('|');
+    const signature = BUILDING_ORDER.map((id) => {
+      const p = this.camp.layout[id];
+      return `${id}${this.camp.levels[id]}@${p.x},${p.z}`;
+    }).join('|');
     const area = campArea(this.camp.levels.hq);
     if (signature === this.builtLevels && area === this.area) return;
     this.builtLevels = signature;

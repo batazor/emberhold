@@ -22,6 +22,9 @@ export class RaidView {
   private readonly containerMeshes = new Map<number, THREE.Mesh>();
   private hero!: THREE.Group;
   private marker!: THREE.Mesh;
+  /** Точка тапа из кадра 1 онбординга: единственная подсказка, которая
+   *  показывает жест вместо того, чтобы называть его словами. */
+  private hintRing!: THREE.Mesh;
   private evacRing!: THREE.Mesh;
   private disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
 
@@ -33,6 +36,7 @@ export class RaidView {
     this.buildEnemies();
     this.buildHero();
     this.buildMarker();
+    this.buildHintRing();
   }
 
   private track<T extends THREE.BufferGeometry | THREE.Material>(x: T): T {
@@ -220,6 +224,29 @@ export class RaidView {
     this.group.add(this.marker);
   }
 
+  private buildHintRing(): void {
+    this.hintRing = new THREE.Mesh(
+      this.track(new THREE.RingGeometry(0.3, 0.46, 24)),
+      this.track(
+        new THREE.MeshBasicMaterial({ color: 0xffd479, transparent: true, opacity: 0.9, fog: false }),
+      ),
+    );
+    this.hintRing.rotation.x = -Math.PI / 2;
+    this.hintRing.visible = false;
+    this.group.add(this.hintRing);
+  }
+
+  /** Подсветить клетку. Кольцо пульсирует, пока кадр не сменится: статичное
+   *  пятно на полу читается как декорация, а не как приглашение. */
+  showHint(x: number, z: number): void {
+    this.hintRing.visible = true;
+    this.hintRing.position.set(x, 0.08, z);
+  }
+
+  hideHint(): void {
+    this.hintRing.visible = false;
+  }
+
   showMarker(x: number, z: number): void {
     this.marker.visible = true;
     (this.marker.material as THREE.MeshBasicMaterial).opacity = 0.9;
@@ -228,6 +255,11 @@ export class RaidView {
 
   /** alpha — доля между прошлым и текущим тиком симуляции (см. core/loop). */
   sync(state: RaidState, alpha: number, dt: number, time: number): void {
+    if (this.hintRing.visible) {
+      const pulse = 1 + Math.sin(time / 260) * 0.16;
+      this.hintRing.scale.setScalar(pulse);
+      (this.hintRing.material as THREE.MeshBasicMaterial).opacity = 0.55 + (pulse - 1) * 1.6;
+    }
     const { hero } = state;
     const hx = lerp(hero.prevX, hero.x, alpha);
     const hz = lerp(hero.prevZ, hero.z, alpha);

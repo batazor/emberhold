@@ -94,6 +94,11 @@ export class SceneRig {
     this.frustumGoal = Math.min(34, Math.max(10, this.frustumGoal + delta));
   }
 
+  /** Текущая цель зума — от неё считает щипок, чтобы кадр не прыгал. */
+  get zoomLevel(): number {
+    return this.frustumGoal;
+  }
+
   setZoom(value: number, instant = false): void {
     this.frustumGoal = Math.min(34, Math.max(10, value));
     if (instant) {
