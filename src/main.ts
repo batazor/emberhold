@@ -64,6 +64,23 @@ import type { ConsumableId } from './sim/consumables';
 import { addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import { BuildPanel } from './ui/buildPanel';
+import {
+  cycleTower,
+  emptyWalls,
+  gateBlock,
+  putStairs,
+  raiseWall,
+  razeWall,
+  stairsBlock,
+  toggleGate,
+  wallBlock,
+  wallPieces,
+  wallSpotOf,
+  type WallSite,
+  type WallTool,
+} from './sim/campWalls';
+import type { Spot } from './sim/castle';
 import { generateCastleSite } from './sim/castleSite';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
@@ -269,7 +286,120 @@ const campHud = new CampHud(app, {
     campView.highlight(selected);
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
+  onWalls: () => openWalls(),
 });
+
+/* ---------- стройка стен (§6.1.6) ---------- */
+
+/**
+ * Панель стройки вооружает сцену: пока карточка выбрана, палец строит,
+ * а не крутит камеру. Это решение, а не упущение — рисовать и одновременно
+ * возить камеру одним пальцем нельзя, а «Готово» возвращает камеру сразу.
+ */
+const buildPanel = new BuildPanel({
+  onTool: (tool) => {
+    buildTool = tool;
+    campView.hideWallGhost();
+    stroke = null;
+  },
+  onDone: () => {
+    buildPanel.setVisible(false);
+    buildTool = null;
+    campView.hideWallGhost();
+    persist();
+  },
+});
+campHud.slot.appendChild(buildPanel.root);
+
+let buildTool: WallTool | null = null;
+/** Клетки, через которые ведут палец. Не null — мазок идёт прямо сейчас. */
+let stroke: Spot[] | null = null;
+
+const wallsOf = (): NonNullable<typeof camp.walls> => (camp.walls ??= emptyWalls());
+const wallSite = (): WallSite => ({
+  area: campArea(camp.levels.hq),
+  layout: camp.layout,
+  levels: camp.levels,
+});
+
+function openWalls(): void {
+  buildPanel.setVisible(true);
+  buildPanel.update(wallsOf());
+  campHud.notify('Стены: выберите карточку, дальше жест по земле');
+}
+
+/** Перерисовать стены и обновить счётчики панели. */
+function refreshWalls(): void {
+  campView.setWalls(wallPieces(wallsOf()));
+  buildPanel.update(wallsOf());
+}
+
+/** Тап или мазок по земле в режиме стройки. Возвращает: жест обработан. */
+function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
+  if (buildTool === null) return false;
+  const walls = wallsOf();
+  const site = wallSite();
+  const spot = wallSpotOf(Math.round(hit.x), Math.round(hit.z));
+
+  if (buildTool === 'стена') {
+    if (stroke === null) stroke = [];
+    const last = stroke[stroke.length - 1];
+    if (last === undefined || last.x !== spot.x || last.z !== spot.z) stroke.push(spot);
+    if (!finished) {
+      // Призрак ведётся по тем же клеткам, которые встанут: показывать
+      // одно, а строить другое — худший вид обмана в стройке.
+      campView.showWallGhost(
+        stroke.map((s) => ({ spot: s, ok: wallBlock(site, s) === 'ok' })),
+      );
+      return true;
+    }
+    const put = raiseWall(walls, site, stroke);
+    stroke = null;
+    campView.hideWallGhost();
+    if (put === 0) {
+      play('deny');
+      buildPanel.setNote('Здесь стене не встать: занято зданием или за площадью');
+      return true;
+    }
+    play('build');
+    buildPanel.setNote(null);
+    refreshWalls();
+    persist();
+    return true;
+  }
+
+  if (!finished) return true;
+
+  const deny = (why: string): boolean => {
+    play('deny');
+    buildPanel.setNote(why);
+    return true;
+  };
+
+  if (buildTool === 'башня') {
+    const why = wallBlock(site, spot);
+    if (why !== 'ok') return deny(`Башня: ${why}`);
+    cycleTower(walls, site, spot);
+  } else if (buildTool === 'ворота') {
+    const why = gateBlock(walls, spot);
+    if (why !== 'ok') return deny(`Ворота: ${why}`);
+    toggleGate(walls, spot);
+  } else if (buildTool === 'лестница') {
+    const why = stairsBlock(walls, site, spot);
+    if (why !== 'ok' && walls.stairs[`${spot.x}:${spot.z}`] === undefined) {
+      return deny(`Лестница: ${why}`);
+    }
+    putStairs(walls, site, spot);
+  } else if (buildTool === 'снос') {
+    if (!razeWall(walls, spot)) return deny('Здесь ничего не стоит');
+  }
+
+  play('build');
+  buildPanel.setNote(null);
+  refreshWalls();
+  persist();
+  return true;
+}
 
 const rosterPanel = new RosterPanel(campHud.slot, {
   onSelect: (index) => {
@@ -545,6 +675,13 @@ const ear = createRaidEar();
  * камеру и что записать.
  */
 function showScene(scene: Scene, tier: Tier = 0): void {
+  // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
+  // палец поверх вылазки.
+  if (scene !== 'camp' && buildPanel.visible) {
+    buildPanel.setVisible(false);
+    buildTool = null;
+    campView.hideWallGhost();
+  }
   // Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
   const quiet = onboarding.step === 'build' || onboarding.step === 'tier';
   const panels = panelsFor(scene, quiet);
@@ -947,6 +1084,9 @@ function toCamp(): void {
   // Лагерь — вечер, а не полдень: тёплый свет и длинные тени читаются лучше
   // на плоском затенении, чем прямое солнце.
   rig.night = 0.22;
+  // Стены, построенные игроком, — часть лагеря: они встают вместе с ним,
+  // а не по открытию панели.
+  campView.setWalls(wallPieces(wallsOf()));
   showScene('camp');
   idleSeconds = 0;
   onboarding.apply();
@@ -963,7 +1103,8 @@ function toCamp(): void {
 const campInput = bindCampInput({
   canvas: rig.renderer.domElement,
   camera: rig,
-  active: () => mode === 'camp',
+  // Пока выбрана карточка стройки, камера не двигается: палец рисует стену.
+  active: () => mode === 'camp' && buildTool === null,
   center: () => campView.center,
   area: () => campArea(camp.levels.hq),
   onTap: (clientX, clientY) => campTap(clientX, clientY),
@@ -1075,6 +1216,13 @@ canvas.addEventListener('pointerdown', (e) => {
   play('tap');
   askTilt();
   idleSeconds = 0;
+  // Стройка стен перехватывает палец целиком: пока карточка выбрана,
+  // лагерь не крутится и здания не выбираются.
+  if (mode === 'camp' && buildTool !== null) {
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    if (hit !== null) buildAt(hit, buildTool !== 'стена');
+    return;
+  }
   if (mode !== 'raid') return;
   const hit = rig.screenToGround(e.clientX, e.clientY);
   if (hit === null) return;
@@ -1094,6 +1242,12 @@ canvas.addEventListener('pointermove', (e) => {
   const camera = mode === 'title' && titleView !== null ? titleView.camera : undefined;
   const hit = rig.screenToGround(e.clientX, e.clientY, camera);
   if (hit === null) return;
+  // Мазок ведётся, пока палец прижат. Без нажатия мышь только показывает,
+  // куда встанет клетка, — на телефоне этого шага просто не будет.
+  if (mode === 'camp' && buildTool === 'стена') {
+    if (e.buttons !== 0 || stroke !== null) buildAt(hit, false);
+    return;
+  }
   wind.point(hit.x, hit.z);
   // Лагерь замирает через 20 секунд без касаний. Мышь, ведомая по траве, —
   // такое же касание: на телефоне наведения нет, и батарею это не трогает.
@@ -1108,6 +1262,12 @@ canvas.addEventListener('pointermove', (e) => {
 
 // Курсор ушёл с холста — ветру не за кем идти. Палец, снятый с экрана,
 // тоже уход: на телефоне наведения нет, и вести траву нечем.
+canvas.addEventListener('pointerup', (e) => {
+  if (mode !== 'camp' || buildTool !== 'стена' || stroke === null) return;
+  const hit = rig.screenToGround(e.clientX, e.clientY);
+  if (hit !== null) buildAt(hit, true);
+});
+
 canvas.addEventListener('pointerleave', () => wind.away());
 canvas.addEventListener('pointercancel', () => wind.away());
 

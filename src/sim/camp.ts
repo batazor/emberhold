@@ -6,6 +6,7 @@ import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, emptyGear } from './gear';
 import type { GearSlot, GearState } from './gear';
 import type { Tier } from './types';
 import type { Visit } from './world';
+import { emptyWalls, type CampWalls } from './campWalls';
 
 /**
  * Прототип v0 (§7): три здания плюс Кузница. Лазарет и Плац ждут — они
@@ -164,6 +165,12 @@ export interface CampState {
    * остальное — кланы, богатство, раскладка — выводится из сида и часов.
    */
   visits: Visit[];
+  /**
+   * Стены лагеря (§6.1.6). Хранятся клетками, а не деталями: деталь — вывод
+   * конструктора, и второй источник правды тут ни к чему. Поле необязательное:
+   * сохранения, сделанные до стройки стен, обязаны открываться.
+   */
+  walls?: CampWalls;
 }
 
 export function createCamp(): CampState {
@@ -184,6 +191,7 @@ export function createCamp(): CampState {
     loadout: [],
     raids: 0,
     visits: [],
+    walls: emptyWalls(),
   };
 }
 
