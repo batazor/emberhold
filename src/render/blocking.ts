@@ -18,7 +18,7 @@ import * as THREE from 'three';
  */
 
 /**
- * 32 цвета на всю игру (артбук, раздел 02). Ключи те же, что в `buildart.html`.
+ * 34 цвета на всю игру (артбук, раздел 02). Ключи те же, что в `buildart.html`.
  *
  * Цветов было 28. Кожу и сукно завёл набор персонажей (§6.1.4): телесного тона
  * среди 28 не было — скелетам он был не нужен, — а тёплому ненасыщенному негде
@@ -29,13 +29,14 @@ import * as THREE from 'three';
 export const C = {
   mrak: '#0e0d0a', ten: '#1a1813', kamT: '#2b2a24', kam: '#3f3d34', kamS: '#57544a',
   skol: '#6f6c60', solT: '#8a8a7e', sol: '#a6a698', solS: '#c6c6b6', iney: '#e2e2d6',
-  zemT: '#2a1d14', zem: '#3f2c1d', derT: '#543922', der: '#6f4d2c', derS: '#8f6a3f',
-  solom: '#b08f56',
+  zemT: '#3b2016', zem: '#6e3826', derT: '#8f4e33', der: '#b06b45', derS: '#cb9160',
+  solom: '#e3ba85',
   hvoT: '#1f2b1a', hvo: '#31432a', moh: '#465c39', trav: '#5d7a49', travS: '#7fa361',
   metT: '#2b3138', met: '#474f58', stal: '#7d8892',
   kozh: '#dcd2b0',
   sukT: '#3c332c', suk: '#5c4f43', sukS: '#847263',
   ugol: '#4d2a10', zhar: '#8e4a17', plam: '#c9722a', lat: '#dfa53c',
+  krasA: '#d83f35', krasS: '#268eca',
 } as const;
 
 export type V3 = readonly [number, number, number];
