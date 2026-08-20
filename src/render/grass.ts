@@ -253,6 +253,32 @@ export class Grass {
     }
   }
 
+  /**
+   * Выкосить траву на клетке. Под зданием её быть не должно: шатёр, стоящий
+   * в нетронутом поле, читается как декорация, поставленная сверху, а не как
+   * расчищенное место, на котором решили остаться.
+   *
+   * Травинки не удаляются, а схлопываются в ноль: количество экземпляров
+   * задаёт прореживание по плотности (`setDensity`), и вырезать из середины
+   * значило бы пересобирать весь план.
+   */
+  clearCell(x: number, z: number, radius = 0.62): void {
+    const total = this.plan.perPass * this.plan.passes;
+    const dummy = new THREE.Object3D();
+    dummy.scale.set(0, 0, 0);
+    let cut = 0;
+    for (let i = 0; i < total; i++) {
+      const rx = this.plan.roots[i * 3]!;
+      const rz = this.plan.roots[i * 3 + 2]!;
+      if (Math.abs(rx - x) > radius || Math.abs(rz - z) > radius) continue;
+      dummy.position.set(rx, this.plan.roots[i * 3 + 1]!, rz);
+      dummy.updateMatrix();
+      this.mesh.setMatrixAt(i, dummy.matrix);
+      cut++;
+    }
+    if (cut > 0) this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
   dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.dispose();

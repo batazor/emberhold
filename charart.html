@@ -1,0 +1,1065 @@
+<meta charset="utf-8">
+<title>Набор анимаций: персонажи</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .bar.stick{position:sticky;top:0;z-index:5;background:var(--ground);padding:12px 0;
+    border-bottom:1px solid var(--line);}
+  .bar hr{border:0;border-left:1px solid var(--line);height:20px;margin:0 4px;}
+  button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);margin:0;}
+
+  /* ---------- стенд ---------- */
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:20px;align-items:start;}
+  @media (max-width:820px){.stage{grid-template-columns:minmax(0,1fr);}}
+  .screen{background:#12100c;border:1px solid var(--line);position:relative;overflow:hidden;}
+  .screen canvas{width:100%;height:auto;}
+  .screen .tag{position:absolute;left:12px;top:10px;font-family:var(--ff-mono);font-size:11px;
+    color:#c9c0ac;letter-spacing:.08em;}
+  .screen .tag s{text-decoration:none;color:#8d8672;}
+  .side{display:flex;flex-direction:column;gap:14px;}
+  .side dl{margin:0;display:grid;grid-template-columns:auto auto;gap:5px 14px;font-size:13px;}
+  .side dt{color:var(--dim);}
+  .side dd{margin:0;font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  .side dd.warn{color:var(--ember);}
+  .side p{margin:0;font-size:13px;color:var(--dim);}
+  .rate{display:flex;gap:8px;flex-wrap:wrap;}
+
+  /* ---------- каталог ---------- */
+  .cat{display:flex;flex-direction:column;gap:12px;}
+  .cat h3{font-family:var(--ff-display);font-weight:400;font-size:20px;margin:0;}
+  .cat h3 s{text-decoration:none;font-family:var(--ff-mono);font-size:11px;color:var(--dim);
+    letter-spacing:.08em;margin-left:10px;}
+  .clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:12px;}
+  .c{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;
+    padding:0;text-align:left;color:inherit;cursor:pointer;border-radius:0;}
+  .c:hover{background:var(--surface);border-color:var(--brass);}
+  .c[aria-pressed="true"]{border-color:var(--brass);box-shadow:inset 0 0 0 1px var(--brass);}
+  .c .film{background:#12100c;display:block;width:100%;height:auto;}
+  .c b{font-family:var(--ff-display);font-weight:400;font-size:13.5px;padding:8px 10px 1px;
+    overflow-wrap:anywhere;color:var(--text);}
+  .c u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
+    padding:0 10px 9px;display:flex;justify-content:space-between;gap:8px;}
+  .c u s{text-decoration:none;}
+  .c u s.slip{color:var(--ember);}
+  .c u s.open{color:var(--blood);}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.miss{color:var(--ember);}
+  tr.new td{background:color-mix(in srgb, var(--brass) 9%, transparent);}
+
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
+  .guard div.key{border-left-color:var(--brass);}
+  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+    margin:0;color:var(--brass);font-weight:600;}
+  .guard p{margin:0;font-size:14px;color:var(--dim);}
+  .guard p b{color:var(--text);font-weight:600;}
+  .fail{color:var(--blood);}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Артбук · готовый набор</div>
+  <h1>Сто пятьдесят девять клипов <em>и одна константа</em></h1>
+  <p class="lede">KayKit Character Animations 1.1, бесплатный тариф, лицензия CC0: две оснастки,
+    восемь категорий, 159 клипов. Страница показывает не витрину, а сами файлы из
+    <code>assets/kaykit-animations</code>: скелет и меш читаются из <code>.glb</code> прямо
+    здесь, каждая цифра посчитана <code>npm run clips</code>.</p>
+  <p class="lede">Набор моделей меряют треугольниками. Набор анимаций мерить нечем — пока
+    не вспомнить, что у игры есть <b>1,67 тайла в секунду</b> (§17.4), и что клип обязан
+    в неё уложиться скоростью воспроизведения. Отсюда весь разбор: сколько земли проезжает
+    под опорной ногой, замыкается ли клип в петлю и не двигает ли он персонажа сам.</p>
+  <p class="lede fail" id="warn" style="display:none"></p>
+</header>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что в наборе</h2>
+    <p>Категория — второе слово имени файла: <code>Rig_Medium_CombatMelee.glb</code> — это
+      «Ближний бой», средняя оснастка. Делить набор иначе нечем и незачем: так его собрал
+      автор, и так он приходит в проект — по файлу на категорию, вместе со скелетом и мешем.</p>
+  </div>
+  <table id="cats"><thead><tr>
+    <th>Категория</th><th>Оснастка</th><th class="num">Клипов</th><th class="num">Секунд</th>
+    <th class="num">Средний</th><th>Самый длинный</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="total"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Стенд: земля едет, ноги скользят</h2>
+    <p>Клип нарисован на месте — персонажа двигает симуляция, а не аниматор (animation.html, 01).
+      Значит под ним обязана ехать земля, и вопрос ровно один: <b>с какой скоростью</b>.
+      Сетка внизу — наши клетки, она едет со скоростью героя, 1,67 тайла в секунду.</p>
+    <p>Переключите темп. <b>Как нарисовано</b> — клип идёт со своей скоростью, и опорная нога
+      уезжает вместе с землёй: это и есть скольжение. <b>Под 1,67</b> — тот же клип, ускоренный
+      ровно во столько раз, сколько показал обмер; нога встаёт на клетку и стоит.</p>
+  </div>
+  <div class="stage">
+    <div class="screen">
+      <canvas id="screen" width="1320" height="740"></canvas>
+      <div class="tag" id="tag">…</div>
+    </div>
+    <div class="side">
+      <div class="rate" id="rates"></div>
+      <dl id="facts"></dl>
+      <p id="verdict"></p>
+      <div class="bar">
+        <button id="grid" aria-pressed="true">Сетка</button>
+        <button id="play" aria-pressed="true">Пауза</button>
+      </div>
+    </div>
+  </div>
+  <p class="note" id="stageNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Каталог</h2>
+    <p>Кадр на карточке — три позы клипа одна поверх другой: четверть, половина, конец.
+      Так неподвижная картинка показывает ход, а не позу. Наведите — карточка оживёт;
+      нажмите — клип уедет на стенд.</p>
+  </div>
+  <div class="bar stick" id="filters"></div>
+  <div id="catalog" style="display:flex;flex-direction:column;gap:34px;"></div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Скорость: чего набор не умеет</h2>
+    <p>Проскальзывание — это сумма сдвигов опорной ноги, взятая векторами, а не длиной следа.
+      Длина следа объявила бы ходьбой любой замах: нога там тоже ездит, только возвращается.
+      У шага возвращаться нечему — обе опоры едут назад, — поэтому цикл выживает, а стойка нет.</p>
+    <p>Скорости приведены к игре: манекен набора выше нашего героя, и сравнивать их метры
+      напрямую значит объявить набор медленным за то, что он крупный. Множитель —
+      <span id="scaleNote">…</span>.</p>
+  </div>
+  <table id="speeds"><thead><tr>
+    <th>Клип</th><th>Оснастка</th><th class="num">Длит., с</th><th class="num">Ед./с</th>
+    <th class="num">Тайла/с</th><th class="num">Темп к 1,67</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="speedNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Бой: замах против интервала</h2>
+    <p>Удар в клипе — это пик скорости конечности: до него идёт замах, после — возврат.
+      Момент ищется замером, а не по имени: <code>Melee_Unarmed_Attack_Kick</code>
+      разгоняет руку сильнее, чем ногу, и «удар ногой» по названию оказался бы не там,
+      где он на самом деле.</p>
+    <p>В бюджет боя входит только замах (animation.html, 03): <b>вход 60 мс + замах ≤
+      интервал атаки</b>, и сам замах не короче замаха актора (§17.3). Возврат
+      не входит — его обрывает смешивание в следующее действие.</p>
+  </div>
+  <table id="combat"><thead><tr>
+    <th>Клип</th><th class="num">Замах, с</th><th class="num">Возврат, с</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="combatNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Петля и корень</h2>
+    <p>Два запрета из animation.html, проверенные по файлам, а не по описанию набора.
+      <b>Петля</b>: если поза в конце не совпала с позой в начале, клип нельзя гонять
+      по кругу — на стыке будет рывок. <b>Корень</b>: если клип сдвинул корневую кость,
+      он подвинул персонажа мимо симуляции, и позиция разъедется с сеткой.</p>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Петля замкнута</h3>
+      <p><b><span id="loopOk">…</span></b> — расхождение поз ниже 0,01 единицы. Эти клипы
+        можно ставить на повтор как есть: стойка, шаг, бег, работа инструментом.</p>
+    </div>
+    <div>
+      <h3>Петля разомкнута</h3>
+      <p><b><span id="loopBad">…</span></b> — и это не дефект. Смерть, подъём с пола,
+        призыв не обязаны замыкаться: они играются один раз и переходят в позу.</p>
+    </div>
+    <div>
+      <h3>Корень сдвинут</h3>
+      <p><b><span id="drifted">…</span></b> из 159. Все — уклонения и скелеты: <span
+        id="driftList">…</span>. Здесь набор спорит с animation.html напрямую.</p>
+    </div>
+    <div>
+      <h3>Позы, а не клипы</h3>
+      <p><b><span id="poses">…</span></b> клипов длятся ноль секунд — это конечные позы
+        к своим анимациям. Плюс <code>T-Pose</code> в каждом из 14 файлов, которую
+        обмер не считает клипом вовсе.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Оснастка</h2>
+    <p>Кости в файлах клипов у обеих оснасток одни и те же — двадцать три, имя в имя.
+      Расходятся они не составом, а пропорциями: крупный манекен почти вдвое выше
+      среднего, и один и тот же поворот плеча уводит кисть на разное расстояние.
+      Поэтому клип со среднего на крупный переносится по именам костей, но не по смыслу:
+      шаг станет другой длины, а замах — другого радиуса.</p>
+  </div>
+  <table id="rigs"><thead><tr>
+    <th>Манекен</th><th class="num">Костей</th><th class="num">Треугольников</th>
+    <th class="num">Рост, ед.</th><th>Чего не хватает</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="rigNote"></p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Что этот набор стоит игре</h2>
+    <p>Набор лежит в репозитории и не едет в бандл — как подземелье (§6.1.2). Страница —
+      и есть взвешивание; вот что оно показало.</p>
+  </div>
+  <div class="guard">
+    <div class="key">
+      <h3>Ход не дотягивает вдвое</h3>
+      <p>Самый быстрый цикл средней оснастки даёт <b><span id="bestSpeed">…</span> тайла/с</b>
+        при росте нашего героя. Константа §17.4 — 1,67. Либо клип идёт вдвое быстрее,
+        чем нарисован, либо персонаж вдвое крупнее нынешнего.</p>
+    </div>
+    <div>
+      <h3>Ходьба не пригодится вовсе</h3>
+      <p><code>Walking_A</code> требует темпа <b><span id="walkRate">…</span></b> — на таком
+        клип перестаёт быть ходьбой. Герой Emberhold не ходит, он бежит: под 1,67 подходит
+        только <code>Running_*</code>, и то с натяжкой.</p>
+    </div>
+    <div>
+      <h3>Бой набора шире нашего</h3>
+      <p><b><span id="combatCount">…</span></b> боевых клипов на два замаха (250 и 500 мс, §17.3)
+        и один блок. Брать нужно единицы; остальное — соблазн расширить бой под набор,
+        а не набор под бой.</p>
+    </div>
+    <div>
+      <h3>Меш набора — не наш меш</h3>
+      <p>Манекен весит <b><span id="rigTris">…</span></b> треугольников против 98 у следопыта
+        и 120 у воина (<code>render/models.ts</code>) — в семьдесят раз больше. Скелет отсюда
+        взять можно, силуэт — нет: персонажи Emberhold различаются формой раньше,
+        чем цветом (артбук, 04).</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script type="module">
+const PACK = './assets/kaykit-animations/';
+const CATALOG = PACK + 'catalog.json';
+
+function fail(text){
+  const w = document.getElementById('warn');
+  w.textContent = text;
+  w.style.display = '';
+}
+
+let cat, PALETTE;
+try{
+  // Цвет манекена берётся из палитры игры, а не из набора: у набора он серый
+  // (baseColorFactor 0.2), а страница про то, как эти клипы выглядели бы у нас.
+  PALETTE = (await import('/src/render/palette.ts')).PALETTE;
+  cat = await (await fetch(CATALOG)).json();
+}catch(e){
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /charart.html. ' + e);
+  throw e;
+}
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const BODY = hex(PALETTE.heroBody);
+const CLOTH = hex(PALETTE.heroCloak);
+
+/* Русский счёт: «1 клип», «2 клипа», «5 клипов». */
+const plural = (n, one, few, many) => {
+  const t = Math.abs(n) % 100, u = t % 10;
+  if(t > 10 && t < 20) return many;
+  if(u > 1 && u < 5) return few;
+  return u === 1 ? one : many;
+};
+const clipsOf = (n) => n + ' ' + plural(n, 'клип', 'клипа', 'клипов');
+const num = (v, d = 2) => v.toFixed(d).replace('.', ',');
+
+/* ---------- чтение .glb ---------- */
+
+const SIZE = {SCALAR:1, VEC2:2, VEC3:3, VEC4:4, MAT4:16};
+const READER = {5120:'getInt8', 5121:'getUint8', 5122:'getInt16', 5123:'getUint16',
+  5125:'getUint32', 5126:'getFloat32'};
+const BYTES = {5120:1, 5121:1, 5122:2, 5123:2, 5125:4, 5126:4};
+
+function parseGlb(buffer){
+  const view = new DataView(buffer);
+  let at = 12, json = null, bin = null;
+  while(at + 8 <= buffer.byteLength){
+    const length = view.getUint32(at, true), type = view.getUint32(at + 4, true);
+    const body = buffer.slice(at + 8, at + 8 + length);
+    at += 8 + length;
+    if(type === 0x4e4f534a) json = JSON.parse(new TextDecoder().decode(body));
+    else if(type === 0x004e4942) bin = body;
+  }
+  return {json, bin:new DataView(bin)};
+}
+
+function accessor(glb, index){
+  const a = glb.json.accessors[index];
+  if(SIZE[a.type] === undefined) throw new Error('аксессор ' + index + ': тип ' + a.type + ' не разобран');
+  const view = glb.json.bufferViews[a.bufferView];
+  const size = SIZE[a.type], read = READER[a.componentType], step = BYTES[a.componentType];
+  const stride = view.byteStride ?? size * step;
+  const start = (view.byteOffset ?? 0) + (a.byteOffset ?? 0);
+  const out = new Float32Array(a.count * size);
+  for(let i = 0; i < a.count; i++)
+    for(let k = 0; k < size; k++)
+      out[i * size + k] = glb.bin[read](start + i * stride + k * step, true);
+  return out;
+}
+
+/* ---------- матрицы ---------- */
+
+const IDENT = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+
+function compose(t, r, s, out){
+  const [x, y, z, w] = r;
+  const xx = x + x, yy = y + y, zz = z + z;
+  out[0] = (1 - (y*yy + z*zz)) * s[0]; out[1] = (x*yy + w*zz) * s[0]; out[2] = (x*zz - w*yy) * s[0]; out[3] = 0;
+  out[4] = (x*yy - w*zz) * s[1]; out[5] = (1 - (x*xx + z*zz)) * s[1]; out[6] = (y*zz + w*xx) * s[1]; out[7] = 0;
+  out[8] = (x*zz + w*yy) * s[2]; out[9] = (y*zz - w*xx) * s[2]; out[10] = (1 - (x*xx + y*yy)) * s[2]; out[11] = 0;
+  out[12] = t[0]; out[13] = t[1]; out[14] = t[2]; out[15] = 1;
+  return out;
+}
+
+function mul(a, b, out){
+  for(let c = 0; c < 4; c++) for(let r = 0; r < 4; r++){
+    let s = 0;
+    for(let k = 0; k < 4; k++) s += a[k*4 + r] * b[c*4 + k];
+    out[c*4 + r] = s;
+  }
+  return out;
+}
+
+/* ---------- дорожки ---------- */
+
+/** Значение дорожки в момент t. В наборе интерполяция везде линейная. */
+function sample(track, t, quat, out){
+  const {times, values, size} = track;
+  const last = times.length - 1;
+  let i = 0, u = 0;
+  if(t <= times[0]) i = 0;
+  else if(t >= times[last]) i = last;
+  else{
+    while(times[i + 1] < t) i++;
+    u = (t - times[i]) / (times[i + 1] - times[i]);
+  }
+  const a = i * size, b = Math.min(i + 1, last) * size;
+  let flip = 1;
+  if(quat){
+    let dot = 0;
+    for(let k = 0; k < 4; k++) dot += values[a + k] * values[b + k];
+    if(dot < 0) flip = -1;
+  }
+  let len = 0;
+  for(let k = 0; k < size; k++){
+    out[k] = values[a + k] + (values[b + k] * flip - values[a + k]) * u;
+    len += out[k] * out[k];
+  }
+  if(quat && len > 0){
+    const inv = 1 / Math.sqrt(len);
+    for(let k = 0; k < 4; k++) out[k] *= inv;
+  }
+  return out;
+}
+
+/* ---------- набор как сцена: меш, скелет, клипы ---------- */
+
+/**
+ * Один файл набора — это меш манекена, его скелет и все клипы категории сразу.
+ * Поэтому грузится он один раз на категорию, а не на клип: 159 карточек
+ * обошлись бы в 159 запросов там, где хватает четырнадцати.
+ */
+class Rig{
+  constructor(glb){
+    this.glb = glb;
+    const json = glb.json;
+    this.parent = new Int32Array(json.nodes.length).fill(-1);
+    json.nodes.forEach((n, i) => { for(const c of n.children ?? []) this.parent[c] = i; });
+
+    /* Порядок обхода — от корней к листьям, а не по номерам узлов. В файлах
+       набора корень скелета лежит в списке последним, и наивный проход по
+       индексам считал бы кисть раньше плеча: скелет сворачивался в точку. */
+    this.walk = [];
+    const descend = (i) => { this.walk.push(i); for(const c of json.nodes[i].children ?? []) descend(c); };
+    for(let i = 0; i < json.nodes.length; i++) if(this.parent[i] < 0) descend(i);
+
+    const skin = json.skins[0];
+    this.joints = skin.joints;
+    this.inverse = accessor(glb, skin.inverseBindMatrices);
+
+    // Вершины всех примитивов складываются в один буфер: рисовать их всё равно
+    // придётся одним проходом художника, иначе рука уедет за спину.
+    const pos = [], jnt = [], wgt = [], idx = [], part = [];
+    let base = 0;
+    json.meshes.forEach((mesh, m) => {
+      for(const p of mesh.primitives){
+        const P = accessor(glb, p.attributes.POSITION);
+        const J = accessor(glb, p.attributes.JOINTS_0);
+        const W = accessor(glb, p.attributes.WEIGHTS_0);
+        const I = accessor(glb, p.indices);
+        for(let i = 0; i < P.length; i++) pos.push(P[i]);
+        for(let i = 0; i < J.length; i++) jnt.push(J[i]);
+        for(let i = 0; i < W.length; i++) wgt.push(W[i]);
+        for(let i = 0; i < I.length; i++) idx.push(base + I[i]);
+        for(let i = 0; i < I.length / 3; i++) part.push(m);
+        base += P.length / 3;
+      }
+    });
+    this.pos = new Float32Array(pos);
+    this.jnt = new Uint16Array(jnt);
+    this.wgt = new Float32Array(wgt);
+    this.idx = new Uint32Array(idx);
+    this.part = new Uint8Array(part);
+    this.skinned = new Float32Array(this.pos.length);
+    this.matrices = new Float32Array(this.joints.length * 16);
+    this.world = new Float32Array(json.nodes.length * 16);
+    this.tmp = {t:new Float32Array(3), r:new Float32Array(4), s:new Float32Array(3),
+      local:new Float32Array(16), out:new Float32Array(16)};
+
+    this.clips = new Map();
+    for(const anim of json.animations ?? []){
+      const tracks = new Map();
+      let duration = 0;
+      for(const ch of anim.channels){
+        const sm = anim.samplers[ch.sampler];
+        const times = accessor(glb, sm.input);
+        const values = accessor(glb, sm.output);
+        duration = Math.max(duration, times[times.length - 1]);
+        const byPath = tracks.get(ch.target.node) ?? {};
+        byPath[ch.target.path] = {times, values, size:values.length / times.length};
+        tracks.set(ch.target.node, byPath);
+      }
+      this.clips.set(anim.name, {tracks, duration});
+    }
+  }
+
+  /** Скиннинг в момент t: кости — прямой кинематикой, вершины — четырьмя весами. */
+  pose(name, t){
+    const clip = this.clips.get(name);
+    const json = this.glb.json, tmp = this.tmp;
+    for(const n of this.walk){
+      const node = json.nodes[n], byPath = clip.tracks.get(n);
+      const T = byPath?.translation ? sample(byPath.translation, t, false, tmp.t) : (node.translation ?? [0,0,0]);
+      const R = byPath?.rotation ? sample(byPath.rotation, t, true, tmp.r) : (node.rotation ?? [0,0,0,1]);
+      const S = byPath?.scale ? sample(byPath.scale, t, false, tmp.s) : (node.scale ?? [1,1,1]);
+      compose(T, R, S, tmp.local);
+      const up = this.parent[n];
+      if(up < 0) this.world.set(tmp.local, n * 16);
+      else{
+        mul(this.world.subarray(up * 16, up * 16 + 16), tmp.local, tmp.out);
+        this.world.set(tmp.out, n * 16);
+      }
+    }
+    for(let j = 0; j < this.joints.length; j++){
+      mul(this.world.subarray(this.joints[j] * 16, this.joints[j] * 16 + 16),
+        this.inverse.subarray(j * 16, j * 16 + 16), tmp.out);
+      this.matrices.set(tmp.out, j * 16);
+    }
+    const M = this.matrices, out = this.skinned, pos = this.pos, jnt = this.jnt, wgt = this.wgt;
+    for(let v = 0, n = pos.length / 3; v < n; v++){
+      const x = pos[v*3], y = pos[v*3+1], z = pos[v*3+2];
+      let ox = 0, oy = 0, oz = 0;
+      for(let k = 0; k < 4; k++){
+        const w = wgt[v*4 + k];
+        if(w === 0) continue;
+        const m = jnt[v*4 + k] * 16;
+        ox += w * (M[m]*x + M[m+4]*y + M[m+8]*z + M[m+12]);
+        oy += w * (M[m+1]*x + M[m+5]*y + M[m+9]*z + M[m+13]);
+        oz += w * (M[m+2]*x + M[m+6]*y + M[m+10]*z + M[m+14]);
+      }
+      out[v*3] = ox; out[v*3+1] = oy; out[v*3+2] = oz;
+    }
+    return out;
+  }
+}
+
+const loading = new Map();
+const loadRig = (file) => {
+  let hit = loading.get(file);
+  if(hit === undefined){
+    hit = fetch(PACK + 'gltf/' + file)
+      .then((r) => r.arrayBuffer())
+      .then((b) => new Rig(parseGlb(b)));
+    loading.set(file, hit);
+  }
+  return hit;
+};
+
+/* ---------- отрисовщик: ортокамера 45°/30°, плоское затенение ---------- */
+
+const AZ = 45 * Math.PI / 180, EL = 30 * Math.PI / 180;
+const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map(c => c / l); })();
+const CA = Math.cos(AZ), SA = Math.sin(AZ), CE = Math.cos(EL), SE = Math.sin(EL);
+
+/** Мир → экран. Камера та же, что в вылазке: азимут 45°, наклон 30°. */
+function project(x, y, z, out){
+  const px = x * CA - z * SA, pz = x * SA + z * CA;
+  out[0] = px; out[1] = y * CE - pz * SE; out[2] = y * SE + pz * CE;
+  return out;
+}
+
+function shade(rgb, k){
+  return 'rgb(' + rgb.map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
+}
+const toRgb = (color) => [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+const BODY_RGB = toRgb(BODY), CLOTH_RGB = toRgb(CLOTH);
+
+/**
+ * Художник вместо z-буфера: треугольники сортируются по глубине и заливаются
+ * поверх дальних. Для одной фигуры без самопересечений этого достаточно,
+ * а канвас 2D другого и не умеет.
+ */
+function drawRig(ctx, rig, verts, view, alpha){
+  const idx = rig.idx, part = rig.part, n = idx.length / 3;
+  const screen = view.screen;
+  for(let v = 0, m = verts.length / 3; v < m; v++){
+    project(verts[v*3], verts[v*3+1], verts[v*3+2], view.tmp);
+    screen[v*3] = view.ox + view.tmp[0] * view.scale;
+    screen[v*3+1] = view.oy - view.tmp[1] * view.scale;
+    screen[v*3+2] = view.tmp[2];
+  }
+  const order = view.order;
+  for(let f = 0; f < n; f++){
+    order[f] = f;
+    view.depth[f] = (screen[idx[f*3]*3+2] + screen[idx[f*3+1]*3+2] + screen[idx[f*3+2]*3+2]) / 3;
+  }
+  const depth = view.depth;
+  const list = order.subarray(0, n);
+  list.sort((a, b) => depth[b] - depth[a]);
+  ctx.globalAlpha = alpha;
+  for(let k = 0; k < n; k++){
+    const f = list[k], a = idx[f*3], b = idx[f*3+1], c = idx[f*3+2];
+    const ux = verts[b*3] - verts[a*3], uy = verts[b*3+1] - verts[a*3+1], uz = verts[b*3+2] - verts[a*3+2];
+    const vx = verts[c*3] - verts[a*3], vy = verts[c*3+1] - verts[a*3+1], vz = verts[c*3+2] - verts[a*3+2];
+    const nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    const lit = Math.max(0, (nx*LIGHT[0] + ny*LIGHT[1] + nz*LIGHT[2]) / len);
+    // Корпус и голова — сукно, руки-ноги — тело: силуэт читается и без текстуры.
+    const rgb = (part[f] === 2 || part[f] === 3) ? CLOTH_RGB : BODY_RGB;
+    ctx.fillStyle = shade(rgb, 0.4 + lit * 0.85);
+    ctx.beginPath();
+    ctx.moveTo(screen[a*3], screen[a*3+1]);
+    ctx.lineTo(screen[b*3], screen[b*3+1]);
+    ctx.lineTo(screen[c*3], screen[c*3+1]);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Кадрирование по росту манекена: фигура всегда одного размера в кадре. */
+function makeView(canvas, rig, height, pad){
+  const tmp = new Float32Array(3);
+  const top = project(0, height, 0, tmp)[1];
+  const bottom = project(0, 0, 0, new Float32Array(3))[1];
+  const scale = (canvas.height - pad * 2) / (top - bottom);
+  return {
+    scale,
+    ox: canvas.width / 2,
+    oy: canvas.height - pad + bottom * scale,
+    tmp,
+    screen: new Float32Array(rig.pos.length),
+    order: new Uint32Array(rig.idx.length / 3),
+    depth: new Float32Array(rig.idx.length / 3),
+  };
+}
+
+/* ---------- сводка по категориям ---------- */
+
+const byName = new Map(cat.clips.map((c) => [c.file + '/' + c.name, c]));
+const catsBody = document.querySelector('#cats tbody');
+for(const category of cat.order){
+  for(const rig of ['средний', 'крупный']){
+    const list = cat.clips.filter((c) => c.category === category && c.rig === rig);
+    if(list.length === 0) continue;
+    const total = list.reduce((s, c) => s + c.duration, 0);
+    const longest = list.reduce((a, b) => (a.duration > b.duration ? a : b));
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + category + '</td><td>' + rig + '</td>' +
+      '<td class="num">' + list.length + '</td>' +
+      '<td class="num">' + num(total, 1) + '</td>' +
+      '<td class="num">' + num(total / list.length) + '</td>' +
+      '<td class="mono">' + longest.name + '</td>';
+    catsBody.appendChild(tr);
+  }
+}
+const seconds = cat.clips.reduce((s, c) => s + c.duration, 0);
+const bytes = cat.clips.reduce((s, c) => s + c.bytes, 0);
+document.getElementById('total').textContent =
+  clipsOf(cat.clips.length) + ' в ' + cat.rigs.length + ' оснастках, ' + num(seconds, 1) +
+  ' с движения, ' + Math.round(bytes / 1024) + ' КБ сырых дорожек — ' +
+  Math.round(bytes / 1024 / cat.clips.length) + ' КБ на клип. Плюс T-Pose в каждом из 14 файлов: ' +
+  'это опора для переноса, а не анимация, и обмер её не считает.';
+
+/* ---------- стенд ---------- */
+
+const screen = document.getElementById('screen');
+const ctx = screen.getContext('2d');
+const tag = document.getElementById('tag');
+const facts = document.getElementById('facts');
+const rates = document.getElementById('rates');
+const verdict = document.getElementById('verdict');
+
+const HERO_SPEED = cat.heroSpeed;
+/** Единица игры в единицах набора: клетка на сетке стенда — наша клетка. */
+const TILE = 1 / cat.scale;
+
+const stage = {clip:null, rig:null, view:null, t:0, rate:1, grid:true, playing:true, phase:0};
+
+const rateOf = (c) => (c.slide > 0 ? HERO_SPEED / (c.slide * cat.scale) : null);
+
+function drawGround(ctx, view, phase){
+  const p = new Float32Array(3), q = new Float32Array(3);
+  const reach = 9;
+  ctx.lineWidth = 1;
+  const line = (x1, z1, x2, z2, strong) => {
+    project(x1, 0, z1, p);
+    const ax = view.ox + p[0] * view.scale, ay = view.oy - p[1] * view.scale;
+    project(x2, 0, z2, q);
+    const bx = view.ox + q[0] * view.scale, by = view.oy - q[1] * view.scale;
+    ctx.strokeStyle = strong ? 'rgba(211,169,58,.55)' : 'rgba(150,140,118,.28)';
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  };
+  const shift = ((phase % TILE) + TILE) % TILE;
+  for(let i = -reach; i <= reach; i++){
+    const z = i * TILE - shift;
+    line(-reach * TILE, z, reach * TILE, z, Math.abs(z) < TILE * 0.5);
+  }
+  for(let i = -reach; i <= reach; i++) line(i * TILE, -reach * TILE, i * TILE, reach * TILE, i === 0);
+}
+
+async function show(clip){
+  stage.clip = clip;
+  stage.t = 0;
+  stage.phase = 0;
+  const rig = await loadRig(clip.file);
+  stage.rig = rig;
+  const height = cat.rigs.find((r) => clip.rig === 'крупный' ? r.name.includes('Large') : r.name.includes('Medium')).height;
+  stage.view = makeView(screen, rig, height * 1.25, 40);
+  const fit = rateOf(clip);
+  stage.rate = 1;
+
+  tag.innerHTML = clip.name + ' <s>· ' + clip.category.toLowerCase() + ', ' + clip.rig + '</s>';
+  facts.innerHTML =
+    '<dt>Длительность</dt><dd>' + num(clip.duration) + ' с</dd>' +
+    '<dt>Ключей</dt><dd>' + clip.keys + '</dd>' +
+    '<dt>Костей в движении</dt><dd>' + clip.joints + '</dd>' +
+    '<dt>Проскальзывание</dt><dd>' + num(clip.slide * cat.scale) + ' тайла/с</dd>' +
+    '<dt>Петля</dt><dd' + (clip.loop > cat.open ? ' class="warn"' : '') + '>' +
+      (clip.loop > cat.open ? 'разомкнута, ' + num(clip.loop) : 'замкнута') + '</dd>' +
+    '<dt>Снос корня</dt><dd' + (clip.drift > 0.01 ? ' class="warn"' : '') + '>' +
+      (clip.drift > 0.01 ? num(clip.drift) + ' ед.' : 'нет') + '</dd>';
+
+  rates.innerHTML = '';
+  const button = (label, rate, pressed) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(pressed));
+    b.onclick = () => {
+      stage.rate = rate;
+      [...rates.children].forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+    };
+    rates.appendChild(b);
+  };
+  button('Как нарисовано', 1, true);
+  if(fit !== null && clip.slide >= cat.still && fit < 12) button('Под 1,67 · ×' + num(fit), fit, false);
+
+  // Первый кадр рисуется сразу: пока вкладка не показана, requestAnimationFrame
+  // не зовут вовсе, и стенд встречал бы читателя пустым чёрным прямоугольником.
+  frame(0);
+
+  verdict.textContent = clip.slide < cat.still
+    ? 'Земля под этим клипом не едет: он играется на месте, и скорость воспроизведения ему безразлична.'
+    : fit >= 12
+      ? 'Клип двигает ногу, но ходьбой не является: чтобы вывезти 1,67, его пришлось бы ускорить в ' +
+        Math.round(fit) + ' раз.'
+      : 'Чтобы нога встала на клетку, клип идёт в ' + num(fit) + ' раза быстрее, чем нарисован.';
+}
+
+function frame(dt){
+  if(stage.rig === null) return;
+  const clip = stage.clip, rig = stage.rig, view = stage.view;
+  if(stage.playing && clip.duration > 0){
+    stage.t = (stage.t + dt * stage.rate) % clip.duration;
+    // Земля всегда едет со скоростью героя: она — константа, а темп клипа — нет.
+    stage.phase += dt * (HERO_SPEED / cat.scale);
+  }
+  ctx.fillStyle = '#12100c';
+  ctx.fillRect(0, 0, screen.width, screen.height);
+  if(stage.grid) drawGround(ctx, view, stage.phase);
+  drawRig(ctx, rig, rig.pose(clip.name, stage.t), view, 1);
+}
+
+document.getElementById('grid').onclick = (e) => {
+  stage.grid = !stage.grid;
+  e.currentTarget.setAttribute('aria-pressed', String(stage.grid));
+};
+document.getElementById('play').onclick = (e) => {
+  stage.playing = !stage.playing;
+  e.currentTarget.textContent = stage.playing ? 'Пауза' : 'Пуск';
+  e.currentTarget.setAttribute('aria-pressed', String(stage.playing));
+};
+
+/* ---------- каталог ---------- */
+
+const catalog = document.getElementById('catalog');
+const filters = document.getElementById('filters');
+const cards = [];
+let rigFilter = 'все';
+
+/**
+ * Кадр карточки — три позы одна поверх другой. Неподвижная картинка от этого
+ * начинает показывать ход, а не позу; для артбука это и есть разница между
+ * списком имён и каталогом.
+ */
+const GHOSTS = [0.25, 0.55, 0.85];
+
+const queue = [];
+
+/**
+ * Карточки рисуются по одной позе за кадр. Без очереди наблюдатель отдаёт
+ * два десятка карточек разом, каждая — три скиннинга по семь тысяч
+ * треугольников, и страница встаёт колом на первом же скролле.
+ */
+function paint(card){
+  if(card.painted) return;
+  card.painted = true;
+  queue.push(card);
+}
+
+function pump(){
+  const card = queue[0];
+  if(card === undefined) return;
+  if(card.rig === undefined){
+    if(card.loading) return;
+    card.loading = true;
+    loadRig(card.clip.file).then((rig) => {
+      const height = cat.rigs.find((r) => card.clip.rig === 'крупный' ? r.name.includes('Large') : r.name.includes('Medium')).height;
+      card.rig = rig;
+      card.view = makeView(card.canvas, rig, height * 1.1, 12);
+      card.ghost = 0;
+      const ctx = card.canvas.getContext('2d');
+      ctx.fillStyle = '#12100c';
+      ctx.fillRect(0, 0, card.canvas.width, card.canvas.height);
+    }).catch((e) => { queue.shift(); fail('Карточка ' + card.clip.name + ': ' + e); });
+    return;
+  }
+  const u = GHOSTS[card.ghost];
+  drawRig(card.canvas.getContext('2d'), card.rig, card.rig.pose(card.clip.name, card.clip.duration * u),
+    card.view, card.ghost === GHOSTS.length - 1 ? 1 : 0.26 + card.ghost * 0.1);
+  card.ghost++;
+  if(card.ghost >= GHOSTS.length) queue.shift();
+}
+
+/** Оживает одна карточка за раз: 6916 треугольников на кадр — это не фон. */
+let hovered = null;
+function hover(card, on){
+  if(!on){
+    if(hovered === card) hovered = null;
+    if(card.rig !== undefined) paintFrame(card, 0, true);
+    return;
+  }
+  hovered = card;
+  paint(card);
+}
+
+function paintFrame(card, t, ghosts){
+  const ctx = card.canvas.getContext('2d');
+  ctx.fillStyle = '#12100c';
+  ctx.fillRect(0, 0, card.canvas.width, card.canvas.height);
+  if(ghosts){
+    const d = card.clip.duration;
+    GHOSTS.forEach((u, i) => drawRig(ctx, card.rig, card.rig.pose(card.clip.name, d * u), card.view,
+      i === GHOSTS.length - 1 ? 1 : 0.26 + i * 0.1));
+  }else{
+    drawRig(ctx, card.rig, card.rig.pose(card.clip.name, t), card.view, 1);
+  }
+}
+
+let hoverTime = 0;
+function hoverLoop(dt){
+  const card = hovered;
+  if(card === null || card.rig === undefined) return;
+  const d = card.clip.duration;
+  if(d === 0) return;
+  hoverTime = (hoverTime + dt) % d;
+  paintFrame(card, hoverTime, false);
+}
+
+const watcher = new IntersectionObserver((entries) => {
+  for(const e of entries) if(e.isIntersecting){
+    paint(e.target._card);
+    watcher.unobserve(e.target);
+  }
+}, {rootMargin:'220px'});
+
+for(const category of cat.order){
+  const list = cat.clips.filter((c) => c.category === category);
+  const block = document.createElement('div');
+  block.className = 'cat';
+  const h = document.createElement('h3');
+  h.innerHTML = category + ' <s>' + clipsOf(list.length) + '</s>';
+  const grid = document.createElement('div');
+  grid.className = 'clips';
+  block.append(h, grid);
+  catalog.appendChild(block);
+
+  for(const clip of list){
+    const button = document.createElement('button');
+    button.className = 'c';
+    button.type = 'button';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'film';
+    canvas.width = 232; canvas.height = 258;
+    const name = document.createElement('b');
+    name.textContent = clip.name;
+    const meta = document.createElement('u');
+    const speed = clip.slide * cat.scale;
+    meta.innerHTML =
+      '<s>' + num(clip.duration) + ' с</s>' +
+      '<s class="' + (clip.slide >= cat.still ? 'slip' : '') + '">' +
+        (clip.slide >= cat.still ? num(speed) + ' тайла/с' : 'на месте') + '</s>' +
+      '<s class="' + (clip.loop > cat.open ? 'open' : '') + '">' +
+        (clip.loop > cat.open ? 'без петли' : 'петля') + '</s>';
+    button.append(canvas, name, meta);
+    grid.appendChild(button);
+
+    const card = {clip, canvas, button, block, painted:false};
+    canvas._card = card;
+    cards.push(card);
+    watcher.observe(canvas);
+    button.onmouseenter = () => hover(card, true);
+    button.onmouseleave = () => hover(card, false);
+    button.onclick = () => {
+      cards.forEach((c) => c.button.setAttribute('aria-pressed', String(c === card)));
+      show(card.clip);
+      document.getElementById('screen').scrollIntoView({behavior:'smooth', block:'center'});
+    };
+  }
+  block._category = category;
+}
+
+/* Фильтр по оснастке: клипы среднего и крупного манекенов — разные наборы,
+   и смотреть их вперемешку значит сравнивать несравнимое. */
+for(const label of ['все', 'средний', 'крупный']){
+  const b = document.createElement('button');
+  b.textContent = label === 'все' ? 'Обе оснастки' : label;
+  b.setAttribute('aria-pressed', String(label === rigFilter));
+  b.onclick = () => {
+    rigFilter = label;
+    [...filters.children].forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+    for(const card of cards) card.button.style.display =
+      (rigFilter === 'все' || card.clip.rig === rigFilter) ? '' : 'none';
+    for(const block of catalog.children){
+      const shown = cat.clips.filter((c) => c.category === block._category &&
+        (rigFilter === 'все' || c.rig === rigFilter));
+      block.style.display = shown.length > 0 ? '' : 'none';
+      block.querySelector('h3 s').textContent = clipsOf(shown.length);
+    }
+  };
+  filters.appendChild(b);
+}
+
+/* ---------- скорость ---------- */
+
+const moving = cat.clips.filter((c) => c.duration > 0);
+const cycles = moving.filter((c) => c.slide >= cat.still && c.loop <= cat.open)
+  .sort((a, b) => b.slide - a.slide);
+const speedsBody = document.querySelector('#speeds tbody');
+for(const c of cycles){
+  const speed = c.slide * cat.scale;
+  const tr = document.createElement('tr');
+  if(HERO_SPEED / speed <= 2.1) tr.className = 'new';
+  tr.innerHTML =
+    '<td class="mono">' + c.name + '</td><td>' + c.rig + '</td>' +
+    '<td class="num">' + num(c.duration) + '</td>' +
+    '<td class="num">' + num(c.slide) + '</td>' +
+    '<td class="num">' + num(speed) + '</td>' +
+    '<td class="num">×' + num(HERO_SPEED / speed) + '</td>';
+  speedsBody.appendChild(tr);
+}
+document.getElementById('scaleNote').textContent =
+  '×' + num(cat.scale, 3) + ' (манекен ростом ' + num(cat.rigs.find(r => r.name.includes('Medium')).height) +
+  ' приведён к росту героя ' + num(cat.heroHeight) + ')';
+const lunges = moving.filter((c) => c.slide >= cat.still && c.loop > cat.open);
+document.getElementById('speedNote').textContent =
+  'Подсвечены строки, которым до 1,67 не больше чем вдвое. В таблице только циклы — ' +
+  'клипы, у которых петля замкнута и земля при этом едет. Ещё ' + lunges.length +
+  ' клипов двигают землю разово (выпад, уклонение, посадка на пол): гонять их по кругу нельзя, ' +
+  'и в темп они не переводятся.';
+
+/* ---------- бой ---------- */
+
+/**
+ * Столбцы актёров строятся из каталога, а он — из sim/config и sim/enemies.
+ * Поэтому правка интервала атаки в коде меняет эту таблицу, а не расходится с ней.
+ */
+const combatHead = document.querySelector('#combat thead tr');
+for(const actor of cat.actors){
+  const th = document.createElement('th');
+  th.className = 'num';
+  th.textContent = actor.id;
+  th.title = actor.name + ': интервал ' + num(actor.interval) + ' с, замах ' + num(actor.telegraph) + ' с';
+  combatHead.appendChild(th);
+}
+
+const swung = cat.clips
+  .filter((c) => (c.category === 'Ближний бой' || c.category === 'Дальний бой') && c.peak >= cat.swung)
+  .sort((a, b) => a.strike - b.strike);
+const fits = (c, a) => c.strike >= a.telegraph && cat.blendIn + c.strike <= a.interval;
+
+const combatBody = document.querySelector('#combat tbody');
+for(const c of swung){
+  const tr = document.createElement('tr');
+  if(!fits(c, cat.actors[0])) tr.className = 'new';
+  tr.innerHTML =
+    '<td class="mono">' + c.name + '</td>' +
+    '<td class="num">' + num(c.strike) + '</td>' +
+    '<td class="num">' + num(c.duration - c.strike) + '</td>' +
+    cat.actors.map((a) => fits(c, a)
+      ? '<td class="num">да</td>'
+      : '<td class="num miss">' + (c.strike < a.telegraph ? 'резко' : 'не успеть') + '</td>').join('');
+  combatBody.appendChild(tr);
+}
+
+const hero = cat.actors[0];
+const late = swung.filter((c) => cat.blendIn + c.strike > hero.interval);
+document.getElementById('combatNote').textContent =
+  'Подсвечены строки, не проходящие бюджет героя: ' + late.map((c) => c.name).join(', ') + '. ' +
+  'Остальные ' + (swung.length - late.length) + ' из ' + swung.length + ' укладываются в интервал ' +
+  num(hero.interval) + ' с. «Резко» — замах короче замаха актора: удар видно, но не заранее, ' +
+  'и по §17.3 такой клип противнику не отдают. Для голема это половина набора — его замах вдвое длиннее.';
+
+/* ---------- петля, корень, позы ---------- */
+
+const openLoop = moving.filter((c) => c.loop > cat.open);
+const drifted = cat.clips.filter((c) => c.drift > 0.01);
+document.getElementById('loopOk').textContent = clipsOf(moving.length - openLoop.length) + ' из ' + moving.length;
+document.getElementById('loopBad').textContent = clipsOf(openLoop.length);
+document.getElementById('drifted').textContent = clipsOf(drifted.length);
+document.getElementById('driftList').textContent = drifted.map((c) => c.name).join(', ');
+document.getElementById('poses').textContent = cat.clips.filter((c) => c.duration === 0).length;
+
+/* ---------- оснастка ---------- */
+
+const rigsBody = document.querySelector('#rigs tbody');
+const medium = cat.rigs.find((r) => r.name.includes('Medium'));
+const large = cat.rigs.find((r) => r.name.includes('Large'));
+const inClips = 23;
+for(const r of cat.rigs){
+  const missing = inClips - r.joints;
+  const tr = document.createElement('tr');
+  if(missing > 0) tr.className = 'new';
+  tr.innerHTML =
+    '<td class="mono">' + r.name + '</td>' +
+    '<td class="num">' + r.joints + '</td>' +
+    '<td class="num">' + r.tris + '</td>' +
+    '<td class="num">' + num(r.height) + '</td>' +
+    (missing > 0
+      ? '<td class="miss">' + r.bones.filter((b) => !b.startsWith('handslot')).length +
+        ' из 23: нет handslot.l и handslot.r</td>'
+      : '<td>ничего</td>');
+  rigsBody.appendChild(tr);
+}
+document.getElementById('rigNote').textContent =
+  'В файлах клипов у обеих оснасток 23 кости с одинаковыми именами — включая handslot.l ' +
+  'и handslot.r, узлы, к которым крепится оружие. У поставляемого Mannequin_Medium их нет: ' +
+  'меч вешать не на что, если брать манекен, а не скелет из клипа. Порядок костей в списке ' +
+  'при этом у оснасток разный, так что переносить клип можно только по именам — ' +
+  'по номерам он вывернет персонажа наизнанку.';
+
+/* ---------- выводы ---------- */
+
+const bestMedium = cycles.find((c) => c.rig === 'средний');
+const walk = cat.clips.find((c) => c.name === 'Walking_A' && c.rig === 'средний');
+document.getElementById('bestSpeed').textContent = num(bestMedium.slide * cat.scale);
+document.getElementById('walkRate').textContent = '×' + num(rateOf(walk));
+document.getElementById('combatCount').textContent =
+  clipsOf(cat.clips.filter((c) => c.category === 'Ближний бой' || c.category === 'Дальний бой').length);
+document.getElementById('rigTris').textContent = medium.tris;
+
+/* ---------- старт ---------- */
+
+// Стенд открывается на беге средней оснастки: это тот единственный клип,
+// который к константе §17.4 хотя бы близок.
+const opening = cat.clips.find((c) => c.name === 'Running_B' && c.rig === 'средний') ?? cat.clips[0];
+await show(opening);
+cards.find((c) => c.clip === opening)?.button.setAttribute('aria-pressed', 'true');
+
+/* Тридцать кадров в секунду — как лагерь (camp.html, 03). Скиннинг здесь
+   считается на процессоре, и шестьдесят кадров съели бы страницу целиком. */
+const STEP = 1 / 30;
+let last = performance.now(), owed = 0;
+requestAnimationFrame(function tick(now){
+  requestAnimationFrame(tick);
+  owed += Math.min(0.2, (now - last) / 1000);
+  last = now;
+  if(owed < STEP) return;
+  const dt = owed;
+  owed = 0;
+  try{
+    frame(dt);
+    hoverLoop(dt);
+    pump();
+  }catch(e){ fail('Отрисовка: ' + e); throw e; }
+});
+
+document.getElementById('stageNote').textContent =
+  'Скелет, меш и дорожки читаются из ' + PACK + 'gltf/ прямо в браузере: прямая кинематика, ' +
+  'скиннинг по четырём весам, художник вместо z-буфера. Ортокамера та же, что в вылазке — ' +
+  'азимут 45°, наклон 30°, один источник света; цвет — из палитры игры, не из набора.';
+</script>

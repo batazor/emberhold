@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { enemyGeometry, heroGeometry } from './models';
+import { buildingGeometry, enemyGeometry, heroGeometry } from './models';
+import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
 import { idx } from '../sim/grid';
 import type { Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
@@ -45,6 +46,13 @@ const GLADE_TREES: readonly ForestModelName[] = [
  */
 export type RaidFlavor = 'mine' | 'glade';
 
+/**
+ * Шатёр рисуется в габаритах артбука — почти четыре единицы в ширину.
+ * Тот же коэффициент, что в лагере (`campView.ts`): здание не имеет права
+ * выглядеть по-разному в двух сценах, иначе это два разных здания.
+ */
+const BUILDING_SCALE = 0.55;
+
 /** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка. */
 const hash = (a: number, b: number, mod: number): number =>
   Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
@@ -53,6 +61,9 @@ interface EnemyView {
   readonly mesh: THREE.Mesh;
   readonly base: THREE.MeshLambertMaterial;
   readonly hot: THREE.MeshLambertMaterial;
+  /** Куда смотрит модель. Хранится отдельно, потому что поворот сглаживается,
+   *  а симуляция направления противника не держит: ей оно не нужно. */
+  facing: number;
 }
 
 export class RaidView {
@@ -66,6 +77,11 @@ export class RaidView {
   private hintRing!: THREE.Mesh;
   /** На поляне выхода нет, и кольца тоже: показывать некуда (§12.1). */
   private evacRing: THREE.Mesh | null = null;
+  /** Здания, поставленные в конце пролога. До него их нет вовсе. */
+  private readonly placed = new Map<BuildingId, THREE.Mesh>();
+  /** Пятно под курсором в режиме выбора места и призрак здания над ним. */
+  private site: THREE.Mesh | null = null;
+  private ghost: THREE.Mesh | null = null;
   private grass: Grass | null = null;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
@@ -196,6 +212,68 @@ export class RaidView {
     }
   }
 
+  /**
+   * Здание на клетку. Отдельной сцены под лагерь не открывается: поляна,
+   * по которой игрок ходил, и есть место, где он остался, — уводить его
+   * на другую карту значило бы обесценить прогулку, которая эту карту
+   * только что показала.
+   *
+   * Трава на клетке выкашивается: под зданием её быть не должно.
+   */
+  place(id: BuildingId, x: number, z: number): void {
+    if (this.placed.has(id)) return;
+    const mesh = new THREE.Mesh(this.track(buildingGeometry(id, 1)), this.blocking);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.scale.setScalar(BUILDING_SCALE);
+    mesh.position.set(x, 0, z);
+    this.placed.set(id, mesh);
+    this.group.add(mesh);
+    this.grass?.clearCell(x, z);
+  }
+
+  /**
+   * Место под здание: пятно на земле и полупрозрачный силуэт над ним.
+   * Зелёное — можно, красное — нельзя. Силуэт нужен затем, что пятно
+   * показывает клетку, а вопрос у игрока другой — «что тут встанет».
+   */
+  showSite(id: BuildingId, x: number, z: number, ok: boolean): void {
+    if (this.site === null) {
+      this.site = new THREE.Mesh(
+        this.track(new THREE.PlaneGeometry(0.94, 0.94)),
+        this.track(
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, fog: false }),
+        ),
+      );
+      this.site.rotation.x = -Math.PI / 2;
+      this.group.add(this.site);
+    }
+    if (this.ghost === null || this.ghost.userData['id'] !== id) {
+      this.ghost?.removeFromParent();
+      this.ghost = new THREE.Mesh(
+        this.track(buildingGeometry(id, 1)),
+        this.track(
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, fog: false }),
+        ),
+      );
+      this.ghost.userData['id'] = id;
+      this.ghost.scale.setScalar(BUILDING_SCALE);
+      this.group.add(this.ghost);
+    }
+    const color = ok ? PALETTE.siteOk : PALETTE.siteNo;
+    (this.site.material as THREE.MeshBasicMaterial).color.setHex(color);
+    (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(color);
+    this.site.visible = true;
+    this.ghost.visible = true;
+    this.site.position.set(x, 0.05, z);
+    this.ghost.position.set(x, 0, z);
+  }
+
+  hideSite(): void {
+    if (this.site !== null) this.site.visible = false;
+    if (this.ghost !== null) this.ghost.visible = false;
+  }
+
   private buildEvac(): void {
     const { evac } = this.loc;
     const ringMat = this.track(
@@ -242,11 +320,14 @@ export class RaidView {
   }
 
   /**
-   * Противники — модели артбука (раздел 04). Различаются силуэтом раньше,
-   * чем цветом: за пределами фонаря цвет пропадает первым.
+   * Противники — три скелета набора KayKit Skeletons (§6.1.3, каталог —
+   * `enemyart.html`). Различаются силуэтом раньше, чем цветом: за пределами
+   * фонаря цвет пропадает первым, и разводят их снаряжение и рост,
+   * а не оттенок кости.
    *
    * Геометрия и материалы общие на вид, а не на особь: на ярусе 3 их девять,
-   * и девять одинаковых материалов — это девять лишних состояний GPU.
+   * и девять одинаковых материалов — это девять лишних состояний GPU. Для
+   * набора это уже не мелочь: одна модель — пять тысяч треугольников.
    */
   private buildEnemies(): void {
     const shapes = new Map<EnemyKind, THREE.BufferGeometry>();
@@ -280,7 +361,7 @@ export class RaidView {
       mesh.castShadow = true;
       mesh.position.set(e.x, 0, e.z);
       this.group.add(mesh);
-      this.enemyViews.set(e.id, { mesh, base: this.blocking, hot: hotOf(e.kind) });
+      this.enemyViews.set(e.id, { mesh, base: this.blocking, hot: hotOf(e.kind), facing: 0 });
     }
   }
 
@@ -368,13 +449,24 @@ export class RaidView {
         view.mesh.visible = false;
         continue;
       }
-      view.mesh.position.set(
-        lerp(e.prevX, e.x, alpha),
-        0.45 + Math.sin(time / 420 + e.id) * 0.04,
-        lerp(e.prevZ, e.z, alpha),
-      );
+      const ex = lerp(e.prevX, e.x, alpha);
+      const ez = lerp(e.prevZ, e.z, alpha);
+      // Шаг вместо парения: модель стоит на полу, а покачивание остаётся
+      // только пока противник идёт. Клипов ходьбы у игры пока нет (§17.1),
+      // и это всё, чем ход отличается от стойки.
+      const walking = e.x !== e.prevX || e.z !== e.prevZ;
+      view.mesh.position.set(ex, walking ? Math.abs(Math.sin(time / 110 + e.id)) * 0.03 : 0, ez);
       view.mesh.material = e.telegraph > 0 ? view.hot : view.base;
-      view.mesh.rotation.y += dt * (e.awake ? 2.5 : 0.5);
+      // Спящий смотрит, куда стоял; проснувшийся — на героя. Разворот тот же,
+      // что у героя (§17.2): за кадр, а не мгновенно.
+      const look = walking
+        ? Math.atan2(e.x - e.prevX, e.z - e.prevZ)
+        : e.awake ? Math.atan2(hx - ex, hz - ez) : view.facing;
+      let spin = look - view.facing;
+      while (spin > Math.PI) spin -= Math.PI * 2;
+      while (spin < -Math.PI) spin += Math.PI * 2;
+      view.facing += spin * Math.min(1, dt * 8);
+      view.mesh.rotation.y = view.facing;
       this.scaleByWounds(view.mesh, e);
     }
 
@@ -420,7 +512,7 @@ export class RaidView {
       const dx = e.x - hx;
       const dz = e.z - hz;
       if (dx * dx + dz * dz > 64) continue;
-      slots.push({ x: e.x, z: e.z, strength: e.kind === 'golem' ? 1.4 : 0.9 });
+      slots.push({ x: e.x, z: e.z, strength: e.kind === 'mage' ? 1.4 : 0.9 });
     }
     this.grass.update(time / 1000, slots as readonly Pusher[]);
   }

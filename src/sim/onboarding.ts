@@ -26,7 +26,7 @@ export type OnbStep =
   | 'glade'
   /** 0:00 — герой в локации, одна подсвеченная точка на полу. */
   | 'move'
-  /** 0:20 — первый падальщик, бой идёт сам собой. */
+  /** 0:20 — первый скелет, бой идёт сам собой. */
   | 'approach'
   /** 0:40 — скриптовая рана: урон показан до того, как стал опасным. */
   | 'wound'
@@ -59,6 +59,15 @@ export const stepIndex = (step: OnbStep): number => ONB_ORDER.indexOf(step);
  *  вылазка перезапуск не переживает (см. `save.ts`). */
 export const isRaidStep = (step: OnbStep): boolean =>
   stepIndex(step) <= stepIndex('evac');
+
+/**
+ * С какого кадра продолжить после перезапуска. Ни поляна, ни первая вылазка
+ * его не переживают, но начинаются они с разного: пролог — с себя самого,
+ * вылазка — со своего первого кадра. Без этой развилки сохранённый пролог
+ * открывался вылазкой, и кнопка «Играть» вела мимо него.
+ */
+export const restartStep = (step: OnbStep): OnbStep =>
+  step === 'glade' ? 'glade' : isRaidStep(step) ? 'move' : step;
 
 /**
  * Что открыто на этом кадре. «Одна механика на кадр»: полосы включаются по
@@ -177,7 +186,7 @@ export function scriptWound(state: RaidState): boolean {
   if (!state.inFight) return false;
   if (state.hero.wounds <= 1) return false;
   state.hero.wounds -= 1;
-  state.events.push('Падальщик задел');
+  state.events.push('Скелет задел');
   return true;
 }
 

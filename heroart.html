@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>Набор моделей: персонажи</title>
+<title>Набор моделей: герой</title>
 <style>
   :root{
     --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
@@ -172,108 +172,6 @@
         чем в лесу, — персонаж тяжелее камня в тридцать раз.</p>
     </div>
   </div>
-</div>
-
-<div class="sec">
-  <div class="hd">
-    <h2>Персонаж — это не одна модель</h2>
-    <p>Каждый герой набора собран из отдельных мешей: голова, шлем, забрало, плащ,
-      корпус, две руки, две ноги. Один узел — один меш — один вызов отрисовки.
-      Артбук «Скелетные клипы» закладывал <b>двенадцать скиннованных персонажей
-      в кадре</b>, считая по одному вызову на каждого; набор превращает эту дюжину
-      в цифру из другого разряда.</p>
-  </div>
-  <div class="scroll">
-    <table id="parts"><thead><tr>
-      <th>Персонаж</th><th class="num">Мешей</th><th>Из чего собран</th>
-    </tr></thead><tbody></tbody></table>
-  </div>
-  <p class="note" id="partsNote"></p>
-  <div class="guard">
-    <div class="key">
-      <h3>Запекание склеивает их в один</h3>
-      <p>Взятый персонаж едет в бандл не мешами, а треугольниками со слотами
-        палитры: <code>bakedGeometry</code> собирает из них <b>одну геометрию
-        и один вызов отрисовки</b>. Дюжина вызовов, которой пугает таблица,
-        относится к рантайм-загрузке скиннованной модели — того, чего в игре нет.</p>
-    </div>
-    <div class="warn">
-      <h3>И вместе с ними — съёмный шлем</h3>
-      <p>Цена склейки ровно та, ради чего меши разделены: <b>снять шлем
-        у запечённого персонажа нельзя</b>. Пять слотов снаряжения (§14) силуэтом
-        пока не читаются, и день, когда это понадобится, — тот же самый день,
-        когда понадобится скиннованный рендер.</p>
-    </div>
-    <div class="key">
-      <h3>Та же черта — единственное, что набор даёт даром</h3>
-      <p>Шлем, забрало, плащ, колчан и маска вынесены отдельными мешами не для
-        красоты, а чтобы их <b>снимать и менять</b>. У нас ровно пять слотов
-        снаряжения (§14: оружие, броня, фонарь, короб, кольцо), и три из них
-        читались бы силуэтом без единой новой модели — переключением видимости.</p>
-    </div>
-    <div>
-      <h3>И тридцать один предмет в руку</h3>
-      <p>Мечи, топоры, луки, арбалеты, щиты, посохи, книги. <b>Слот «оружие» —
-        единственный, у которого сейчас нет вида вообще</b>: у героя-примитива
-        в руке палка. Здесь их тридцать один, и все дешевле героя на порядок —
-        <span id="propAvg">…</span>.</p>
-    </div>
-  </div>
-</div>
-
-<div class="sec">
-  <div class="hd">
-    <h2>Скелет совпал, клипы — на четыре пятых</h2>
-    <p>Половина набора — вообще не геометрия. Клипы лежат двумя библиотеками
-      на общий риг <code>Rig_Medium</code>, и меряются они по бюджетам не §6.1,
-      а артбука «Скелетные клипы»: кости, вес, и главное — <b>список клипов,
-      без которого игра не играется</b>.</p>
-  </div>
-  <div class="guard">
-    <div class="key">
-      <h3>Костей: <span id="bones">…</span></h3>
-      <p>Бюджет ставился от читаемости — «две руки, две ноги, корпус, голова
-        и оружие; больше на пяти сантиметрах экрана не видно». Набор в него
-        укладывается, и это <b>не совпадение</b>: low-poly риг под мобильную
-        камеру считают одинаково все.</p>
-    </div>
-    <div class="key">
-      <h3>Корневое движение: <span id="rootMotion">…</span></h3>
-      <p>Требование записано жёстко: <b>клип не двигает персонажа</b>, перемещение
-        считает симуляция по сетке — от неё зависят путь назад и расход провианта.
-        Замер горизонтального сдвига корня скелета по всем клипам это требование
-        подтверждает, а не обещает.</p>
-    </div>
-  </div>
-  <div class="scroll">
-    <table id="needs"><thead><tr>
-      <th>Клип игры</th><th>Что нашлось в наборе</th><th class="num">Длительность</th><th>Чем искали</th>
-    </tr></thead><tbody></tbody></table>
-  </div>
-  <div class="guard">
-    <div class="warn">
-      <h3>Нет удара</h3>
-      <p>Из пяти клипов набор закрывает четыре. Пятый — <b>единственный, у которого
-        есть событие по времени</b>: замах 0–0,18, удар на 0,30, возврат до 0,60.
-        На этой отметке наносится урон, на неё же считался запас боя — 0,82 секунды
-        из 1,2. Бесплатный тариф отдаёт бросок, применение предмета, подбор
-        и взаимодействие; удара в нём нет ни под каким именем.</p>
-    </div>
-    <div>
-      <h3>Это не дефект набора</h3>
-      <p>Боевые клипы вынесены автором в отдельный бесплатный пак
-        <b>KayKit Character Animations</b> на тот же риг. То есть вопрос
-        не «есть ли удар», а «сколько наборов придётся свести»: скелет один,
-        и клипы к нему складываются.</p>
-    </div>
-  </div>
-  <div class="scroll">
-    <table id="libs"><thead><tr>
-      <th>Библиотека</th><th class="num">Клипов</th><th class="num">Секунд</th>
-      <th class="num">Ключей</th><th class="num">Вес ключей</th><th class="num">Бюджет</th>
-    </tr></thead><tbody></tbody></table>
-  </div>
-  <p class="note" id="clipNote"></p>
 </div>
 
 <div class="sec">
@@ -529,93 +427,20 @@ document.getElementById('heroWorst').textContent =
   'самая тяжёлая, ' + worstHero.name + ', тяжелее бюджета в ' +
   (worstHero.tris / HERO_BUDGET).toFixed(1).replace('.', ',') + ' раза';
 
-/* ---------- меши и вызовы отрисовки ---------- */
-const partsBody = document.querySelector('#parts tbody');
-for(const m of HEROES){
-  // Имя меша повторяет имя персонажа — в таблице от него остаётся только часть.
-  const strip = (name) => name.replace(/^[A-Za-z]+_/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
-  const tr = document.createElement('tr');
-  tr.innerHTML = '<td class="mono">' + m.name + '</td><td class="num">' + m.parts.length +
-    '</td><td class="mono">' + m.parts.map(p => strip(p.name)).join(' · ') + '</td>';
-  partsBody.appendChild(tr);
-}
-const partsTotal = HEROES.reduce((s, m) => s + m.parts.length, 0);
-const perHero = partsTotal / HEROES.length;
-document.getElementById('partsNote').textContent =
-  'В среднем ' + perHero.toFixed(1).replace('.', ',') + ' меша на персонажа. ' +
-  'Двенадцать персонажей в кадре — это ' + calls(Math.round(perHero * 12)) + ' вместо двенадцати, ' +
-  'при том что вся вылазка сейчас укладывается в 11–17.';
-const propTris = PROPS.reduce((s, m) => s + m.tris, 0);
-document.getElementById('propAvg').textContent =
-  'в среднем ' + Math.round(propTris / PROPS.length) + ' треугольников, самый тяжёлый ' +
-  PROPS.reduce((a, b) => (a.tris > b.tris ? a : b)).tris;
-
 // Поза, в которой набор посчитан и нарисован: из каталога, не из головы.
 document.getElementById('poseName').textContent =
-  cat.pose === undefined ? 'поза привязки' : `ключ ${cat.pose.key} клипа ${cat.pose.clip}`;
+  cat.pose === undefined ? 'поза привязки' : `ключ ${cat.pose.at} клипа ${cat.pose.clip}`;
 
 // Что взято и почём. Вес считается ровно так же, как его считает запекание:
 // девять чисел по два байта на треугольник плюс байт слота.
-const BYTES_PER_TRI = 19;
-const weight = (tris) => kb(tris * BYTES_PER_TRI * 4 / 3);
+const weight = (tris) => kb(tris * 19 * 4 / 3);
 const taken = cat.adopted.map(name => cat.models.find(m => m.name === name)).filter(Boolean);
 document.getElementById('adoptedNote').textContent = taken.length === 0
   ? 'из набора не взято ничего'
   : 'взят ' + taken.map(m => m.name).join(', ') + ' — ' +
     taken.reduce((s, m) => s + m.tris, 0) + ' треугольников, ' +
-    weight(taken.reduce((s, m) => s + m.tris, 0)) + ' в бандле (base64), при потолке ' +
-    cat.budgets.bakedKb + ' КБ на персонажа';
+    weight(taken.reduce((s, m) => s + m.tris, 0)) + ' в бандле (base64)';
 document.getElementById('allSix').textContent = weight(heroTris);
-
-/* ---------- клипы ---------- */
-const BONES = cat.budgets.bones;
-const joints = [...new Set(HEROES.map(m => m.joints))];
-document.getElementById('bones').textContent =
-  joints.join(', ') + ' при бюджете ' + BONES;
-const moving = cat.clips.filter(c => c.travel > 0.01);
-document.getElementById('rootMotion').textContent = moving.length === 0
-  ? 'нет ни в одном из ' + cat.clips.length
-  : moving.length + ' из ' + cat.clips.length;
-
-const PATTERNS = {
-  'Покой': 'idle', 'Ходьба': 'walk', 'Урон': 'hit', 'Падение': 'death, die',
-  'Удар': 'attack, slash, melee, swing, chop, stab, punch, unarmed',
-};
-const needsBody = document.querySelector('#needs tbody');
-for(const need of cat.needs){
-  const found = need.found.map(name => cat.clips.find(c => c.name === name));
-  const tr = document.createElement('tr');
-  if(found.length === 0) tr.className = 'gap';
-  tr.innerHTML = '<td><b>' + need.title + '</b></td>' +
-    (found.length === 0
-      ? '<td class="bad">не найден ничем</td><td class="num">—</td>'
-      : '<td class="mono">' + found.map(c => c.name).join(', ') + '</td>' +
-        '<td class="num">' + found.map(c => sec(c.seconds)).join(' · ') + '</td>') +
-    '<td class="mono">' + PATTERNS[need.title] + '</td>';
-  needsBody.appendChild(tr);
-}
-
-const libsBody = document.querySelector('#libs tbody');
-const libraries = [...new Set(cat.clips.map(c => c.library))];
-for(const library of libraries){
-  const list = cat.clips.filter(c => c.library === library);
-  const bytes = list.reduce((s, c) => s + c.bytes, 0);
-  const over = bytes > cat.budgets.clipKb * 1024;
-  const tr = document.createElement('tr');
-  tr.innerHTML = '<td class="mono">' + library + '</td><td class="num">' + list.length +
-    '</td><td class="num">' + list.reduce((s, c) => s + c.seconds, 0).toFixed(1).replace('.', ',') +
-    '</td><td class="num">' + list.reduce((s, c) => s + c.keys, 0) +
-    '</td><td class="num' + (over ? ' bad' : ' good') + '">' + kb(bytes) +
-    '</td><td class="num">' + cat.budgets.clipKb + ' КБ</td>';
-  libsBody.appendChild(tr);
-}
-const clipBytes = cat.clips.reduce((s, c) => s + c.bytes, 0);
-document.getElementById('clipNote').textContent =
-  clips(cat.clips.length) + ' на ' + kb(clipBytes) + ' ключей — против ' +
-  cat.budgets.clipKb + ' КБ на набор, которые закладывались в бюджете. ' +
-  'Считаны входы и выходы сэмплеров, каждый аксессор один раз; мешей манекена ' +
-  'в этом числе нет. Взять пришлось бы не всё: игре из этого списка нужно ' +
-  clips(cat.needs.length) + ', а не ' + cat.clips.length + '.';
 
 /* ---------- слоты: было → стало ---------- */
 const slots = new Map();
@@ -628,30 +453,11 @@ for(const m of cat.models){
 }
 /**
  * Цвет слота — из палитры набора, а она в игре один список и в том же порядке,
- * что слоты каталога. Никакой второй таблицы соответствий на странице нет
- * намеренно: она разошлась бы с игрой молча.
+ * что слоты каталога. Второй таблицы соответствий на странице нет намеренно:
+ * она разошлась бы с игрой молча.
  */
 const colorOfSlot = (name) => palette[cat.slots.indexOf(name)];
-const slotsBody = document.querySelector('#slots tbody');
-cat.slots.forEach((name, at) => {
-  const ramp = cat.ramps.find(r => r.slots.includes(name));
-  const first = ramp.slots[0] === name;
-  const source = ramp.source[ramp.slots.indexOf(name)];
-  const own = slotNames.indexOf(name) >= 0;
-  const color = colorOfSlot(name);
-  const tr = document.createElement('tr');
-  if(!own) tr.className = 'new';
-  const was = slotTris[at] === 0
-    ? '<td class="miss">не задет ни одним треугольником</td>'
-    : '<td><span class="chip"><i style="background:' + source + '"></i>' + source + '</span></td>';
-  tr.innerHTML =
-    '<td>' + (first ? ramp.title : '') + '</td>' +
-    '<td class="mono">' + name + '</td>' + was +
-    '<td><span class="chip"><i style="background:' + hex(color) + '"></i>' + hex(color) +
-      (own ? '' : ' · заведён набором') + '</span></td>' +
-    '<td class="num">' + slotTris[at] + ' · ' + pct(slotTris[at], totalTris) + '</td>';
-  slotsBody.appendChild(tr);
-});
+
 // Семьи цвета: чем персонаж оказался покрашен и что у него главное.
 const familyOf = new Map();
 for(const r of cat.ramps) for(const name of r.slots) familyOf.set(name, r.title);
@@ -677,9 +483,30 @@ document.getElementById('slotTotal2').textContent = slotCount(cat.slots.length);
 // по тем слотам, которые были у леса, чтобы число не пришлось помнить.
 const STONE = ['камень', 'камень-свет', 'скол', 'соль-тень'];
 const stoneNow = STONE.reduce((s, name) => s + slotTris[cat.slots.indexOf(name)], 0);
-const moved = ['сталь-тень', 'сталь', 'сталь-свет', 'сукно-тень', 'сукно', 'сукно-свет', 'кость']
+const moved = ['металл-тень', 'металл', 'сталь', 'сукно-тень', 'сукно', 'сукно-свет', 'соль-свет']
   .reduce((s, name) => s + (cat.slots.includes(name) ? slotTris[cat.slots.indexOf(name)] : 0), 0);
 document.getElementById('wasStone').textContent = pct(stoneNow + moved, totalTris) + ' набора';
+
+const slotsBody = document.querySelector('#slots tbody');
+cat.slots.forEach((name, at) => {
+  const ramp = cat.ramps.find(r => r.slots.includes(name));
+  const first = ramp.slots[0] === name;
+  const source = ramp.source[ramp.slots.indexOf(name)];
+  const own = slotNames.indexOf(name) >= 0;
+  const color = colorOfSlot(name);
+  const tr = document.createElement('tr');
+  if(!own) tr.className = 'new';
+  const was = slotTris[at] === 0
+    ? '<td class="miss">не задет ни одним треугольником</td>'
+    : '<td><span class="chip"><i style="background:' + source + '"></i>' + source + '</span></td>';
+  tr.innerHTML =
+    '<td>' + (first ? ramp.title : '') + '</td>' +
+    '<td class="mono">' + name + '</td>' + was +
+    '<td><span class="chip"><i style="background:' + hex(color) + '"></i>' + hex(color) +
+      (own ? '' : ' · не из слотов леса') + '</span></td>' +
+    '<td class="num">' + slotTris[at] + ' · ' + pct(slotTris[at], totalTris) + '</td>';
+  slotsBody.appendChild(tr);
+});
 
 document.getElementById('touched').textContent =
   cat.touched.colors + ' цветов из ' + cat.touched.atlasColors + ', а сами эти цвета занимают ' +
