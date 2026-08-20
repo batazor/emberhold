@@ -206,3 +206,15 @@ button[disabled] { opacity: 0.4; cursor: default; }
   background: var(--panel);
 }
 .raid-slot.spent { opacity: 0.35; text-decoration: line-through; }
+
+/* ---------- стартовый экран ---------- */
+/* Заголовок стоит в сцене буквами, поэтому здесь только вход в игру.
+   Кнопка крупнее прочих: это единственное, что на экране можно нажать. */
+#start {
+  position: fixed; inset: auto 0 0 0; display: flex; justify-content: center;
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+#start button {
+  pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
+}

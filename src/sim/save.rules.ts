@@ -28,14 +28,14 @@ describe('Сохранение', () => {
       removeItem: (k: string) => void store.delete(k),
     };
 
-    store.set('new-world/save', '{ это не json');
+    store.set('emberhold/save', '{ это не json');
     assert.equal(load().camp.levels.hq, 1);
 
-    store.set('new-world/save', JSON.stringify({ version: 99, levels: { hq: 6 } }));
+    store.set('emberhold/save', JSON.stringify({ version: 99, levels: { hq: 6 } }));
     assert.equal(load().camp.levels.hq, 1, 'чужая версия игнорируется');
 
     store.set(
-      'new-world/save',
+      'emberhold/save',
       JSON.stringify({ version: 1, levels: { hq: 999 }, resources: { salt: -5 } }),
     );
     const bad = load().camp;
@@ -49,6 +49,28 @@ describe('Сохранение', () => {
     save(camp, createRoster(), 0);
     const back = load().camp;
     assert.deepEqual(back.layout.kitchen, createCamp().layout.kitchen);
+    wipe();
+  });
+
+  test('сейв, записанный до переименования игры, открывается', () => {
+    const store = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+
+    // Ключ старого имени проекта. Игра сменила имя — лагерь у игрока
+    // остаётся: перенос молчаливый, первое сохранение ляжет под новый ключ.
+    store.set(
+      'new-world/save',
+      JSON.stringify({ version: 1, savedAt: 0, watermark: 0, levels: { hq: 3, kitchen: 2, storage: 1, forge: 0 } }),
+    );
+    assert.equal(load().camp.levels.hq, 3, 'старый ключ прочитан');
+
+    save(load().camp, createRoster(), 7);
+    assert.ok(store.has('emberhold/save'), 'запись идёт под новый ключ');
+    assert.equal(load().camp.levels.hq, 3, 'после перезаписи лагерь тот же');
     wipe();
   });
 
