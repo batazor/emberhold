@@ -3,6 +3,7 @@ import { blockingMaterial } from './blocking';
 import { buildingGeometry, heroGeometry } from './models';
 import { BUILDING_ORDER, builtBuildings, campArea } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
+import type { Gust } from './cursorWind';
 import { FluffyGrass } from './fluffyGrass';
 import { forestGeometry, forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
@@ -314,6 +315,11 @@ export class CampView {
     this.camp = camp;
     this.builtLevels = '';
     this.rebuildBuildings();
+  }
+
+  /** Порыв от курсора; null — ветра нет (render/cursorWind.ts). */
+  setGust(gust: Gust | null): void {
+    this.meadow?.setGust(gust);
   }
 
   update(_dt: number, now: number, day = 1): void {

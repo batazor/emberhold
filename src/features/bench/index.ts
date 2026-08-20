@@ -25,6 +25,8 @@ export interface BenchHooks {
   readonly setGrass: (perTile: number) => void;
   /** Сколько травинок сейчас в сцене. */
   readonly blades: () => number;
+  /** Поставить курсор на землю: (x, z) в мировых клетках. Шаг — за кадром. */
+  readonly cursor: (x: number, z: number) => void;
 }
 
 /** Вешает `window.bench`. Вызывать только под ?bench=1. */
@@ -71,6 +73,16 @@ export function installBench(hooks: BenchHooks): void {
         out.push(line);
       }
       return out;
+    },
+    /**
+     * Провести курсор по земле и нарисовать кадры. Скрытая вкладка событий
+     * мыши не даёт, а вопрос «виден ли порыв» без них не проверить.
+     */
+    gust(x: number, z: number, step = 0.3, frames = 10): void {
+      for (let i = 0; i < frames; i++) {
+        hooks.cursor(x + i * step, z);
+        draw();
+      }
     },
     night(value: number): void {
       rig.night = value;

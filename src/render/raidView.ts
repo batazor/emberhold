@@ -10,6 +10,7 @@ import type { EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
 import { forestGeometry, forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
+import type { Gust } from './cursorWind';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { PALETTE } from './palette';
@@ -133,6 +134,8 @@ export class RaidView {
   private grass: Grass | null = null;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
+  /** Порыв от курсора. Считает его main — источник ветра один на игру. */
+  private gust: Gust | null = null;
   private disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
 
   /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
@@ -655,7 +658,12 @@ export class RaidView {
       if (dx * dx + dz * dz > 64) continue;
       slots.push({ x: e.x, z: e.z, strength: e.kind === 'mage' ? 1.4 : 0.9 });
     }
-    this.grass.update(time / 1000, slots as readonly Pusher[]);
+    this.grass.update(time / 1000, slots as readonly Pusher[], this.gust);
+  }
+
+  /** Порыв от курсора; null — ветра нет (render/cursorWind.ts). */
+  setGust(gust: Gust | null): void {
+    this.gust = gust;
   }
 
   dispose(): void {

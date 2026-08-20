@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../core/rng';
 import { idx } from '../sim/grid';
 import type { GameLocation } from '../sim/types';
+import type { Gust } from './cursorWind';
 import { PALETTE } from './palette';
 
 /**
@@ -39,6 +40,29 @@ export const GRASS_MAX_PER_TILE = 64;
 
 /** Сколько источников толчка учитывает шейдер: герой и ближайшие враги. */
 const PUSHERS = 6;
+
+/**
+ * Радиус порыва в клетках. Толчок героя гаснет за клетку, потому что это
+ * раздвинутая ногами трава; ветру хватает примерно того же — пятно у
+ * курсора, а не полполя.
+ */
+const GUST_RADIUS = 1.1;
+
+/**
+ * Сила полного порыва против 1.2 у шага героя: курсор ведут поверху,
+ * и класть траву, как это делают ноги, ему не по чину.
+ */
+const GUST_PUSH = 0.65;
+
+/** Круговая частота отыгрыша, рад/с: качок туда-обратно за секунду. */
+const GUST_SWING = 7;
+
+/**
+ * Волновое число, рад на клетку. Дальняя травинка получает толчок позже
+ * ближней — на этом отставании порыв и читается волной, а не пятном,
+ * которое включили и выключили целиком.
+ */
+const GUST_WAVE = 1.5;
 
 export interface Pusher {
   readonly x: number;
@@ -176,6 +200,10 @@ export class Grass {
     uGrassPushers: {
       value: Array.from({ length: PUSHERS }, () => new THREE.Vector3()),
     },
+    // xy — где курсор, z — сила порыва (0 — ветра нет), w — его возраст.
+    uGrassGust: { value: new THREE.Vector4(0, 0, 0, 0) },
+    /** Куда дует. Отдельно от позиции: в vec4 места уже нет. */
+    uGrassGustDir: { value: new THREE.Vector2(1, 0) },
   };
 
   constructor(loc: GameLocation, perTile: number, maxPerTile = GRASS_MAX_PER_TILE) {
@@ -243,13 +271,22 @@ export class Grass {
    * пока упрощён до присутствия: движение читается и так, а скорость
    * потребует хранить прошлую позицию каждого врага.
    */
-  update(timeSec: number, pushers: readonly Pusher[]): void {
+  update(timeSec: number, pushers: readonly Pusher[], gust: Gust | null = null): void {
     this.uniforms.uGrassTime.value = timeSec;
     const slots = this.uniforms.uGrassPushers.value;
     for (let i = 0; i < PUSHERS; i++) {
       const p = pushers[i];
       if (p === undefined) slots[i]!.set(0, 0, 0);
       else slots[i]!.set(p.x, p.z, p.strength);
+    }
+
+    // Курсор — не седьмой толчок: он не тело, а источник ветра, и живёт
+    // своей силой (render/cursorWind.ts).
+    if (gust === null) {
+      this.uniforms.uGrassGust.value.set(0, 0, 0, 0);
+    } else {
+      this.uniforms.uGrassGust.value.set(gust.x, gust.z, gust.strength * GUST_PUSH, gust.age);
+      this.uniforms.uGrassGustDir.value.set(gust.dirX, gust.dirZ);
     }
   }
 
@@ -304,6 +341,8 @@ export class Grass {
           uniform float uGrassLean;
           uniform float uGrassMaxBend;
           uniform vec3 uGrassPushers[${PUSHERS}];
+          uniform vec4 uGrassGust;
+          uniform vec2 uGrassGustDir;
 
           // hash22: два независимых числа из координаты корня. Свойства
           // травинки не хранятся нигде — они выводятся, как у Jarl.
@@ -349,13 +388,35 @@ export class Grass {
             gBend += (d / dist) * p.z * exp(-dist * dist * 1.6);
           }
 
+          // Порыв от курсора. Две доли: по ходу курсора — сам ветер, врозь
+          // от точки — то, чем ветер обтекает препятствие. Одной первой мало:
+          // поле причёсывалось бы гребёнкой, и точка, откуда дует, пропадала.
+          if (uGrassGust.z > 0.0) {
+            vec2 gToBlade = gRoot.xz - uGrassGust.xy;
+            float gGustDist = length(gToBlade);
+            float gGustFall = exp(-gGustDist * gGustDist / (${GUST_RADIUS.toFixed(3)} * ${GUST_RADIUS.toFixed(3)}));
+            vec2 gFlow = uGrassGustDir + (gToBlade / (gGustDist + 1e-4)) * 0.5;
+            // Волна: толчок расходится от курсора и отыгрывает назад.
+            // Косинус уходит в минус — трава качается обратно, как после
+            // настоящего порыва, а не встаёт по линейке.
+            float gWaveT = cos(uGrassGust.w * ${GUST_SWING.toFixed(3)} - gGustDist * ${GUST_WAVE.toFixed(3)});
+            gBend += gFlow * uGrassGust.z * gGustFall * gWaveT;
+          }
+
           // 1-exp(-x): изгиб подходит к пределу асимптотически. Без этого
           // герой в толпе травы клал бы её плашмя.
           float gLen = length(gBend);
           gBend = gLen > 1e-5 ? (gBend / gLen) * (1.0 - exp(-gLen)) * uGrassMaxBend : vec2(0.0);
           // Кончик гнётся сильнее середины, и согнутая травинка ниже прямой.
           float gCurve = gH * gH;
-          transformed.xz += gBend * gCurve;
+          // Матрица инстанса сжимает локальный x в ширину травинки (≈0.07),
+          // а z оставляет как есть. Изгиб задан в мировых единицах, поэтому
+          // его x-часть делится на этот масштаб: иначе ветер вдоль x слабее
+          // поперечного в четырнадцать раз, и поле качается только по одной
+          // оси. Ровно из-за этого не читался ни толчок героя, ни курсор.
+          float gScaleX = length(instanceMatrix[0].xyz);
+          transformed.x += gBend.x * gCurve / gScaleX;
+          transformed.z += gBend.y * gCurve;
           transformed.y -= gLen * gLen * 0.18 * gCurve;`,
         );
     };
