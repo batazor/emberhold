@@ -65,6 +65,18 @@ export interface RaidOptions {
    *  и сумка там — то, с чем герой вышел, а не уровень здания. */
   readonly capacity?: number;
   /**
+   * Цена вскрытия контейнера вместо `FOOD_COST.container`. Ноль — пролог:
+   * там провиант это шаги, и только шаги (`prologue.ts`). В вылазке подбор
+   * остаётся сделкой, и ни бот, ни калибровка §20.3 эту опцию не задают.
+   */
+  readonly containerFood?: number;
+  /**
+   * Грызёт ли голод раны на нуле провианта. Выключается прологом: терять там
+   * нечего, драться не с кем, а нуль провианта перестал быть концом кадра —
+   * с него уходят отдыхать к лагерю, а не проигрывают.
+   */
+  readonly hunger?: boolean;
+  /**
    * Множитель добычи от богатства локации на карте мира (§4). По умолчанию 1:
    * замеры, бот и золотой мастер считают вылазку без карты.
    */
@@ -113,6 +125,8 @@ export function createRaid(opts: RaidOptions): RaidState {
     elapsed: 0,
     inFight: false,
     starve: 0,
+    containerFood: opts.containerFood ?? FOOD_COST.container,
+    hunger: opts.hunger ?? true,
     consumables: [...(opts.consumables ?? [])],
     fired: [],
     smokeUntil: 0,
@@ -226,7 +240,7 @@ function arriveAt(state: RaidState, cell: Cell): void {
       state.events.push('Рюкзак полон — контейнер не вскрыт');
     } else {
       container.opened = true;
-      state.food -= FOOD_COST.container;
+      state.food -= state.containerFood;
       const taken = Math.min(container.amount, state.capacity - state.bagTotal);
       state.bag[container.kind] += taken;
       state.bagTotal += taken;
@@ -430,7 +444,7 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
 
   // Голод не убивает мгновенно: провиант обязан оставаться главной причиной
   // провала (§11.3), но провал должен наступать в дороге, а не внезапно.
-  if (state.food <= 0) {
+  if (state.food <= 0 && state.hunger) {
     state.starve += dt;
     if (state.starve >= 6) {
       state.starve = 0;

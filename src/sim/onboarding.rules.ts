@@ -34,7 +34,11 @@ describe('Онбординг: порядок кадров', () => {
       'сбор дерева — часть пролога, а не отдельная сцена после него',
     );
     assert.ok(
-      stepIndex('move') === stepIndex('gather') + 1,
+      stepIndex('upgrade') === stepIndex('gather') + 1,
+      'второй уровень палатки — часть пролога, а не первое дело в лагере',
+    );
+    assert.ok(
+      stepIndex('move') === stepIndex('upgrade') + 1,
       'вылазка идёт сразу за прологом: между ними нет ни экрана, ни меню',
     );
     assert.ok(

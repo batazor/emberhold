@@ -51,14 +51,17 @@ import {
   generateGlade,
   gladeCapacity,
   gladeFood,
+  nearCamp,
+  restTick,
   TENT_WOOD,
+  UPGRADE_WOOD,
   siteBlock,
 } from './sim/prologue';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
-import { addResources } from './sim/resources';
+import { addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { loadTelemetry, track } from './sim/telemetry';
@@ -148,6 +151,15 @@ const pitched: Cell[] = [];
  *  подсказки переезжало на следующий брусок в момент подбора, а не
  *  пересчитывалось каждый кадр. */
 let gladeTaken = -1;
+/** Недостоянные у лагеря секунды (`restTick`). Обнуляются, стоит отойти. */
+let restAcc = 0;
+/** Палатка поднята до второго уровня — пролог отработал. */
+let upgraded = false;
+/** Герой отдыхает у лагеря: провиант кончился и ещё не набран. */
+let resting = false;
+/** Что сейчас написано в строке подсказки пролога. Сравнение затем, чтобы
+ *  не переписывать одну и ту же строку шестьдесят раз в секунду. */
+let gladeHint = '';
 let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
@@ -385,6 +397,23 @@ function showOnb(step: OnbStep): void {
   hud.setReveal(reveal(step));
   hud.setHint(ONB_HINT[step] ?? '');
   campHud.setOnboarding(step);
+  // Второй акт пролога: кольцо ведёт за деревом, а с полной сумкой —
+  // обратно к палатке. Оно и есть весь интерфейс улучшения.
+  if (step === 'upgrade' && raid !== null) {
+    // Строку подсказки кадр только что переписал своей: пусть второй акт
+    // назовёт её заново — отдых и улучшение говорят по обстановке, а не по кадру.
+    gladeHint = '';
+    const home = pitched[0];
+    if (upgraded) raidView?.hideHint();
+    else if (raid.bag.wood >= UPGRADE_WOOD && home !== undefined) {
+      raidView?.showHint(home.x, home.z);
+    } else {
+      const cell = firstGladeCell(raid.loc, raid.hero);
+      if (cell !== null) raidView?.showHint(cell.x, cell.z);
+      else raidView?.hideHint();
+    }
+    return;
+  }
   // Точка тапа нужна ровно в первом кадре: дальше игрок уже знает жест.
   if ((step === 'glade' || step === 'gather') && raid !== null) {
     const cell = firstGladeCell(raid.loc, raid.hero);
@@ -710,16 +739,80 @@ function tryPlace(cell: Cell): void {
   if (next === undefined) {
     placing = null;
     raidView?.hideSite();
-    // Что осталось в сумке, герой унёс с собой: лагерь стоит на этой поляне,
-    // и терять принесённое по дороге в него было бы неоткуда.
-    addResources(camp.resources, raid.bag);
+    // Остаток сумки в лагерь пока не сдаётся: за него встанет второй уровень
+    // палатки, и дерево обязано лежать там, где игрок его видит, — в полосе
+    // рюкзака, а не в невидимых закромах.
     persist();
     // Лагерь встал — единственное настоящее созвучие игры (§18.3).
     play('levelup');
-    hud.setHint('Лагерь разбит');
+    onboarding.set('upgrade');
+    showOnb(onboarding.step);
     return;
   }
   startPlacing(next);
+}
+
+/**
+ * Второй акт пролога: лагерь стоит, палатка просит второй уровень.
+ *
+ * Ни панели, ни кнопки: улучшение случается ровно так же, как подбор, —
+ * герой доходит до палатки с деревом, и палатка растёт. Кнопка «Улучшить»
+ * здесь ввела бы третий жест раньше, чем игрок освоил первый, а полоса
+ * приглашения уже занята постановкой лагеря.
+ *
+ * Отдых — там же и так же: стоять у лагеря значит отдыхать. Провиант идёт
+ * порциями по три (`restTick`), и ждать приходится ровно тому, кто потратил
+ * шаги не туда: маршруту по делу провианта хватает (`prologue.rules.ts`).
+ */
+function stepGladeCamp(dt: number): void {
+  if (raid === null) return;
+  // Пока лагерь ещё ставится, кадром распоряжается выбор места: его подсказка
+  // («Теперь костёр») не должна перебиваться отдыхом.
+  if (placing !== null) return;
+  const near = nearCamp(pitched, raid.hero);
+
+  if (!upgraded && near && raid.bag.wood >= UPGRADE_WOOD) {
+    raid.bag.wood -= UPGRADE_WOOD;
+    raid.bagTotal -= UPGRADE_WOOD;
+    // Бесплатно и мгновенно, как первая постройка (§20.2): ждать таймер
+    // игрок ещё не научился, а «здание стоит принесённого» показывается
+    // деревом, которое уходит из сумки на глазах.
+    grantFirstBuilding(camp, 'hq');
+    raidView?.setLevel('hq', camp.levels.hq);
+    play('levelup');
+    upgraded = true;
+    // Остаток герой сдаёт в лагерь: пролог кончился, дальше дерево живёт
+    // в кладовой, а не в рюкзаке.
+    addResources(camp.resources, raid.bag);
+    raid.bag = emptyResources();
+    raid.bagTotal = 0;
+    persist();
+    showOnb(onboarding.step);
+  }
+
+  if (near && raid.food < raid.foodMax) restAcc = restTick(restAcc, dt, raid);
+  // Отошёл — недостоянные секунды не догоняют героя в лесу.
+  else restAcc = 0;
+
+  // Про отдых говорится тому, кто в нём застрял, а не всякому, кто прошёл
+  // мимо костра: иначе строка кадра — «сходи за деревом» — не показывается
+  // ни разу, ведь после постановки лагеря герой стоит ровно у палатки.
+  // Отдых кончается полной полосой или уходом с непустым провиантом:
+  // сколько стоять, решает игрок, а не порог.
+  if (raid.food <= 0) resting = true;
+  else if (raid.food >= raid.foodMax || !near) resting = false;
+
+  const hint = upgraded
+    ? 'Палатка ур. 2'
+    : resting
+      ? near
+        ? 'Отдых · провиант растёт'
+        : 'Провиант кончился — отдохните у палатки'
+      : ONB_HINT.upgrade ?? '';
+  if (hint !== gladeHint) {
+    gladeHint = hint;
+    hud.setHint(hint);
+  }
 }
 
 /**
@@ -750,6 +843,10 @@ function toGlade(): void {
     // Выхода с поляны нет, и кольцо эвакуации не рисуется: уйти можно
     // только тем, что провиант кончился.
     evacOpen: false,
+    // Подбор бесплатен, голод раны не грызёт: провиант здесь — шаги, а нуль
+    // провианта — повод отдохнуть у лагеря, а не проиграть (`prologue.ts`).
+    containerFood: 0,
+    hunger: false,
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade');
   hud.setGrass(grassPerTile);
@@ -763,6 +860,10 @@ function toGlade(): void {
   resultShown = false;
   inGlade = true;
   gladeTaken = -1;
+  restAcc = 0;
+  upgraded = false;
+  resting = false;
+  gladeHint = '';
   ear.reset(raid);
   placing = null;
   pitched.length = 0;
@@ -1097,21 +1198,22 @@ startLoop({
           // Кольцо переезжает на следующий брусок — и гаснет, когда их нет.
           showOnb(onboarding.step);
         }
-        // Кадр кончается собранным деревом — или провиантом, если игрок
-        // ушёл бродить мимо брусков. Голод, который в вылазке отнимает рану
-        // через шесть секунд, сюда не успевает и не должен: терять ещё
-        // нечего, и учить потерям в прологе не на чем.
-        const gathered = raid.loc.containers.every((c) => c.opened);
-        if ((gathered || raid.food <= 0) && !resultShown) {
+        // Первый акт кончается тем, что дерева хватает на палатку, — а не
+        // вычищенной поляной: брусков семь, а стоит палатка два. Второй повод,
+        // нуль провианта, остаётся, пока лагеря нет: отдыхать негде, и кадр
+        // обязан кончиться в любом случае.
+        //
+        // Симуляция при этом не замирает: приглашение висит, а игрок волен
+        // собирать дальше и нажать, когда решит остаться.
+        const enough = raid.bag.wood >= TENT_WOOD;
+        if (pitched.length === 0 && (enough || raid.food <= 0) && !resultShown) {
           resultShown = true;
-          raid.path = [];
-          raid.status = 'evacuated';
-          raidView?.hideHint();
-          campPrompt.setReason(gathered ? 'Дерево собрано' : 'Провиант кончился');
+          campPrompt.setReason(enough ? 'Дерево собрано' : 'Провиант кончился');
           campPrompt.setVisible(true);
           // Пульс отработал своё: он вёл к этой секунде и молчит после неё.
           stopPulse();
         }
+        if (pitched.length > 0) stepGladeCamp(dt);
         return;
       }
       if (onboarding.inRaid) onboarding.drive(raid);
