@@ -1,10 +1,12 @@
 import './style.css';
 import { Clock } from './core/clock';
+import { loadMix } from './core/settings';
 import { startLoop } from './core/loop';
 import {
   bindPageAudio,
   play,
   startAmbient,
+  setMix,
   startCampTune,
   startPulse,
   stopAmbient,
@@ -66,7 +68,7 @@ import { RosterPanel } from './ui/rosterPanel';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
 import { CampPrompt } from './ui/campPrompt';
-import { DevMenu } from './ui/devMenu';
+import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
@@ -161,6 +163,10 @@ function heroForRaid(): HeroState | null {
   return firstReady(roster);
 }
 
+// Громкость из прошлой сессии — до первого звука (§18.5). Настройки лежат
+// отдельно от сейва и переживают «Новую игру»: выключенный звук не должен
+// включаться сам.
+setMix(loadMix());
 bindPageAudio();
 
 const rig = new SceneRig(app);
@@ -325,16 +331,19 @@ const campPrompt = new CampPrompt(app, {
   },
 });
 
-// Только в разработке: в продакшен-сборке ветка вырезается целиком.
-if (import.meta.env.DEV) {
-  new DevMenu(app, {
-    onNewGame: () => {
-      wiped = true;
-      wipe();
-      location.reload();
-    },
-  });
-}
+/**
+ * Настройки (§18.5). Живут во всех сборках, а не только в дев: громкость
+ * нужна игроку, а не разработчику. «Новая игра» переехала сюда же из
+ * дев-меню — сейв переживает перезагрузку, и стереть его из консоли нельзя:
+ * игра тут же запишет его обратно.
+ */
+new SettingsMenu(app, {
+  onNewGame: () => {
+    wiped = true;
+    wipe();
+    location.reload();
+  },
+});
 
 const statsPanel = new StatsPanel(app);
 

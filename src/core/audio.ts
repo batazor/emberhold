@@ -15,9 +15,25 @@
 /** Шины (§18.5): игрок должен уметь приглушить амбиент, не теряя провиант. */
 export type Bus = 'sfx' | 'ui' | 'amb';
 
-/** §18.5 — громкость по умолчанию: игра запускается не в наушниках. */
-const MASTER = 0.55;
-const BUS_GAIN: Record<Bus, number> = { sfx: 0.9, ui: 0.7, amb: 0.5 };
+/**
+ * Микшер (§18.5): общая громкость и три шины. Значения по умолчанию — те же,
+ * что в артбуке `sound.html`: игра запускается не в наушниках и часто при людях.
+ */
+export interface Mix {
+  readonly master: number;
+  readonly sfx: number;
+  readonly ui: number;
+  readonly amb: number;
+}
+
+export const DEFAULT_MIX: Mix = { master: 0.55, sfx: 0.9, ui: 0.7, amb: 0.5 };
+
+/**
+ * Текущее положение ручек. Живёт отдельно от узлов графа, потому что игрок
+ * может подвинуть ползунок до первого жеста — то есть до того, как появится
+ * AudioContext. Тогда значение просто дождётся `unlockAudio`.
+ */
+let mixNow: Mix = DEFAULT_MIX;
 
 /** §18.5 — без предела бой в тесной комнате превращается в шум. */
 const MAX_VOICES = 8;
@@ -92,11 +108,11 @@ export function unlockAudio(): void {
     if (Ctor === undefined) return;
     ac = new Ctor();
     master = ac.createGain();
-    master.gain.value = MASTER;
+    master.gain.value = mixNow.master;
     master.connect(ac.destination);
     for (const bus of ['sfx', 'ui', 'amb'] as const) {
       const g = ac.createGain();
-      g.gain.value = BUS_GAIN[bus];
+      g.gain.value = mixNow[bus];
       g.connect(master);
       buses.set(bus, g);
     }
@@ -104,8 +120,35 @@ export function unlockAudio(): void {
   if (ac.state === 'suspended') void ac.resume();
 }
 
+const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
+
+/** Текущее положение ручек — панель настроек рисует ползунки по нему. */
+export function mix(): Mix {
+  return mixNow;
+}
+
+/** Поставить весь микшер разом: так он приезжает из сохранённых настроек. */
+export function setMix(next: Mix): void {
+  mixNow = {
+    master: clamp01(next.master),
+    sfx: clamp01(next.sfx),
+    ui: clamp01(next.ui),
+    amb: clamp01(next.amb),
+  };
+  if (master !== null) master.gain.value = mixNow.master;
+  for (const bus of ['sfx', 'ui', 'amb'] as const) {
+    const g = buses.get(bus);
+    if (g !== undefined) g.gain.value = mixNow[bus];
+  }
+}
+
 export function setVolume(value: number): void {
-  if (master !== null) master.gain.value = Math.max(0, Math.min(1, value));
+  setMix({ ...mixNow, master: value });
+}
+
+/** Одна шина (§18.5): амбиент глушится отдельно от боя и интерфейса. */
+export function setBusVolume(bus: Bus, value: number): void {
+  setMix({ ...mixNow, [bus]: value });
 }
 
 function busOf(bus: Bus): GainNode | null {
@@ -283,6 +326,17 @@ export function play(name: SfxName): void {
 
 /* ---------- пульс провианта (§18.2) ---------- */
 
+/**
+ * Пульс идёт по шине боя, а не амбиента, хотя тембр у него фоновый. Причина
+ * записана в §18.5: игрок должен уметь приглушить амбиент, не теряя сигнал
+ * провианта, — а пульс и есть этот сигнал (§18.2). Пока он висел на амбиенте,
+ * ползунок «Амбиент» на нуле отнимал главный звук вылазки.
+ *
+ * Громкость пересчитана под шину, чтобы пульс звучал ровно как в артбуке:
+ * шина боя громче амбиента, и без поправки он стал бы вдвое навязчивее.
+ */
+const PULSE_TRIM = DEFAULT_MIX.amb / DEFAULT_MIX.sfx;
+
 function schedulePulse(): void {
   if (pulseTimer !== null) clearTimeout(pulseTimer);
   pulseTimer = null;
@@ -294,8 +348,8 @@ function schedulePulse(): void {
     pulseTimer = setTimeout(schedulePulse, 300);
     return;
   }
-  tn({ type: 'sine', f0: p.hz, f1: p.hz * 0.82, dur: 0.26, gain: 0.3, bus: 'amb' });
-  nz({ type: 'lowpass', f0: 260, f1: 120, dur: 0.18, gain: 0.07, bus: 'amb' });
+  tn({ type: 'sine', f0: p.hz, f1: p.hz * 0.82, dur: 0.26, gain: 0.3 * PULSE_TRIM });
+  nz({ type: 'lowpass', f0: 260, f1: 120, dur: 0.18, gain: 0.07 * PULSE_TRIM });
   pulseTimer = setTimeout(schedulePulse, p.everyMs);
 }
 

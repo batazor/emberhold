@@ -116,7 +116,14 @@ for (const [file, code] of source) {
  * DOM в симуляции. localStorage — объявленное исключение: это граница
  * сохранения, и она уже обёрнута в try/catch именно ради Node.
  */
-const STORAGE_OK = new Set(['src/sim/save.ts', 'src/sim/telemetry.ts']);
+const STORAGE_OK = new Set([
+  'src/sim/save.ts',
+  'src/sim/telemetry.ts',
+  // Настройки игрока (§18.5) — такая же граница хранилища, как сейв, и по
+  // тем же правилам: try/catch, разбор по одному полю, чистая `readMix`
+  // рядом для проверок в Node.
+  'src/core/settings.ts',
+]);
 
 /**
  * Часы и цикл — сама браузерная обвязка, им обращаться к окну положено.
