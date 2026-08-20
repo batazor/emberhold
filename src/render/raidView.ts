@@ -706,6 +706,11 @@ export class RaidView {
     this.gust = gust;
   }
 
+  /** Ветер от наклона устройства (render/tiltWind.ts). */
+  setTilt(x: number, z: number, strength: number): void {
+    this.grass?.setTilt(x, z, strength);
+  }
+
   dispose(): void {
     this.grass?.dispose();
     this.fire.dispose();

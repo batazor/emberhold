@@ -235,6 +235,11 @@ export class TitleView {
     this.grass.setGust(gust);
   }
 
+  /** Ветер от наклона устройства (render/tiltWind.ts). */
+  setTilt(x: number, z: number, strength: number): void {
+    this.grass.setTilt(x, z, strength);
+  }
+
   update(timeSec: number): void {
     // Небо меняет цвет вместе со временем суток — туман обязан идти за ним,
     // иначе горизонт уходит в дымку другого цвета, чем небо над ней.

@@ -18,10 +18,13 @@ import type { Gust } from './cursorWind';
  *     которой писался оригинал, этого довода не было;
  *  2. размер поля был числом 100. в шейдере — стал доводом, у нас поле своё;
  *  3. dat.gui выброшен: настройки задаются вызывающим;
- *  4. порыв от курсора (render/cursorWind.ts). Единственная правка не
- *     вынужденная, а по делу: у оригинала ветер один на всё поле и ни на
- *     что не отзывается, а курсор в лагере и на заставке — единственное,
- *     чем игрок трогает картинку, пока ничего не нажал.
+ *  4. порыв от курсора (render/cursorWind.ts). Первая правка не вынужденная,
+ *     а по делу: у оригинала ветер один на всё поле и ни на что не
+ *     отзывается, а курсор в лагере и на заставке — единственное, чем
+ *     игрок трогает картинку, пока ничего не нажал;
+ *  5. наклон устройства (render/tiltWind.ts). Оттуда же: на телефоне
+ *     курсора нет вовсе, и без наклона трава заставки не отзывалась бы
+ *     ни на что.
  */
 
 const ASSETS = 'grass/';
@@ -38,6 +41,9 @@ const GUST_RADIUS = 2.4;
  * куста: трава качнулась, а не легла.
  */
 const GUST_PUSH = 0.5;
+
+/** Насколько полный наклон уводит верхушку, в мировых единицах. */
+const TILT_PUSH = 0.45;
 
 /** Круговая частота отыгрыша, рад/с: качок туда-обратно за секунду. */
 const GUST_SWING = 7;
@@ -80,6 +86,8 @@ export class FluffyGrass {
     // xy — где курсор, z — сила порыва (0 — ветра нет), w — его возраст.
     uGust: { value: new THREE.Vector4(0, 0, 0, 0) },
     uGustDir: { value: new THREE.Vector2(1, 0) },
+    // Наклон устройства: куда и насколько лежит поле (render/tiltWind.ts).
+    uTilt: { value: new THREE.Vector2() },
   };
 
   private readonly material: THREE.MeshLambertMaterial;
@@ -194,6 +202,14 @@ export class FluffyGrass {
     this.uniforms.uTime.value = timeSec;
   }
 
+  /**
+   * Ветер от наклона устройства: (x, z) — мировое направление, strength —
+   * 0..1. Поле ложится в эту сторону, и волна идёт туда же.
+   */
+  setTilt(x: number, z: number, strength: number): void {
+    this.uniforms.uTilt.value.set(x * strength, z * strength);
+  }
+
   /** Порыв от курсора или null, если ветра нет (render/cursorWind.ts). */
   setGust(gust: Gust | null): void {
     if (gust === null) {
@@ -237,6 +253,7 @@ export class FluffyGrass {
       uniform float uTerrainSize;
       uniform vec4 uGust;
       uniform vec2 uGustDir;
+      uniform vec2 uTilt;
 
       varying vec3 vColor;
       varying vec2 vGlobalUV;
@@ -256,7 +273,9 @@ export class FluffyGrass {
         #include <worldpos_vertex>
         #include <shadowmap_vertex>
 
-        vec2 uWindDirection = vec2(1.0, 1.0);
+        // Направление волны у оригинала было записано числом. Наклон его
+        // уводит: поле обязано качаться туда же, куда легло.
+        vec2 uWindDirection = normalize(vec2(1.0, 1.0) + uTilt * 0.8);
         float uWindAmp = 0.1;
         float uWindFreq = 50.;
         float uSpeed = 1.0;
@@ -291,6 +310,9 @@ export class FluffyGrass {
           float gWave = cos(uGust.w * ${GUST_SWING.toFixed(3)} - gDist * ${GUST_WAVE.toFixed(3)});
           modelPosition.xz += gFlow * uGust.z * gFall * gWave * (1. - uv.y);
         }
+
+        // Наклон устройства: ровный крен всего поля, поверх волны.
+        modelPosition.xz += uTilt * ${TILT_PUSH.toFixed(3)} * (1. - uv.y);
 
         modelPosition.y += exp(texture2D(uNoiseTexture, vGlobalUV * uNoiseScale).r) * 0.5 * (1. - uv.y);
 

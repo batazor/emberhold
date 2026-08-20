@@ -113,6 +113,34 @@ export class SceneRig {
     }
   }
 
+  /**
+   * Экранное направление → мировое, по земле. Нужно наклону устройства
+   * (render/tiltWind.ts): наклон вправо обязан класть траву вправо на
+   * экране, а какая это сторона мира — знает только камера, которую игрок
+   * крутит клавишами Q и E.
+   *
+   * sx — вправо по экрану, sy — вглубь. Возвращается единичный вектор.
+   */
+  private readonly fwd = new THREE.Vector3();
+
+  screenDirToWorld(
+    sx: number,
+    sy: number,
+    camera: THREE.Camera = this.camera,
+  ): { x: number; z: number } {
+    camera.getWorldDirection(this.fwd);
+    const fl = Math.hypot(this.fwd.x, this.fwd.z);
+    // Камера смотрит строго вниз: экранных сторон у земли не остаётся.
+    if (fl < 1e-4) return { x: sx, z: sy };
+    const fx = this.fwd.x / fl;
+    const fz = this.fwd.z / fl;
+    // Правая рука камеры на плоскости земли.
+    const x = -fz * sx + fx * sy;
+    const z = fx * sx + fz * sy;
+    const len = Math.hypot(x, z);
+    return len < 1e-4 ? { x: 0, z: 0 } : { x: x / len, z: z / len };
+  }
+
   /** Экран → координаты земли. Плоскость, а не рейкаст по мешам: земля плоская. */
   private readonly ray = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();

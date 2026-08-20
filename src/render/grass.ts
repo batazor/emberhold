@@ -54,6 +54,16 @@ const GUST_RADIUS = 1.1;
  */
 const GUST_PUSH = 0.65;
 
+/**
+ * Насколько полный наклон кладёт поле. Больше собственного размаха волны
+ * (0.34): наклон обязан читаться как новое состояние поля, а не как
+ * «ветер чуть посвежел».
+ */
+const TILT_BEND = 0.22;
+
+/** Насколько полный наклон разгоняет саму волну. */
+const TILT_GUST = 0.35;
+
 /** Круговая частота отыгрыша, рад/с: качок туда-обратно за секунду. */
 const GUST_SWING = 7;
 
@@ -194,6 +204,8 @@ export class Grass {
     uGrassTime: { value: 0 },
     // xz — направление ветра, z — длина волны по полю, w — скорость.
     uGrassWind: { value: new THREE.Vector4(0.86, 0.51, 0.55, 1.6) },
+    // Наклон устройства: куда и насколько лежит поле (render/tiltWind.ts).
+    uGrassTilt: { value: new THREE.Vector2() },
     uGrassSway: { value: 0.34 },
     uGrassLean: { value: 0.22 },
     uGrassMaxBend: { value: 0.42 },
@@ -271,6 +283,15 @@ export class Grass {
    * пока упрощён до присутствия: движение читается и так, а скорость
    * потребует хранить прошлую позицию каждого врага.
    */
+  /**
+   * Ветер от наклона устройства: (x, z) — мировое направление, strength —
+   * 0..1. Поле ложится в эту сторону и качается сильнее.
+   */
+  setTilt(x: number, z: number, strength: number): void {
+    this.uniforms.uGrassTilt.value.set(x * strength * TILT_BEND, z * strength * TILT_BEND);
+    this.uniforms.uGrassSway.value = 0.34 * (1 + strength * TILT_GUST);
+  }
+
   update(timeSec: number, pushers: readonly Pusher[], gust: Gust | null = null): void {
     this.uniforms.uGrassTime.value = timeSec;
     const slots = this.uniforms.uGrassPushers.value;
@@ -343,6 +364,7 @@ export class Grass {
           uniform vec3 uGrassPushers[${PUSHERS}];
           uniform vec4 uGrassGust;
           uniform vec2 uGrassGustDir;
+          uniform vec2 uGrassTilt;
 
           // hash22: два независимых числа из координаты корня. Свойства
           // травинки не хранятся нигде — они выводятся, как у Jarl.
@@ -379,6 +401,10 @@ export class Grass {
                       + 0.35 * sin(uGrassTime * uGrassWind.w * 0.4 + gWave * 1.7 + gPhase);
           vec2 gBend = uGrassWind.xy * gSway * uGrassSway;
           gBend += vec2(cos(gPhase), sin(gPhase)) * uGrassLean;
+          // Наклон устройства: ровный, постоянный крен всего поля. Он
+          // складывается с волной, а не заменяет её, поэтому наклонённое
+          // поле продолжает жить, а не застывает лежащим.
+          gBend += uGrassTilt;
 
           for (int i = 0; i < ${PUSHERS}; i++) {
             vec3 p = uGrassPushers[i];
