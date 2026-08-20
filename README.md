@@ -29,6 +29,7 @@ npm run arch       # границы: слои, headless, изоляция фич
 npm run verify     # золотой мастер петли: сдвинулась ли игра
 npm run baseline   # перезаписать мастер намеренным изменением
 npm run measure    # замер добычи и провалов по ярусам, 300 вылазок ботом
+npm run models     # обмер набора моделей; -- --write пересобирает forest.data.ts
 npm run play       # одна сессия из двадцати вылазок, отчёт для чтения
                    # NOFORGE=1 npm run play — та же сессия без Кузницы (§20.1.2)
 npm run build      # typecheck + check + arch + verify + vite build
@@ -42,13 +43,18 @@ src/
   core/      rng (mulberry32), loop (фиксированный таймстеп), clock (монотонное время)
   sim/       config, types, grid, pathfinding, generate, enemies, raid,
              resources, camp, heroes, gear (снаряжение §14), save, session
-  render/    scene (камера, свет, ночь), raidView, campView, palette
+  render/    scene (камера, свет, ночь), raidView, campView, palette,
+             forest (готовые модели), forest.data.ts — генерируется, не править
   ui/        hud (вылазка), campHud (лагерь), rosterPanel — DOM поверх канваса
   **/*.rules.ts  проверки лежат рядом с тем, что проверяют
+assets/
+  LICENSES.md            реестр: файл, источник, лицензия, автор (§6.1)
+  kaykit-forest/         набор моделей окружения (CC0), источник для запекания
 scripts/
   arch.ts        границы, которые раньше приходилось помнить в ревью
   baseline.ts    золотой мастер петли
   measure.ts     калибровка ярусов ботом
+  models.ts      обмер и запекание готовых наборов моделей
   play.ts        печать одной сессии
 ```
 
@@ -113,7 +119,9 @@ scripts/
 
 События локации (§11.6), карты сборов (§19), звук (§18), Кузница, Лазарет и Плац
 как здания, мировая карта и боты (§4). Модели и анимации — плейсхолдеры-примитивы,
-как и предписано §6.1 для первых этапов.
+как и предписано §6.1 для первых этапов, — кроме окружения: камни вылазки
+и лес вокруг лагеря взяты из набора KayKit Forest (§6.1.1, каталог в
+`forest.html`).
 
 Герои (этап 5) есть в симуляции целиком: три класса, умения, ротация, лечение
 и тренировка (`sim/heroes.ts`, правила в `sim/heroes.rules.ts`). **Зданий под
