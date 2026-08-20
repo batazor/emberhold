@@ -11,12 +11,14 @@
  * содержимым локации, а не правилами движения по ней.
  */
 import { mulberry32 } from '../core/rng';
-import { kitchenFood } from './camp';
 import { distanceField, idx } from './grid';
 import type { Cell, GameLocation } from './types';
 
-/** Поляна крупнее нулевого яруса (8×8): по ней бродят, а не проходят её. */
-export const GLADE_SIZE = 16;
+/**
+ * Поляна больше любой вылазки (дно — 20×20): её не проходят, по ней бродят,
+ * и упереться в кромку за отпущенный провиант нельзя.
+ */
+export const GLADE_SIZE = 24;
 
 /**
  * Доля клеток под деревьями. Больше — чаща, в которой некуда идти; меньше —
@@ -25,12 +27,13 @@ export const GLADE_SIZE = 16;
 const TREE_SHARE = 0.16;
 
 /**
- * Провиант пролога. Взят равным Кухне ур. 1, а не назначен заново: тогда
- * прогулку меряет та же линейка, что и вылазку (§11.1), и её длина выводится,
- * а не придумывается — 50 шагов при 1,67 клетки в секунду это около
- * тридцати секунд ходьбы (§17.4).
+ * Провиант пролога. Кухни в нём ещё нет, поэтому число своё, а не из §11.1:
+ * это то, что герой унёс с собой. Двадцать шагов — кадр на одну механику,
+ * его длину меряет `scripts/measure.ts`, а не эта строка.
  */
-export const gladeFood = (): number => kitchenFood(1);
+export const GLADE_FOOD = 20;
+
+export const gladeFood = (): number => GLADE_FOOD;
 
 /**
  * Поляна по сиду. Кромка — сплошной лес: уйти с поляны нельзя, и это
@@ -70,4 +73,48 @@ export function generateGlade(seed: number): GameLocation {
     enemies: [],
     backSteps: distanceField(size, blocked, start),
   };
+}
+
+/**
+ * Куда показать точку тапа в прологе. В вылазке её ставит `firstTapCell`
+ * по ближайшему контейнеру — на поляне контейнеров нет, поэтому берётся
+ * просто клетка в трёх шагах: жест обязан быть показан, а куда идти,
+ * игрок здесь решает сам.
+ */
+export function firstGladeCell(loc: GameLocation, from: Cell): Cell | null {
+  const dist = distanceField(loc.size, loc.blocked, {
+    x: Math.round(from.x),
+    z: Math.round(from.z),
+  });
+  for (let z = 0; z < loc.size; z++) {
+    for (let x = 0; x < loc.size; x++) {
+      if (dist[idx(loc.size, x, z)] === 3) return { x, z };
+    }
+  }
+  return null;
+}
+
+/** Почему сюда нельзя поставить здание. 'ok' — можно. */
+export type SiteBlock = 'ok' | 'tree' | 'busy' | 'hero';
+
+/**
+ * Можно ли ставить здание на клетку. Возвращается причина, а не булево,
+ * по той же причине, что и в лагере (`camp.ts`): игрок должен видеть, что
+ * мешает, а не молчащий красный квадрат.
+ *
+ * Расстояния до героя в правиле нет намеренно: лагерь ставится там, где
+ * игрок решил остаться, и «слишком далеко» здесь ничего не защищает.
+ */
+export function siteBlock(
+  loc: GameLocation,
+  taken: readonly Cell[],
+  hero: Cell,
+  cell: Cell,
+): SiteBlock {
+  const { size, blocked } = loc;
+  if (cell.x < 0 || cell.z < 0 || cell.x >= size || cell.z >= size) return 'tree';
+  if (blocked[idx(size, cell.x, cell.z)]) return 'tree';
+  if (taken.some((t) => t.x === cell.x && t.z === cell.z)) return 'busy';
+  if (Math.round(hero.x) === cell.x && Math.round(hero.z) === cell.z) return 'hero';
+  return 'ok';
 }
