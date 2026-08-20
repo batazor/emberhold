@@ -128,7 +128,7 @@
     <div class="rail-hd">
       <button class="home" id="home" title="Ко всем артбукам">
         <div class="eyebrow">Emberhold</div>
-        <h1>Тринадцать <em>артбуков</em></h1>
+        <h1><span id="hNum">Тринадцать</span> <em id="hWord">артбуков</em></h1>
       </button>
       <input type="search" id="q" placeholder="Поиск по книгам и разделам" autocomplete="off" spellcheck="false">
       <div class="note" id="hint"></div>
@@ -162,7 +162,8 @@
         <header>
           <div class="eyebrow">Оглавление · артбуки и раскадровки</div>
           <h1>Всё, что <em>нарисовано</em> до кода</h1>
-          <p class="lede">Тринадцать документов проекта: раскадровки, арт-байбл, живые прототипы механик.
+          <p class="lede"><span id="cNum">Тринадцать</span> <span id="cWord">документов</span> проекта:
+            раскадровки, арт-байбл, живые прототипы механик.
             Каждый открывается здесь же, с оглавлением слева — и остаётся обычной страницей,
             которую можно открыть отдельно.</p>
         </header>
@@ -219,6 +220,16 @@
     return u === 1 ? one : many;
   };
   const count = (n, one, few, many) => n + ' ' + plural(n, one, few, many);
+
+  /* «Тринадцать артбуков» в заголовке — то же число, что в манифесте, и врать
+     оно начнёт молча. Поэтому пишется оттуда же, откуда берётся список. */
+  const NUMERAL = ['ноль', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь',
+    'девять', 'десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать',
+    'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать', 'двадцать'];
+  const numeral = (n) => {
+    const w = NUMERAL[n] ?? String(n);
+    return w[0].toUpperCase() + w.slice(1);
+  };
 
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
@@ -550,6 +561,11 @@
     if (e.key === 'Escape') home();
   }
   addEventListener('keydown', keys);
+
+  $('hNum').textContent = numeral(BOOKS.length);
+  $('hWord').textContent = plural(BOOKS.length, 'артбук', 'артбука', 'артбуков');
+  $('cNum').textContent = numeral(BOOKS.length);
+  $('cWord').textContent = plural(BOOKS.length, 'документ', 'документа', 'документов');
 
   theme.apply();
   paint();
