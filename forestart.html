@@ -234,7 +234,7 @@ for(const [key, c] of [...cats].sort((a,b) => b[1].tris - a[1].tris)){
 const totalTris = cat.models.reduce((s, m) => s + m.tris, 0);
 document.getElementById('total').textContent =
   cat.models.length + ' моделей · ' + totalTris + ' треугольников · атлас ' +
-  cat.atlas.width + '×' + cat.atlas.height + ' · лицензия ' + cat.license;
+  cat.atlases[0].width + '×' + cat.atlases[0].height + ' · лицензия ' + cat.license;
 
 /* ---------- слоты: было → стало ---------- */
 const slotTris = new Array(cat.slots.length).fill(0);

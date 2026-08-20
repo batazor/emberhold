@@ -334,7 +334,7 @@ for(const [key, c] of [...cats].sort((a, b) => b[1].tris - a[1].tris)){
 }
 document.getElementById('total').textContent =
   cat.models.length + ' моделей · ' + totalTris + ' треугольников · атлас ' +
-  cat.atlas.width + '×' + cat.atlas.height + ' · ' + cat.pack + ' · лицензия ' + cat.license;
+  cat.atlases[0].width + '×' + cat.atlases[0].height + ' · ' + cat.pack + ' · лицензия ' + cat.license;
 
 /* ---------- масштаб ---------- */
 const SCALE_ROWS = [

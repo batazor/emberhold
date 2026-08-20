@@ -33,9 +33,9 @@ export interface SkeletonModel {
 
 /** Порядок слотов — контракт с render/palette.ts. */
 export const SKELETON_SLOTS = [
-  'уголь',
-  'жар',
-  'пламя',
+  'сукно-тень',
+  'сукно',
+  'сукно-свет',
   'земля',
   'дерево-тень',
   'дерево',

@@ -18,7 +18,7 @@
  *   npm run models -- --pack=dungeon  — то же по одному набору
  *   npm run models -- --write         — переписать каталоги и forest.data.ts
  */
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 
@@ -57,7 +57,17 @@ interface Pack {
   /** Как набор называется в каталоге и в реестре лицензий. */
   readonly title: string;
   readonly dir: string;
+  /**
+   * Атлас набора — и ответ для моделей, которые своей картинки не называют:
+   * у леса так отдана трава, меш без материала. Набор персонажей называет
+   * атлас каждой моделью свой, и этому полю там достаётся роль запасного.
+   */
   readonly atlas: string;
+  /**
+   * Папки с моделями внутри `dir`. У первых трёх наборов одна, `gltf`;
+   * у персонажей две — реквизит парами .gltf + .bin и сами персонажи по .glb.
+   */
+  readonly sources?: readonly string[];
   /** Порядок объявления — очерёдность примерки окон: первое подошедшее и берут. */
   readonly ramps: readonly Ramp[];
   /** Нумерация слотов. Отдельно от градиентов: очерёдность примерки и порядок
@@ -284,11 +294,11 @@ const SKELETONS: Pack = {
       id: 'wood', title: 'дерево и кожа', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'],
       hue: [15, 45], sat: [0.02, 0.6], lum: [0, 0.55],
     },
-    { id: 'cloth', title: 'сукно', slots: ['уголь', 'жар', 'пламя'], hue: [300, 15], sat: [0.25, 1] },
+    { id: 'cloth', title: 'сукно', slots: ['сукно-тень', 'сукно', 'сукно-свет'], hue: [300, 15], sat: [0.25, 1] },
     { id: 'steel', title: 'сталь', slots: ['металл-тень', 'металл', 'сталь'], hue: [60, 300], sat: [0, 1] },
   ],
   slots: [
-    'уголь', 'жар', 'пламя',
+    'сукно-тень', 'сукно', 'сукно-свет',
     'земля', 'дерево-тень', 'дерево', 'дерево-свет',
     'металл-тень', 'металл', 'сталь',
     'соль-тень', 'соль', 'соль-свет', 'иней',
@@ -339,7 +349,90 @@ const SKELETONS: Pack = {
   data: { file: 'src/render/skeleton.data.ts', prefix: 'SKELETON', type: 'Skeleton' },
 };
 
-const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS];
+/** Категория персонажей — по первому слову имени файла, регистр не в счёт. */
+const ADVENTURER_CATEGORIES: Record<string, string> = {
+  barbarian: 'Персонажи', knight: 'Персонажи', mage: 'Персонажи',
+  ranger: 'Персонажи', rogue: 'Персонажи',
+  axe: 'Ближний бой', dagger: 'Ближний бой', sword: 'Ближний бой',
+  arrow: 'Стрелковое', bow: 'Стрелковое', crossbow: 'Стрелковое', quiver: 'Стрелковое',
+  shield: 'Щиты',
+  staff: 'Магия', wand: 'Магия', spellbook: 'Магия',
+  mug: 'Прочее', smokebomb: 'Прочее',
+};
+
+/**
+ * Четвёртый набор — герой, которым играют (§6.1.4). Скелеты добавили
+ * инструменту контейнер GLB, скиннинг и позу из клипа; этот добавил одно,
+ * и оно структурное: **атлас у набора не один**. У каждого персонажа своя
+ * картинка 1024×1024, и модель называет её сама — реквизит ссылкой на соседний
+ * файл, персонаж куском внутри своего `.glb`. Шкала яркости при этом остаётся
+ * одна на набор: одинаковая кожа обязана попасть в одну ступень, с картинки
+ * рыцаря она прочитана или с картинки мага.
+ *
+ * Слоты — те же имена, что у скелетов, и это не совпадение, а условие: сталь,
+ * кость и сукно у живых и у нежити обязаны читаться одинаково. Своё у героев
+ * одно — кожа, которой у скелетов не бывает.
+ */
+const ADVENTURERS: Pack = {
+  id: 'adventurers',
+  title: 'KayKit Adventurers 2.0 FREE',
+  dir: 'assets/kaykit-adventurers',
+  /** Запасной: каждая модель набора называет атлас сама, и до него не доходит. */
+  atlas: 'barbarian_texture.png',
+  sources: ['characters', 'gltf'],
+  ramps: [
+    // Кожа отличается от дерева не тоном (оба оранжевые) и не насыщенностью
+    // (0,31 против 0,44), а яркостью — поэтому окно у неё по третьей оси.
+    { id: 'skin', title: 'кожа', slots: ['кожа'], hue: [8, 45], sat: [0.22, 0.62], lum: [0.62, 1.01] },
+    { id: 'gold', title: 'латунь', slots: ['латунь'], hue: [35, 65], sat: [0.55, 1] },
+    { id: 'moss', title: 'зелень', slots: ['хвоя-тень', 'хвоя', 'мох', 'трава'], hue: [65, 200], sat: [0.35, 1] },
+    // Холодное серое — сталь, а не камень. Окно узкое по тону и с потолком
+    // насыщенности: всё, что ярче, — уже не металл, а бирюза разбойника.
+    { id: 'steel', title: 'сталь', slots: ['металл-тень', 'металл', 'сталь'], hue: [170, 260], sat: [GREY, 0.62] },
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [330, 65], sat: [0.28, 1] },
+    // Тёплое ненасыщенное делится по яркости: светлое — мех и кость, остальное —
+    // сукно. В камень они уходили оба и делали персонажа каменным.
+    { id: 'bone', title: 'кость', slots: ['соль-свет'], hue: [300, 70], sat: [GREY, 0.28], lum: [0.55, 1.01] },
+    { id: 'cloth', title: 'сукно', slots: ['сукно-тень', 'сукно', 'сукно-свет'], hue: [300, 70], sat: [GREY, 0.28] },
+    // Всё остальное — камень: холодное, нейтральное и вовсе бесцветное.
+    { id: 'stone', title: 'камень', slots: ['камень', 'камень-свет', 'скол', 'соль-тень'], hue: [0, 360], sat: [GREY, 0.62] },
+  ],
+  slots: [
+    'хвоя-тень', 'хвоя', 'мох', 'трава',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'камень', 'камень-свет', 'скол', 'соль-тень',
+    'латунь', 'кожа',
+    'металл-тень', 'металл', 'сталь',
+    'сукно-тень', 'сукно', 'сукно-свет',
+    'соль-свет',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  /**
+   * Клип берётся из набора анимаций, а не из своего: персонажи приехали
+   * с теми же двумя файлами, и оба побайтно совпадают с файлами
+   * `kaykit-animations` — тот же риг, те же дорожки.
+   */
+  pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
+  attach: ['handslot.r'],
+  categoryOf: (name) => ADVENTURER_CATEGORIES[name.split('_')[0]!.toLowerCase()] ?? 'Прочее',
+  /**
+   * Герой, которым играют с первой вылазки, и то, что у него в руке.
+   *
+   * Оружие §14 зовётся «Кайло», и кирки в наборе нет — `axe_1handed` взят
+   * как ближайшее по чтению: одноручное, с рукоятью в начале координат,
+   * 274 треугольника. Это замена палке примитива, а не выбор оружия героя:
+   * уровень предмета из Кузницы моделью пока не читается.
+   *
+   * Остальные пять персонажей и тридцать предметов измерены и ждут: персонаж
+   * тяжелее камня в тридцать раз, и «весь набор на всякий случай» тут дороже,
+   * чем в лесу.
+   */
+  adopted: ['Barbarian', 'axe_1handed'],
+  data: { file: 'src/render/adventurers.data.ts', prefix: 'ADVENTURERS', type: 'Adventurer' },
+};
+
+const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS];
 
 /* ---------- png ---------- */
 
@@ -355,7 +448,11 @@ interface Image {
  * чем являются оба атласа. Внешней зависимости ради двух картинок не берём.
  */
 function decodePng(file: string): Image {
-  const buf = readFileSync(file);
+  return decodePngBytes(readFileSync(file));
+}
+
+/** То же из байтов: у персонажей атлас лежит внутри `.glb`, а не рядом. */
+function decodePngBytes(buf: Buffer): Image {
   let at = 8;
   let width = 0;
   let height = 0;
@@ -456,6 +553,7 @@ interface Animation {
 }
 interface Gltf {
   accessors: Accessor[];
+  images?: { name?: string; uri?: string; bufferView?: number }[];
   bufferViews: { buffer: number; byteOffset?: number; byteLength: number; byteStride?: number }[];
   buffers: { uri?: string; byteLength: number }[];
   meshes: { primitives: { attributes: Record<string, number>; indices?: number }[] }[];
@@ -473,6 +571,8 @@ const TYPE_SIZE: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4
 interface Doc {
   readonly gltf: Gltf;
   readonly bin: Buffer;
+  /** Путь файла: по нему ищется атлас, лежащий рядом. */
+  readonly file: string;
 }
 
 /**
@@ -485,7 +585,7 @@ function loadDoc(file: string): Doc {
     const gltf = JSON.parse(readFileSync(file, 'utf8')) as Gltf;
     const uri = gltf.buffers[0]?.uri;
     if (uri === undefined) throw new Error(`${basename(file)}: буфер без uri`);
-    return { gltf, bin: readFileSync(join(file, '..', decodeURIComponent(uri))) };
+    return { gltf, bin: readFileSync(join(file, '..', decodeURIComponent(uri))), file };
   }
 
   const buf = readFileSync(file);
@@ -502,7 +602,7 @@ function loadDoc(file: string): Doc {
     at += 8 + length;
   }
   if (gltf === undefined || bin === undefined) throw new Error(`${basename(file)}: GLB без чанка`);
-  return { gltf, bin };
+  return { gltf, bin, file };
 }
 
 function readAccessor(gltf: Gltf, bin: Buffer, index: number): Float64Array {
@@ -840,10 +940,56 @@ interface Mesh {
   /** Имена костей в порядке самой модели: по ним запекание приводит её
    *  индексы к каноническому порядку скелета набора. */
   readonly joints: readonly string[];
+  /** Атлас, который модель назвала своим. */
+  readonly atlas: string;
+  readonly atlasImage: Image;
 }
 
-function loadMesh(file: string, pose?: Pose, attach: readonly string[] = []): Mesh {
-  const { gltf, bin } = loadDoc(file);
+/**
+ * Атлас модели называет сама модель, а не набор: у первых трёх это всегда одна
+ * картинка рядом с файлом, у персонажей — своя на каждого, и у половины набора
+ * она упакована внутрь `.glb`. Картинки тяжёлые, поэтому читаются раз на путь.
+ */
+const atlasCache = new Map<string, Image>();
+
+function atlasOf(doc: Doc, pack: Pack, packDir: string): { name: string; image: Image } {
+  const image = doc.gltf.images?.[0];
+  const uri = image?.uri ?? (image === undefined ? pack.atlas : undefined);
+  if (uri !== undefined) {
+    // Модель зовёт атлас соседним файлом, а в репозитории он лежит в корне
+    // набора: одна картинка на сотню моделей рядом с каждой не нужна.
+    const named = decodeURIComponent(uri);
+    const beside = join(doc.file, '..', named);
+    const path = existsSync(beside) ? beside : join(packDir, named);
+    let decoded = atlasCache.get(path);
+    if (decoded === undefined) {
+      decoded = decodePng(path);
+      atlasCache.set(path, decoded);
+    }
+    return { name: basename(path), image: decoded };
+  }
+  if (image?.bufferView === undefined) throw new Error(`${basename(doc.file)}: атлас ни в файле, ни рядом`);
+  const key = `${doc.file}#${image.bufferView}`;
+  let decoded = atlasCache.get(key);
+  if (decoded === undefined) {
+    const view = doc.gltf.bufferViews[image.bufferView]!;
+    const from = view.byteOffset ?? 0;
+    decoded = decodePngBytes(doc.bin.subarray(from, from + view.byteLength));
+    atlasCache.set(key, decoded);
+  }
+  return { name: `${image.name ?? basename(doc.file, '.glb')}.png`, image: decoded };
+}
+
+function loadMesh(
+  file: string,
+  pack: Pack,
+  packDir: string,
+  pose?: Pose,
+  attach: readonly string[] = [],
+): Mesh {
+  const doc = loadDoc(file);
+  const { gltf, bin } = doc;
+  const { name: atlas, image: atlasImage } = atlasOf(doc, pack, packDir);
 
   const positions: number[] = [];
   const uvs: number[] = [];
@@ -1031,6 +1177,8 @@ function loadMesh(file: string, pose?: Pose, attach: readonly string[] = []): Me
       bones: Uint8Array.from(rawBone),
       weights: Float32Array.from(rawWeight),
     },
+    atlas,
+    atlasImage,
   };
 }
 
@@ -1085,11 +1233,11 @@ function colorOf(atlas: Image, u: number, v: number): [number, number, number] {
 /** Сколько треугольников набора пришлось на каждый цвет атласа. */
 type Usage = ReadonlyMap<number, number>;
 
-function usageOf(atlas: Image, meshes: readonly Mesh[]): Usage {
+function usageOf(meshes: readonly Mesh[]): Usage {
   const out = new Map<number, number>();
   for (const mesh of meshes) {
     for (let t = 0; t < mesh.tris; t++) {
-      const [r, g, b] = colorOf(atlas, mesh.uvs[t * 2]!, mesh.uvs[t * 2 + 1]!);
+      const [r, g, b] = colorOf(mesh.atlasImage, mesh.uvs[t * 2]!, mesh.uvs[t * 2 + 1]!);
       const key = (r << 16) | (g << 8) | b;
       out.set(key, (out.get(key) ?? 0) + 1);
     }
@@ -1105,7 +1253,7 @@ function usageOf(atlas: Image, meshes: readonly Mesh[]): Usage {
  */
 function rampRanges(
   pack: Pack,
-  atlas: Image,
+  atlases: readonly Image[],
   usage: Usage | undefined,
 ): Record<string, { min: number; max: number }> {
   const out: Record<string, { min: number; max: number }> = {};
@@ -1118,8 +1266,10 @@ function rampRanges(
     if (l > band.max) band.max = l;
   };
   if (usage === undefined) {
-    for (let i = 0; i < atlas.width * atlas.height; i++) {
-      take(atlas.rgba[i * 4]!, atlas.rgba[i * 4 + 1]!, atlas.rgba[i * 4 + 2]!);
+    for (const atlas of atlases) {
+      for (let i = 0; i < atlas.width * atlas.height; i++) {
+        take(atlas.rgba[i * 4]!, atlas.rgba[i * 4 + 1]!, atlas.rgba[i * 4 + 2]!);
+      }
     }
   } else {
     for (const key of usage.keys()) take((key >> 16) & 255, (key >> 8) & 255, key & 255);
@@ -1129,14 +1279,19 @@ function rampRanges(
 
 interface Sampler {
   /** Слот по точке атласа — так спрашивает запекание. */
-  slotOf(u: number, v: number): number;
+  slotOf(atlas: Image, u: number, v: number): number;
   /** Слот по цвету — так спрашивает каталог, у которого UV уже нет. */
   slotOfColor(r: number, g: number, b: number): number;
-  colorAt(u: number, v: number): [number, number, number];
+  colorAt(atlas: Image, u: number, v: number): [number, number, number];
 }
 
-function makeSampler(pack: Pack, atlas: Image, usage: Usage | undefined): Sampler {
-  const ranges = rampRanges(pack, atlas, usage);
+/**
+ * Шкала яркости у набора одна на все его атласы. Это и есть смысл палитры:
+ * одинаковая кожа обязана попасть в одну ступень, с картинки рыцаря она
+ * прочитана или с картинки мага.
+ */
+function makeSampler(pack: Pack, atlases: readonly Image[], usage: Usage | undefined): Sampler {
+  const ranges = rampRanges(pack, atlases, usage);
   const index = new Map(pack.slots.map((s, i) => [s, i]));
 
   const slotOfColor = (r: number, g: number, b: number): number => {
@@ -1149,9 +1304,9 @@ function makeSampler(pack: Pack, atlas: Image, usage: Usage | undefined): Sample
   };
 
   return {
-    colorAt: (u, v) => colorOf(atlas, u, v),
+    colorAt: (atlas, u, v) => colorOf(atlas, u, v),
     slotOfColor,
-    slotOf(u, v) {
+    slotOf(atlas, u, v) {
       const [r, g, b] = colorOf(atlas, u, v);
       return slotOfColor(r, g, b);
     },
@@ -1162,6 +1317,8 @@ function makeSampler(pack: Pack, atlas: Image, usage: Usage | undefined): Sample
 
 interface Baked {
   readonly name: string;
+  /** Путь внутри набора: страница артбука читает ту же геометрию отсюда. */
+  readonly file: string;
   readonly category: string;
   readonly tris: number;
   readonly verts: number;
@@ -1204,7 +1361,14 @@ interface Baked {
   };
 }
 
-function bake(pack: Pack, name: string, mesh: Mesh, sampler: Sampler, rig: Rig | null): Baked {
+function bake(
+  pack: Pack,
+  name: string,
+  file: string,
+  mesh: Mesh,
+  sampler: Sampler,
+  rig: Rig | null,
+): Baked {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
 
@@ -1230,8 +1394,8 @@ function bake(pack: Pack, name: string, mesh: Mesh, sampler: Sampler, rig: Rig |
   for (let t = 0; t < mesh.tris; t++) {
     const u = mesh.uvs[t * 2]!;
     const v = mesh.uvs[t * 2 + 1]!;
-    slot[t] = sampler.slotOf(u, v);
-    const c = sampler.colorAt(u, v);
+    slot[t] = sampler.slotOf(mesh.atlasImage, u, v);
+    const c = sampler.colorAt(mesh.atlasImage, u, v);
     if (hueSat(c[0], c[1], c[2]).sat < greyOf(pack)) grey++;
   }
 
@@ -1294,6 +1458,7 @@ function bake(pack: Pack, name: string, mesh: Mesh, sampler: Sampler, rig: Rig |
 
   return {
     name,
+    file,
     category: pack.categoryOf(name),
     tris: mesh.tris,
     verts: mesh.verts,
@@ -1455,7 +1620,7 @@ export type ${data.type}ClipName = keyof typeof ${data.prefix}_CLIPS;
  */
 function writeCatalog(
   pack: Pack,
-  atlas: Image,
+  atlases: readonly { name: string; image: Image }[],
   sampler: Sampler,
   models: Baked[],
   usage: Usage | undefined,
@@ -1463,7 +1628,9 @@ function writeCatalog(
   return JSON.stringify({
     pack: pack.title,
     license: 'CC0',
-    atlas: { width: atlas.width, height: atlas.height },
+    // Атласов может быть несколько: у персонажей своя картинка на каждого,
+    // и страница обязана показывать их числом, а не одним «атлас 1024×1024».
+    atlases: atlases.map((a) => ({ file: a.name, width: a.image.width, height: a.image.height })),
     slots: pack.slots,
     ramps: pack.ramps.map((r) => ({
       id: r.id,
@@ -1490,12 +1657,14 @@ function writeCatalog(
           }
         };
         if (usage === undefined) {
-          for (let y = 0; y < atlas.height; y += 2) {
-            for (let x = 0; x < atlas.width; x += 2) {
-              const u = (x + 0.5) / atlas.width;
-              const v = (y + 0.5) / atlas.height;
-              if (sampler.slotOf(u, v) !== target) continue;
-              vote(sampler.colorAt(u, v), 1);
+          for (const { image } of atlases) {
+            for (let y = 0; y < image.height; y += 2) {
+              for (let x = 0; x < image.width; x += 2) {
+                const u = (x + 0.5) / image.width;
+                const v = (y + 0.5) / image.height;
+                if (sampler.slotOf(image, u, v) !== target) continue;
+                vote(sampler.colorAt(image, u, v), 1);
+              }
             }
           }
         } else {
@@ -1519,21 +1688,28 @@ function writeCatalog(
       : {
           touched: (() => {
             const all = new Map<number, number>();
-            for (let i = 0; i < atlas.width * atlas.height; i++) {
-              const key = (atlas.rgba[i * 4]! << 16) | (atlas.rgba[i * 4 + 1]! << 8) | atlas.rgba[i * 4 + 2]!;
-              all.set(key, (all.get(key) ?? 0) + 1);
+            let total = 0;
+            for (const { image } of atlases) {
+              total += image.width * image.height;
+              for (let i = 0; i < image.width * image.height; i++) {
+                const key = (image.rgba[i * 4]! << 16) | (image.rgba[i * 4 + 1]! << 8) | image.rgba[i * 4 + 2]!;
+                all.set(key, (all.get(key) ?? 0) + 1);
+              }
             }
-            let pixels = 0;
-            for (const [key, n] of all) if (usage.has(key)) pixels += n;
+            let hit = 0;
+            for (const [key, n] of all) if (usage.has(key)) hit += n;
             return {
               colors: usage.size,
               atlasColors: all.size,
-              share: Math.round((pixels / (atlas.width * atlas.height)) * 1000) / 1000,
+              share: Math.round((hit / total) * 1000) / 1000,
             };
           })(),
         }),
+    // Потолки, чтобы отчёт в консоли и страница артбука брали их из одного места.
+    budgets: { hero: HERO_BUDGET, model: BUDGET },
     models: models.map((m) => ({
       name: m.name,
+      file: m.file,
       category: m.category,
       tris: m.tris,
       verts: m.verts,
@@ -1559,17 +1735,20 @@ function writeCatalog(
 // его и меряем: сравнивать окружение с героем нечестно, но потолок нужен.
 const BUDGET = 1500;
 
+/** §6.1: «герой ≤ 900 треугольников» — единственный потолок, заданный не нами. */
+const HERO_BUDGET = 900;
+
 function report(pack: Pack, write: boolean): void {
   const dir = join(ROOT, pack.dir);
-  const gltfDir = join(dir, 'gltf');
-  const atlas = decodePng(join(dir, pack.atlas));
-  const files = readdirSync(gltfDir)
-    .filter((f) => f.endsWith('.gltf') || f.endsWith('.glb'))
-    .sort()
-    .map((f) => join(gltfDir, f));
+  const files = (pack.sources ?? ['gltf']).flatMap((source) =>
+    readdirSync(join(dir, source))
+      .filter((f) => f.endsWith('.gltf') || f.endsWith('.glb'))
+      .sort()
+      .map((f) => join(dir, source, f)),
+  );
 
   if (files.length === 0) {
-    console.error(`Набор не найден: ${gltfDir}`);
+    console.error(`Набор не найден: ${dir}`);
     process.exit(1);
   }
 
@@ -1583,22 +1762,31 @@ function report(pack: Pack, write: boolean): void {
   // от того, что набор задел, а это известно только после чтения всех моделей.
   const meshes = files.map((f) => ({
     name: basename(f).replace(/\.(gltf|glb)$/, ''),
-    mesh: loadMesh(f, pose, pack.attach),
+    rel: f.slice(dir.length + 1),
+    mesh: loadMesh(f, pack, dir, pose, pack.attach),
   }));
-  const usage = pack.range === 'used' ? usageOf(atlas, meshes.map((m) => m.mesh)) : undefined;
-  const sampler = makeSampler(pack, atlas, usage);
+  // Атласы — те, которые назвали сами модели, в порядке первого упоминания.
+  const atlases: { name: string; image: Image }[] = [];
+  for (const m of meshes) {
+    if (!atlases.some((a) => a.name === m.mesh.atlas)) {
+      atlases.push({ name: m.mesh.atlas, image: m.mesh.atlasImage });
+    }
+  }
+  const images = atlases.map((a) => a.image);
+  const usage = pack.range === 'used' ? usageOf(meshes.map((m) => m.mesh)) : undefined;
+  const sampler = makeSampler(pack, images, usage);
 
   // Скелет берётся у первой принятой модели со скином: он общий на набор,
   // и читать его у каждой значило бы получить четыре одинаковых списка.
   const rigged = meshes.find((m) => pack.adopted.includes(m.name) && m.mesh.skinned > 0);
   const rig = pack.clips === undefined || rigged === undefined
     ? null
-    : loadRig(join(gltfDir, `${rigged.name}.glb`));
+    : loadRig(join(dir, rigged.rel));
   const clips = rig === null || pack.clips === undefined
     ? []
     : pack.clips.map((c) => loadClip(join(dir, c.file), c.clip, c.as, rig));
 
-  const models = meshes.map((m) => bake(pack, m.name, m.mesh, sampler, rig));
+  const models = meshes.map((m) => bake(pack, m.name, m.rel, m.mesh, sampler, rig));
   const slots = pack.slots;
 
 
@@ -1609,7 +1797,10 @@ function report(pack: Pack, write: boolean): void {
     byCategory.set(m.category, list);
   }
 
-  console.log(`\n${pack.title}: ${models.length} моделей, атлас ${atlas.width}×${atlas.height}\n`);
+  const atlasLine = atlases.length === 1
+    ? `атлас ${images[0]!.width}×${images[0]!.height}`
+    : `${atlases.length} атласа по ${images[0]!.width}×${images[0]!.height}`;
+  console.log(`\n${pack.title}: ${models.length} моделей, ${atlasLine}\n`);
   console.log('категория   моделей  треугольников   средн.   макс.  самая тяжёлая');
   for (const [cat, list] of [...byCategory].sort()) {
     const total = list.reduce((s, m) => s + m.tris, 0);
@@ -1713,7 +1904,7 @@ function report(pack: Pack, write: boolean): void {
     written.push(pack.data.file);
   }
   const catalog = join(pack.dir, 'catalog.json');
-  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlas, sampler, models, usage), 'utf8');
+  writeFileSync(join(ROOT, catalog), writeCatalog(pack, atlases, sampler, models, usage), 'utf8');
   written.push(catalog);
   console.log(`\nзаписано: ${written.join(', ')}`);
 }

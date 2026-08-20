@@ -1,27 +1,21 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { buildingGeometry, heroGeometry, villagerGeometry } from './models';
-import { BUILDING_ORDER, builtBuildings, campArea, villagerCount } from '../sim/camp';
+import { buildingGeometry, heroGeometry } from './models';
+import { BUILDING_ORDER, builtBuildings, campArea } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
-import { HERO_SPEED } from '../sim/config';
 import { FluffyGrass } from './fluffyGrass';
 import { forestGeometry, forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
 
 /**
- * Сцена лагеря по camp.html: жители ходят и работают, стройка видна по
- * маршрутам, герой стоит у Штаба. Жители — не юниты: тап по ним ничего
- * не делает, и это решение, а не недоделка.
+ * Сцена лагеря по camp.html: герой стоит у Штаба, стройка видна по площадке.
+ *
+ * Жителей-примитивов в сцене больше нет. Они были первым шагом — коробками,
+ * которые показывали, что лагерь растёт, — и держались ровно до того дня,
+ * когда у героя появилась настоящая модель: рядом с ней коробки читались
+ * не фоном, а недоделкой. Жители вернутся персонажами того же набора
+ * (§6.1.4), а пока герой в лагере один.
  */
-interface Villager {
-  readonly mesh: THREE.Mesh;
-  x: number;
-  z: number;
-  targetX: number;
-  targetZ: number;
-  /** Секунды работы на месте; пока > 0 — стоит и «работает». */
-  working: number;
-}
 
 /**
  * Артбук рисует модели в своих габаритах — палатка с растяжками почти четыре
@@ -62,7 +56,6 @@ const noise = (x: number, z: number): number =>
 export class CampView {
   readonly group = new THREE.Group();
   private readonly buildings = new Map<BuildingId, THREE.Group>();
-  private readonly villagers: Villager[] = [];
   private readonly disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
   private hero!: THREE.Mesh;
   private site: THREE.Mesh | null = null;
@@ -315,7 +308,6 @@ export class CampView {
     // Площадь изменилась — лес и трава отступают с новых клеток вместе.
     this.buildForest(area);
     this.meadow?.replant();
-    this.syncVillagers();
   }
 
   setCamp(camp: CampState): void {
@@ -324,37 +316,7 @@ export class CampView {
     this.rebuildBuildings();
   }
 
-  /** Число жителей выводится из развития лагеря, а не назначается. */
-  private syncVillagers(): void {
-    const want = villagerCount(this.camp);
-    while (this.villagers.length > want) {
-      this.villagers.pop()?.mesh.removeFromParent();
-    }
-    while (this.villagers.length < want) {
-      const mesh = new THREE.Mesh(this.track(villagerGeometry()), this.blocking);
-      mesh.scale.setScalar(VILLAGER_SCALE);
-      mesh.castShadow = true;
-      const start = this.pickTarget();
-      this.villagers.push({ mesh, x: start.x, z: start.z, targetX: start.x, targetZ: start.z, working: 0 });
-      this.group.add(mesh);
-    }
-  }
-
-  /** Стройка видна по маршрутам: треть маршрутов ведёт на площадку. */
-  private pickTarget(): { x: number; z: number } {
-    const c = this.camp.construction;
-    if (c !== null && Math.random() < 1 / 3) {
-      const p = this.camp.layout[c.building];
-      return { x: p.x + 0.5, z: p.z + 1.6 };
-    }
-    const built = builtBuildings(this.camp);
-    const id = built[Math.floor(Math.random() * built.length)] ?? 'hq';
-    const p = this.camp.layout[id];
-    const angle = Math.random() * Math.PI * 2;
-    return { x: p.x + 0.5 + Math.cos(angle) * 1.3, z: p.z + 0.5 + Math.sin(angle) * 1.3 };
-  }
-
-  update(dt: number, now: number, day = 1): void {
+  update(_dt: number, now: number, day = 1): void {
     this.rebuildBuildings();
     this.meadow?.update(now / 1000);
     // Трава FluffyGrass сама себе освещение, поэтому время суток ей
@@ -363,34 +325,6 @@ export class CampView {
 
     const hqPos = this.camp.layout.hq;
     this.hero.position.set(hqPos.x + 1.9, 0.55, hqPos.z + 0.5);
-
-    for (const v of this.villagers) {
-      if (v.working > 0) {
-        v.working -= dt;
-        // Работа читается движением, а не анимацией: пока клипов нет,
-        // житель покачивается на месте.
-        v.mesh.position.y = 0.35 + Math.sin(now / 120 + v.x) * 0.03;
-        if (v.working <= 0) {
-          const t = this.pickTarget();
-          v.targetX = t.x;
-          v.targetZ = t.z;
-        }
-        continue;
-      }
-      const dx = v.targetX - v.x;
-      const dz = v.targetZ - v.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < 0.05) {
-        v.working = 2 + Math.random() * 3; // 2–5 секунд у здания
-        continue;
-      }
-      // Та же скорость, что в вылазке: разный темп читается как ошибка.
-      const step = Math.min(dist, HERO_SPEED * dt);
-      v.x += (dx / dist) * step;
-      v.z += (dz / dist) * step;
-      v.mesh.position.set(v.x, 0.35, v.z);
-      v.mesh.rotation.y = Math.atan2(dx, dz);
-    }
 
     this.syncSite(now);
   }
@@ -420,7 +354,7 @@ export class CampView {
     (this.site.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(now / 380) * 0.25;
   }
 
-  /** Тап по зданию — для перестановки (§20.4). Жители не откликаются намеренно. */
+  /** Тап по зданию — для перестановки (§20.4). */
   buildingAt(x: number, z: number): BuildingId | null {
     for (const id of builtBuildings(this.camp)) {
       const p = this.camp.layout[id];
@@ -452,6 +386,5 @@ export class CampView {
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
     this.buildings.clear();
-    this.villagers.length = 0;
   }
 }

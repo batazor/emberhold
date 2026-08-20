@@ -16,7 +16,9 @@ import { BUILDING_ORDER } from '../sim/camp';
 import { CLASS_ORDER } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
 import { C, triangles } from './blocking';
-import { buildingGeometry, enemyGeometry, heroGeometry, stageOf, villagerGeometry } from './models';
+import { ADVENTURERS_MODELS } from './adventurers.data';
+import { adventurerGeometry } from './adventurers';
+import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf } from './models';
 import { FOREST_SLOTS } from './forest.data';
 import { FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
 import { SKELETON_SLOTS } from './skeleton.data';
@@ -53,6 +55,7 @@ const BUDGET = { building: 1500, hero: 900 } as const;
  */
 const PACK_KB = 260;
 
+
 /** По одному уровню на каждую стадию роста. */
 const LEVEL_OF_STAGE = [1, 3, 5] as const;
 
@@ -70,17 +73,21 @@ describe('Артбук: бюджет треугольников', () => {
     }
   });
 
-  test('герой укладывается в 900, житель тоже', () => {
+  /**
+   * Девятьсот считались, когда героев в кадре предполагалось много. Их один —
+   * и в лагере, и в вылазке, — поэтому классу с моделью набора (§6.1.4) этот
+   * потолок не подходит и не должен: его цена не в кадре, а в бандле, и её
+   * меряет потолок принятого набора выше. Классам без модели девятьсот
+   * остаются: их силуэт по-прежнему свой.
+   */
+  test('герой-примитив укладывается в 900', () => {
     for (const cls of CLASS_ORDER) {
+      if (HERO_MODELS[cls] !== undefined) continue;
       const geo = heroGeometry(cls);
       const t = triangles(geo);
       geo.dispose();
       assert.ok(t <= BUDGET.hero, `${cls}: ${t} > ${BUDGET.hero}`);
     }
-    const v = villagerGeometry();
-    const t = triangles(v);
-    v.dispose();
-    assert.ok(t <= BUDGET.hero, `житель: ${t} > ${BUDGET.hero}`);
   });
 
   /**
@@ -107,6 +114,20 @@ describe('Артбук: бюджет треугольников', () => {
     const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
     const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
     assert.ok(kb <= PACK_KB, `набор скелетов: ${kb} КБ gzip > ${PACK_KB} КБ`);
+  });
+
+  test('у героя в руке есть предмет, и он стоит на узле набора', () => {
+    // Не «геометрия непустая», а именно то, ради чего узел запекается:
+    // модель героя знает матрицу руки, и с предметом она тяжелее, чем без.
+    const bare = adventurerGeometry('Barbarian', 1);
+    const armed = heroGeometry('ranger');
+    assert.ok(ADVENTURERS_MODELS.Barbarian.hand !== undefined, 'у варвара нет узла руки');
+    assert.ok(
+      triangles(armed) > triangles(bare),
+      `герой с предметом ${triangles(armed)} не тяжелее безоружного ${triangles(bare)}`,
+    );
+    bare.dispose();
+    armed.dispose();
   });
 
   test('шесть уровней укладываются в три стадии', () => {
@@ -138,8 +159,21 @@ describe('Артбук: палитра', () => {
     assert.deepEqual([...new Set(stray)], [], 'цвет мимо 28 из артбука');
   });
 
-  test('палитра — ровно 28 цветов', () => {
-    assert.equal(Object.keys(C).length, 28);
+  test('палитра — ровно 32 цвета', () => {
+    assert.equal(Object.keys(C).length, 32);
+  });
+
+  /**
+   * Тот же список третьей копией — образцами в `artbook.html`, где он и есть
+   * арт-байбл. Сверяются значения, а не подписи: подписи на странице
+   * человеческие, в коде короткие, и приводить их друг к другу значило бы
+   * завести четвёртый список.
+   */
+  test('палитра артбука и палитра кода — один список', () => {
+    const src = readFileSync(new URL('../../artbook.html', import.meta.url), 'utf8');
+    const shown = [...src.matchAll(/\["[^"]+","(#[0-9a-f]{6})"\]/g)].map((m) => m[1]!);
+    const code = Object.values(C).map((c) => c.toLowerCase());
+    assert.deepEqual([...shown].sort(), [...code].sort(), 'artbook.html и blocking.ts разошлись');
   });
 
   /**

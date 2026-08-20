@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind } from '../sim/types';
+import { adventurerGeometry } from './adventurers';
+import type { AdventurerModelName } from './adventurers.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import { skeletonGeometry } from './skeleton';
@@ -296,17 +298,6 @@ function salter(): Piece[] {
   ];
 }
 
-/** Житель лагеря (`buildart.html`). Тот же силуэт, что у героя, но проще. */
-function villager(): Piece[] {
-  return [
-    box(-0.1, 0, 0, 0.12, 0.36, 0.13, C.metT),
-    box(0.1, 0, 0, 0.12, 0.36, 0.13, C.metT),
-    box(0, 0.36, 0, 0.36, 0.44, 0.24, RANGER_CLOTH),
-    box(0, 0.54, 0, 0.38, 0.05, 0.26, C.travS),
-    cone(0, 0.8, 0, 0.24, 0.3, 5, RANGER_CLOTH),
-  ];
-}
-
 /* ---------- сборка ---------- */
 
 const BUILDING_STAGES: Record<BuildingId, [() => Piece[], () => Piece[], () => Piece[]]> = {
@@ -341,8 +332,53 @@ const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
 export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry =>
   merge(BUILDING_STAGES[id][stageOf(level)]());
 
-export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => merge(HERO_SHAPES[cls]());
+/**
+ * Классы, которым модель набора уже нарисована (§6.1.3). Вписан один — тот,
+ * которым играют с первой вылазки; остальные пять персонажей набора измерены
+ * и ждут своей строки, потому что каждый стоит килобайтов у всех игроков.
+ *
+ * Правило §6.1 «силуэт утверждается на примитивах до моделирования» этим
+ * не нарушено, а исполнено: примитив был утверждён и стоит рядом — модель
+ * приводится к его росту, а не наоборот.
+ */
+export const HERO_MODELS: Partial<Record<HeroClassId, AdventurerModelName>> = {
+  ranger: 'Barbarian',
+};
+
+/**
+ * Рост примитива, которого модель заменяет. Берётся у него же, а не числом
+ * в коде: подмена модели не должна сдвинуть ни камеру, ни тень, ни привязку
+ * интерфейса, а два записанных порознь роста разъезжаются молча.
+ */
+const heroHeights = new Map<HeroClassId, number>();
+function heroHeight(cls: HeroClassId): number {
+  const known = heroHeights.get(cls);
+  if (known !== undefined) return known;
+  const geo = merge(HERO_SHAPES[cls]());
+  geo.computeBoundingBox();
+  const box3 = geo.boundingBox!;
+  const height = box3.max.y - box3.min.y;
+  geo.dispose();
+  heroHeights.set(cls, height);
+  return height;
+}
+
+/**
+ * Что у героя в руке. Оружие §14 зовётся «Кайло»; кирки в наборе нет, поэтому
+ * взят одноручный топор — ближайшее по чтению. Это замена палке примитива:
+ * уровень предмета из Кузницы моделью пока не читается, и когда начнёт,
+ * здесь появится не строка, а таблица.
+ */
+const HERO_HELD: Partial<Record<HeroClassId, AdventurerModelName>> = {
+  ranger: 'axe_1handed',
+};
+
+export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
+  const model = HERO_MODELS[cls];
+  return model === undefined
+    ? merge(HERO_SHAPES[cls]())
+    : adventurerGeometry(model, heroHeight(cls), HERO_HELD[cls]);
+};
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
 
-export const villagerGeometry = (): THREE.BufferGeometry => merge(villager());
