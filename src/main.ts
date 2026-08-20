@@ -430,7 +430,7 @@ function toRaid(tier: Tier): boolean {
   // от того, пригодилось или нет. Копить нечего.
   camp.loadout = [];
   persist();
-  raidView = new RaidView(raid.loc);
+  raidView = new RaidView(raid.loc, raid.loadout.cls);
   rig.world.add(raidView.group);
   campView.group.visible = false;
   rig.lookAt(raid.hero.x, raid.hero.z, true);

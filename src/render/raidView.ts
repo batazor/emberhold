@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { blockingMaterial } from './blocking';
+import { enemyGeometry, heroGeometry } from './models';
 import { ENEMY_STATS } from '../sim/enemies';
 import { idx } from '../sim/grid';
-import type { Enemy, GameLocation, RaidState } from '../sim/types';
+import type { Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
+import type { HeroClassId } from '../sim/heroes';
 import { PALETTE } from './palette';
 
 /**
@@ -28,7 +31,13 @@ export class RaidView {
   private evacRing!: THREE.Mesh;
   private disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
 
-  constructor(private readonly loc: GameLocation) {
+  /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
+  private readonly blocking = this.track(blockingMaterial());
+
+  constructor(
+    private readonly loc: GameLocation,
+    private readonly heroClass: HeroClassId = 'ranger',
+  ) {
     this.buildGround();
     this.buildRocks();
     this.buildEvac();
@@ -155,61 +164,63 @@ export class RaidView {
     }
   }
 
+  /**
+   * Противники — модели артбука (раздел 04). Различаются силуэтом раньше,
+   * чем цветом: за пределами фонаря цвет пропадает первым.
+   *
+   * Геометрия и материалы общие на вид, а не на особь: на ярусе 3 их девять,
+   * и девять одинаковых материалов — это девять лишних состояний GPU.
+   */
   private buildEnemies(): void {
-    const shapes: Record<string, THREE.BufferGeometry> = {
-      scavenger: this.track(new THREE.ConeGeometry(0.3, 0.75, 5)),
-      spearman: this.track(new THREE.ConeGeometry(0.32, 1.15, 4)),
-      golem: this.track(new THREE.DodecahedronGeometry(0.62, 0)),
+    const shapes = new Map<EnemyKind, THREE.BufferGeometry>();
+    const hots = new Map<EnemyKind, THREE.MeshLambertMaterial>();
+    const shapeOf = (kind: EnemyKind): THREE.BufferGeometry => {
+      const found = shapes.get(kind);
+      if (found !== undefined) return found;
+      const made = this.track(enemyGeometry(kind));
+      shapes.set(kind, made);
+      return made;
     };
-    const colors: Record<string, number> = {
-      scavenger: PALETTE.scavenger,
-      spearman: PALETTE.spearman,
-      golem: PALETTE.golem,
+    // §17.3: замах обязан быть виден заранее. Пока клипов нет, телеграф —
+    // эмиссия материала; с анимацией это станет клипом замаха.
+    const hotOf = (kind: EnemyKind): THREE.MeshLambertMaterial => {
+      const found = hots.get(kind);
+      if (found !== undefined) return found;
+      const made = this.track(
+        new THREE.MeshLambertMaterial({
+          vertexColors: true,
+          flatShading: true,
+          emissive: PALETTE.telegraph,
+          emissiveIntensity: 1.2,
+        }),
+      );
+      hots.set(kind, made);
+      return made;
     };
 
     for (const e of this.loc.enemies) {
-      const base = this.track(
-        new THREE.MeshLambertMaterial({ color: colors[e.kind], flatShading: true }),
-      );
-      // §17.3: замах обязан быть виден заранее. Пока моделей нет, телеграф —
-      // эмиссия материала; с моделями это станет клипом замаха.
-      const hot = this.track(
-        new THREE.MeshLambertMaterial({
-          color: colors[e.kind],
-          emissive: PALETTE.telegraph,
-          emissiveIntensity: 1.2,
-          flatShading: true,
-        }),
-      );
-      const mesh = new THREE.Mesh(shapes[e.kind], base);
+      const mesh = new THREE.Mesh(shapeOf(e.kind), this.blocking);
       mesh.castShadow = true;
-      mesh.position.set(e.x, 0.45, e.z);
+      mesh.position.set(e.x, 0, e.z);
       this.group.add(mesh);
-      this.enemyViews.set(e.id, { mesh, base, hot });
+      this.enemyViews.set(e.id, { mesh, base: this.blocking, hot: hotOf(e.kind) });
     }
   }
 
+  /**
+   * Герой — модель своего класса (артбук, 04). Фонарь остаётся отдельным
+   * мешем без тумана: он источник света в кадре, а не деталь силуэта.
+   */
   private buildHero(): void {
     this.hero = new THREE.Group();
-    const body = this.track(new THREE.MeshLambertMaterial({ color: PALETTE.heroBody, flatShading: true }));
-    const torso = new THREE.Mesh(this.track(new THREE.CapsuleGeometry(0.22, 0.44, 4, 10)), body);
-    torso.position.y = 0.6;
-    torso.castShadow = true;
-    const head = new THREE.Mesh(this.track(new THREE.SphereGeometry(0.16, 10, 8)), body);
-    head.position.y = 1;
-    head.castShadow = true;
-    const cloak = new THREE.Mesh(
-      this.track(new THREE.ConeGeometry(0.34, 0.68, 8)),
-      this.track(new THREE.MeshLambertMaterial({ color: PALETTE.heroCloak, flatShading: true })),
-    );
-    cloak.position.set(0, 0.48, -0.06);
-    cloak.castShadow = true;
+    const body = new THREE.Mesh(this.track(heroGeometry(this.heroClass)), this.blocking);
+    body.castShadow = true;
     const lantern = new THREE.Mesh(
       this.track(new THREE.SphereGeometry(0.08, 8, 6)),
       this.track(new THREE.MeshBasicMaterial({ color: 0xffcf90, fog: false })),
     );
     lantern.position.set(0.28, 0.7, 0.1);
-    this.hero.add(torso, head, cloak, lantern);
+    this.hero.add(body, lantern);
     this.group.add(this.hero);
   }
 

@@ -1,8 +1,9 @@
 import * as THREE from 'three';
+import { blockingMaterial } from './blocking';
+import { buildingGeometry, heroGeometry, villagerGeometry } from './models';
 import { BUILDING_ORDER, builtBuildings, campArea, villagerCount } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { HERO_SPEED } from '../sim/config';
-import { PALETTE } from './palette';
 
 /**
  * Сцена лагеря по camp.html: жители ходят и работают, стройка видна по
@@ -19,14 +20,15 @@ interface Villager {
   working: number;
 }
 
-const BUILDING_COLOR: Record<BuildingId, number> = {
-  hq: 0x8a7a5c,
-  kitchen: 0x8d6a4a,
-  storage: 0x6f6a58,
-  // Кузница — единственная холодная постройка: сталь опознаётся раньше формы
-  // (блокинг в buildart.html, раздел про Кузницу).
-  forge: 0x5e5a52,
-};
+/**
+ * Артбук рисует модели в своих габаритах — палатка с растяжками почти четыре
+ * единицы в ширину. В лагере под здание отведено 2×2 клетки (§20.4), поэтому
+ * блокинг приводится к следу здесь, а не пересчётом чисел в самих моделях:
+ * так они остаются построчно сверяемыми со страницей артбука.
+ */
+const BUILDING_SCALE = 0.55;
+/** Житель ростом с клетку читается рядом со зданием, а не как игрушка. */
+const VILLAGER_SCALE = 0.62;
 
 export class CampView {
   readonly group = new THREE.Group();
@@ -37,6 +39,9 @@ export class CampView {
   private site: THREE.Mesh | null = null;
   private area = 6;
   private builtLevels = '';
+
+  /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
+  private readonly blocking = this.track(blockingMaterial());
 
   constructor(private camp: CampState) {
     this.buildGround();
@@ -77,12 +82,11 @@ export class CampView {
 
   private groundMesh!: THREE.InstancedMesh;
 
+  /** Герой в лагере — та же модель, что уходит в вылазку (артбук, 04). */
   private buildHero(): void {
-    this.hero = new THREE.Mesh(
-      this.track(new THREE.CapsuleGeometry(0.22, 0.44, 4, 10)),
-      this.track(new THREE.MeshLambertMaterial({ color: PALETTE.heroCloak, flatShading: true })),
-    );
+    this.hero = new THREE.Mesh(this.track(heroGeometry('ranger')), this.blocking);
     this.hero.castShadow = true;
+    this.hero.scale.setScalar(VILLAGER_SCALE);
     this.group.add(this.hero);
   }
 
@@ -90,38 +94,21 @@ export class CampView {
    * §6.1: стадии роста — замена меша, а не отдельный рисунок. Пока моделей нет,
    * стадия выражена габаритом и надстройками: силуэт обязан читаться без цифр.
    */
+  /**
+   * Модель здания из артбука (`src/render/models.ts`). Уровень читается
+   * силуэтом: палатка → сруб → камень, — поэтому стадия это другая модель,
+   * а не та же коробка выше ростом.
+   *
+   * Масштаб приводит блокинг к следу здания: артбук рисует модели в своих
+   * габаритах, а в лагере под здание отведено 2×2 клетки (§20.4).
+   */
   private makeBuilding(id: BuildingId, level: number): THREE.Group {
     const g = new THREE.Group();
-    const stage = level <= 2 ? 0 : level <= 4 ? 1 : 2;
-    const h = 0.7 + stage * 0.45;
-    const w = 1.3 + stage * 0.25;
-    const mat = this.track(
-      new THREE.MeshLambertMaterial({ color: BUILDING_COLOR[id], flatShading: true }),
-    );
-    const base = new THREE.Mesh(this.track(new THREE.BoxGeometry(w, h, w)), mat);
-    base.position.y = h / 2;
-    base.castShadow = true;
-    base.receiveShadow = true;
-    g.add(base);
-
-    const roof = new THREE.Mesh(
-      this.track(new THREE.ConeGeometry(w * 0.82, 0.5 + stage * 0.2, 4)),
-      this.track(new THREE.MeshLambertMaterial({ color: 0x53412f, flatShading: true })),
-    );
-    roof.position.y = h + 0.25 + stage * 0.1;
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    g.add(roof);
-
-    if (stage >= 1) {
-      const tower = new THREE.Mesh(
-        this.track(new THREE.BoxGeometry(0.35, 0.6 + stage * 0.3, 0.35)),
-        mat,
-      );
-      tower.position.set(w * 0.4, h + 0.3, -w * 0.4);
-      tower.castShadow = true;
-      g.add(tower);
-    }
+    const mesh = new THREE.Mesh(this.track(buildingGeometry(id, level)), this.blocking);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.scale.setScalar(BUILDING_SCALE);
+    g.add(mesh);
     return g;
   }
 
@@ -187,10 +174,8 @@ export class CampView {
       this.villagers.pop()?.mesh.removeFromParent();
     }
     while (this.villagers.length < want) {
-      const mesh = new THREE.Mesh(
-        this.track(new THREE.CapsuleGeometry(0.15, 0.3, 3, 6)),
-        this.track(new THREE.MeshLambertMaterial({ color: 0xc9bfa2, flatShading: true })),
-      );
+      const mesh = new THREE.Mesh(this.track(villagerGeometry()), this.blocking);
+      mesh.scale.setScalar(VILLAGER_SCALE);
       mesh.castShadow = true;
       const start = this.pickTarget();
       this.villagers.push({ mesh, x: start.x, z: start.z, targetX: start.x, targetZ: start.z, working: 0 });
