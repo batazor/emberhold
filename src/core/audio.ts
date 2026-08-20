@@ -1,0 +1,408 @@
+/**
+ * Звук (DESIGN §18). Процедурный синтез, ноль ассетов: рецепты перенесены
+ * из артбука `sound.html` один в один, чтобы игра звучала ровно так, как
+ * её слушали на странице, а не «примерно так же».
+ *
+ * Модуль намеренно лежит в core рядом с часами и циклом: как и они, он —
+ * браузерная обвязка, а не игровая логика. Симуляция о нём не знает и знать
+ * не должна — что играть, решает main по изменениям состояния.
+ *
+ * §18.1: звук несёт информацию и ничего не решает в одиночку. Всё, что здесь
+ * звучит, продублировано на экране — игра обязана оставаться играбельной
+ * с выключенным динамиком.
+ */
+
+/** Шины (§18.5): игрок должен уметь приглушить амбиент, не теряя провиант. */
+export type Bus = 'sfx' | 'ui' | 'amb';
+
+/** §18.5 — громкость по умолчанию: игра запускается не в наушниках. */
+const MASTER = 0.55;
+const BUS_GAIN: Record<Bus, number> = { sfx: 0.9, ui: 0.7, amb: 0.5 };
+
+/** §18.5 — без предела бой в тесной комнате превращается в шум. */
+const MAX_VOICES = 8;
+
+/**
+ * Пульс провианта (§18.2) — ключевая механика звукового дизайна.
+ * Таблица чистая и лежит здесь же, а не в симуляции: это звук, а не правило
+ * вылазки. Проверяется в `audio.rules.ts`.
+ */
+export interface Pulse {
+  /** Период в миллисекундах. */
+  readonly everyMs: number;
+  readonly hz: number;
+}
+
+const ZONES: readonly { readonly above: number; readonly pulse: Pulse | null }[] = [
+  // Молчание выше 60% — тоже состояние: без него появление пульса
+  // не было бы событием, а фоновый тик обесценивается за две минуты.
+  { above: 0.6, pulse: null },
+  { above: 0.3, pulse: { everyMs: 2000, hz: 70 } },
+  { above: 0.15, pulse: { everyMs: 1200, hz: 88 } },
+  { above: -1, pulse: { everyMs: 600, hz: 110 } },
+];
+
+/** Пульс для текущей доли провианта; null — тишина. */
+export function foodPulse(share: number): Pulse | null {
+  for (const z of ZONES) if (share > z.above) return z.pulse;
+  return ZONES[ZONES.length - 1]!.pulse;
+}
+
+/** Амбиент по ярусу (§18.4): ниже и плотнее с глубиной. */
+interface AmbientSpec {
+  readonly band: number;
+  readonly gain: number;
+  readonly breath: number;
+  readonly hum: number | null;
+}
+
+const AMBIENT: readonly AmbientSpec[] = [
+  { band: 700, gain: 0.055, breath: 0.12, hum: null }, // подступы: ветер, светлый
+  { band: 700, gain: 0.055, breath: 0.12, hum: null },
+  { band: 300, gain: 0.075, breath: 0.12, hum: 60 }, // копи: капель и низкий гул
+  { band: 140, gain: 0.1, breath: 0.22, hum: 42 }, // дно: давящий низ
+];
+
+interface Voice {
+  readonly stop: () => void;
+  readonly until: number;
+}
+
+let ac: AudioContext | null = null;
+let master: GainNode | null = null;
+const buses = new Map<Bus, GainNode>();
+let voices: Voice[] = [];
+let noise: AudioBuffer | null = null;
+let ambient: (() => void) | null = null;
+let ambientTier = -1;
+let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+let pulseShare = 1;
+let pulseOn = false;
+
+/**
+ * Запуск по первому жесту (§18.5). Safari не даёт звук без него, и отдельный
+ * экран «включить звук» не нужен: первый тап — это шаг из первого кадра.
+ * Вызывается сколько угодно раз, работает один.
+ */
+export function unlockAudio(): void {
+  if (ac === null) {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (Ctor === undefined) return;
+    ac = new Ctor();
+    master = ac.createGain();
+    master.gain.value = MASTER;
+    master.connect(ac.destination);
+    for (const bus of ['sfx', 'ui', 'amb'] as const) {
+      const g = ac.createGain();
+      g.gain.value = BUS_GAIN[bus];
+      g.connect(master);
+      buses.set(bus, g);
+    }
+  }
+  if (ac.state === 'suspended') void ac.resume();
+}
+
+export function setVolume(value: number): void {
+  if (master !== null) master.gain.value = Math.max(0, Math.min(1, value));
+}
+
+function busOf(bus: Bus): GainNode | null {
+  return buses.get(bus) ?? null;
+}
+
+/** Шум генерируется один раз: четыре секунды хватает и на удары, и на петлю. */
+function noiseBuffer(): AudioBuffer | null {
+  if (ac === null) return null;
+  if (noise === null) {
+    const n = Math.floor(ac.sampleRate * 4);
+    noise = ac.createBuffer(1, n, ac.sampleRate);
+    const d = noise.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return noise;
+}
+
+/** Учёт голосов: сверх восьми глушится старейший, а не отбрасывается новый —
+ *  свежее событие всегда важнее доигрывающего хвоста. */
+function hold(stop: () => void, until: number): void {
+  const now = ac?.currentTime ?? 0;
+  voices = voices.filter((v) => v.until > now);
+  if (voices.length >= MAX_VOICES) {
+    const oldest = voices.shift();
+    oldest?.stop();
+  }
+  voices.push({ stop, until });
+}
+
+interface NoiseOpts {
+  f0: number;
+  f1?: number;
+  dur?: number;
+  gain?: number;
+  q?: number;
+  type?: BiquadFilterType;
+  at?: number;
+  bus?: Bus;
+}
+
+function nz(o: NoiseOpts): void {
+  const buf = noiseBuffer();
+  const out = busOf(o.bus ?? 'sfx');
+  if (ac === null || buf === null || out === null) return;
+  const t = ac.currentTime + (o.at ?? 0);
+  const dur = o.dur ?? 0.1;
+
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const f = ac.createBiquadFilter();
+  f.type = o.type ?? 'bandpass';
+  f.frequency.setValueAtTime(o.f0, t);
+  if (o.f1 !== undefined) f.frequency.exponentialRampToValueAtTime(Math.max(40, o.f1), t + dur);
+  f.Q.value = o.q ?? 1;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(o.gain ?? 0.2, t + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  src.connect(f);
+  f.connect(g);
+  g.connect(out);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+  hold(() => src.stop(), t + dur);
+}
+
+interface ToneOpts {
+  f0: number;
+  f1?: number;
+  dur?: number;
+  gain?: number;
+  type?: OscillatorType;
+  at?: number;
+  bus?: Bus;
+}
+
+function tn(o: ToneOpts): void {
+  const out = busOf(o.bus ?? 'sfx');
+  if (ac === null || out === null) return;
+  const t = ac.currentTime + (o.at ?? 0);
+  const dur = o.dur ?? 0.15;
+
+  const osc = ac.createOscillator();
+  osc.type = o.type ?? 'sine';
+  osc.frequency.setValueAtTime(o.f0, t);
+  if (o.f1 !== undefined) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1), t + dur);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(o.gain ?? 0.18, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  osc.connect(g);
+  g.connect(out);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+  hold(() => osc.stop(), t + dur);
+}
+
+let stepFlip = 0;
+
+/**
+ * Библиотека §18.3. Правило отбора то же, что в артбуке: звук, которому
+ * нечего написать в строке «что сообщает», сюда не попадает.
+ */
+export const SFX = {
+  /** Поверхность под ногами. Два варианта по очереди — иначе метроном. */
+  step: (): void => {
+    stepFlip ^= 1;
+    nz({ f0: stepFlip ? 1150 : 900, f1: 520, dur: 0.055, gain: 0.09, q: 1.2 });
+  },
+  /** Атака началась — отдельно от результата. */
+  swing: (): void => nz({ type: 'highpass', f0: 900, f1: 2600, dur: 0.09, gain: 0.11, q: 0.7 }),
+  /** Урон нанесён. Не громче ранения: иначе успех звучит опаснее неудачи. */
+  hit: (): void => {
+    nz({ f0: 1600, f1: 400, dur: 0.09, gain: 0.2, q: 1.4 });
+    tn({ type: 'triangle', f0: 180, f1: 90, dur: 0.12, gain: 0.16 });
+  },
+  /** Потеряна рана. Самый громкий и самый низкий звук игры: ран всего три. */
+  wound: (): void => {
+    tn({ type: 'sine', f0: 90, f1: 52, dur: 0.42, gain: 0.34 });
+    nz({ type: 'lowpass', f0: 800, f1: 180, dur: 0.3, gain: 0.22, q: 0.6 });
+    tn({ type: 'square', f0: 140, f1: 70, dur: 0.16, gain: 0.06 });
+  },
+  /** Путь свободен. Затухает вниз и быстро — долгая смерть тормозит темп. */
+  kill: (): void => {
+    nz({ f0: 2200, f1: 260, dur: 0.26, gain: 0.18, q: 1.1 });
+    tn({ type: 'triangle', f0: 300, f1: 120, dur: 0.2, gain: 0.1 });
+  },
+  /** Добыча получена. Единственный по-настоящему приятный звук в вылазке. */
+  chest: (): void => {
+    nz({ f0: 600, f1: 1400, dur: 0.07, gain: 0.12, q: 2 });
+    tn({ type: 'triangle', f0: 880, dur: 0.18, gain: 0.14, at: 0.05 });
+    tn({ type: 'triangle', f0: 1320, dur: 0.26, gain: 0.12, at: 0.12 });
+  },
+  /** Ресурс зачислен — по одному на строку экрана возврата. */
+  pick: (): void => tn({ type: 'sine', f0: 1180, f1: 1560, dur: 0.09, gain: 0.12 }),
+  /** −10% провианта. Тихий, но регулярный: расход считается не глядя. */
+  tick: (): void => tn({ type: 'sine', f0: 640, dur: 0.05, gain: 0.09 }),
+  /** Вылазка удалась. Вверх и светлее: выход — облегчение, а не конец. */
+  evac: (): void => {
+    for (const [i, f] of [660, 880, 1320].entries()) {
+      tn({ type: 'triangle', f0: f, dur: 0.22, gain: 0.16, at: i * 0.1 });
+    }
+  },
+  /** Добыча потеряна. Вниз и глухо, но коротко: провал и так стоил добычи. */
+  fail: (): void => {
+    tn({ type: 'sine', f0: 220, f1: 110, dur: 0.5, gain: 0.24 });
+    tn({ type: 'sine', f0: 165, f1: 82, dur: 0.7, gain: 0.18, at: 0.14 });
+  },
+  /** Работа началась. Один раз на старте, а не циклом: стук утомляет. */
+  build: (): void => {
+    nz({ f0: 420, f1: 260, dur: 0.11, gain: 0.18, q: 2.4 });
+    nz({ f0: 700, f1: 300, dur: 0.08, gain: 0.12, q: 2, at: 0.1 });
+  },
+  /** Здание выросло. Единственное настоящее созвучие — больше нигде. */
+  levelup: (): void => {
+    for (const [i, f] of [523, 659, 784, 1046].entries()) {
+      tn({ type: 'triangle', f0: f, dur: 0.4, gain: 0.11, at: i * 0.07 });
+    }
+  },
+  /** Касание принято. Верхние частоты, чтобы не спорить с боем. */
+  tap: (): void => nz({ type: 'highpass', f0: 2600, dur: 0.028, gain: 0.07, bus: 'ui' }),
+  /** Действие невозможно. Неприятный ровно настолько, чтобы не повторять. */
+  deny: (): void => tn({ type: 'square', f0: 150, f1: 120, dur: 0.14, gain: 0.09, bus: 'ui' }),
+} as const;
+
+export type SfxName = keyof typeof SFX;
+
+export function play(name: SfxName): void {
+  if (ac === null) return;
+  SFX[name]();
+}
+
+/* ---------- пульс провианта (§18.2) ---------- */
+
+function schedulePulse(): void {
+  if (pulseTimer !== null) clearTimeout(pulseTimer);
+  pulseTimer = null;
+  if (!pulseOn || ac === null) return;
+
+  const p = foodPulse(pulseShare);
+  if (p === null) {
+    // Тишина — тоже состояние, но доля меняется, и проверять её надо.
+    pulseTimer = setTimeout(schedulePulse, 300);
+    return;
+  }
+  tn({ type: 'sine', f0: p.hz, f1: p.hz * 0.82, dur: 0.26, gain: 0.3, bus: 'amb' });
+  nz({ type: 'lowpass', f0: 260, f1: 120, dur: 0.18, gain: 0.07, bus: 'amb' });
+  pulseTimer = setTimeout(schedulePulse, p.everyMs);
+}
+
+/** Доля оставшегося провианта, 0..1. Пульс сам решает, звучать ли. */
+export function setFoodShare(share: number): void {
+  pulseShare = share;
+}
+
+export function startPulse(): void {
+  if (pulseOn) return;
+  pulseOn = true;
+  schedulePulse();
+}
+
+export function stopPulse(): void {
+  pulseOn = false;
+  if (pulseTimer !== null) clearTimeout(pulseTimer);
+  pulseTimer = null;
+}
+
+/* ---------- амбиент (§18.4) ---------- */
+
+/**
+ * Подложка яруса. Не музыка: полосовой шум с медленным дыханием. Мелодии
+ * здесь нет и в вылазке не будет — она положена только лагерю (§18.4).
+ */
+export function startAmbient(tier: number): void {
+  const out = busOf('amb');
+  const buf = noiseBuffer();
+  if (ac === null || out === null || buf === null) return;
+  if (ambientTier === tier && ambient !== null) return;
+  stopAmbient();
+
+  const spec = AMBIENT[Math.max(0, Math.min(AMBIENT.length - 1, tier))]!;
+  const t = ac.currentTime;
+
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const filter = ac.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = spec.band;
+  filter.Q.value = 0.8;
+  const gain = ac.createGain();
+  gain.gain.value = spec.gain;
+
+  const lfo = ac.createOscillator();
+  lfo.frequency.value = spec.breath;
+  const lfoGain = ac.createGain();
+  lfoGain.gain.value = spec.gain * 0.55;
+  lfo.connect(lfoGain);
+  lfoGain.connect(gain.gain);
+
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(out);
+  src.start(t);
+  lfo.start(t);
+
+  const nodes: AudioScheduledSourceNode[] = [src, lfo];
+  if (spec.hum !== null) {
+    const hum = ac.createOscillator();
+    hum.type = 'sine';
+    hum.frequency.value = spec.hum;
+    const hg = ac.createGain();
+    hg.gain.value = 0.05;
+    hum.connect(hg);
+    hg.connect(out);
+    hum.start(t);
+    nodes.push(hum);
+  }
+
+  ambientTier = tier;
+  ambient = (): void => {
+    for (const n of nodes) {
+      try {
+        n.stop();
+      } catch {
+        /* уже остановлен — гасить дважды не ошибка */
+      }
+    }
+  };
+}
+
+export function stopAmbient(): void {
+  ambient?.();
+  ambient = null;
+  ambientTier = -1;
+}
+
+/**
+ * §18.5 — сворачивание глушит звук немедленно: звук из свёрнутой игры
+ * это главная причина, по которой её удаляют.
+ */
+export function bindPageAudio(): void {
+  // §18.5 — запуск по первому жесту, каким бы он ни был: тап по земле,
+  // кнопка заставки или карточка в лагере. Слушатель на документе, а не
+  // на канвасе, именно поэтому — первым игрок трогает кнопку «Играть».
+  document.addEventListener('pointerdown', () => unlockAudio(), { once: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopPulse();
+      stopAmbient();
+      if (ac !== null && ac.state === 'running') void ac.suspend();
+    } else if (ac !== null && ac.state === 'suspended') {
+      void ac.resume();
+    }
+  });
+}
