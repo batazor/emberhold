@@ -101,7 +101,9 @@
   .cover .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
   .cover .cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:22px 0 0;}
   .shelf{display:flex;flex-direction:column;gap:18px;}
-  .shelf h2{font-family:var(--ff-display);font-weight:400;font-size:24px;margin:0;letter-spacing:-.01em;}
+  /* Свой интерлиньяж: h2 наследовал 1.55 от body, и при кегле 24px строка
+     выходила 37 пикселей. У h1 свой 1.05 прописан явно — h2 забыли. */
+  .shelf h2{font-family:var(--ff-display);font-weight:400;font-size:24px;margin:0;letter-spacing:-.01em;line-height:1.15;}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:16px;}
   .card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:8px;
     background:var(--surface);border:1px solid var(--line);padding:18px;min-height:100%;}
@@ -194,6 +196,7 @@
     { file:'onboarding.html', title:'Первые три минуты', shelf:'Обзор' },
     { file:'world.html', title:'Emberhold: мир', shelf:'Петли' },
     { file:'generator.html', title:'Генератор локаций', shelf:'Петли' },
+    { file:'forest.html', title:'Лес: второй тип локации', shelf:'Петли' },
     { file:'draft.html', title:'Карты сборов', shelf:'Петли' },
     { file:'consumables.html', title:'Расходники', shelf:'Петли' },
     { file:'heroes.html', title:'Отряд', shelf:'Петли' },
@@ -201,8 +204,8 @@
     { file:'building.html', title:'Стройка в лагере', shelf:'Лагерь' },
     { file:'buildart.html', title:'Стройка: раскадровка и арт', shelf:'Лагерь' },
     { file:'artbook.html', title:'Артбук Emberhold', shelf:'Арт и звук' },
-    { file:'forest.html', title:'Набор моделей: лес', shelf:'Арт и звук' },
-    { file:'dungeon.html', title:'Набор моделей: подземелье', shelf:'Арт и звук' },
+    { file:'forestart.html', title:'Набор моделей: лес', shelf:'Арт и звук' },
+    { file:'dungeonart.html', title:'Набор моделей: подземелье', shelf:'Арт и звук' },
     { file:'animation.html', title:'Скелетные клипы', shelf:'Арт и звук' },
     { file:'sound.html', title:'Звук Emberhold', shelf:'Арт и звук' },
   ];

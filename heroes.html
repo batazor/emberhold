@@ -35,7 +35,9 @@
   h1 em{font-style:italic;color:var(--brass);}
   .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
   .lede b{color:var(--text);font-weight:600;}
-  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;}
+  /* Свой интерлиньяж: h2 наследовал 1.55 от body, и при кегле 28px строка
+     выходила 43 пикселя. У h1 свой 1.05 прописан явно — h2 забыли. */
+  h2{font-family:var(--ff-display);font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em;line-height:1.15;}
   .sec{display:flex;flex-direction:column;gap:22px;}
   .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
   .sec>p b{color:var(--text);font-weight:600;}

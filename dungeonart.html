@@ -267,7 +267,7 @@ try{
   slotNames = (await import('/src/render/forest.data.ts')).FOREST_SLOTS;
   cat = await (await fetch(CATALOG)).json();
 }catch(e){
-  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /dungeon.html. ' + e);
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /dungeonart.html. ' + e);
   throw e;
 }
 

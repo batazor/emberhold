@@ -17,7 +17,7 @@ import { PALETTE } from './palette';
  */
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-/** Камни стены. Деревьев здесь нет: локация — соляные копи (§12.1). */
+/** Камни стены вылазки: под землёй лес не растёт (§12.1). */
 const RAID_ROCKS: readonly ForestModelName[] = [
   'Rock_1_D_Color1',
   'Rock_1_E_Color1',
@@ -26,6 +26,24 @@ const RAID_ROCKS: readonly ForestModelName[] = [
   'Rock_3_G_Color1',
   'Rock_3_H_Color1',
 ];
+
+/**
+ * Стены поляны из пролога — деревья. Тот же список, что вокруг лагеря
+ * (`campView.ts`): герой выходит из этого леса и в нём же встаёт лагерем,
+ * и разными породами это выглядело бы как два разных места.
+ */
+const GLADE_TREES: readonly ForestModelName[] = [
+  'Tree_1_A_Color1',
+  'Tree_2_B_Color1',
+  'Tree_4_A_Color1',
+  'Tree_Bare_2_B_Color1',
+];
+
+/**
+ * Чем застроены непроходимые клетки. Копи и поляна отличаются ровно этим
+ * и точкой эвакуации: правила ходьбы, камера и трава у них общие.
+ */
+export type RaidFlavor = 'mine' | 'glade';
 
 /** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка. */
 const hash = (a: number, b: number, mod: number): number =>
@@ -46,7 +64,8 @@ export class RaidView {
   /** Точка тапа из кадра 1 онбординга: единственная подсказка, которая
    *  показывает жест вместо того, чтобы называть его словами. */
   private hintRing!: THREE.Mesh;
-  private evacRing!: THREE.Mesh;
+  /** На поляне выхода нет, и кольца тоже: показывать некуда (§12.1). */
+  private evacRing: THREE.Mesh | null = null;
   private grass: Grass | null = null;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
@@ -59,11 +78,12 @@ export class RaidView {
     private readonly loc: GameLocation,
     private readonly heroClass: HeroClassId = 'ranger',
     grassPerTile = 24,
+    private readonly flavor: RaidFlavor = 'mine',
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
-    this.buildRocks();
-    this.buildEvac();
+    this.buildWalls();
+    if (flavor !== 'glade') this.buildEvac();
     this.buildContainers();
     this.buildEnemies();
     this.buildHero();
@@ -130,38 +150,45 @@ export class RaidView {
   }
 
   /**
-   * Стены — камни из набора (§6.1). Раньше здесь стоял додекаэдр: одна форма
+   * Стены — модели из набора (§6.1). Раньше здесь стоял додекаэдр: одна форма
    * на всю локацию, и стена читалась как ряд одинаковых шариков. Вариантов
    * шесть, выбор — от координаты клетки, поэтому камень на месте не прыгает
    * между заходами и локация остаётся выводимой из сида.
+   *
+   * В прологе те же клетки заняты деревьями: поляна — единственная локация
+   * на поверхности, и стена у неё лесная.
    */
-  private buildRocks(): void {
+  private buildWalls(): void {
     const { size, blocked } = this.loc;
-    const cells: number[][] = RAID_ROCKS.map(() => []);
+    const tree = this.flavor === 'glade';
+    const models = tree ? GLADE_TREES : RAID_ROCKS;
+    const cells: number[][] = models.map(() => []);
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
         if (!blocked[idx(size, x, z)]) continue;
-        cells[hash(x * 5.1, z * 9.3, RAID_ROCKS.length)]!.push(x, z);
+        cells[hash(x * 5.1, z * 9.3, models.length)]!.push(x, z);
       }
     }
 
     const mat = this.track(forestMaterial());
     const dummy = new THREE.Object3D();
-    for (let v = 0; v < RAID_ROCKS.length; v++) {
+    for (let v = 0; v < models.length; v++) {
       const list = cells[v]!;
       if (list.length === 0) continue;
       // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
-      const mesh = new THREE.InstancedMesh(forestGeometry(RAID_ROCKS[v]!, 1), mat, list.length / 2);
+      const mesh = new THREE.InstancedMesh(forestGeometry(models[v]!, 1), mat, list.length / 2);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       for (let i = 0; i < list.length; i += 2) {
         const x = list[i]!;
         const z = list[i + 1]!;
         const t = ((Math.sin(x * 3.1 + z * 7.7) * 1000) % 1 + 1) % 1;
-        const s = 0.85 + t * 0.55;
-        dummy.position.set(x + (t - 0.5) * 0.22, -0.12, z + (t - 0.5) * 0.18);
+        // Дерево ростом с камень читалось бы кустом: тот же размах,
+        // что у леса вокруг лагеря, иначе это два разных леса.
+        const s = tree ? 1.9 + t * 1.1 : 0.85 + t * 0.55;
+        dummy.position.set(x + (t - 0.5) * 0.22, tree ? -0.05 : -0.12, z + (t - 0.5) * 0.18);
         dummy.rotation.set(0, t * 6.28, 0);
-        dummy.scale.set(s, s * (0.8 + t * 0.5), s);
+        dummy.scale.set(s, s * (tree ? 0.9 + t * 0.25 : 0.8 + t * 0.5), s);
         dummy.updateMatrix();
         mesh.setMatrixAt(i / 2, dummy.matrix);
       }
@@ -364,9 +391,11 @@ export class RaidView {
 
     this.syncGrass(hx, hz, time);
 
-    const ringMat = this.evacRing.material as THREE.MeshBasicMaterial;
-    ringMat.opacity = 0.5 + Math.sin(time / 400) * 0.25;
-    this.evacRing.scale.setScalar(1 + Math.sin(time / 400) * 0.05);
+    if (this.evacRing !== null) {
+      const ringMat = this.evacRing.material as THREE.MeshBasicMaterial;
+      ringMat.opacity = 0.5 + Math.sin(time / 400) * 0.25;
+      this.evacRing.scale.setScalar(1 + Math.sin(time / 400) * 0.05);
+    }
 
     if (this.marker.visible) {
       const mat = this.marker.material as THREE.MeshBasicMaterial;

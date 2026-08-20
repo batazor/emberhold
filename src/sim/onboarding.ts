@@ -18,6 +18,12 @@ import type { Cell, GameLocation, RaidState } from './types';
  * порядок кадров проверяется без браузера.
  */
 export type OnbStep =
+  /**
+   * Пролог: поляна, герой и одна полоса провианта. Ни боя, ни добычи,
+   * ни выхода — кадр кончается тем, что провиант кончился, и лагерь
+   * предлагается разбить прямо там, где герой встал (`prologue.ts`).
+   */
+  | 'glade'
   /** 0:00 — герой в локации, одна подсвеченная точка на полу. */
   | 'move'
   /** 0:20 — первый падальщик, бой идёт сам собой. */
@@ -42,6 +48,7 @@ export type OnbStep =
   | 'done';
 
 export const ONB_ORDER: readonly OnbStep[] = [
+  'glade',
   'move', 'approach', 'wound', 'loot', 'back', 'bait', 'evac',
   'return', 'build', 'tier', 'done',
 ];
@@ -89,6 +96,7 @@ export function reveal(step: OnbStep): Reveal {
  * обучение идёт жестом и подсвеченной точкой, текст только называет жест.
  */
 export const ONB_HINT: Partial<Record<OnbStep, string>> = {
+  glade: 'Коснитесь земли, чтобы идти',
   move: 'Коснитесь земли, чтобы идти',
   approach: 'Подойдите ближе',
   bait: 'Дальше — ещё один сундук',

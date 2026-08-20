@@ -27,8 +27,12 @@ const NOTHING: RaidSignals = { moved: false, wounded: false, looted: 0, sinceSte
 const sig = (over: Partial<RaidSignals>): RaidSignals => ({ ...NOTHING, ...over });
 
 describe('Онбординг: порядок кадров', () => {
-  test('игра начинается в вылазке, а не в лагере', () => {
-    assert.equal(ONB_ORDER[0], 'move', 'первый кадр — движение в локации');
+  test('игра начинается ходьбой по локации, а не в лагере', () => {
+    assert.equal(ONB_ORDER[0], 'glade', 'первый кадр — прогулка по поляне');
+    assert.ok(
+      stepIndex('move') === stepIndex('glade') + 1,
+      'вылазка идёт сразу за прологом: между ними нет ни экрана, ни меню',
+    );
     assert.ok(
       stepIndex('build') > stepIndex('evac'),
       'лагерь идёт после эвакуации: он награда за вылазку, а не стартовая комната',
@@ -36,6 +40,7 @@ describe('Онбординг: порядок кадров', () => {
   });
 
   test('кадры вылазки переживают перезапуск сбросом, лагерные — нет', () => {
+    assert.ok(isRaidStep('glade'), 'поляна тоже не переживает перезапуск');
     assert.ok(isRaidStep('move') && isRaidStep('evac'));
     assert.ok(!isRaidStep('return') && !isRaidStep('build') && !isRaidStep('done'));
   });
@@ -43,7 +48,7 @@ describe('Онбординг: порядок кадров', () => {
 
 describe('Онбординг: полосы включаются по одной', () => {
   test('в первом кадре открыт только провиант', () => {
-    const r = reveal('move');
+    const r = reveal('glade');
     assert.ok(r.food);
     assert.ok(!r.wounds && !r.bag && !r.back && !r.risk && !r.evac && !r.controls);
   });

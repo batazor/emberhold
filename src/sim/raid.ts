@@ -53,10 +53,18 @@ export interface RaidOptions {
    * Закрывает его только онбординг — см. RaidState.evacOpen.
    */
   readonly evacOpen?: boolean;
+  /**
+   * Готовая локация вместо сгенерированной по сиду. Нужна прологу
+   * (`prologue.ts`): поляна строится другим алгоритмом, а ходьба, шаг
+   * и расход провианта обязаны считаться ровно теми же правилами.
+   */
+  readonly loc?: GameLocation;
+  /** Провиант вместо кухонного. Тоже для пролога: Кухни в нём ещё нет. */
+  readonly food?: number;
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
-  const loc = generateLocation(opts.seed, opts.tier);
+  const loc = opts.loc ?? generateLocation(opts.seed, opts.tier);
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
@@ -77,8 +85,8 @@ export function createRaid(opts: RaidOptions): RaidState {
       wounds: loadout.wounds + mods.wounds,
       cooldown: 0,
     },
-    food: kitchenFood(opts.kitchenLevel),
-    foodMax: kitchenFood(opts.kitchenLevel),
+    food: opts.food ?? kitchenFood(opts.kitchenLevel),
+    foodMax: opts.food ?? kitchenFood(opts.kitchenLevel),
     bag: emptyResources(),
     bagTotal: 0,
     // Рюкзак класса: Следопыт −25%, Солевар +30% (§11.7). Не меньше единицы,

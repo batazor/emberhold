@@ -1,10 +1,10 @@
 <meta charset="utf-8">
-<title>Набор моделей: лес</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Лес: второй тип локации</title>
 <style>
   :root{
     --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
     --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
-    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
     --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
     --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
     --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -13,416 +13,972 @@
     :root:not([data-theme="light"]){
       --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
       --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
-      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
     }
   }
   :root[data-theme="dark"]{
     --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
     --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
-    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
   }
-  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
     -webkit-font-smoothing:antialiased;}
-  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:60px;}
   .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
   h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
     margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
   h1 em{font-style:italic;color:var(--brass);}
   .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
-  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  /* Свой интерлиньяж: h2 наследовал 1.55 от body, и при кегле 29px строка
+     выходила 45 пикселей. У h1 свой 1.05 прописан явно — h2 забыли. */
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;line-height:1.15;}
+  h3{font-family:var(--ff-display);font-weight:400;font-size:19px;margin:0 0 6px;}
   .sec{display:flex;flex-direction:column;gap:22px;}
   .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
-  .sec>p b{color:var(--text);font-weight:600;}
+  .sec>p b,.key p b,.flag b{color:var(--text);}
   .hd{display:flex;flex-direction:column;gap:7px;}
   canvas{display:block;}
   code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
-
-  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;
-    background:var(--ground);padding:12px 0;border-bottom:1px solid var(--line);}
+  pre{margin:0;background:var(--surface);border:1px solid var(--line);padding:14px 16px;overflow-x:auto;
+    font-family:var(--ff-mono);font-size:12.5px;line-height:1.65;color:var(--dim);}
+  pre b{color:var(--text);font-weight:600;}
+  table{border-collapse:collapse;width:100%;font-size:14px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);font-weight:400;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  tr.hi td{background:rgba(138,106,18,.09);}
+  .quote{border-left:2px solid var(--brass);padding:2px 0 2px 18px;margin:0;max-width:64ch;
+    font-family:var(--ff-display);font-size:17px;line-height:1.5;}
+  .quote cite{display:block;margin-top:8px;font-family:var(--ff-mono);font-size:11px;font-style:normal;color:var(--dim);}
+  .flag{border-left:2px solid var(--ember);padding:2px 0 2px 18px;font-size:14.5px;max-width:70ch;color:var(--dim);}
+  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
+  .key{background:var(--surface);border:1px solid var(--line);padding:18px;}
+  .key p{margin:0;font-size:14px;color:var(--dim);}
+  .lab{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:26px;align-items:start;}
+  @media(max-width:860px){.lab{grid-template-columns:1fr;}}
+  .screen{background:#11100c;border:1px solid var(--line);padding:12px;display:flex;justify-content:center;}
+  .screen canvas{width:100%;max-width:680px;height:auto;}
+  .panel{background:var(--surface);border:1px solid var(--line);padding:17px;display:flex;
+    flex-direction:column;gap:14px;}
+  .rows{display:flex;flex-direction:column;gap:5px;font-family:var(--ff-mono);font-size:11.5px;
+    font-variant-numeric:tabular-nums;color:var(--dim);}
+  .rows div{display:flex;justify-content:space-between;gap:10px;}
+  .rows b{color:var(--text);}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
   button{font-family:var(--ff-ui);font-size:13.5px;padding:7px 14px;border:1px solid var(--brass);
     background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
   button:hover{background:var(--brass);color:var(--ground);}
   button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
-  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
-  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);}
-
-  .models{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;}
-  .m{background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;}
-  .m.take{border-color:var(--brass);}
-  .m .stage{background:#12100c;display:flex;justify-content:center;padding:8px 0;}
-  .m b{font-family:var(--ff-display);font-weight:400;font-size:14px;padding:8px 11px 1px;
-    overflow-wrap:anywhere;}
-  .m u{font-family:var(--ff-mono);font-size:9.5px;text-decoration:none;color:var(--dim);
-    padding:0 11px 10px;display:flex;justify-content:space-between;gap:8px;}
-  .m u s{text-decoration:none;}
-  .m u s.take{color:var(--brass);}
-
-  table{border-collapse:collapse;width:100%;font-size:13.5px;}
-  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
-  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
-  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
-  td.mono{font-family:var(--ff-mono);font-size:12px;}
-  .chip{display:inline-flex;align-items:center;gap:8px;}
-  .chip i{width:30px;height:16px;border:1px solid var(--line);display:block;}
-
-  .guard{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:24px;}
-  .guard div{border-left:2px solid var(--line);padding-left:16px;display:flex;flex-direction:column;gap:7px;}
-  .guard div.key{border-left-color:var(--brass);}
-  .guard h3{font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
-    margin:0;color:var(--brass);font-weight:600;}
-  .guard p{margin:0;font-size:14px;color:var(--dim);}
-  .guard p b{color:var(--text);font-weight:600;}
-  .fail{color:var(--blood);}
+  input[type=range]{accent-color:var(--brass);width:140px;}
+  label{display:flex;align-items:center;justify-content:space-between;gap:9px;font-size:13.5px;}
+  .chk{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.05em;padding:4px 9px;border-radius:3px;
+    border:1px solid;display:inline-block;}
+  .chk.ok{color:var(--moss);border-color:var(--moss);}
+  .chk.no{color:var(--blood);border-color:var(--blood);background:rgba(142,56,56,.09);}
+  .no-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;}
+  .no-list div{border-top:2px solid var(--blood);padding-top:10px;}
+  .no-list h3{color:var(--blood);}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--ff-mono);font-size:10.5px;color:var(--dim);}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .legend i{width:11px;height:11px;display:inline-block;border-radius:2px;}
+  footer{border-top:1px solid var(--line);padding-top:22px;color:var(--dim);font-size:14px;}
+  a{color:var(--brass);}
 </style>
 
 <div class="wrap">
+  <header>
+    <div class="eyebrow">Второй тип локации · §6.1, §12, §13</div>
+    <h1>Лес: <em>стена, у которой</em> объявлена цена</h1>
+    <p class="lede">Двадцать точек мировой карты — одни и те же соляные копи, отличающиеся
+      номером яруса и остатком богатства. Лес — первое качественное различие: место,
+      куда идут за деревом, а не за глубиной. Документ начинается с арта, потому что
+      именно там всё и упирается: в проекции 30° объект высотой <i>h</i> прячет за собой
+      полосу земли длиной 1,73<i>h</i>. Это отменяет высокий лес раньше, чем начинается
+      разговор о механике, — и дальше вся конструкция выводится из отмены.</p>
+    <p class="flag" style="margin-top:18px"><b>Статус документа.</b> Кода нет: сначала идея.
+      Форма локации и цена прорубания <b>измерены моделью, которая лежит на этой же
+      странице</b> и считается прямо в браузере. Одна из двух исходных гипотез замером
+      отменена — раздел 05. В игре числа придётся перемерить <code>npm run measure</code>,
+      когда бот научится рубить.</p>
+  </header>
 
-<header>
-  <div class="eyebrow">Артбук · готовый набор</div>
-  <h1>Лес, приведённый <em>к нашим правилам</em></h1>
-  <p class="lede">KayKit Forest Nature Pack, бесплатный тариф, лицензия CC0. Страница
-    показывает не картинки с витрины, а сами файлы из <code>assets/kaykit-forest</code>:
-    геометрия читается из <code>.gltf</code>, цвет берётся из палитры игры, числа
-    считает <code>npm run models</code>. Если модель здесь выглядит не так, как в игре, —
-    расходятся не картинки, а решения.</p>
-  <p class="lede" id="warn" style="display:none" class="fail"></p>
-</header>
-
-<div class="sec">
-  <div class="hd">
-    <h2>Что в наборе</h2>
-    <p>Четыре категории. Треугольники посчитаны по индексам примитивов, габарит — по
-      позициям вершин; ни то, ни другое не взято из описания на витрине.</p>
-  </div>
-  <table id="cats"><thead><tr>
-    <th>Категория</th><th class="num">Моделей</th><th class="num">Треугольников</th>
-    <th class="num">В среднем</th><th class="num">Самая тяжёлая</th><th>Она же</th>
-  </tr></thead><tbody></tbody></table>
-  <p class="note" id="total"></p>
-</div>
-
-<div class="sec">
-  <div class="hd">
-    <h2>Атлас против правила «без текстур»</h2>
-    <p>Набор раскрашен одной картинкой 1024×1024 — тремя градиентами и серым полем
-      про запас. §6.1 запрещает текстурные ассеты, и это единственное настоящее
-      противоречие набора нашим правилам. Разрешается оно на запекании:
-      <code>scripts/models.ts</code> снимает цвет с атласа один раз и заменяет его
-      <b>слотом палитры</b> — числом от 0 до 11. В игру едет число, картинка остаётся здесь.</p>
-    <p>Отсюда свойство, ради которого это и сделано: <b>чужой набор перекрашивается
-      правкой одной строки</b> в <code>src/render/palette.ts</code>. Правая колонка
-      таблицы — то, что видно в игре; левая — то, что было в наборе.</p>
-  </div>
-  <table id="ramps"><thead><tr>
-    <th>Градиент</th><th>Ступень</th><th>Было в атласе</th><th>Стало в игре</th>
-    <th class="num">Треугольников</th>
-  </tr></thead><tbody></tbody></table>
-  <p class="note" id="grey"></p>
-</div>
-
-<div class="sec">
-  <div class="hd">
-    <h2>Каталог</h2>
-    <p>Камера та же, что в игре: азимут 45°, наклон 30°, плоское затенение, один
-      источник света. Обведённые — то, что игра берёт в бандл.</p>
-  </div>
-  <div class="bar" id="filters"></div>
-  <div class="models" id="grid"></div>
-</div>
-
-<div class="sec">
-  <div class="hd">
-    <h2>Что взято и почему так мало</h2>
-    <p>Запечённая геометрия едет в бандл всем игрокам, поэтому список короткий:
-      варианты нужны ровно затем, чтобы соседние камни не были близнецами.
-      Остальные 95 моделей лежат в <code>assets/</code> и ждут своего места —
-      добавить модель стоит одной строки в <code>ADOPTED</code>.</p>
-  </div>
-  <table id="taken"><thead><tr>
-    <th>Модель</th><th>Куда</th><th class="num">Треугольников</th><th class="num">Габарит, ед.</th>
-  </tr></thead><tbody></tbody></table>
-  <p class="note" id="cost"></p>
-</div>
-
-<div class="sec">
-  <div class="hd">
-    <h2>Решения, которые это потребовало</h2>
-  </div>
-  <div class="guard">
-    <div class="key">
-      <h3>Деревьев в вылазке нет</h3>
-      <p>Локация — соляные копи (§12.1), под землёй лес не растёт. Из набора
-        в вылазку идут только камни; <b>деревья стоят вокруг лагеря</b>, который
-        и без них на поляне.</p>
-    </div>
-    <div class="key">
-      <h3>Лес отступает</h3>
-      <p>Деревья растут только за площадью лагеря. Уровень Штаба расширяет поляну —
-        и <b>лес отходит на клетку</b>. Рост читается ещё и так, без цифр.</p>
-    </div>
-    <div>
-      <h3>Бюджет растительности</h3>
-      <p>§6.1 назначал потолки герою, врагу и зданию; окружение бюджета не имело.
-        Замер дал число: дерево — <b>300–1000 треугольников</b>, камень — <b>50–500</b>.
-        Две модели набора тяжелее 1500 и в игру не взяты.</p>
-    </div>
-    <div>
-      <h3>Масштаб чужой</h3>
-      <p>В наборе дерево ростом 4–10 единиц при клетке в одну. Приведение —
-        в <code>forestGeometry(name, height)</code>: основание на нуле, центр по осям,
-        заданная высота. Множителям по коду взяться неоткуда.</p>
-    </div>
-    <div>
-      <h3>Загрузчика нет</h3>
-      <p>Ни <code>GLTFLoader</code>, ни <code>fetch</code>, ни асинхронности при входе
-        в сцену: модели уже разложены на треугольники в <code>forest.data.ts</code>.
-        Цена — <span id="bundle">…</span> в бандле.</p>
-    </div>
-    <div>
-      <h3>Плоское затенение бесплатно</h3>
-      <p>Вершины не склеены, поэтому нормаль у каждого треугольника своя, и
-        <code>flatShading</code> не нужен. Нормалей набора мы не берём вовсе.</p>
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">01</div><h2>Две дыры, которые лес закрывает</h2></div>
+    <blockquote class="quote">Четыре ресурса. Каждый существует ради своего решения —
+      ресурс, который тратится туда же, куда и соседний, вырезается.
+      <cite>§13</cite></blockquote>
+    <p>Правило записано про траты, но работает и в обратную сторону. <b>Дерево сегодня
+      добывается там же, тем же действием и в той же вылазке, что соль.</b> Вид добычи
+      выбирает одна таблица <code>LOOT_TABLE</code> по ярусу — не по месту, не по решению
+      игрока, не по тому, что он делал в локации. Замер §20.3.1 показывает это прямо:</p>
+    <table>
+      <thead><tr><th>Ярус</th><th>Добыча успешной вылазки</th><th>Дерева в ней</th><th>Чем решение игрока меняет вторую цифру</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0</td><td class="num">6,4</td><td class="num">2,0</td><td>ничем</td></tr>
+        <tr><td class="num">1</td><td class="num">7,6</td><td class="num">2,1</td><td>ничем</td></tr>
+        <tr><td class="num">2</td><td class="num">15,9</td><td class="num">2,2</td><td>ничем</td></tr>
+        <tr><td class="num">3</td><td class="num">22,4</td><td class="num">—</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <p>Два с небольшим дерева за вылазку на любом ярусе, при любой игре. Это не ресурс,
+      а <b>вторая соль с другим именем</b>, и §13 предлагает такое вырезать. Лес —
+      альтернатива вырезанию: дать дереву место, откуда его берут.</p>
+    <blockquote class="quote">Карта — это не контент, а причина выбирать. Если локации
+      равноценны, карта превращается в список кнопок, и её можно вырезать целиком.
+      <cite>world.html, часть I</cite></blockquote>
+    <p>Вторая дыра — там же. Сегодня локации на карте различаются <b>ярусом</b> (риск)
+      и <b>богатством</b> (×0,4 к добыче). Обе величины — скаляры на одной оси «лучше —
+      хуже», и выбор между ними сводится к «взять что получше». Тип локации задаёт
+      другой вопрос: <b>не «как глубоко», а «за чем».</b> За деревом — в лес,
+      за кристаллом — в копи, и это первое место в игре, где ответ зависит
+      от того, что сейчас строится в лагере.</p>
+    <div class="guard">
+      <div class="key">
+        <h3>Условие, при котором лес имеет право на существование</h3>
+        <p>Он обязан менять <b>решение</b>, а не палитру. Проверка простая: если из леса
+          вынуть чащу и оставить проходимые поляны в зелёных цветах — получится
+          та же локация в другой краске, и её надо вырезать по фильтру §2.</p>
+      </div>
+      <div class="key">
+        <h3>Что лес не имеет права трогать</h3>
+        <p>Ни одного нового ресурса, ни одной новой валюты, ни одной новой цифры
+          в таблице цен §11.1. Всё, что лес добавляет, обязано считаться
+          в <b>провианте</b> — иначе это вторая экономика, а не второй биом.</p>
+      </div>
+      <div class="key">
+        <h3>Почему это документ про арт</h3>
+        <p>Потому что решение, каким лес будет, целиком принимает камера.
+          Ортокамера 30° физически не допускает деревьев выше героя рядом
+          с проходимой частью — и всё остальное вытекает отсюда.</p>
+      </div>
     </div>
   </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">02</div><h2>Арифметика камеры: высокого леса не бывает</h2></div>
+    <p>Камера ортографическая, азимут 45°, наклон 30° (§6, <code>render/scene.ts</code>).
+      Значит, экранная высота точки считается ровно так:</p>
+<pre>экран_y = y·cos30° − u·sin30°,   где u = x·sin(азимут) + z·cos(азимут)
+
+<b>точка скрыта объектом высотой h, если  h ≥ y + Δu·tg30°</b>
+Δu — насколько объект ближе к камере (в мировых единицах)
+
+отсюда: земля скрыта на 1,73·h,   герой скрыт на 1,73·(h − 1,15)</pre>
+    <p>Шаг сетки виден камерой под 45°, поэтому одна клетка вдоль оси x или z — это
+      0,71 по <i>u</i>. Перевод в клетки: <b>любой объект прячет героя на 2,45·(h − 1,15)
+      клеток позади себя.</b> Ползунок ниже двигает высоту дерева; фигурки стоят
+      на своих местах и исчезают сами — они не «отключаются», их закрывает
+      настоящая геометрия того же отрисовщика.</p>
+    <div class="lab">
+      <div class="screen"><canvas id="cvA" width="680" height="350"></canvas></div>
+      <div class="panel">
+        <label>Высота дерева <input type="range" id="hgt" min="4" max="50" value="12"></label>
+        <div class="bar">
+          <button id="turn" type="button">Повернуть камеру</button>
+          <button id="marks" type="button" aria-pressed="true">Метки</button>
+        </div>
+        <div class="rows" id="rowsA"></div>
+        <div id="verdictA"></div>
+        <div class="note">Три фигурки стоят по оси камеры в двух, четырёх и шести клетках
+          позади дерева, одна — перед ним; скрытой считается та, у которой перекрыта
+          голова. Рост героя 1,15 клетки — это прототип: голова на y=1,0 плюс радиус 0,16
+          (<code>raidView.ts</code>).</div>
+      </div>
+    </div>
+    <p>Числа выходят злые. Живая сосна высотой 5 прячет героя на девять клеток —
+      то есть целиком закрывает локацию яруса 1 (12×12) по диагонали. Десяток таких
+      деревьев — и играть не во что; ни один поворот камеры этого не чинит,
+      потому что <b>камера поворачивается шагами по 90°</b> (<code>SceneRig.rotate</code>),
+      а значит отступ обязан выполняться во все четыре стороны сразу. <b>Отступ — это
+      радиус, а не сторона.</b> Классический приём «гасить крону, когда за ней герой»
+      отменён вместе с этим: он мигает, читается как баг и прячет не дерево, а врага.</p>
+    <table>
+      <thead><tr><th>Объект</th><th>Высота</th><th>Прячет землю</th><th>Прячет героя</th><th>Отступ от поляны</th></tr></thead>
+      <tbody>
+        <tr><td><b>Поросль, трава</b></td><td class="num">0,2</td><td class="num">0,5 кл.</td><td class="num">—</td><td class="num">0</td></tr>
+        <tr class="hi"><td><b>Чаща</b></td><td class="num">0,8</td><td class="num">2,0 кл.</td><td class="num">—</td><td class="num">0</td></tr>
+        <tr><td><b>Бурелом</b></td><td class="num">1,0</td><td class="num">2,5 кл.</td><td class="num">—</td><td class="num">0</td></tr>
+        <tr><td><b>Сухостой</b> (контейнер)</td><td class="num">1,1</td><td class="num">2,7 кл.</td><td class="num">—</td><td class="num">0</td></tr>
+        <tr><td><i>герой</i></td><td class="num">1,15</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+        <tr><td><b>Соляная сосна</b> (ориентир)</td><td class="num">2,4</td><td class="num">5,9 кл.</td><td class="num">3,1 кл.</td><td class="num">3</td></tr>
+        <tr><td><b>Живой бор</b></td><td class="num">5,0</td><td class="num">12,3 кл.</td><td class="num">9,4 кл.</td><td class="num">за рамкой</td></tr>
+      </tbody>
+    </table>
+    <p>Отсюда три правила, и все три — вычисленные, а не выбранные.
+      <b>Первое: в проходимой части и вплотную к ней нет ничего выше 1,15.</b>
+      <b>Второе: всё выше стоит в массиве, не ближе 2,45·(h − 1,15) клеток от поляны</b> —
+      для сосны-ориентира это три клетки. <b>Третье: высокий бор существует только
+      за рамкой локации</b>, задником, куда игрок не заходит: ему нужен отступ
+      в девять клеток, а вся локация яруса 1 — двенадцать.</p>
+    <p class="flag">Побочный результат того же расчёта: <b>ни один силуэт в лесу не прячет
+      существо.</b> Самый низкий враг игры — падальщик, 0,83 (конус 0,75 на высоте 0,45,
+      <code>raidView.ts</code>). Чаща высотой 0,8 не скрывает даже его. Это не щедрость,
+      а необходимость: враг, невидимый за кустом, превращает бой в лотерею,
+      а §17.3 требует, чтобы замах было видно заранее.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">03</div><h2>Фикция, которая оправдывает арифметику</h2></div>
+    <p>Правило «ничего выше героя» можно просто соблюдать — и получить лес,
+      который выглядит как ошибка масштаба. Дешевле оправдать его миром:
+      мир игры называется <b>Соляной Тракт</b>, и соль убивает деревья.</p>
+    <div class="guard">
+      <div class="key">
+        <h3>Бор на солончаке</h3>
+        <p>Это не лес, а то, что от него осталось: чахлая поросль по грудь, сухие
+          стволы, поваленное вперемешку. Высокий бор виден на горизонте — за рамкой,
+          там, где соль в землю не дошла. <b>Ограничение камеры и есть пейзаж.</b></p>
+      </div>
+      <div class="key">
+        <h3>Добыча — то, что уже мертво</h3>
+        <p>Дерево берут с сухостоя, а не рубят живое. Отсюда: <b>рубки как механики
+          нет</b>, есть контейнер — как в копях. Один тип действия на всю игру,
+          ноль новых кнопок, ноль таймеров.</p>
+      </div>
+      <div class="key">
+        <h3>Ориентир вместо зала</h3>
+        <p>§12.1 ставит вдоль хода залы, чтобы игрок понимал, где был. Поляны
+          одинаковы, залов в лесу не сделать — ориентиром становится <b>соляная
+          сосна</b>: мёртвое дерево 2,4, торчащее над чащей и видное отовсюду.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">04</div><h2>Блокинг: четыре формы и линия героя</h2></div>
+    <p>Тот же отрисовщик, что в <a href="artbook.html">артбуке</a>: плоское затенение,
+      ортокамера 45°/30°, сортировка по глубине. Все четыре формы нарисованы в одном
+      масштабе и с общей линией земли — иначе таблицу высот не проверить глазами.
+      Пунктир — рост героя: <b>то, что ниже пунктира, можно ставить вплотную к тропе;
+      то, что выше, — только в массив.</b></p>
+    <div class="lab">
+      <div class="screen"><canvas id="cvB" width="680" height="330"></canvas></div>
+      <div class="panel">
+        <div class="bar">
+          <button id="spin" type="button" aria-pressed="true">Вращать</button>
+          <button id="wire" type="button" aria-pressed="false">Рёбра</button>
+        </div>
+        <label>Поворот <input type="range" id="rot" min="0" max="360" value="0"></label>
+        <div class="rows" id="tris"></div>
+        <div class="note">Бюджет здесь не про GPU: чаща инстансится на 70 клеток одним
+          вызовом, как камни в <code>buildRocks</code>. Он про то, чтобы форма читалась
+          на шестнадцати пикселях и рисовалась за вечер (§6.1).</div>
+      </div>
+    </div>
+    <div class="guard">
+      <div class="key">
+        <h3>Разнообразие берётся поворотом, а не моделями</h3>
+        <p>Четыре меша на весь биом. Поворот вокруг Y бесплатен, масштаб ±20% и два
+          оттенка палитры из группы «Растительность» дают лес, который не повторяется, —
+          ровно так уже сделаны камни копей.</p>
+      </div>
+      <div class="key">
+        <h3>Прорубание — это удар</h3>
+        <p>Анимации рубки не существует: герой бьёт по кусту тем же клипом, что
+          по противнику (§17.1), с тем же интервалом 1,2 с. Куст исчезает, на его
+          месте остаётся вытоптанное. <b>Новая механика, ноль новых анимаций.</b></p>
+      </div>
+      <div class="key">
+        <h3>Различие силуэтом, не цветом</h3>
+        <p>Ночью и на ногте большого пальца цвет не работает. Чаща — шар,
+          бурелом — лежачая косая, сухостой — вертикаль с обломанными сучьями,
+          сосна — вертикаль вдвое выше. Четыре разных очертания.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">05</div><h2>Чаща: что замер отменил и что оставил</h2></div>
+    <p>Исходная идея была такая: чаща проходима, но шаг по ней стоит втрое (как бой
+      в §11.1), и лес превращается в локацию, где путь назад — не число, а ставка:
+      прорубиться напрямик или обойти ногами. Идея красивая. <b>Замер её отменил.</b></p>
+    <table>
+      <thead><tr><th>Цена шага по чаще</th><th>Клеток поляны, куда через чащу ближе</th><th>Локаций, где срез вообще существует</th><th>Средняя экономия</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1 (чащи нет)</td><td class="num">4%</td><td class="num">64%</td><td class="num">2,5 шага</td></tr>
+        <tr><td class="num">2</td><td class="num">2%</td><td class="num">44%</td><td class="num">1,4 шага</td></tr>
+        <tr class="hi"><td class="num">3 (как бой)</td><td class="num">0%</td><td class="num">2%</td><td class="num">—</td></tr>
+      </tbody>
+    </table>
+    <p class="note">150 локаций яруса 2, все клетки поляны, путь до эвакуации.
+      Сравнивается кратчайший путь по полянам с дешёвейшим путём, где чаща стоит K.</p>
+    <p>Причина видна на карте: сеть полян и так близка к прямой, крюк редко превышает
+      пару шагов, а два шага чащи стоят шесть провианта. <b>Срез не окупается никогда,
+      и это не вопрос настройки числа</b> — при цене 1 чащи не существует как стены,
+      при цене 2 срез спасает полтора шага. Так гипотеза и умерла: чаща не продаёт
+      дорогу.</p>
+    <p><b>Она продаёт доступ.</b> Тот же замер показывает, что работает другая
+      конструкция: <b>карман</b> — отрезанная поляна с добычей, к которой нет прохода
+      по полянам вовсе. Единственный вход — сквозь две-три клетки чащи, и цена входа
+      объявлена заранее, потому что камера смотрит поверх чащи: <b>игрок видит
+      и добычу, и сколько за неё платить</b>, ещё не сделав шага. Это ровно то,
+      чего требует §1 — цена провала объявлена до входа, — и то, чем в копях
+      служит расстояние.</p>
+    <div class="lab">
+      <div class="screen"><canvas id="cvC" width="680" height="340"></canvas></div>
+      <div class="panel">
+        <label>Цена шага по чаще <input type="range" id="cost" min="1" max="5" value="3"></label>
+        <label>Ярус <input type="range" id="tier" min="0" max="3" value="2"></label>
+        <div class="bar"><button id="reseed" type="button">Другой лес</button></div>
+        <div class="rows" id="rowsC"></div>
+        <div id="verdictC"></div>
+        <div class="note">Слева — локация с маршрутом до кармана: сплошное по полянам,
+          крестики — прорубленные клетки. Справа — надбавка за чащу в долях запаса
+          провианта, посчитанная по 60 локациям на каждую цену.</div>
+      </div>
+    </div>
+    <p>Число выбирается из уже существующей таблицы §11.1, а не назначается новое:
+      <b>шаг 1, бой 3, контейнер 5</b>. При цене 3 вход в карман обходится в 4–5
+      провианта сверх обычного крюка — примерно во вскрытие контейнера, 7–9% запаса.
+      При цене 2 надбавка падает до 4% и теряется в шуме; при 5 — 17%, и карман
+      не окупается ничем, что в нём может лежать. <b>Цена прорубания равна цене боя
+      не по красоте, а потому, что рядом нет другого числа, которое бы работало.</b></p>
+    <div class="guard">
+      <div class="key">
+        <h3>Прорубленное остаётся открытым</h3>
+        <p>Клетка чащи оплачивается один раз за вылазку. Обратно герой идёт
+          по вытоптанному за 1. <b>Игрок покупает себе путь назад</b> — и это лесная
+          замена «циклам» §12.1.4, которых генератор здесь не строит.</p>
+      </div>
+      <div class="key">
+        <h3>Добыча в кармане обязана нести множитель глубины</h3>
+        <p>Полная цена кармана — шесть провианта на вход, два на выход, пять
+          на вскрытие: тринадцать при запасе пятьдесят. Обычный контейнер этого
+          не стоит. Карман без множителя ×1,8…×2,6 (§12.3) — ловушка, а не решение.</p>
+      </div>
+      <div class="key">
+        <h3>Голем стоит на тропе, а не в проходе</h3>
+        <p>§12.1 ставит голема в узкие места, где обход стоит шагов. В лесу узких
+          мест нет — есть тропа между двумя массивами. Обход там <b>покупается
+          провиантом</b>: та же сделка «шаги против ран», только цена названа вслух.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">06</div><h2>Форма локации: измеренная</h2></div>
+    <p>Генератор — не второй, а профиль первого. Те же ходы кистью из §12.1: спинной
+      ход от эвакуации к дальнему углу, поляны вдоль него, ответвления из дальней
+      половины. Отличие ровно одно: <b>то, что в копях становилось камнем, здесь
+      расслаивается на две оболочки</b> — ободок чащи в две клетки вокруг всего
+      прорубленного, а дальше бурелом, куда хода нет.</p>
+    <table>
+      <thead><tr><th>Ярус</th><th>Сетка</th><th>Поляна</th><th>Чаща</th><th>Бурелом</th><th>Глубина</th><th>Карманов</th><th>Открытого в копях</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0</td><td class="num">8×8</td><td class="num">43%</td><td class="num">14%</td><td class="num">44%</td><td class="num">8</td><td class="num">0</td><td class="num">58%</td></tr>
+        <tr><td class="num">1</td><td class="num">12×12</td><td class="num">44%</td><td class="num">21%</td><td class="num">35%</td><td class="num">16</td><td class="num">0,8</td><td class="num">48%</td></tr>
+        <tr><td class="num">2</td><td class="num">16×16</td><td class="num">40%</td><td class="num">28%</td><td class="num">32%</td><td class="num">24</td><td class="num">2,9</td><td class="num">37%</td></tr>
+      </tbody>
+    </table>
+    <p class="note">150 локаций на ярус, та же модель, что в разделе 05. Последний
+      столбец — измеренная открытость копей из §12.1 для сравнения.</p>
+    <p>Читается это так: <b>свободно проходимой площади в лесу меньше, чем в копях,
+      а проходимой вообще — больше.</b> Поляна плюс чаща дают 57–68% против 37–58%
+      открытого пространства копей, но половина этого объёма продаётся за провиант.
+      Карманов на ярусе 0 не бывает ни одного — и это не подгонка: они не помещаются
+      в 8×8 с требованием «в дальней половине», ровно как §12.3 отключает там
+      гарантию «полный обход невозможен». <b>Первые три минуты снова оказываются
+      без цены входа.</b></p>
+    <p>Три гарантии §12.2 проверены на лесном профиле, 300 локаций яруса 2:
+      недостижимых карманов — <b>0</b> (достижимость считается по стоимости, чаща
+      проходима); локаций без единого кармана — <b>0%</b> (приманка есть всегда);
+      «полный обход дешевле запаса» — <b>0%</b>, главная гарантия держится
+      с запасом, потому что прорубание тратит тот же провиант.</p>
+    <p class="flag"><b>Чего модель не проверяет.</b> Выполнимость («дойти до дальней
+      точки и вернуться укладывается в 85% запаса») считалась по полянам; с карманами
+      её надо пересчитывать по стоимости — иначе ярус соврёт игроку ровно на цену
+      прорубания. Это первое, что обязан делать лесной профиль генератора в коде.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">07</div><h2>Что это меняет в коде</h2></div>
+    <table>
+      <thead><tr><th>Место</th><th>Что меняется</th><th>Почему нельзя иначе</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>sim/types.ts</code></td>
+          <td><code>blocked: Uint8Array</code> → <code>kind: Uint8Array</code> (поляна / чаща / бурелом),
+            <code>blocked</code> остаётся производным</td>
+          <td>Стена перестала быть булевой. Всё остальное — следствие этой одной строчки.</td>
+        </tr>
+        <tr>
+          <td><code>sim/grid.ts</code></td>
+          <td>рядом с <code>distanceField</code> появляется <code>costField</code>:
+            тот же волновой обход, но с весами (0-K BFS, без кучи)</td>
+          <td>«Путь назад» обязан считать чащу по её цене, иначе число на экране врёт.
+            Шаг стоит 1 провиант, значит поле стоимости и есть путь назад.</td>
+        </tr>
+        <tr>
+          <td><code>sim/generate.ts</code></td>
+          <td>профиль локации: те же ходы кистью, две оболочки вместо камня, карманы
+            в дальней половине</td>
+          <td>Второй генератор пришлось бы чинить дважды. Профиль — одна ветка
+            в конце уже существующей функции.</td>
+        </tr>
+        <tr>
+          <td><code>sim/resources.ts</code></td>
+          <td><code>rollLoot(rng, tier)</code> → <code>rollLoot(rng, tier, place)</code></td>
+          <td>Ради этого всё и делается: вид добычи начинает зависеть от места,
+            а не только от глубины.</td>
+        </tr>
+        <tr>
+          <td><code>render/raidView.ts</code></td>
+          <td>четвёртый инстанс-меш и правило отступа при расстановке высоких форм</td>
+          <td>Камни уже расставляются инстансами с поворотом по хешу — лес
+            расставляется тем же кодом, плюс проверка отступа.</td>
+        </tr>
+        <tr>
+          <td><code>sim/raid.ts</code></td>
+          <td>шаг в чащу: −3 провианта, клетка становится поляной до конца вылазки</td>
+          <td>Единственное новое действие. Оно не добавляет кнопки: тап по чаще
+            и есть согласие заплатить.</td>
+        </tr>
+        <tr>
+          <td><code>*.rules.ts</code></td>
+          <td>гарантии §12.2 переписываются на стоимость; добавляется «карман
+            достижим» и «полный обход дороже запаса с учётом прорубания»</td>
+          <td>Правила лежат рядом с кодом и не трогают общий файл проверок —
+            лес не должен встречаться в diff с чужой работой.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Отдельно про золотой мастер: лес сдвинет <code>baseline.json</code> целиком,
+      как только попадёт в ротацию локаций. Это ожидаемо и правильно — <code>npm run
+      baseline</code> в том же коммите покажет ревью, на сколько именно изменилась
+      экономика лагеря от появления второго биома.</p>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">08</div><h2>Чего не делаем</h2></div>
+    <div class="no-list">
+      <div>
+        <h3>Высокий лес в кадре</h3>
+        <p>Девять клеток отступа при высоте 5 — больше, чем локация яруса 1.
+          Отменено арифметикой камеры, а не вкусом.</p>
+      </div>
+      <div>
+        <h3>Прозрачные кроны и срез геометрии</h3>
+        <p>Мигает на каждом шаге, читается как баг и прячет не дерево, а врага
+          за ним. Проблему создаёт высота, лечить надо высоту.</p>
+      </div>
+      <div>
+        <h3>Рубку как отдельную механику</h3>
+        <p>Дерево берётся с сухостоя контейнером. Отдельное действие «рубить»
+          означало бы таймер, шкалу и второй цикл добычи — три сущности
+          ради ресурса, который уже умеет добываться.</p>
+      </div>
+      <div>
+        <h3>Второй ресурс из леса</h3>
+        <p>Смола, травы, шкуры — каждая тратилась бы туда же, куда соль. §13
+          вырезает такое по построению. Лес даёт место старому ресурсу,
+          а не повод завести новый.</p>
+      </div>
+      <div>
+        <h3>Анимацию листвы и ветер</h3>
+        <p>Стоит кадров на каждом инстансе и не отвечает ни на одно решение
+          игрока. Возвращается к разговору только после того, как биом
+          доказал себя замером.</p>
+      </div>
+      <div>
+        <h3>Лес как отдельный режим</h3>
+        <p>Это тип локации на той же карте, с тем же провиантом, тем же путём
+          назад и той же ставкой при провале. Всё, что делает его «особым
+          режимом», разрушает сравнимость выбора на карте.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="hd"><div class="eyebrow">09</div><h2>Что проверять замером</h2></div>
+    <table>
+      <thead><tr><th>Вопрос</th><th>Метрика</th><th>Ожидание</th></tr></thead>
+      <tbody>
+        <tr><td>Стало ли дерево ресурсом с местом</td><td class="num">дерева за вылазку: лес против копей</td><td class="num">разница не меньше ×3</td></tr>
+        <tr><td>Существует ли решение «платить или нет»</td><td class="num">доля вылазок, где игрок вошёл хотя бы в один карман</td><td class="num">30–70%</td></tr>
+        <tr><td>Не стал ли лес просто дешевле</td><td class="num">провалов в лесу против копей того же яруса</td><td class="num">расхождение не больше 10 п.п.</td></tr>
+        <tr><td>Не сломалось ли соотношение §11.3</td><td class="num">провиант / бой в причинах провала</td><td class="num">65 / 35</td></tr>
+        <tr><td>Работает ли прорубание вообще</td><td class="num">прорубленных клеток за вылазку</td><td class="num">не 0 и не больше 6</td></tr>
+        <tr><td>Не съел ли лес глубину</td><td class="num">глубина выхода в долях локации</td><td class="num">как в копях, ±10%</td></tr>
+        <tr><td>Виден ли герой всегда</td><td class="num">кадров, где макушка героя перекрыта</td><td class="num">0</td></tr>
+      </tbody>
+    </table>
+    <p>Последняя строка проверяется не телеметрией, а тестом на генераторе: правило
+      отступа — арифметическое, и его нарушение обязано ронять <code>npm run check</code>,
+      а не всплывать на скриншоте.</p>
+  </div>
+
+  <footer>
+    Материалы, палитра и бюджеты — <a href="artbook.html">артбук</a>.
+    Мир и выбор локации — <a href="world.html">карта</a>.
+    Соседний документ того же ряда — <a href="consumables.html">расходники</a>.
+    Разделы: §6.1 арт, §11.1 цены в провианте, §12 генерация, §13 ресурсы.
+  </footer>
 </div>
 
-</div>
-
-<script type="module">
-const CATALOG = './assets/kaykit-forest/catalog.json';
-const GLTF = './assets/kaykit-forest/gltf/';
-
-function fail(text){
-  const w = document.getElementById('warn');
-  w.textContent = text;
-  w.style.display = '';
-  w.className = 'lede fail';
-}
-
-let palette, cat;
-try{
-  // Палитра берётся из самого модуля игры: две копии одного списка разошлись бы
-  // молча, а страница именно про то, что список один.
-  palette = (await import('/src/render/palette.ts')).FOREST_PALETTE;
-  cat = await (await fetch(CATALOG)).json();
-}catch(e){
-  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /forest.html. ' + e);
-  throw e;
-}
-
-const hex = (n) => '#' + n.toString(16).padStart(6, '0');
-
-/* ---------- сводка по категориям ---------- */
-const cats = new Map();
-for(const m of cat.models){
-  const c = cats.get(m.category) ?? {n:0, tris:0, worst:m};
-  c.n++; c.tris += m.tris;
-  if(m.tris > c.worst.tris) c.worst = m;
-  cats.set(m.category, c);
-}
-const NAMES = {Tree:'Деревья', Bush:'Кусты', Grass:'Трава', Rock:'Камни'};
-const tbody = document.querySelector('#cats tbody');
-for(const [key, c] of [...cats].sort((a,b) => b[1].tris - a[1].tris)){
-  const tr = document.createElement('tr');
-  tr.innerHTML = '<td>' + (NAMES[key] ?? key) + '</td><td class="num">' + c.n +
-    '</td><td class="num">' + c.tris + '</td><td class="num">' + Math.round(c.tris / c.n) +
-    '</td><td class="num">' + c.worst.tris + '</td><td class="mono">' + c.worst.name + '</td>';
-  tbody.appendChild(tr);
-}
-const totalTris = cat.models.reduce((s, m) => s + m.tris, 0);
-document.getElementById('total').textContent =
-  cat.models.length + ' моделей · ' + totalTris + ' треугольников · атлас ' +
-  cat.atlas.width + '×' + cat.atlas.height + ' · лицензия ' + cat.license;
-
-/* ---------- слоты: было → стало ---------- */
-const slotTris = new Array(cat.slots.length).fill(0);
-const slots = new Map();
-for(const m of cat.models){
-  const raw = atob(m.slot);
-  const list = new Uint8Array(raw.length);
-  for(let i = 0; i < raw.length; i++){ list[i] = raw.charCodeAt(i); slotTris[list[i]]++; }
-  slots.set(m.name, list);
-}
-const rampsBody = document.querySelector('#ramps tbody');
-let slotAt = 0;
-for(const ramp of cat.ramps){
-  ramp.slots.forEach((name, i) => {
-    const at = slotAt + i;
-    const tr = document.createElement('tr');
-    const share = (slotTris[at] / totalTris * 100).toFixed(1);
-    tr.innerHTML =
-      '<td>' + (i === 0 ? ramp.title : '') + '</td>' +
-      '<td class="mono">' + name + '</td>' +
-      '<td><span class="chip"><i style="background:' + ramp.source[i] + '"></i>' + ramp.source[i] + '</span></td>' +
-      '<td><span class="chip"><i style="background:' + hex(palette[at]) + '"></i>' + hex(palette[at]) + '</span></td>' +
-      '<td class="num">' + slotTris[at] + ' · ' + share + '%</td>';
-    rampsBody.appendChild(tr);
-  });
-  slotAt += ramp.slots.length;
-}
-document.getElementById('grey').textContent =
-  'Серое поле атласа — пустые слоты набора под платные цветовые варианты. ' +
-  'В бесплатном тарифе туда попадает меньше процента треугольников, и они уходят в камень.';
-
-/* ---------- отрисовщик: ортокамера 45°/30°, плоское затенение ---------- */
-const AZ = 45 * Math.PI / 180, EL = 30 * Math.PI / 180;
-const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map(c => c / l); })();
-
-function project(p){
-  const ca = Math.cos(AZ), sa = Math.sin(AZ), ce = Math.cos(EL), se = Math.sin(EL);
-  const x = p[0] * ca - p[2] * sa, y = p[1], z = p[0] * sa + p[2] * ca;
-  return [x, y * ce - z * se, y * se + z * ce];
-}
-function shade(color, k){
-  const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
-  return 'rgb(' + [r, g, b].map(c => Math.round(Math.min(255, c * k))).join(',') + ')';
-}
-
-function draw(canvas, tris, colors){
-  const w = canvas.width, h = canvas.height;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, w, h);
-  const view = tris.map(t => t.map(project));
-
-  let min = [Infinity, Infinity], max = [-Infinity, -Infinity];
-  for(const t of view) for(const p of t){
-    if(p[0] < min[0]) min[0] = p[0];
-    if(p[0] > max[0]) max[0] = p[0];
-    if(p[1] < min[1]) min[1] = p[1];
-    if(p[1] > max[1]) max[1] = p[1];
-  }
-  const scale = Math.min((w - 16) / (max[0] - min[0] || 1), (h - 16) / (max[1] - min[1] || 1));
-  const ox = w / 2 - (min[0] + max[0]) / 2 * scale, oy = h / 2 + (min[1] + max[1]) / 2 * scale;
-
-  // Художник: дальние треугольники первыми. Z-буфера здесь нет и не нужно.
-  const order = view.map((t, i) => [i, (t[0][2] + t[1][2] + t[2][2]) / 3]).sort((a, b) => b[1] - a[1]);
-  for(const [i] of order){
-    const t = tris[i];
-    const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-    const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-    const n = [u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0]];
-    const len = Math.hypot(...n) || 1;
-    const lit = Math.max(0, (n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]) / len);
-    ctx.fillStyle = shade(colors[i], 0.42 + lit * 0.85);
-    ctx.beginPath();
-    const p = view[i];
-    ctx.moveTo(ox + p[0][0]*scale, oy - p[0][1]*scale);
-    ctx.lineTo(ox + p[1][0]*scale, oy - p[1][1]*scale);
-    ctx.lineTo(ox + p[2][0]*scale, oy - p[2][1]*scale);
-    ctx.closePath();
-    ctx.fill();
-  }
-}
-
-/* ---------- чтение .gltf: только позиции и индексы ---------- */
-const SIZE = {SCALAR:1, VEC2:2, VEC3:3};
-const READER = {5121:'getUint8', 5123:'getUint16', 5125:'getUint32', 5126:'getFloat32'};
-const BYTES = {5121:1, 5123:2, 5125:4, 5126:4};
-
-async function loadTriangles(name){
-  const gltf = await (await fetch(GLTF + name + '.gltf')).json();
-  const bin = await (await fetch(GLTF + gltf.buffers[0].uri)).arrayBuffer();
-  const dv = new DataView(bin);
-  const read = (index) => {
-    const acc = gltf.accessors[index], bv = gltf.bufferViews[acc.bufferView];
-    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
-    const stride = bv.byteStride ?? size * bytes;
-    const start = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
-    const out = [];
-    for(let i = 0; i < acc.count; i++){
-      const row = [];
-      for(let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
-      out.push(size === 1 ? row[0] : row);
-    }
-    return out;
+<script>
+(function(){
+  "use strict";
+  var PAL={
+    "Мрак":"#0e0d0a","Тень":"#1a1813","Камень":"#3f3d34","Скол":"#6f6c60",
+    "Соль тень":"#8a8a7e","Соль":"#a6a698","Соль свет":"#c6c6b6","Иней":"#e2e2d6",
+    "Земля тёмная":"#2a1d14","Земля":"#3f2c1d","Дерево тень":"#543922","Дерево":"#6f4d2c",
+    "Дерево свет":"#8f6a3f","Солома":"#b08f56",
+    "Хвоя тень":"#1f2b1a","Хвоя":"#31432a","Мох":"#465c39","Трава":"#5d7a49","Трава свет":"#7fa361",
+    "Металл":"#474f58","Сталь":"#7d8892","Пламя":"#c9722a","Латунь":"#dfa53c"
   };
-  const tris = [];
-  for(const mesh of gltf.meshes) for(const prim of mesh.primitives){
-    const pos = read(prim.attributes.POSITION), idx = read(prim.indices);
-    for(let i = 0; i < idx.length; i += 3) tris.push([pos[idx[i]], pos[idx[i+1]], pos[idx[i+2]]]);
+
+  // ——— общий отрисовщик: ортокамера 45°/30°, плоское затенение, сортировка по глубине
+  var EL=30*Math.PI/180, CE=Math.cos(EL), SE=Math.sin(EL);
+  var L=(function(){var v=[-0.55,0.78,-0.31],m=Math.hypot(v[0],v[1],v[2]);
+    return [v[0]/m,v[1]/m,v[2]/m];})();
+  var DPR=Math.min(2,window.devicePixelRatio||1);
+
+  function shade(hex,k){
+    var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    return "rgb("+Math.round(Math.min(255,r*k))+","+Math.round(Math.min(255,g*k))+","+
+      Math.round(Math.min(255,b*k))+")";
   }
-  return tris;
-}
-
-/* ---------- сетка карточек ---------- */
-const grid = document.getElementById('grid');
-const taken = new Set(cat.adopted);
-const cards = [];
-
-for(const m of cat.models){
-  const card = document.createElement('div');
-  card.className = 'm' + (taken.has(m.name) ? ' take' : '');
-  card.dataset.category = m.category;
-  const canvas = document.createElement('canvas');
-  canvas.width = 168; canvas.height = 148;
-  const stage = document.createElement('div');
-  stage.className = 'stage';
-  stage.appendChild(canvas);
-  card.innerHTML = '<b>' + m.name.replace(/_Color1$/, '').replace(/_/g, ' ') + '</b>' +
-    '<u><s>' + m.tris + ' тр.</s><s>' + m.size.join('×') + '</s>' +
-    (taken.has(m.name) ? '<s class="take">в игре</s>' : '') + '</u>';
-  card.prepend(stage);
-  grid.appendChild(card);
-  cards.push({model:m, card, canvas, drawn:false});
-}
-
-const seen = new IntersectionObserver((entries) => {
-  for(const entry of entries){
-    if(!entry.isIntersecting) continue;
-    const item = cards.find(c => c.card === entry.target);
-    seen.unobserve(entry.target);
-    if(item.drawn) continue;
-    item.drawn = true;
-    loadTriangles(item.model.name).then((tris) => {
-      const list = slots.get(item.model.name);
-      draw(item.canvas, tris, [...tris].map((_, i) => hex(palette[list[i]])));
-    }).catch(() => { item.card.querySelector('.stage').textContent = '—'; });
+  function rotY(p,a){var c=Math.cos(a),s=Math.sin(a);return [p[0]*c-p[2]*s,p[1],p[0]*s+p[2]*c];}
+  function view(p,a){var q=rotY(p,a);return [q[0],q[1]*CE-q[2]*SE,q[1]*SE+q[2]*CE];}
+  function normal(a,b,c){
+    var u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    var n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    var m=Math.hypot(n[0],n[1],n[2])||1;return [n[0]/m,n[1]/m,n[2]/m];
   }
-}, {rootMargin:'400px'});
-for(const c of cards) seen.observe(c.card);
+  function box(cx,cy,cz,w,h,d,col){
+    var x=w/2,z=d/2;
+    var v=[[cx-x,cy,cz-z],[cx+x,cy,cz-z],[cx+x,cy,cz+z],[cx-x,cy,cz+z],
+           [cx-x,cy+h,cz-z],[cx+x,cy+h,cz-z],[cx+x,cy+h,cz+z],[cx-x,cy+h,cz+z]];
+    return {v:v,f:[[4,5,6,7],[0,3,2,1],[3,7,6,2],[0,1,5,4],[1,2,6,5],[0,4,7,3]],c:col};
+  }
+  function cyl(cx,cy,cz,r,h,n,col){
+    var v=[],i,a,f=[];
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy+h,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++)f.push([i,(i+1)%n,n+(i+1)%n,n+i]);
+    var top=[],bot=[];
+    for(i=0;i<n;i++){top.push(n+i);bot.push(n-1-i);}
+    f.push(top);f.push(bot);
+    return {v:v,f:f,c:col};
+  }
+  function cone(cx,cy,cz,r,h,n,col){
+    var v=[[cx,cy+h,cz]],i,a,f=[];
+    for(i=0;i<n;i++){a=i/n*Math.PI*2;v.push([cx+Math.cos(a)*r,cy,cz+Math.sin(a)*r]);}
+    for(i=0;i<n;i++)f.push([0,1+i,1+(i+1)%n]);
+    var bot=[];for(i=0;i<n;i++)bot.push(n-i);
+    f.push(bot);
+    return {v:v,f:f,c:col};
+  }
+  function quad(x,z,s,col){
+    return {v:[[x,0,z],[x+s,0,z],[x+s,0,z+s],[x,0,z+s]],f:[[0,1,2,3]],c:col,flat:true};
+  }
+  function tilt(m,ax,az){
+    m.v=m.v.map(function(p){
+      var y1=p[1]*Math.cos(ax)-p[2]*Math.sin(ax), z1=p[1]*Math.sin(ax)+p[2]*Math.cos(ax);
+      var x2=p[0]*Math.cos(az)-y1*Math.sin(az), y2=p[0]*Math.sin(az)+y1*Math.cos(az);
+      return [x2,y2,z1];
+    });
+    return m;
+  }
+  function move(m,dx,dy,dz){
+    m.v=m.v.map(function(p){return [p[0]+dx,p[1]+dy,p[2]+dz];});
+    return m;
+  }
+  function tris(ms){return ms.reduce(function(s,m){
+    return s+m.f.reduce(function(t,f){return t+(f.length-2);},0);},0);}
 
-/* ---------- фильтр ---------- */
-const bar = document.getElementById('filters');
-const groups = ['Всё', ...[...cats.keys()]];
-let active = 'Всё';
-for(const key of groups){
-  const b = document.createElement('button');
-  b.textContent = key === 'Всё' ? 'Всё' : (NAMES[key] ?? key);
-  b.setAttribute('aria-pressed', key === active ? 'true' : 'false');
-  b.addEventListener('click', () => {
-    active = key;
-    for(const other of bar.children) other.setAttribute('aria-pressed', 'false');
-    b.setAttribute('aria-pressed', 'true');
-    for(const c of cards) c.card.style.display = (key === 'Всё' || c.model.category === key) ? '' : 'none';
+  /** Общий проход художника: все грани всех мешей в один список, сортировка по глубине. */
+  function paint(ctx,ms,az,ox,oy,scale,wireOn){
+    var faces=[];
+    ms.forEach(function(m){
+      m.f.forEach(function(face){
+        var a=m.v[face[0]],b=m.v[face[1]],c=m.v[face[2]];
+        var n=m.flat?[0,1,0]:normal(a,b,c);
+        var pts=face.map(function(i){return view(m.v[i],az);});
+        var area=0,i,p1,p2;
+        for(i=0;i<pts.length;i++){p1=pts[i];p2=pts[(i+1)%pts.length];
+          area+=(p1[0]*(-p2[1])-p2[0]*(-p1[1]));}
+        if(area<=0){ if(!m.flat) return; pts=pts.slice().reverse(); }
+        var d=pts.reduce(function(s,p){return s+p[2];},0)/pts.length;
+        var lam=Math.max(0,n[0]*L[0]+n[1]*L[1]+n[2]*L[2]);
+        var sky=0.34+0.16*Math.max(0,n[1]);
+        faces.push({pts:pts,d:d,k:sky+lam*0.72,c:m.c,line:m.line});
+      });
+    });
+    faces.sort(function(a,b){return a.d-b.d;});
+    faces.forEach(function(f){
+      ctx.beginPath();
+      f.pts.forEach(function(p,i){
+        var sx=ox+p[0]*scale, sy=oy-p[1]*scale;
+        if(i)ctx.lineTo(sx,sy); else ctx.moveTo(sx,sy);
+      });
+      ctx.closePath();
+      ctx.fillStyle=shade(f.c,f.k); ctx.fill();
+      ctx.strokeStyle=f.line?f.line:(wireOn?"rgba(230,228,214,.35)":shade(f.c,f.k*0.9));
+      ctx.lineWidth=wireOn?0.6:0.5; ctx.stroke();
+    });
+  }
+  function fit(cv){
+    var W=cv.width,H=cv.height,ctx=cv.getContext("2d");
+    cv.width=W*DPR;cv.height=H*DPR;ctx.scale(DPR,DPR);
+    return {ctx:ctx,W:W,H:H};
+  }
+
+  // ============ 02. Арифметика камеры ============
+  var A=fit(document.getElementById("cvA"));
+  var HERO_H=1.15, GX=9, GZ=7, TX=4, TZ=3;
+  var BEHIND=[[3.5,2.5],[2.5,1.5],[1.5,0.5]], FRONT=[[6.5,5.5]];
+  var azA=Math.PI/4, treeH=1.2, marksOn=true;
+
+  function uOf(x,z,a){return x*Math.sin(a)+z*Math.cos(a);}
+  function vOf(x,z,a){return x*Math.cos(a)-z*Math.sin(a);}
+  /** Полуширина силуэта дерева на высоте y: ствол, крона, макушка. */
+  function crownR(h){return Math.max(0.20,0.42*Math.min(1.7,h));}
+  function trunkR(h){return Math.max(0.06,0.055*h+0.05);}
+  function halfWidth(y,h){
+    if(y<0||y>h)return 0;
+    var w=(y<=h*0.42)?trunkR(h):0, r=crownR(h);
+    if(y>=h*0.35&&y<=h*0.82)w=Math.max(w,r);
+    else if(y>h*0.82)w=Math.max(w,r*(h-y)/(h*0.18));
+    return w;
+  }
+
+  /**
+   * Точка скрыта, если луч в камеру проходит сквозь силуэт: поднимается на
+   * du·tg30° и упирается в дерево на этой высоте. Никаких приближений —
+   * ровно то же условие, что даёт настоящее перекрытие в кадре.
+   */
+  function hiddenBy(px,pz,py,a,h,pad){
+    var du=uOf(TX+0.5,TZ+0.5,a)-uOf(px,pz,a);
+    if(du<=0)return false;
+    var yi=py+du*Math.tan(EL);
+    if(yi>h)return false;
+    return Math.abs(vOf(TX+0.5,TZ+0.5,a)-vOf(px,pz,a))+(pad||0)<=halfWidth(yi,h);
+  }
+  // тот же силуэт, что у героя в прототипе: плащ-конус, торс, голова. Верх — ровно 1,15.
+  function heroMesh(x,z){
+    return [cone(x,0.10,z,0.30,0.55,7,"#8a3f2e"),
+            cyl(x,0.05,z,0.15,0.68,7,PAL["Соль свет"]),
+            cyl(x,0.73,z,0.12,0.24,6,PAL["Иней"]),
+            cone(x,0.97,z,0.13,0.18,6,"#8a3f2e")];
+  }
+  function treeMesh(h){
+    var r=crownR(h);
+    return [cyl(TX+0.5,0,TZ+0.5,trunkR(h),h*0.42,7,PAL["Дерево тень"]),
+            cyl(TX+0.5,h*0.35,TZ+0.5,r,h*0.47,7,PAL["Хвоя тень"]),
+            cone(TX+0.5,h*0.82,TZ+0.5,r,h*0.18,7,PAL["Хвоя"])];
+  }
+  function drawA(){
+    var ctx=A.ctx;ctx.clearRect(0,0,A.W,A.H);
+    var ms=[],x,z;
+    for(z=0;z<GZ;z++)for(x=0;x<GX;x++){
+      if(x===TX&&z===TZ){ms.push(quad(x,z,1,PAL["Земля тёмная"]));continue;}
+      var hid=hiddenBy(x+0.5,z+0.5,0,azA,treeH,0);
+      ms.push(quad(x,z,1,hid?"#3a2a26":((x+z)%2?PAL["Мох"]:PAL["Хвоя"])));
+    }
+    var heroes=BEHIND.concat(FRONT);
+    heroes.forEach(function(c){
+      if(marksOn)ms.push(cyl(c[0],0.01,c[1],0.32,0.02,10,PAL["Латунь"]));
+      heroMesh(c[0],c[1]).forEach(function(m){ms.push(m);});
+    });
+    treeMesh(treeH).forEach(function(m){ms.push(m);});
+    var scale=40, ctr=view([GX/2,0,GZ/2],azA);
+    var ox=A.W/2-ctr[0]*scale, oy=A.H*0.55+ctr[1]*scale;
+    paint(ctx,ms,azA,ox,oy,scale,false);
+    if(marksOn){
+      ctx.font="10px ui-monospace,Menlo,monospace";ctx.textAlign="center";
+      heroes.forEach(function(c,i){
+        var p=view([c[0],0,c[1]],azA);
+        var hid=hiddenBy(c[0],c[1],1.0,azA,treeH,0.10);
+        ctx.fillStyle=hid?"#C36565":"#dfa53c";
+        ctx.fillText(i<BEHIND.length?((i+1)*2+" кл."):"перед",ox+p[0]*scale,oy-p[1]*scale+15);
+      });
+    }
+    ctx.fillStyle="#9A9285";ctx.font="11px ui-monospace,Menlo,monospace";ctx.textAlign="left";
+    ctx.fillText("азимут "+Math.round(azA*180/Math.PI)+"°  ·  наклон 30°",12,18);
+  }
+  function syncA(){
+    var hidden=BEHIND.filter(function(c){return hiddenBy(c[0],c[1],1.0,azA,treeH,0.10);}).length;
+    var groundCells=(1.732*treeH/Math.sin(Math.PI/4));
+    var heroCells=Math.max(0,2.449*(treeH-HERO_H));
+    document.getElementById("rowsA").innerHTML=
+      "<div><span>высота дерева</span><b>"+treeH.toFixed(2)+"</b></div>"+
+      "<div><span>прячет землю</span><b>"+groundCells.toFixed(1)+" кл.</b></div>"+
+      "<div><span>прячет героя</span><b>"+heroCells.toFixed(1)+" кл.</b></div>"+
+      "<div><span>нужен отступ от поляны</span><b>"+Math.ceil(heroCells)+" кл.</b></div>"+
+      "<div><span>скрыто фигурок из трёх</span><b>"+hidden+"</b></div>";
+    document.getElementById("verdictA").innerHTML= treeH<=HERO_H
+      ? '<span class="chk ok">ниже героя — можно вплотную к тропе</span>'
+      : '<span class="chk no">только в массив, отступ '+Math.ceil(heroCells)+' кл.</span>';
+    drawA();
+  }
+  document.getElementById("hgt").addEventListener("input",function(){
+    treeH=Number(this.value)/10;syncA();
   });
-  bar.appendChild(b);
-}
-const takeBtn = document.createElement('button');
-takeBtn.textContent = 'Только взятое';
-takeBtn.addEventListener('click', () => {
-  for(const other of bar.children) other.setAttribute('aria-pressed', 'false');
-  takeBtn.setAttribute('aria-pressed', 'true');
-  for(const c of cards) c.card.style.display = taken.has(c.model.name) ? '' : 'none';
-});
-bar.appendChild(takeBtn);
+  document.getElementById("turn").addEventListener("click",function(){
+    azA+=Math.PI/2;if(azA>Math.PI*2)azA-=Math.PI*2;syncA();
+  });
+  document.getElementById("marks").addEventListener("click",function(){
+    marksOn=!marksOn;this.setAttribute("aria-pressed",String(marksOn));drawA();
+  });
+  syncA();
 
-/* ---------- что взято ---------- */
-const WHERE = {Rock:'стены вылазки', Tree:'лес вокруг лагеря'};
-const takenBody = document.querySelector('#taken tbody');
-let takenTris = 0;
-for(const name of cat.adopted){
-  const m = cat.models.find(x => x.name === name);
-  takenTris += m.tris;
-  const tr = document.createElement('tr');
-  tr.innerHTML = '<td class="mono">' + m.name + '</td><td>' + (WHERE[m.category] ?? '—') +
-    '</td><td class="num">' + m.tris + '</td><td class="num">' + m.size.join('×') + '</td>';
-  takenBody.appendChild(tr);
-}
-// 9 позиций по 2 байта на треугольник плюс байт слота — формат forest.data.ts.
-const bytes = takenTris * 19;
-const kb = Math.round(bytes * 1.34 / 1024);
-document.getElementById('cost').textContent =
-  cat.adopted.length + ' моделей из ' + cat.models.length + ' · ' + takenTris +
-  ' треугольников · ≈' + kb + ' КБ base64 в бандле';
-document.getElementById('bundle').textContent = '≈' + kb + ' КБ';
+  // ============ 04. Блокинг ============
+  var B=fit(document.getElementById("cvB"));
+  var ITEMS=[
+    {n:"Чаща",note:"0,8 · стена за 3 провианта",budget:50,build:function(){
+      return [cone(-0.22,0,-0.14,0.36,0.80,6,PAL["Хвоя"]),
+              cone(0.24,0,0.12,0.32,0.66,6,PAL["Хвоя тень"]),
+              cone(0.02,0,0.30,0.30,0.72,6,PAL["Мох"]),
+              cone(-0.02,0,-0.34,0.26,0.58,6,PAL["Хвоя тень"])];
+    }},
+    {n:"Бурелом",note:"1,0 · хода нет",budget:80,build:function(){
+      return [move(tilt(cyl(0,0,0,0.13,1.15,6,PAL["Дерево тень"]),1.35,0.25),-0.15,0.14,-0.1),
+              move(tilt(cyl(0,0,0,0.11,1.05,6,PAL["Дерево"]),1.4,-1.1),0.18,0.11,0.12),
+              cyl(-0.3,0,0.28,0.16,0.30,6,PAL["Земля тёмная"])];
+    }},
+    {n:"Сухостой",note:"1,1 · контейнер с деревом",budget:80,build:function(){
+      return [cyl(0,0,0,0.10,1.10,7,PAL["Соль тень"]),
+              move(tilt(cyl(0,0,0,0.045,0.42,4,PAL["Дерево свет"]),0.9,0.4),0.06,0.72,0.05),
+              move(tilt(cyl(0,0,0,0.04,0.34,4,PAL["Дерево свет"]),1.15,-1.3),-0.05,0.52,-0.06),
+              cyl(0,0,0,0.19,0.09,7,PAL["Земля"])];
+    }},
+    {n:"Соляная сосна",note:"2,4 · ориентир, отступ 3",budget:100,build:function(){
+      return [cyl(0,0,0,0.115,2.40,7,PAL["Соль тень"]),
+              move(tilt(cyl(0,0,0,0.05,0.62,4,PAL["Соль"]),1.2,0.5),0.1,1.60,0.06),
+              move(tilt(cyl(0,0,0,0.045,0.54,4,PAL["Соль"]),1.3,-1.2),-0.09,1.95,-0.05),
+              cone(0,2.02,0,0.31,0.58,6,PAL["Дерево тень"]),
+              cyl(0,0,0,0.22,0.12,7,PAL["Земля"])];
+    }}
+  ];
+  var meshes=ITEMS.map(function(it){return it.build();});
+  var spin=0,spinning=true,wireOn=false;
+  function drawB(){
+    var ctx=B.ctx;ctx.clearRect(0,0,B.W,B.H);
+    var step=B.W/ITEMS.length, base=B.H*0.78, scale=95;
+    // земля и линия героя
+    ctx.strokeStyle="rgba(230,228,214,.20)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(0,base);ctx.lineTo(B.W,base);ctx.stroke();
+    var hy=base-HERO_H*CE*scale;
+    ctx.setLineDash([5,5]);ctx.strokeStyle="rgba(211,169,58,.75)";
+    ctx.beginPath();ctx.moveTo(0,hy);ctx.lineTo(B.W,hy);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#D3A93A";ctx.font="10px ui-monospace,Menlo,monospace";ctx.textAlign="left";
+    ctx.fillText("рост героя 1,15",8,hy-6);
+    ITEMS.forEach(function(it,i){
+      var ms=meshes[i].map(function(m){return {v:m.v.map(function(p){return rotY(p,spin);}),
+        f:m.f,c:m.c};});
+      paint(ctx,ms,Math.PI/4,step*(i+0.5),base,scale,wireOn);
+      ctx.fillStyle="#EAE5DA";ctx.font="12px ui-monospace,Menlo,monospace";ctx.textAlign="center";
+      ctx.fillText(it.n,step*(i+0.5),B.H-26);
+      ctx.fillStyle="#9A9285";ctx.font="10.5px ui-monospace,Menlo,monospace";
+      ctx.fillText(it.note,step*(i+0.5),B.H-10);
+    });
+  }
+  document.getElementById("tris").innerHTML=ITEMS.map(function(it,i){
+    return "<div><span>"+it.n+"</span><b>"+tris(meshes[i])+" / "+it.budget+"</b></div>";
+  }).join("");
+  document.getElementById("spin").addEventListener("click",function(){
+    spinning=!spinning;this.setAttribute("aria-pressed",String(spinning));
+  });
+  document.getElementById("wire").addEventListener("click",function(){
+    wireOn=!wireOn;this.setAttribute("aria-pressed",String(wireOn));drawB();
+  });
+  document.getElementById("rot").addEventListener("input",function(){
+    spinning=false;document.getElementById("spin").setAttribute("aria-pressed","false");
+    spin=Number(this.value)*Math.PI/180;drawB();
+  });
+  (function loop(){ if(spinning){spin+=0.006;drawB();} requestAnimationFrame(loop); })();
+  drawB();
+
+  // ============ 05. Модель чащи ============
+  var C=fit(document.getElementById("cvC"));
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;};}
+  var N4=[[1,0],[-1,0],[0,1],[0,-1]];
+  function ix(s,x,z){return z*s+x;}
+  function disc(size,f,cx,cz,r){
+    for(var z=cz-r;z<=cz+r;z++)for(var x=cx-r;x<=cx+r;x++){
+      if(x<1||z<1||x>size-2||z>size-2)continue;
+      if((x-cx)*(x-cx)+(z-cz)*(z-cz)<=(r+0.35)*(r+0.35))f[ix(size,x,z)]=1;
+    }
+  }
+  // Тот же ход кистью, что в sim/generate.ts, плюс две оболочки и карманы.
+  function gen(seed,size,branches,pockets,rim){
+    var rng=mulberry32(seed>>>0), floor=new Uint8Array(size*size);
+    var evac={x:2,z:2}, far={x:size-3,z:size-3}, spine=[], x=evac.x, z=evac.z, guard=0, i, b;
+    while((x!==far.x||z!==far.z)&&guard++<size*size*2){
+      disc(size,floor,x,z,1);spine.push({x:x,z:z});
+      var dx=Math.sign(far.x-x), dz=Math.sign(far.z-z);
+      if(rng()<0.88){ if(dx&&(!dz||rng()<0.5))x+=dx; else if(dz)z+=dz; }
+      else { if(rng()<0.5)x+=rng()<0.5?1:-1; else z+=rng()<0.5?1:-1; }
+      x=Math.max(1,Math.min(size-2,x));z=Math.max(1,Math.min(size-2,z));
+    }
+    disc(size,floor,far.x,far.z,2);spine.push(far);
+    for(i=8;i<spine.length;i+=10+Math.floor(rng()*5))disc(size,floor,spine[i].x,spine[i].z,2);
+    for(b=0;b<branches;b++){
+      var s=spine[Math.floor(spine.length*(0.5+rng()*0.45))],bx=s.x,bz=s.z,len=3+Math.floor(rng()*4);
+      for(i=0;i<len;i++){
+        if(rng()<0.5)bx+=rng()<0.5?1:-1;else bz+=rng()<0.5?1:-1;
+        bx=Math.max(1,Math.min(size-2,bx));bz=Math.max(1,Math.min(size-2,bz));
+        disc(size,floor,bx,bz,1);
+      }
+      if(rng()<0.5)disc(size,floor,bx,bz,2);
+    }
+    var pk=[];
+    for(var p=0;p<pockets;p++){
+      for(var t=0;t<200;t++){
+        var px=2+Math.floor(rng()*(size-4)), pz=2+Math.floor(rng()*(size-4)), best=99;
+        for(var zz=0;zz<size;zz++)for(var xx=0;xx<size;xx++)if(floor[ix(size,xx,zz)]){
+          var d=Math.abs(xx-px)+Math.abs(zz-pz); if(d<best)best=d;}
+        var gap=best-1;
+        if(gap<2||gap>rim*2)continue;
+        if(Math.abs(px-evac.x)+Math.abs(pz-evac.z)<size*0.6)continue;
+        disc(size,floor,px,pz,1);pk.push({x:px,z:pz,gap:gap});break;
+      }
+    }
+    var d2=new Int32Array(size*size).fill(-1), q=[], h, c, cx, cz, k, nx, nz, ni;
+    for(i=0;i<floor.length;i++)if(floor[i]){d2[i]=0;q.push(i);}
+    for(h=0;h<q.length;h++){c=q[h];cx=c%size;cz=(c/size)|0;
+      for(k=0;k<4;k++){nx=cx+N4[k][0];nz=cz+N4[k][1];
+        if(nx<0||nz<0||nx>=size||nz>=size)continue;ni=ix(size,nx,nz);
+        if(d2[ni]!==-1)continue;d2[ni]=d2[c]+1;q.push(ni);}}
+    var kind=new Uint8Array(size*size);
+    for(i=0;i<kind.length;i++)kind[i]=d2[i]===0?0:(d2[i]<=rim?1:2);
+    for(i=0;i<size;i++){kind[ix(size,i,0)]=2;kind[ix(size,i,size-1)]=2;
+      kind[ix(size,0,i)]=2;kind[ix(size,size-1,i)]=2;}
+    return {size:size,kind:kind,evac:evac,pockets:pk};
+  }
+  function costField(loc,K){
+    var size=loc.size, kind=loc.kind;
+    var cost=new Float64Array(size*size).fill(Infinity), prev=new Int32Array(size*size).fill(-1);
+    var s=ix(size,loc.evac.x,loc.evac.z);cost[s]=0;
+    var pq=[[0,s]];
+    while(pq.length){
+      pq.sort(function(a,b){return a[0]-b[0];});
+      var top=pq.shift(), c=top[0], cur=top[1];
+      if(c>cost[cur])continue;
+      var cx=cur%size, cz=(cur/size)|0;
+      for(var k=0;k<4;k++){
+        var nx=cx+N4[k][0], nz=cz+N4[k][1];
+        if(nx<0||nz<0||nx>=size||nz>=size)continue;
+        var ni=ix(size,nx,nz); if(kind[ni]===2)continue;
+        var w=kind[ni]===0?1:K;
+        if(c+w<cost[ni]){cost[ni]=c+w;prev[ni]=cur;pq.push([c+w,ni]);}
+      }
+    }
+    return {cost:cost,prev:prev};
+  }
+  var TIER=[{size:8,br:1,pk:1,food:50},{size:12,br:3,pk:2,food:50},
+            {size:16,br:5,pk:3,food:70},{size:20,br:7,pk:4,food:90}];
+  var seedC=500, tierC=2, K=3;
+
+  function tollFor(K,tier,n){
+    var S=TIER[tier], sum=0, cnt=0, locs=0, withPocket=0;
+    for(var s=0;s<n;s++){
+      var loc=gen(500+s*13,S.size,S.br,S.pk,2);
+      locs++; if(loc.pockets.length)withPocket++;
+      for(var i=0;i<loc.pockets.length;i++){
+        var g=loc.pockets[i].gap;
+        sum+=g*K+g*1-g*2; cnt++;              // прорубил внутрь, вышел по вытоптанному
+      }
+    }
+    return {toll:cnt?sum/cnt:0,share:withPocket/locs};
+  }
+  function drawC(){
+    var ctx=C.ctx;ctx.clearRect(0,0,C.W,C.H);
+    var S=TIER[tierC], loc=gen(seedC,S.size,S.br,S.pk,2);
+    var cell=Math.floor(300/loc.size), ox=14, oy=Math.floor((C.H-cell*loc.size)/2);
+    var COL={0:"#4d6438",1:"#25331b",2:"#11150d"};
+    for(var z=0;z<loc.size;z++)for(var x=0;x<loc.size;x++){
+      ctx.fillStyle=COL[loc.kind[ix(loc.size,x,z)]];
+      ctx.fillRect(ox+x*cell,oy+z*cell,cell-1,cell-1);
+    }
+    var f=costField(loc,K);
+    // эвакуация
+    ctx.fillStyle="#8fd6c0";ctx.fillRect(ox+loc.evac.x*cell,oy+loc.evac.z*cell,cell-1,cell-1);
+    // маршрут до самого дорогого кармана
+    var target=null,bestC=-1;
+    loc.pockets.forEach(function(p){
+      var c=f.cost[ix(loc.size,p.x,p.z)];
+      if(isFinite(c)&&c>bestC){bestC=c;target=p;}
+    });
+    var cut=0,steps=0;
+    if(target){
+      var cur=ix(loc.size,target.x,target.z), path=[];
+      while(cur!==-1){path.push(cur);cur=f.prev[cur];}
+      ctx.strokeStyle="#D3A93A";ctx.lineWidth=2;ctx.beginPath();
+      path.forEach(function(c,i){
+        var px=ox+(c%loc.size)*cell+cell/2, pz=oy+((c/loc.size)|0)*cell+cell/2;
+        if(i)ctx.lineTo(px,pz);else ctx.moveTo(px,pz);
+      });
+      ctx.stroke();
+      path.forEach(function(c){
+        steps++;
+        if(loc.kind[c]===1){
+          cut++;
+          var px=ox+(c%loc.size)*cell+cell/2, pz=oy+((c/loc.size)|0)*cell+cell/2, r=cell*0.28;
+          ctx.strokeStyle="#D2662F";ctx.lineWidth=1.6;ctx.beginPath();
+          ctx.moveTo(px-r,pz-r);ctx.lineTo(px+r,pz+r);ctx.moveTo(px+r,pz-r);ctx.lineTo(px-r,pz+r);
+          ctx.stroke();
+        }
+      });
+      ctx.fillStyle="#dfa53c";
+      ctx.beginPath();ctx.arc(ox+target.x*cell+cell/2,oy+target.z*cell+cell/2,cell*0.32,0,Math.PI*2);ctx.fill();
+    }
+    ctx.font="10px ui-monospace,Menlo,monospace";ctx.textAlign="left";
+    ctx.fillStyle="#9A9285";ctx.fillText("ярус "+tierC+" · "+loc.size+"×"+loc.size,ox,oy-8);
+    var lg=[["#4d6438","поляна"],["#25331b","чаща"],["#11150d","бурелом"],["#8fd6c0","выход"],["#dfa53c","карман"]], lx=ox;
+    lg.forEach(function(e){
+      ctx.fillStyle=e[0];ctx.fillRect(lx,oy+cell*loc.size+8,8,8);
+      ctx.fillStyle="#9A9285";ctx.fillText(e[1],lx+12,oy+cell*loc.size+16);
+      lx+=22+ctx.measureText(e[1]).width;
+    });
+    // график надбавки
+    var px0=360, py0=44, w=C.W-px0-28, h=C.H-py0-52;
+    ctx.strokeStyle="rgba(230,228,214,.18)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(px0,py0);ctx.lineTo(px0,py0+h);ctx.lineTo(px0+w,py0+h);ctx.stroke();
+    var maxPct=0.22;
+    var y1=py0+h*(1-0.13/maxPct), y2=py0+h*(1-0.06/maxPct);
+    ctx.fillStyle="rgba(76,107,58,.20)";ctx.fillRect(px0,y1,w,y2-y1);
+    ctx.fillStyle="#9A9285";ctx.font="10.5px ui-monospace,Menlo,monospace";
+    ctx.fillText("надбавка за чащу, доля запаса",px0,py0-14);
+    ctx.fillText("рабочий коридор 6–13%",px0+6,y1+13);
+    ctx.textAlign="right";ctx.fillText("22%",px0-6,py0+4);ctx.fillText("0",px0-6,py0+h+4);
+    ctx.textAlign="center";
+    ctx.beginPath();
+    for(var kk=1;kk<=5;kk++){
+      var t=tollFor(kk,tierC,60).toll/TIER[tierC].food;
+      var xx=px0+w*((kk-1)/4), yy=py0+h*(1-Math.min(1,t/maxPct));
+      if(kk===1)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);
+    }
+    ctx.strokeStyle="#D3A93A";ctx.lineWidth=2;ctx.stroke();
+    var cx2=px0+w*((K-1)/4),
+        cy2=py0+h*(1-Math.min(1,tollFor(K,tierC,60).toll/TIER[tierC].food/maxPct));
+    ctx.beginPath();ctx.arc(cx2,cy2,5,0,Math.PI*2);ctx.fillStyle="#D2662F";ctx.fill();
+    ctx.fillStyle="#9A9285";
+    for(var kk2=1;kk2<=5;kk2++)ctx.fillText(String(kk2),px0+w*((kk2-1)/4),py0+h+16);
+    ctx.fillText("цена шага по чаще, провианта",px0+w/2,C.H-14);
+    return {cut:cut,steps:steps,loc:loc,target:target,cost:bestC};
+  }
+  function syncC(){
+    var r=drawC();
+    var m=tollFor(K,tierC,60);
+    var pct=m.toll/TIER[tierC].food;
+    document.getElementById("rowsC").innerHTML=
+      "<div><span>карманов в этой локации</span><b>"+r.loc.pockets.length+"</b></div>"+
+      "<div><span>клеток чащи на маршруте</span><b>"+r.cut+"</b></div>"+
+      "<div><span>путь до кармана, провианта</span><b>"+(isFinite(r.cost)?r.cost:"—")+"</b></div>"+
+      "<div><span>надбавка за чащу (60 локаций)</span><b>"+m.toll.toFixed(1)+"</b></div>"+
+      "<div><span>она же в долях запаса</span><b>"+Math.round(pct*100)+"%</b></div>"+
+      "<div><span>локаций с карманом</span><b>"+Math.round(m.share*100)+"%</b></div>";
+    var ok=pct>=0.06&&pct<=0.13;
+    document.getElementById("verdictC").innerHTML=ok
+      ? '<span class="chk ok">цена входа читается как решение</span>'
+      : '<span class="chk no">'+(pct<0.06?"чаща не ощущается стеной":"карман не окупается ничем")+'</span>';
+  }
+  document.getElementById("cost").addEventListener("input",function(){K=Number(this.value);syncC();});
+  document.getElementById("tier").addEventListener("input",function(){tierC=Number(this.value);syncC();});
+  document.getElementById("reseed").addEventListener("click",function(){seedC+=13;syncC();});
+  syncC();
+})();
 </script>
