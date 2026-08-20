@@ -677,11 +677,38 @@ const CASTLE: Pack = {
   grey: 0.005,
   categoryOf: (name) => CASTLE_CATEGORIES[name.split('-')[0]!] ?? 'Прочее',
   /**
-   * Пусто, как у подземелья (§6.1.2): набор измерен, страница есть, в бандл
-   * не едет ничего. Замок игре пока негде поставить — в лагере строят сараи,
-   * а не крепость, и восемьдесят килобайт стен ждут решения, а не забыты.
+   * Взятое в игру — словарь конструктора стен (`src/sim/castle.ts`) и ничего
+   * сверх него. Список не выбирался на глаз: это ровно те детали, которые
+   * конструктор умеет поставить, — по одной-три на каждую форму стыка,
+   * лестница, арка ворот, ярусы башни и два знамени. Что список и словарь
+   * не разошлись, проверяет `castle.rules.ts`.
+   *
+   * Вторые варианты тройника и яруса с дверью не взяты: они стоили бы
+   * шестьсот треугольников у каждого игрока за разнообразие, которого
+   * в кадре не видно.
+   *
+   * Осадные машины не взяты ни одна: почти половина треугольников набора
+   * лежит в них, а осады в игре нет.
    */
-  adopted: [],
+  adopted: [
+    // Формы стыка: одиночная, тупик, прямая, угол, тройник.
+    'tower-square',
+    'wall-to-narrow',
+    'wall', 'wall-pillar',
+    'wall-corner', 'wall-corner-slant', 'wall-corner-half-tower',
+    'wall-half',
+    // Лестница со двора и проезд ворот со створкой.
+    'wall-narrow-stairs',
+    'tower-square-arch', 'gate',
+    // Башня: этаж, ярусы, шапка и крыши.
+    'tower-square-base',
+    'tower-square-mid', 'tower-square-mid-windows',
+    'tower-square-top',
+    'tower-square-top-roof', 'tower-square-top-roof-high', 'tower-square-top-roof-rounded',
+    // Знамёна: на донжоне и на угловых башенках.
+    'flag', 'flag-pennant',
+  ],
+  data: { file: 'src/render/castle.data.ts', prefix: 'CASTLE', type: 'CastlePart' },
 };
 
 const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE];

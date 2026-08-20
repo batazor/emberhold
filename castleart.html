@@ -109,9 +109,10 @@
     Здесь предмет — <b>деталь конструктора</b>, и вопрос к ней другой: <b>чем она стыкуется
     с соседней</b>. Ответ на него измерен так же, как раньше мерялся цвет, и из этого
     замера собран генератор — он внизу страницы, и он живой.</p>
-  <p class="lede"><b>В бандл не едет ничего.</b> Набор измерен и лежит: замок игре пока
-    негде поставить — в лагере строят сараи, а не крепость. Страница и есть взвешивание,
-    как страница подземелья (§6.1.2).</p>
+  <p class="lede"><b>Двадцать моделей едут в игру</b> — словарь конструктора и ничего
+    сверх него. На карте региона появилась точка «Замок»: постройка, по которой ходят,
+    без добычи и без противников. Осадные машины не взяты ни одна — в них лежит почти
+    половина треугольников набора, а осады в игре нет.</p>
   <p class="lede fail" id="warn" style="display:none"></p>
 </header>
 
@@ -204,6 +205,28 @@
   <p class="note">Таблица считается тем же кодом, каким считает генератор:
     <code>fitTurn</code> из <code>src/sim/castle.ts</code>. Если для формы стыка
     поворота нет, деталь не ставится — вертеть её дальше значило бы врать.</p>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Конструктор: рисуйте стену сами</h2>
+    <p>Ниже — та же функция <code>buildWall</code>, которой собирается кольцо замка,
+      и тот же код, которым будет строить игрок. Клетки задаёте вы; форма стыка,
+      деталь и поворот считаются по ним. Условий вида «если строят буквой Г»
+      внутри нет: буква Г — это два угла и прямая, и они получаются сами.</p>
+    <p><b>Формы стыка закрыты все, кроме одной.</b> Перекрёсток — единственное место,
+      где набор отвечает «нет»: детали, у которой ход шёл бы на все четыре стороны
+      на высоте стены, в нём нет. Там встаёт башня, и ход по стене там кончается.</p>
+  </div>
+  <div class="bar" id="drawBar"></div>
+  <div class="yardgrid">
+    <canvas id="draw" width="300" height="300"></canvas>
+    <canvas id="drawScene" class="scene" width="620" height="380"></canvas>
+  </div>
+  <table id="drawBill"><thead><tr>
+    <th>Форма стыка</th><th class="num">Клеток</th><th>Какими деталями</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="drawNote"></p>
 </div>
 
 <div class="sec">
@@ -319,10 +342,16 @@
   </div>
   <div class="guard">
     <div>
-      <h3>Замок в игре</h3>
-      <p>Ни одной модели набора игра не берёт. Где в игре стоял бы замок и чем бы он
-        был — постройкой лагеря, локацией вылазки или задником — <b>не решено</b>.
-        Пока не решено, восемьдесят килобайт стен ждут, а не забыты.</p>
+      <h3>Чем наполнить замок</h3>
+      <p>Локация «Замок» на карте есть, и по ней ходят. Чего в ней нет — добычи,
+        противников, повода прийти второй раз, — <b>не решено</b>, и решаться будет
+        не здесь: это вопрос §4 и §13, а не обмера набора.</p>
+    </div>
+    <div>
+      <h3>Стройка в лагере</h3>
+      <p>Конструктор — функция, а не режим: он принимает клетки и возвращает детали.
+        Кто эти клетки выбирает, чем стройка стоит игроку и как она сохраняется —
+        <b>вопрос §12</b>, а не набора моделей.</p>
     </div>
     <div>
       <h3>Узкая стена</h3>
@@ -378,7 +407,7 @@ try{
   throw e;
 }
 
-const {generateCastle, fitTurn, turnDir, DIRS, STRAIGHT, CORNER, STAIRS, FLOOR, WALK, WALL_TOP} = castleMod;
+const {generateCastle, buildWall, fitTurn, turnDir, DIRS, PARTS, STRAIGHT, CORNER, STAIRS, FLOOR, WALK, WALL_TOP} = castleMod;
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 const pct = (n, of) => (n / of * 100).toFixed(1) + '%';
@@ -878,13 +907,22 @@ function spin(p, turn){
   return [x, y, z];
 }
 
-async function drawCastle(castle){
+/**
+ * Кадр из списка деталей. Ни одного смещения здесь не подбирается: клетка
+ * умножается на клетку набора, поворот берётся у детали как есть, высота
+ * яруса приходит из плана. Тем же способом ставит детали игра.
+ */
+async function renderPieces(canvas, pieces){
   const cell = cat.module.cell;
-  const wanted = [...new Set(castle.pieces.map(p => p.model))];
+  const shown = pieces.filter(p => p.role !== 'двор');
+  if(shown.length === 0){
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  const wanted = [...new Set(shown.map(p => p.model))];
   const loaded = new Map(await Promise.all(wanted.map(async (n) => [n, await loadModel(n)])));
-
   const tris = [], colors = [];
-  for(const piece of castle.pieces){
+  for(const piece of shown){
     const geom = loaded.get(piece.model);
     const list = slots.get(piece.model);
     for(let i = 0; i < geom.tris.length; i++){
@@ -895,7 +933,11 @@ async function drawCastle(castle){
       colors.push(hex(colorOfSlot(cat.slots[list[i]])));
     }
   }
-  draw(sceneCanvas, tris, colors);
+  draw(canvas, tris, colors);
+}
+
+async function drawCastle(castle){
+  await renderPieces(sceneCanvas, castle.pieces);
 
   // План рисуется по тем же клеткам, из которых собран замок: это не схема
   // «как задумано», а тот же список деталей, разложенный сверху.
@@ -985,6 +1027,110 @@ for(const s of [7, 42, 1337, 2718]){
 }
 rebuild();
 drawRelief().catch(() => {});
+
+/* ---------- конструктор: клетки рисует читатель ---------- */
+
+const drawCanvas = document.getElementById('draw');
+const drawScene = document.getElementById('drawScene');
+const GRID = 11;
+
+/**
+ * Начальная стена нарочно кривая: в ней есть прямая, два угла, тройник
+ * и тупик — то есть все формы стыка, кроме перекрёстка. Ровный прямоугольник
+ * показывал бы только две из шести.
+ */
+const START = [
+  '...........',
+  '..#####....',
+  '..#........',
+  '..#..###...',
+  '..#....#...',
+  '..######...',
+  '.......#...',
+  '...........',
+  '...........',
+  '...........',
+  '...........',
+];
+let drawn = new Set();
+START.forEach((row, z) => [...row].forEach((c, x) => { if(c === '#') drawn.add(z * GRID + x); }));
+
+function drawPlan(){
+  const ctx = drawCanvas.getContext('2d');
+  const css = getComputedStyle(document.body);
+  const W = drawCanvas.width, H = drawCanvas.height;
+  const step = Math.min(W, H) / GRID;
+  ctx.clearRect(0, 0, W, H);
+  for(const key of drawn){
+    ctx.fillStyle = css.getPropertyValue('--brass').trim();
+    ctx.fillRect((key % GRID) * step + 1, ((key / GRID) | 0) * step + 1, step - 2, step - 2);
+  }
+  ctx.strokeStyle = css.getPropertyValue('--line').trim();
+  ctx.lineWidth = 1;
+  for(let i = 0; i <= GRID; i++){
+    ctx.beginPath(); ctx.moveTo(i * step, 0); ctx.lineTo(i * step, GRID * step); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i * step); ctx.lineTo(GRID * step, i * step); ctx.stroke();
+  }
+}
+
+function rebuildDrawing(){
+  drawPlan();
+  const cells = [...drawn].map(k => ({x: k % GRID, z: (k / GRID) | 0}));
+  const built = buildWall(cells);
+  renderPieces(drawScene, built.pieces).catch((e) => fail('Модели набора не прочитаны: ' + e));
+
+  const byJoint = new Map();
+  for(const j of built.joints){
+    const row = byJoint.get(j.joint) ?? {n: 0, models: new Map()};
+    row.n++;
+    row.models.set(j.model, (row.models.get(j.model) ?? 0) + 1);
+    byJoint.set(j.joint, row);
+  }
+  const body = document.querySelector('#drawBill tbody');
+  body.innerHTML = '';
+  for(const [joint, row] of [...byJoint].sort((a, b) => b[1].n - a[1].n)){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + joint + '</td><td class="num">' + row.n + '</td><td class="mono">' +
+      [...row.models].sort((a, b) => b[1] - a[1]).map(([m, n]) => m + (n > 1 ? ' ×' + n : '')).join(', ') +
+      '</td>';
+    body.appendChild(tr);
+  }
+  const cross = byJoint.get('перекрёсток');
+  document.getElementById('drawNote').textContent =
+    'Клеток ' + cells.length + ', деталей ' + built.pieces.length + '. ' +
+    (cross === undefined
+      ? 'Перекрёстков нет — попробуйте свести четыре стены в одну клетку.'
+      : 'Перекрёстков ' + cross.n + ': на них стоят башни, и ход по стене там кончается.');
+}
+
+drawCanvas.addEventListener('pointerdown', (e) => {
+  const box = drawCanvas.getBoundingClientRect();
+  const step = Math.min(box.width, box.height) / GRID;
+  const x = Math.floor((e.clientX - box.left) / step);
+  const z = Math.floor((e.clientY - box.top) / step);
+  if(x < 0 || z < 0 || x >= GRID || z >= GRID) return;
+  const key = z * GRID + x;
+  if(drawn.has(key)) drawn.delete(key); else drawn.add(key);
+  rebuildDrawing();
+});
+
+const drawBar = document.getElementById('drawBar');
+for(const [label, rows] of [
+  ['Как было', START],
+  ['Перекрёсток', ['...........','...........','.....#.....','.....#.....','..#####....','.....#.....','.....#.....','...........','...........','...........','...........']],
+  ['Кольцо', ['...........','..######...','..#....#...','..#....#...','..#....#...','..######...','...........','...........','...........','...........','...........']],
+  ['Стереть', []],
+]){
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.addEventListener('click', () => {
+    drawn = new Set();
+    rows.forEach((row, z) => [...row].forEach((c, x) => { if(c === '#') drawn.add(z * GRID + x); }));
+    rebuildDrawing();
+  });
+  drawBar.appendChild(b);
+}
+rebuildDrawing();
 
 /* ---------- сетка карточек ---------- */
 const BUDGET = cat.budgets.model;

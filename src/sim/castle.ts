@@ -77,26 +77,64 @@ const part = (model: string, ...open: readonly number[]): Part => ({
 });
 
 /**
- * Прямые участки. Две детали на одну роль — не украшение: без чередования
- * стена выходит гребёнкой из одинаковых зубцов, и глаз читает её как текстуру,
- * а не как постройку.
+ * Форма стыка — всё, чем деталь описывается в стройке. Считается по числу
+ * и расположению соседей, и больше ни от чего не зависит.
  */
-export const STRAIGHT: readonly Part[] = [part('wall', 2, 3), part('wall-pillar', 2, 3)];
+export type Joint = 'одиночная' | 'тупик' | 'прямая' | 'угол' | 'тройник' | 'перекрёсток';
 
 /**
- * Углы. Три варианта, и один из них — угол с круглой башенкой; он занимает
- * полторы клетки, вылезая наружу, и это ровно то, для чего он нарисован.
- * Открытые рёбра у него другие, чем у простого угла, и поворот из-за этого
- * получается другим — но искать его всё равно не приходится, он выводится.
+ * Словарь конструктора: какие детали набора умеют встать на каждую форму
+ * стыка. Открытые рёбра здесь **объявлены по обмеру**, а не придуманы, и
+ * правило сверяет каждую строку с `catalog.json`.
+ *
+ * По две-три детали на роль — не украшение: без чередования стена выходит
+ * гребёнкой из одинаковых зубцов, и глаз читает её как текстуру,
+ * а не как постройку.
+ *
+ * Перекрёсток пуст, и это ответ набора, а не пропуск: детали, у которой
+ * ход шёл бы на все четыре стороны на высоте стены, в наборе нет —
+ * единственная деталь с четырьмя открытыми рёбрами (`tower-top`) высотой
+ * в одну восьмую стены. Поэтому на перекрёстке встаёт башня, и ход
+ * там кончается.
  */
-export const CORNER: readonly Part[] = [
-  part('wall-corner', 0, 3),
-  part('wall-corner-slant', 0, 3),
-  part('wall-corner-half-tower', 1, 3),
-];
+export const PARTS: Readonly<Record<Joint, readonly Part[]>> = {
+  'одиночная': [part('tower-square')],
+  'тупик': [part('wall-to-narrow', 3)],
+  'прямая': [part('wall', 2, 3), part('wall-pillar', 2, 3)],
+  'угол': [
+    part('wall-corner', 0, 3),
+    part('wall-corner-slant', 0, 3),
+    part('wall-corner-half-tower', 1, 3),
+  ],
+  'тройник': [part('wall-half', 1, 2, 3)],
+  'перекрёсток': [],
+};
+
+/** Прямые участки — они же вход для кода, которому нужна одна деталь. */
+export const STRAIGHT = PARTS['прямая'];
+export const CORNER = PARTS['угол'];
 
 /** Лестница со двора на стену: ход у неё выходит одним ребром, −z. */
 export const STAIRS = part('wall-narrow-stairs', 2);
+
+/** Башня на перекрёстке и во дворе: этаж, ярусы и шапка. */
+export const TOWER = {
+  base: 'tower-square-base',
+  body: ['tower-square-mid', 'tower-square-mid-windows'],
+  cap: 'tower-square-top',
+  roofs: ['tower-square-top-roof', 'tower-square-top-roof-high', 'tower-square-top-roof-rounded'],
+} as const;
+
+/** Форма стыка по направлениям на соседей. */
+export function jointOf(dirs: readonly number[]): Joint {
+  if (dirs.length === 0) return 'одиночная';
+  if (dirs.length === 1) return 'тупик';
+  if (dirs.length >= 4) return 'перекрёсток';
+  if (dirs.length === 3) return 'тройник';
+  const a = DIRS[dirs[0]!]!;
+  const b = DIRS[dirs[1]!]!;
+  return a[0] === -b[0] && a[1] === -b[1] ? 'прямая' : 'угол';
+}
 
 /* ---------- высоты ---------- */
 
@@ -109,6 +147,26 @@ export const STAIRS = part('wall-narrow-stairs', 2);
 export const FLOOR = 1.01;
 export const WALK = 1.18;
 export const WALL_TOP = 1.31;
+
+/**
+ * Клетка набора в клетках локации. Двойка выбрана по замеру, а не на глаз.
+ *
+ * Герой игры — 1,38 в клетках локации (мерка снимается с самой модели,
+ * `models.rules.ts`). Стена набора — 1,31 в его единицах, ход поверху — 1,18.
+ * При масштабе один стена вышла бы 1,31 — вровень с человеком, то есть
+ * забором; при двойке она 2,62, а ход по ней 2,36, и оба числа проходят
+ * над макушкой. Это и есть требование, которое держит правило: **не «вдвое
+ * выше»** — 2,62 к 1,38 это 1,9, — а «через стену не заглянуть, и по ней
+ * ходят над головой».
+ *
+ * Тройку не берём: локация выросла бы до сорока клеток в поперечнике при
+ * двадцати у самого глубокого яруса, и замок пришлось бы обходить дольше,
+ * чем всю вылазку.
+ *
+ * Цена двойки — клетка замка занимает четыре клетки локации. Для стены это
+ * не потеря, а свойство: крепостная стена и должна быть толстой.
+ */
+export const CASTLE_CELL = 2;
 
 /* ---------- поставленная деталь ---------- */
 
@@ -274,6 +332,19 @@ function yardWhole(w: number, yard: readonly Spot[]): boolean {
 }
 
 /**
+ * Проходим ли двор, если часть его клеток занята. Донжон и лестница стоят
+ * во дворе и занимают клетку целиком, и в узком дворе они способны
+ * перегородить его надвое: двор в две клетки шириной перекрывается одной
+ * башней. Пока по замку не ходили, это ничего не значило; локация (§4)
+ * сделала это ошибкой, которую видно ногами.
+ */
+function yardPassable(w: number, yard: readonly Spot[], taken: readonly Spot[]): boolean {
+  const busy = new Set(taken.map((s) => at(w, s.x, s.z)));
+  const free = yard.filter((s) => !busy.has(at(w, s.x, s.z)));
+  return free.length > 0 && yardWhole(w, free);
+}
+
+/**
  * Участок: прямоугольник, у которого сид вырезает до двух углов. Вырез —
  * единственный источник непрямых планов, и он же единственное место, где
  * генератор умеет отказаться: если после выреза цепь стен перестаёт быть
@@ -326,6 +397,76 @@ function plan(
   return { inside, wall, ring, yard };
 }
 
+/** Перемешанная копия: порядок перебора решает сид, а не порядок в списке. */
+function shuffled<T>(rng: Rng, list: readonly T[]): T[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = randInt(rng, i + 1);
+    const swap = out[i]!;
+    out[i] = out[j]!;
+    out[j] = swap;
+  }
+  return out;
+}
+
+/* ---------- конструктор ---------- */
+
+/** Что получилось из набора клеток. */
+export interface Built {
+  readonly pieces: readonly Piece[];
+  /** Клетка, форма стыка и деталь, которая на неё встала. */
+  readonly joints: readonly { readonly spot: Spot; readonly joint: Joint; readonly model: string }[];
+}
+
+/**
+ * **Конструктор стен.** Вход — любые клетки, хоть кольцо генератора, хоть
+ * то, что наметил игрок. Выход — поставленные детали.
+ *
+ * Правило одно на все случаи и то же, что в §6.1.6: у клетки считаются
+ * соседи среди тех же клеток, форма стыка выводится из их расположения,
+ * деталь берётся по форме, поворот — по замеру. Ни одного условия
+ * вида «если игрок строит буквой Г» здесь нет и быть не может: буква Г —
+ * это два угла и прямая, и они получаются сами.
+ *
+ * Перекрёсток — единственное место, где набор отвечает «нет»: детали, у
+ * которой ход шёл бы на все четыре стороны, в нём нет. Там встаёт башня,
+ * и это не заглушка, а то, что на перекрёстке стен и стоит.
+ */
+export function buildWall(cells: readonly Spot[], rng: Rng = mulberry32(1)): Built {
+  const set = new Set(cells.map((s) => `${s.x}:${s.z}`));
+  const pieces: Piece[] = [];
+  const joints: { spot: Spot; joint: Joint; model: string }[] = [];
+
+  for (const spot of cells) {
+    const dirs = DIRS.map((d, i) => (set.has(`${spot.x + d[0]}:${spot.z + d[1]}`) ? i : -1))
+      .filter((i) => i >= 0);
+    const joint = jointOf(dirs);
+    const bag = PARTS[joint];
+
+    if (bag.length === 0) {
+      // Перекрёсток: башня в один этаж и шапка — вровень со стеной.
+      pieces.push({ model: TOWER.base, x: spot.x, z: spot.z, y: 0, turn: 0, role: 'башня' });
+      pieces.push({ model: TOWER.cap, x: spot.x, z: spot.z, y: FLOOR, turn: 0, role: 'башня' });
+      joints.push({ spot, joint, model: TOWER.base });
+      continue;
+    }
+
+    const choice = bag[randInt(rng, bag.length)]!;
+    const turn = fitTurn(choice.open, dirs);
+    if (turn < 0) continue;
+    pieces.push({
+      model: choice.model,
+      x: spot.x,
+      z: spot.z,
+      y: 0,
+      turn,
+      role: joint === 'угол' ? 'угол' : 'стена',
+    });
+    joints.push({ spot, joint, model: choice.model });
+  }
+  return { pieces, joints };
+}
+
 /* ---------- сборка ---------- */
 
 /**
@@ -339,34 +480,15 @@ export function generateCastle(seed: number): Castle {
   const depth = 6 + randInt(rng, 4);
   const { wall, ring, yard } = plan(rng, width, depth);
 
-  const pieces: Piece[] = [];
-  const towers: Spot[] = [];
-  const kind = new Map<number, 'прямая' | 'угол'>();
-
-  for (const spot of ring) {
-    const want = ringNeighbors(width, depth, wall, spot.x, spot.z);
-    const straight = want.length === 2 && DIRS[want[0]!]![0] === -DIRS[want[1]!]![0]
-      && DIRS[want[0]!]![1] === -DIRS[want[1]!]![1];
-    kind.set(at(width, spot.x, spot.z), straight ? 'прямая' : 'угол');
-
-    // Прямая через каждые несколько клеток берёт контрфорс, угол — башенку.
-    // Оба выбора делает сид, но ни один не решает поворот.
-    const bag = straight ? STRAIGHT : CORNER;
-    const choice = straight
-      ? bag[rng() < 0.28 ? 1 : 0]!
-      : bag[randInt(rng, bag.length)]!;
-    const turn = fitTurn(choice.open, want);
-    if (turn < 0) continue;
-    if (choice.model === 'wall-corner-half-tower') towers.push(spot);
-    pieces.push({
-      model: choice.model,
-      x: spot.x,
-      z: spot.z,
-      y: 0,
-      turn,
-      role: straight ? 'стена' : 'угол',
-    });
-  }
+  // Кольцо собирается тем же конструктором, каким будет строить игрок:
+  // генератор отвечает за план, а как план превращается в детали — правило
+  // одно, и второй его копии нет.
+  const built = buildWall(ring, rng);
+  const pieces: Piece[] = [...built.pieces];
+  const towers = built.joints
+    .filter((j) => j.model === 'wall-corner-half-tower')
+    .map((j) => j.spot);
+  const kind = new Map(built.joints.map((j) => [at(width, j.spot.x, j.spot.z), j.joint]));
 
   /* ---------- ворота ---------- */
 
@@ -411,32 +533,40 @@ export function generateCastle(seed: number): Castle {
       );
     }),
   );
-  if (landings.length > 0) {
-    const spot = landings[randInt(rng, landings.length)]!;
+  // Кандидаты перебираются в случайном порядке, и берётся первый, который
+  // не запирает двор. Отказ тоже возможен: во дворе в одну клетку лестнице
+  // места нет, и её просто не будет.
+  const taken: Spot[] = [];
+  let stairs: Spot | null = null;
+  for (const spot of shuffled(rng, landings)) {
+    if (!yardPassable(width, yard, [spot])) continue;
     const toWall = DIRS.findIndex((dir) => {
       const nx = spot.x + dir[0];
       const nz = spot.z + dir[1];
       return nx >= 0 && nz >= 0 && nx < width && nz < depth && wall[at(width, nx, nz)];
     });
     const turn = fitTurn(STAIRS.open, [toWall]);
-    if (turn >= 0) {
-      pieces.push({ model: STAIRS.model, x: spot.x, z: spot.z, y: 0, turn, role: 'лестница' });
-    }
+    if (turn < 0) continue;
+    pieces.push({ model: STAIRS.model, x: spot.x, z: spot.z, y: 0, turn, role: 'лестница' });
+    stairs = spot;
+    taken.push(spot);
+    break;
   }
+  void stairs;
 
   /* ---------- донжон ---------- */
 
   // Башня во дворе, а не в кольце: башня глухая со всех сторон — это измерено, —
   // и, встав в кольцо, она разорвала бы ход поверху.
-  const keep = yard.length > 0
-    ? yard.reduce((best, s) => {
-      const score = (c: Spot): number => Math.abs(c.x - (width - 1) / 2) + Math.abs(c.z - (depth - 1) / 2);
-      return score(s) < score(best) ? s : best;
-    }, yard[0]!)
-    : null;
+  const middle = (c: Spot): number =>
+    Math.abs(c.x - (width - 1) / 2) + Math.abs(c.z - (depth - 1) / 2);
+  const keep = [...yard]
+    .sort((a, b) => middle(a) - middle(b))
+    .find((s) => !taken.some((t) => t.x === s.x && t.z === s.z)
+      && yardPassable(width, yard, [...taken, s])) ?? null;
   if (keep !== null) {
     const floors = 2 + randInt(rng, 2);
-    const body = ['tower-square-mid', 'tower-square-mid-windows', 'tower-square-mid-door'];
+    const body = TOWER.body;
     pieces.push({ model: 'tower-square-base', x: keep.x, z: keep.z, y: 0, turn: 0, role: 'башня' });
     for (let i = 1; i < floors; i++) {
       pieces.push({

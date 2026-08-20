@@ -20,14 +20,19 @@ import {
   CORNER,
   DIRS,
   FLOOR,
+  PARTS,
   STAIRS,
   STRAIGHT,
   WALK,
   WALL_TOP,
+  buildWall,
   generateCastle,
+  jointOf,
   turnDir,
   type Castle,
+  type Joint,
   type Part,
+  type Spot,
 } from './castle';
 
 interface CatalogModel {
@@ -59,7 +64,7 @@ describe('Замок: словарь деталей взят из обмера',
   });
 
   test('объявленные открытые рёбра совпадают с измеренными', () => {
-    const declared: readonly Part[] = [...STRAIGHT, ...CORNER, STAIRS];
+    const declared: readonly Part[] = [...Object.values(PARTS).flat(), STAIRS];
     for (const part of declared) {
       const model = measured.get(part.model);
       assert.ok(model !== undefined, `детали «${part.model}» в каталоге нет`);
@@ -88,6 +93,90 @@ describe('Замок: словарь деталей взят из обмера',
       const size = measured.get(part.model)!.size;
       const limit = part.model === 'wall-corner-half-tower' ? 1.5 : 1.06;
       assert.ok(size[0]! <= limit && size[2]! <= limit, `«${part.model}»: ${size[0]}×${size[2]}`);
+    }
+  });
+});
+
+describe('Конструктор: любые клетки — те же правила', () => {
+  /** Клетки из картинки: `#` — стена. Так же читаются планы в правилах ниже. */
+  const shape = (rows: readonly string[]): Spot[] => {
+    const out: Spot[] = [];
+    rows.forEach((row, z) => [...row].forEach((c, x) => { if (c === '#') out.push({ x, z }); }));
+    return out;
+  };
+
+  const SHAPES: readonly (readonly [string, readonly string[], Joint])[] = [
+    ['одинокая клетка', ['#'], 'одиночная'],
+    ['конец отрезка', ['##'], 'тупик'],
+    ['середина отрезка', ['###'], 'прямая'],
+    ['буква Г', ['##', '#.'], 'угол'],
+    ['тройник', ['.#.', '###'], 'тройник'],
+    ['перекрёсток', ['.#.', '###', '.#.'], 'перекрёсток'],
+  ];
+
+  test('форма стыка читается по соседям, а не по замыслу', () => {
+    for (const [what, rows, joint] of SHAPES) {
+      const cells = shape(rows);
+      const set = new Set(cells.map((s) => `${s.x}:${s.z}`));
+      // Форма проверяется у клетки, у которой соседей больше всех: именно она
+      // и есть то, ради чего пример нарисован.
+      const worst = cells
+        .map((s) => ({ s, n: DIRS.filter((d) => set.has(`${s.x + d[0]!}:${s.z + d[1]!}`)).length }))
+        .reduce((a, b) => (b.n > a.n ? b : a));
+      const dirs = DIRS.map((d, i) => (set.has(`${worst.s.x + d[0]!}:${worst.s.z + d[1]!}`) ? i : -1))
+        .filter((i) => i >= 0);
+      assert.equal(jointOf(dirs), joint, what);
+    }
+  });
+
+  test('на каждую форму стыка встаёт деталь, и она повёрнута по соседям', () => {
+    for (const [what, rows] of SHAPES) {
+      const cells = shape(rows);
+      const set = new Set(cells.map((s) => `${s.x}:${s.z}`));
+      const built = buildWall(cells);
+      assert.equal(built.joints.length, cells.length, `${what}: клетка осталась без детали`);
+      for (const j of built.joints) {
+        const piece = built.pieces.find((p) => p.x === j.spot.x && p.z === j.spot.z)!;
+        if (j.joint === 'перекрёсток') continue;
+        const open = measured.get(piece.model)!.open;
+        const want = DIRS.map((d, i) => (set.has(`${j.spot.x + d[0]!}:${j.spot.z + d[1]!}`) ? i : -1))
+          .filter((i) => i >= 0);
+        const got = DIRS.map((_, dir) => dir)
+          .filter((dir) => open[dir] === true)
+          .map((dir) => turnDir(dir, piece.turn))
+          .sort();
+        assert.deepEqual([...got], [...want].sort(), `${what}: «${piece.model}» повёрнут мимо соседей`);
+      }
+    }
+  });
+
+  test('на перекрёстке встаёт башня — детали с четырьмя ходами в наборе нет', () => {
+    const cross = shape(['.#.', '###', '.#.']);
+    const built = buildWall(cross);
+    const middle = built.pieces.filter((p) => p.x === 1 && p.z === 1);
+    assert.equal(middle.length, 2, 'башня — этаж и шапка');
+    assert.deepEqual(middle.map((p) => p.role), ['башня', 'башня']);
+    assert.equal(middle[1]!.y, FLOOR, 'шапка стоит на этаже');
+    assert.equal(
+      Object.values(PARTS).flat().filter((p) => p.open.every(Boolean)).length,
+      0,
+      'если такая деталь появится, башню на перекрёстке надо пересмотреть',
+    );
+  });
+
+  test('одна и та же стена собирается одинаково', () => {
+    const cells = shape(['####', '#..#', '#..#', '####']);
+    assert.deepEqual(buildWall(cells).pieces, buildWall(cells).pieces);
+  });
+
+  test('высоты деталей конструктора совпадают — стена не ступенчатая', () => {
+    const walls = [...PARTS['одиночная'], ...PARTS['тупик'], ...PARTS['прямая'], ...PARTS['тройник']];
+    for (const part of walls) {
+      assert.equal(
+        measured.get(part.model)!.size[1],
+        WALL_TOP,
+        `«${part.model}» другой высоты — стена вышла бы ступенькой`,
+      );
     }
   });
 });
