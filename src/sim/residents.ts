@@ -247,6 +247,38 @@ export const RESIDENT_WORK: Record<SelfAnswer, ResourceKind> = {
   ходим: 'stone',
 };
 
+/** Занятие словами — для веера и карточки жильца: что он делает сейчас. */
+export const RESIDENT_STATE: Record<SelfAnswer, string> = {
+  строим: 'носит дерево',
+  ходим: 'носит камень',
+};
+
+/** Приказ словами — кнопки карточки жильца: на что его можно перевести. */
+export const RESIDENT_ORDER: Record<SelfAnswer, string> = {
+  строим: 'Носить дерево',
+  ходим: 'Носить камень',
+};
+
+/**
+ * Есть ли у жильца с этим номером крыша. Первая палатка — героя, жильцы
+ * считаются по остатку мест (`workDone` меряет тем же правилом): кто без
+ * крыши, тот за работу не берётся, и веер обязан говорить это лицом.
+ */
+export function hasRoof(camp: CampState, index: number): boolean {
+  return index < Math.min(camp.residents.length, Math.max(0, roofs(camp) - 1));
+}
+
+/**
+ * Приказ жильцу: сменить занятие. Бесплатно и мгновенно, как перестановка
+ * зданий (§20.4): расписание — выразительность лагеря, а не логистика.
+ */
+export function assignWork(camp: CampState, index: number, answer: SelfAnswer): boolean {
+  const r = camp.residents[index];
+  if (r === undefined || r.answer === answer) return false;
+  camp.residents[index] = { ...r, answer };
+  return true;
+}
+
 /**
  * Сколько жилец возится с одной единицей. **Черновое число**, и помечено
  * так по тому же поводу, что цена палатки: §20.3 требует замера, и у этой

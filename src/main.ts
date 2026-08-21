@@ -183,7 +183,19 @@ import { createDirector } from './features/onboarding';
 import { MeetPanel } from './ui/meetPanel';
 import type { MeetPanelCallbacks } from './ui/meetPanel';
 import { advance, answerSelf, generateSettler, giftOf, setHeroName, startMeet } from './sim/settler';
-import { TENT_REASON, admit, buildTent, collectWork, homeless, roofs, tentBlock } from './sim/residents';
+import {
+  RESIDENT_STATE,
+  TENT_REASON,
+  admit,
+  assignWork,
+  buildTent,
+  collectWork,
+  hasRoof,
+  homeless,
+  roofs,
+  tentBlock,
+} from './sim/residents';
+import { ResidentCard } from './ui/residentCard';
 import type { DwellerLook } from './sim/garrison';
 import type { MeetState, SelfAnswer, Settler } from './sim/settler';
 import { panelsFor, soundFor } from './features/scene';
@@ -676,8 +688,10 @@ const heroFan = new FanControl({
   reserve: () => campHud.bands(),
   // Лица берутся из отряда, а не хранятся: состав растёт с Жильём (§11.8),
   // и второй список героев рядом с первым разошёлся бы с ним молча.
-  people: () =>
-    roster.heroes.map((hero): FanPerson => {
+  // Лица берутся из отряда и из жильцов: как только в лагере больше одного
+  // человека, веер и есть тот список, по которому переключаются и приказывают.
+  people: () => [
+    ...roster.heroes.map((hero): FanPerson => {
       const block = raidBlock(hero);
       return {
         name: HERO_CLASSES[hero.cls].name,
@@ -689,11 +703,31 @@ const heroFan = new FanControl({
         asking: false,
       };
     }),
+    ...camp.residents.map((r, i): FanPerson => ({
+      name: r.name,
+      kind: 'жилец',
+      look: r.look,
+      seed: r.seed,
+      state: hasRoof(camp, i) ? RESIDENT_STATE[r.answer] : 'без крыши',
+      busy: false,
+      asking: false,
+    })),
+  ],
   onPick: (index) => {
+    // Хвост веера — жильцы: тап по лицу открывает карточку с приказами.
+    if (index >= roster.heroes.length) {
+      shownResident = index - roster.heroes.length;
+      heroCard.setVisible(false);
+      residentCard.sync(camp, shownResident);
+      residentCard.setVisible(true);
+      return;
+    }
     const hero = roster.heroes[index];
     if (hero === undefined) return;
     // Карточка открывается на любом, даже на том, кем сейчас не пойти.
     shownHero = index;
+    residentCard.setVisible(false);
+    heroCard.setVisible(true);
     const block = raidBlock(hero);
     if (block !== 'ok') {
       campHud.notify(refusal(HERO_CLASSES[hero.cls].name, RAID_REASON[block]));
@@ -702,6 +736,23 @@ const heroFan = new FanControl({
     }
     selectHero(roster, index);
     heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard);
+    persist();
+  },
+});
+
+/** Какой жилец в карточке. Отдельно от героя: списки разные, карточки тоже. */
+let shownResident = 0;
+
+/**
+ * Карточка жильца: приказ меняет занятие на месте, бесплатно и мгновенно —
+ * как перестановка зданий (§20.4). Сохраняется той же persist, что и всякая
+ * перемена лагеря.
+ */
+const residentCard = new ResidentCard(app, {
+  onOrder: (index, answer) => {
+    if (!assignWork(camp, index, answer)) return;
+    play('pick');
+    residentCard.sync(camp, index);
     persist();
   },
 });
@@ -896,10 +947,11 @@ function syncMeet(): void {
  */
 function dialogHud(on: boolean): void {
   if (!inGladeCamp) return;
-  const quiet = onboarding.step === 'build' || onboarding.step === 'craft';
+  const quiet = quietFrame();
   campHud.setVisible(!on);
   heroFan.setVisible(!on && !quiet);
   heroCard.setVisible(!on && !quiet);
+  if (on) residentCard.setVisible(false);
 }
 
 /**
@@ -1226,6 +1278,15 @@ const ear = createRaidEar();
  * только то, что относится к нему одному, — что построить, куда навести
  * камеру и что записать.
  */
+/**
+ * Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
+ * Ждут — пока в лагере нет жильцов: как только человек принят, веер —
+ * это уже не «данные», а люди, которым переключаются и приказывают,
+ * и прятать их кадром значило бы прятать самих жильцов.
+ */
+const quietFrame = (): boolean =>
+  (onboarding.step === 'build' || onboarding.step === 'craft') && camp.residents.length === 0;
+
 function showScene(scene: Scene, tier: Tier = 0): void {
   // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
   // палец поверх вылазки.
@@ -1234,13 +1295,13 @@ function showScene(scene: Scene, tier: Tier = 0): void {
     buildTool = null;
     campView.hideWallGhost();
   }
-  // Кадры 9 и 10 показывают ровно одно действие: отряд и данные ждут.
-  const quiet = onboarding.step === 'build' || onboarding.step === 'craft';
-  const panels = panelsFor(scene, quiet);
+  const panels = panelsFor(scene, quietFrame());
   hud.setVisible(panels.hud);
   campHud.setVisible(panels.campHud);
   heroCard.setVisible(panels.roster);
   heroFan.setVisible(panels.roster);
+  // Карточка жильца не переживает смену сцены: её открывает тап по лицу.
+  residentCard.setVisible(false);
   statsPanel.setVisible(panels.stats);
   startScreen.setVisible(panels.startScreen);
   campPrompt.setVisible(panels.campPrompt);
@@ -2655,7 +2716,9 @@ if (debugCamp !== null) {
     }
     persist();
   }
-  toCamp();
+  // Площадка напрямую, мимо маршрутизатора: второй лагерь существует
+  // чисто для тестов, и сейв с поляной не должен уводить кадр отладки.
+  toPadCamp();
   // Ручка к состоянию сцены. Без неё отладочная сцена показывает кадр,
   // но ответить на вопрос «а герой-то поднялся?» может только глаз.
   // Живёт только вместе с отладочным адресом.
@@ -2917,7 +2980,8 @@ if (debugParams.has('веер')) {
   // За веером стоит лагерь, а не заставка: размер слота и длина подписи
   // читаются только на настоящем кадре. Сам веер экран забирает — промах
   // по контролу обязан быть промахом по контролу, а не попаданием в лагерь.
-  toCamp();
+  // Площадка напрямую: сцена отладочная, поляна ей ни к чему.
+  toPadCamp();
   // Игровой веер на время сцены убирается: два веера на экране — это
   // не замер, а спор двух дуг за один палец.
   heroFan.setVisible(false);
@@ -3032,6 +3096,9 @@ function stepCampSystems(dt: number, now: number): void {
     heroFan.draw();
     heroCard.setBottom(campHud.bands().bottom + 6);
     heroCard.sync(roster, shownHero, now, camp.levels.yard);
+    residentCard.setBottom(campHud.bands().bottom + 6);
+    // Крыша могла появиться или пропасть, пока карточка открыта.
+    if (residentCard.visible) residentCard.sync(camp, shownResident);
 }
 
 startLoop({
