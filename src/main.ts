@@ -69,16 +69,18 @@ import { load, save, wipe } from './sim/save';
 import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import {
-  cycleTower,
+  completeWallIfDue,
   emptyWalls,
   gateBlock,
-  putStairs,
-  raiseWall,
+  nextTowerLevel,
   razeWall,
   stairsBlock,
-  toggleGate,
-  wallBlock,
+  startTower,
+  startWall,
+  strokeFit,
   wallPieces,
+  wallPrice,
+  wallSeconds,
   wallSpotOf,
   type WallSite,
   type WallTool,
@@ -327,14 +329,14 @@ const wallSite = (): WallSite => ({
 
 function openWalls(): void {
   buildPanel.setVisible(true);
-  buildPanel.update(wallsOf());
+  buildPanel.update(wallsOf(), clock.now());
   campHud.notify('Стены: выберите карточку, дальше жест по земле');
 }
 
 /** Перерисовать стены и обновить счётчики панели. */
 function refreshWalls(): void {
   campView.setWalls(wallPieces(wallsOf()));
-  buildPanel.update(wallsOf());
+  buildPanel.update(wallsOf(), clock.now());
 }
 
 /** Тап или мазок по земле в режиме стройки. Возвращает: жест обработан. */
@@ -343,63 +345,75 @@ function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
   const walls = wallsOf();
   const site = wallSite();
   const spot = wallSpotOf(Math.round(hit.x), Math.round(hit.z));
+  // Слот один на лагерь: стена и улучшение здания спорят за одно и то же.
+  const busy = camp.construction !== null;
 
   if (buildTool === 'стена') {
     if (stroke === null) stroke = [];
     const last = stroke[stroke.length - 1];
     if (last === undefined || last.x !== spot.x || last.z !== spot.z) stroke.push(spot);
     if (!finished) {
-      // Призрак ведётся по тем же клеткам, которые встанут: показывать
-      // одно, а строить другое — худший вид обмана в стройке.
-      campView.showWallGhost(
-        stroke.map((s) => ({ spot: s, ok: wallBlock(site, s) === 'ok' })),
+      // Призрак ведётся по тем же клеткам, которые встанут: показывать одно,
+      // а строить другое — худший вид обмана в стройке.
+      const fit = new Set(strokeFit(walls, site, stroke).map((s) => `${s.x}:${s.z}`));
+      campView.showWallGhost(stroke.map((s) => ({ spot: s, ok: fit.has(`${s.x}:${s.z}`) })));
+      // Счёт ведётся вместе с мазком: цену игрок обязан видеть до того,
+      // как отпустит палец, а не после.
+      const price = wallPrice('стена', fit.size).stone ?? 0;
+      const minutes = Math.round(wallSeconds('стена', fit.size) / 6) / 10;
+      buildPanel.setNote(
+        fit.size === 0
+          ? 'Здесь стене не встать'
+          : `${fit.size} кл. · ${price} камня · ${minutes} мин`,
       );
       return true;
     }
-    const put = raiseWall(walls, site, stroke);
+    const cells = strokeFit(walls, site, stroke);
     stroke = null;
     campView.hideWallGhost();
-    if (put === 0) {
-      play('deny');
-      buildPanel.setNote('Здесь стене не встать: занято зданием или за площадью');
-      return true;
-    }
-    play('build');
-    buildPanel.setNote(null);
-    refreshWalls();
-    persist();
-    return true;
+    return finishWall(startWall(walls, camp.resources, 'стена', cells, clock.now(), busy));
   }
 
   if (!finished) return true;
 
-  const deny = (why: string): boolean => {
-    play('deny');
-    buildPanel.setNote(why);
-    return true;
-  };
-
   if (buildTool === 'башня') {
-    const why = wallBlock(site, spot);
-    if (why !== 'ok') return deny(`Башня: ${why}`);
-    cycleTower(walls, site, spot);
-  } else if (buildTool === 'ворота') {
+    // Снять башню — не стройка: она разбирается сносом, как и всё остальное.
+    if (nextTowerLevel(walls, spot) === null) return finishWall('Выше некуда: снимите сносом');
+    return finishWall(startTower(walls, site, camp.resources, spot, clock.now(), busy));
+  }
+  if (buildTool === 'ворота') {
     const why = gateBlock(walls, spot);
-    if (why !== 'ok') return deny(`Ворота: ${why}`);
-    toggleGate(walls, spot);
-  } else if (buildTool === 'лестница') {
+    if (why !== 'ok') return finishWall(`Ворота: ${why}`);
+    return finishWall(startWall(walls, camp.resources, 'ворота', [spot], clock.now(), busy));
+  }
+  if (buildTool === 'лестница') {
     const why = stairsBlock(walls, site, spot);
-    if (why !== 'ok' && walls.stairs[`${spot.x}:${spot.z}`] === undefined) {
-      return deny(`Лестница: ${why}`);
-    }
-    putStairs(walls, site, spot);
-  } else if (buildTool === 'снос') {
-    if (!razeWall(walls, spot)) return deny('Здесь ничего не стоит');
+    if (why !== 'ok') return finishWall(`Лестница: ${why}`);
+    return finishWall(startWall(walls, camp.resources, 'лестница', [spot], clock.now(), busy));
   }
 
+  // Снос мгновенный и с возвратом камня: сносить — не строить, и трогать
+  // планировку не должно стоить дороже, чем не трогать её.
+  if (!razeWall(walls, spot, camp.resources)) return finishWall('Здесь ничего не стоит');
   play('build');
   buildPanel.setNote(null);
   refreshWalls();
+  campHud.sync(camp, clock.now(), 0);
+  persist();
+  return true;
+}
+
+/** Общий хвост стройки: отказ называет причину, успех занимает слот. */
+function finishWall(result: string): boolean {
+  if (result !== 'ok') {
+    play('deny');
+    buildPanel.setNote(result === 'слот занят' ? 'Слот занят другой стройкой' : result);
+    return true;
+  }
+  play('build');
+  buildPanel.setNote(null);
+  buildPanel.update(wallsOf(), clock.now());
+  campHud.sync(camp, clock.now(), 0);
   persist();
   return true;
 }
@@ -1500,6 +1514,13 @@ startLoop({
     }
 
     idleSeconds += dt;
+    // Стена кончается тем же тиком, что и здание: слот один, освобождаться
+    // он обязан одинаково.
+    if (completeWallIfDue(wallsOf(), now) !== null) {
+      refreshWalls();
+      campHud.notify('Стройка кончена');
+      persist();
+    }
     const finished = completeIfDue(camp, now);
     if (finished !== null) {
       track({ t: 'build_done', at: now, building: finished, level: camp.levels[finished] });

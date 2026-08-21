@@ -9,14 +9,26 @@
  * обязана быть серединой прямой. Жест у каждого свой, и карточка нужна
  * ровно затем, чтобы игрок знал, каким жестом он сейчас работает.
  *
- * **Панель не решает, чем платят.** Цена, время стройки и то, что стена даёт,
- * — вопросы §12 и замера, а не панели. Пока их нет, в карточке стоит прочерк:
- * прочерк честно говорит «не решено», а придуманное число врёт, что решено.
+ * **Цена названа за клетку, а счёт идёт по ходу мазка.** Клеток у стены
+ * столько, сколько проведут пальцем, поэтому карточка говорит цену единицы,
+ * а общий счёт — камень и минуты — растёт под карточками, пока палец ведёт.
+ * Узнать цену после того, как отпустил, было бы поздно.
+ *
+ * Чего стена **даёт**, панель по-прежнему не решает: это вопрос §12
+ * и отдельного замера.
  *
  * Панель — DOM, а не сцена: она ничего не рисует и не знает про three.
  * Что стройка сделала с лагерем, показывает `CampView`.
  */
-import { WALL_TOOLS, wallCount, type CampWalls, type WallTool } from '../sim/campWalls';
+import {
+  WALL_COST,
+  WALL_SECONDS,
+  WALL_TOOLS,
+  wallCount,
+  wallProgress,
+  type CampWalls,
+  type WallTool,
+} from '../sim/campWalls';
 import { TOWER_MAX } from '../sim/castle';
 
 export interface BuildPanelCallbacks {
@@ -52,6 +64,9 @@ export class BuildPanel {
   readonly root: HTMLElement;
   private readonly cards = new Map<WallTool, Card>();
   private readonly note: HTMLElement;
+  private readonly timer: HTMLElement;
+  private readonly bar: HTMLElement;
+  private readonly fill: HTMLElement;
   private tool: WallTool | null = null;
 
   constructor(private readonly cb: BuildPanelCallbacks) {
@@ -79,7 +94,16 @@ export class BuildPanel {
     this.note = document.createElement('div');
     this.note.className = 'build-note dim';
 
-    this.root.append(head, list, this.note);
+    // Полоса стройки: та же мерка, что у зданий, — сколько осталось ждать.
+    this.timer = document.createElement('div');
+    this.timer.className = 'build-note dim';
+    this.bar = document.createElement('div');
+    this.bar.className = 'bar';
+    this.bar.style.display = 'none';
+    this.fill = document.createElement('i');
+    this.bar.appendChild(this.fill);
+
+    this.root.append(head, list, this.bar, this.timer, this.note);
     this.setNote(null);
   }
 
@@ -101,9 +125,12 @@ export class BuildPanel {
     const bottom = document.createElement('span');
     bottom.className = 'build-bot dim';
     const count = document.createElement('span');
-    // Цена — слот, а не ноль: ноль читался бы как «бесплатно навсегда».
+    // Цена названа за клетку, а не за постройку: у стены клеток столько,
+    // сколько проведут пальцем, и общий счёт идёт под карточками по ходу мазка.
     const price = document.createElement('span');
-    price.textContent = tool === 'снос' ? 'вернёт всё' : 'цена —';
+    price.textContent = tool === 'снос'
+      ? 'вернёт камень'
+      : `${WALL_COST[tool]} камня · ${WALL_SECONDS[tool]} с`;
     bottom.append(count, price);
 
     button.append(name, gesture, bottom);
@@ -137,8 +164,25 @@ export class BuildPanel {
     return this.root.style.display !== 'none';
   }
 
-  /** Счётчики карточек по тому, что стоит в лагере. */
-  update(walls: CampWalls): void {
+  /**
+   * Счётчики карточек и полоса идущей стройки. Пока таймер идёт, карточки
+   * гаснут: слот один на лагерь, и вторую стройку начать всё равно нельзя —
+   * живая кнопка, которая откажет, врёт сильнее, чем погашенная.
+   */
+  update(walls: CampWalls, now: number): void {
+    const work = walls.work ?? null;
+    const busy = work != null;
+    for (const [, card] of this.cards) card.button.disabled = busy;
+    if (busy) {
+      const left = Math.max(0, Math.ceil(work.endsAt - now));
+      this.bar.style.display = '';
+      this.fill.style.width = `${Math.round(wallProgress(walls, now) * 100)}%`;
+      this.timer.textContent = `${work.tool}: осталось ${left} с`;
+    } else {
+      this.bar.style.display = 'none';
+      this.timer.textContent = '';
+    }
+
     const count = wallCount(walls);
     for (const tool of COUNTED) {
       const card = this.cards.get(tool);

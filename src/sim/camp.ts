@@ -239,7 +239,10 @@ export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
   // §20.4 — единственный настоящий ограничитель: никакое здание не может
   // превысить уровень Жилья.
   if (id !== 'hq' && level + 1 > camp.levels.hq) return 'hq-cap';
-  if (camp.construction !== null) return 'slot-busy';
+  // Слот один на лагерь, и стена в нём — такая же стройка, как улучшение
+  // (§20.1, §6.1.6). Стена и здание впервые спорят за одно и то же, и это
+  // ровно тот вопрос «что дальше», ради которого слот и один.
+  if (camp.construction !== null || camp.walls?.work != null) return 'slot-busy';
   if (!canAfford(camp.resources, BUILD_COST[level + 1] ?? {})) return 'resources';
   return 'ok';
 }
