@@ -14,6 +14,8 @@ import { STONES, scatterStones, type Stone } from './stones';
  * оперируют расписанием отряда, а Мастерская закрывает дыру в петле возврата
  * (§20.1) и потому идёт первой.
  */
+import type { Resident } from './residents';
+
 export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge';
 
 export const BUILDING_ORDER: readonly BuildingId[] = ['hq', 'kitchen', 'storage', 'forge'];
@@ -173,6 +175,13 @@ export interface CampState {
   construction: Construction | null;
   /** §14 — снаряжение живёт в лагере, а не в вылазке: при провале не теряется. */
   gear: GearState;
+  /** Приглашённые жильцы (`residents.ts`). Герой в список не входит: он
+   *  живёт в Жилье, и считать его дважды значило бы завести ему вторую
+   *  палатку. */
+  residents: Resident[];
+  /** Палатки сверх Жилья. Уровня у них нет — только место 2×2 и место
+   *  для одного человека. */
+  tents: { x: number; z: number }[];
   /**
    * §14.2 — что в левой руке. Поле лагеря, а не шестой слот GearState:
    * уровень предмета куётся, а рука перекладывается — бесплатно, мгновенно
@@ -262,6 +271,8 @@ export function createCamp(): CampState {
     resources: emptyResources(),
     construction: null,
     gear: emptyGear(),
+    residents: [],
+    tents: [],
     // Умолчание — фонарь: так левая рука вела себя до §14.2, и ни один
     // прежний прогон от появления поля не сдвинулся ни на число.
     offhand: 'torch',

@@ -6,6 +6,7 @@ import {
   enemyGeometry,
   enemyParts,
   dwellerParts,
+  settlerParts,
   guardParts,
   heroGeometry,
   heroParts,
@@ -27,10 +28,12 @@ import {
   patrolAt,
   type Garrison,
 } from '../sim/garrison';
+import type { DwellerLook } from '../sim/garrison';
 import type { GraveSite } from '../sim/graveSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
 import { Rigged } from './rigged';
+import { RIG_CLIPS } from './rig.data';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
 import { hexToWorld, worldToHex } from '../sim/hex';
@@ -323,6 +326,19 @@ export class RaidView {
    */
   private garrison: Garrison | null = null;
   private readonly squad: { rig: Rigged; facing: number }[] = [];
+  /**
+   * Поселенец у прогалины: сидит, пока его не позвали. Отдельным полем,
+   * а не в `dwellerViews`, потому что живёт он не от времени, как жильцы
+   * замка, а от одного события — и второго такого в кадре не бывает.
+   */
+  private settler: {
+    rig: Rigged;
+    facing: number;
+    /** Куда идти, когда встал. `null` — ещё сидит или уже пришёл. */
+    goal: { x: number; z: number } | null;
+    /** Сколько осталось вставать: клип не прерывается ходьбой. */
+    rising: number;
+  } | null = null;
   private archer: { rig: Rigged; facing: number } | null = null;
   private watch = 0;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
@@ -764,6 +780,68 @@ export class RaidView {
    * у стрелка лук. Скелет при этом у каждого свой — иначе пятеро шагали бы
    * в такт одной ногой.
    */
+  /**
+   * Посадить поселенца на клетку. Клип «сидит» зациклен, и до зова
+   * поселенец не делает больше ничего: он не покой играет, а именно сидит —
+   * все прочие в кадре стоят и ходят, и разница видна без подписи.
+   */
+  putSettler(look: DwellerLook, x: number, z: number, facing = 0): void {
+    this.settler?.rig.dispose();
+    const rig = new Rigged(settlerParts(look), this.blocking);
+    rig.root.position.set(x, 0, z);
+    rig.root.rotation.y = facing;
+    rig.play('сидит');
+    this.group.add(rig.root);
+    this.settler = { rig, facing, goal: null, rising: 0 };
+  }
+
+  /**
+   * Позвать: встаёт и идёт. Ходьба не начинается, пока клип вставания
+   * не доигран — оборванное вставание читается как рывок, а это ровно то,
+   * ради чего клип и взят вместо подмены позы.
+   */
+  callSettler(toX: number, toZ: number): void {
+    if (this.settler === null) return;
+    this.settler.rig.play('встаёт');
+    this.settler.rising = RIG_CLIPS['встаёт'].duration;
+    this.settler.goal = { x: toX, z: toZ };
+  }
+
+  /** Где он сейчас: отладочной сцене нужно число, а не глаз. */
+  settlerAt(): { x: number; z: number; state: string | null } | null {
+    if (this.settler === null) return null;
+    const p = this.settler.rig.root.position;
+    return { x: +p.x.toFixed(3), z: +p.z.toFixed(3), state: this.settler.rig.state };
+  }
+
+  private syncSettler(dt: number): void {
+    const s = this.settler;
+    if (s === null) return;
+    // Тик миксера — первым и безусловно. Сидит он или идёт, кадр обязан
+    // стареть: без этого клип не играется вовсе, и поселенец остаётся
+    // в позе привязки — то есть стоит навытяжку с видом «анимация сломана».
+    s.rig.update(dt);
+    if (s.rising > 0) {
+      s.rising -= dt;
+      return;
+    }
+    if (s.goal === null) return;
+    const dx = s.goal.x - s.rig.root.position.x;
+    const dz = s.goal.z - s.rig.root.position.z;
+    const far = Math.hypot(dx, dz);
+    if (far < 0.08) {
+      s.goal = null;
+      s.rig.play('покой');
+      return;
+    }
+    const step = Math.min(far, DWELLER_SPEED * dt);
+    s.rig.root.position.x += (dx / far) * step;
+    s.rig.root.position.z += (dz / far) * step;
+    s.facing = RaidView.turnTo(s.facing, Math.atan2(dx, dz), dt);
+    s.rig.root.rotation.y = s.facing;
+    s.rig.play('ходьба', rateFor(DWELLER_SPEED, s.rig.root.scale.y));
+  }
+
   private buildGarrison(site: CastleSite): void {
     this.garrison = garrisonOf(site);
     for (let i = 0; i < SQUAD; i++) {
@@ -1579,6 +1657,7 @@ export class RaidView {
     this.syncTrees(dt);
     this.syncStones(dt);
     this.syncGarrison(dt);
+    this.syncSettler(dt);
     this.syncGrass(hx, hz, time);
 
     if (this.evacRing !== null) {
@@ -1636,6 +1715,8 @@ export class RaidView {
     });
     // Скелет у каждой особи свой, и три не освобождает его вместе с группой.
     for (const view of this.enemyViews.values()) view.rig.dispose();
+    this.settler?.rig.dispose();
+    this.settler = null;
     for (const view of this.dwellerViews) view.rig.dispose();
     this.dwellerViews.length = 0;
     for (const view of this.squad) view.rig.dispose();

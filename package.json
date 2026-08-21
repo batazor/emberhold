@@ -23,7 +23,8 @@
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
     "audio": "tsx scripts/audio.ts",
-    "play": "tsx scripts/play.ts"
+    "play": "tsx scripts/play.ts",
+    "tents": "tsx scripts/tents.ts"
   },
   "dependencies": {
     "three": "^0.180.0"

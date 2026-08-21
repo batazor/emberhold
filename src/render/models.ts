@@ -518,6 +518,31 @@ export const dwellerParts = (look: DwellerLook): RiggedParts => {
   return adventurerParts(model, heroHeight(GUARD_LIKE), adventurerHeld(held));
 };
 
+/**
+ * Поселенец у прогалины: тот же житель, но **без предмета в руке**.
+ *
+ * Клипа «ранен» у нас нет и не будет — §17.1 показывает урон вспышкой,
+ * а вспышка это удар сейчас, а не рана вчера. Читается рана поэтому тем же
+ * способом, каким различаются скелеты (§15) и гарнизон: снаряжением
+ * и поведением. Все в кадре ходят и при оружии, этот сидит и с пустыми
+ * руками — и этого хватает, чтобы не подписывать словом.
+ */
+export const settlerParts = (look: DwellerLook): RiggedParts =>
+  adventurerParts(DWELLER_MODEL[look][0], heroHeight(GUARD_LIKE));
+
+/**
+ * Жилец лагеря неподвижной геометрией. Именно неподвижной, и это решение,
+ * а не экономия: в лагере скиннованных мешей нет вовсе — герой лагеря сам
+ * стоит `heroGeometry` и ходит без клипа ходьбы. Жилец с ригом оказался бы
+ * единственным анимированным телом в кадре и сделал бы героя рядом с собой
+ * заметно хуже, чем он есть.
+ *
+ * Руки пустые, как и у сидящего на прогалине: он пришёл ни с чем, отдал,
+ * что было, и оружия у него нет.
+ */
+export const residentGeometry = (look: DwellerLook): THREE.BufferGeometry =>
+  adventurerGeometry(DWELLER_MODEL[look][0], heroHeight(GUARD_LIKE));
+
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
 export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {
   const model = HERO_MODELS[cls];

@@ -17,7 +17,7 @@ import { describe, test } from 'node:test';
 import * as THREE from 'three';
 import { CLASS_ORDER } from '../sim/heroes';
 import type { RaidEnemyKind } from '../sim/types';
-import { enemyParts, heroParts } from './models';
+import { enemyParts, heroParts, settlerParts } from './models';
 import { WEAPON_LADDER } from './weapons';
 import { WEAPONS_MODELS } from './weapons.data';
 import { Rigged } from './rigged';
@@ -141,5 +141,69 @@ describe('привязка скина', () => {
         `уровень ${level}: в руке не та модель`,
       );
     }
+  });
+
+  /**
+   * Поселенец у прогалины сидит, и «сидит» обязано быть видно числом,
+   * а не на глаз: клип, который не опустил особь на землю, снаружи читается
+   * как «стоит навытяжку», и разницу в пять сантиметров экрана глазом
+   * не поймать. Замер: бёдра 0,272 в покое против 0,058 сидя, голова
+   * 0,851 против 0,611 — особь ниже себя стоящей больше чем на четверть.
+   *
+   * Второе число важнее первого. У `Sit_Floor_Down`/`StandUp` в каталоге
+   * набора смещение корня 0,44 и 0,38 — на глаз это половина клетки,
+   * и поселенец, севший на одну клетку и вставший на другой, читался бы
+   * рывком. В единицах мира, после `fit`, это **0,083 клетки**, а круг
+   * «покой → сидит → встаёт → покой» возвращает особь ровно в точку старта.
+   * Порог 0,25 клетки — четверть, дальше сдвиг видно.
+   */
+  test('сидящий сидит на земле и встаёт на своей клетке', () => {
+    const rig = new Rigged(settlerParts('плут'), new THREE.MeshBasicMaterial());
+    const at = (name: string): THREE.Matrix4 => {
+      rig.root.updateMatrixWorld(true);
+      const bone = rig.root.getObjectByName(name);
+      assert.ok(bone !== undefined, `нет кости ${name}`);
+      return bone.matrixWorld;
+    };
+    const y = (name: string): number => at(name).elements[13]!;
+    const ground = (name: string): [number, number] => {
+      const m = at(name).elements;
+      return [m[12]!, m[14]!];
+    };
+    const run = (seconds: number): void => {
+      for (let t = 0; t < seconds; t += 1 / 60) rig.update(1 / 60);
+    };
+
+    rig.play('покой');
+    run(1.2);
+    const standHips = y('hips');
+    const standHead = y('head');
+    const start = ground('hips');
+
+    rig.play('сидит');
+    run(3);
+    assert.ok(
+      standHips - y('hips') > standHips * 0.5,
+      `сидя бёдра ${y('hips').toFixed(3)} против ${standHips.toFixed(3)} стоя — клип не опустил особь`,
+    );
+    assert.ok(standHead - y('head') > 0.15, 'сидя голова почти на той же высоте — сидящий не читается');
+    const sat = ground('hips');
+
+    rig.play('встаёт');
+    run(1.4);
+    const up = ground('hips');
+    assert.ok(
+      Math.hypot(up[0] - sat[0], up[1] - sat[1]) < 0.25,
+      'вставание уводит с клетки больше чем на четверть — снаружи это рывок',
+    );
+
+    rig.play('покой');
+    run(0.5);
+    const back = ground('hips');
+    assert.ok(
+      Math.hypot(back[0] - start[0], back[1] - start[1]) < 0.25,
+      'круг «покой → сидит → встаёт → покой» не вернул особь на место',
+    );
+    rig.dispose();
   });
 });

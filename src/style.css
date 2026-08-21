@@ -421,6 +421,49 @@ button[disabled] { opacity: 0.4; cursor: default; }
   pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
 }
 
+/* ---------- задание лагеря ---------- */
+/* Строка, а не уведомление: «кому-то негде спать» не перестаёт быть правдой
+   оттого, что игрок отвернулся. Стоит под ресурсами, потому что просит она
+   ресурс, и гаснет, когда все под крышей. */
+#camp .task {
+  align-self: center; display: flex; align-items: center; gap: 10px;
+  margin-top: 6px; padding: 8px 12px; pointer-events: auto;
+}
+#camp .task .why {
+  font-size: 12px; letter-spacing: 0.04em; color: var(--ink);
+}
+#camp .task button { font-size: 13px; padding: 8px 16px; }
+#camp .task button:disabled { opacity: 0.45; }
+
+/* ---------- знакомство у прогалины ---------- */
+/* Та же полка внизу, что у приглашения разбить лагерь и у лавки: разговор
+   случается там, где игрок стоит. Кнопки «закрыть» нет — отойти можно
+   в любой момент, и панель гаснет сама. */
+#meet {
+  position: fixed; inset: auto 0 0 0; display: flex; flex-direction: column;
+  align-items: center; gap: 10px;
+  padding: 0 16px calc(28px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+#meet .say {
+  margin: 0; font-size: 14px; letter-spacing: 0.03em; color: var(--ink);
+  max-width: 22em; text-align: center;
+}
+#meet input {
+  pointer-events: auto; font: inherit; font-size: 16px; text-align: center;
+  /* 16px — не вкус: на меньшем размере телефон зумит страницу на фокусе,
+     и кадр уезжает из-под разговора. */
+  padding: 10px 16px; width: min(11em, 70vw);
+}
+#meet .goods {
+  margin: 0; font-family: var(--ff-mono, monospace); font-size: 12px;
+  letter-spacing: 0.04em; color: var(--ink);
+}
+#meet .acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+#meet .acts button {
+  pointer-events: auto; font-size: 15px; padding: 12px 26px; letter-spacing: 0.04em;
+}
+
 /* ---------- лавка торговца (§13.4) ---------- */
 /* Строки, а не магазин: то же решение, что у припасов (§21) — «отдельный
    экран превратил бы лагерь в витрину». Здесь витрина отменила бы прогулку

@@ -1,5 +1,9 @@
 import type { BuildingId, CampState } from './camp';
 import { BUILDING_ORDER, campArea, campStones, createCamp } from './camp';
+import { DWELLER_LOOKS } from './garrison';
+import type { DwellerLook } from './garrison';
+import { SELF_ANSWERS } from './settler';
+import type { SelfAnswer } from './settler';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
 import { CLASS_ORDER, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
@@ -88,6 +92,14 @@ interface SaveV1 {
    * начавший после, — иначе валуны достались бы только новым лагерям.
    */
   stones?: { x: number; z: number }[];
+  /**
+   * Жильцы и палатки под них (`residents.ts`). Поля необязательные по той же
+   * причине, что отряд, стены и валуны: сейв прежних этапов обязан
+   * открываться. Отсутствие читается пустым лагерем — герой один и живёт
+   * в Жилье, ровно как было до появления жильцов.
+   */
+  residents?: { name: string; look: string; answer: string }[];
+  tents?: { x: number; z: number }[];
 }
 
 export interface LoadResult {
@@ -123,6 +135,8 @@ export function save(
     // Пишется остаток, а не список с пометками: разбитый валун — это просто
     // камень, которого больше нет, и хранить о нём запись незачем.
     stones: camp.stones.filter((s) => !s.taken).map((s) => ({ x: s.x, z: s.z })),
+    residents: camp.residents.map((r) => ({ name: r.name, look: r.look, answer: r.answer })),
+    tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -234,6 +248,24 @@ export function load(): LoadResult {
         .map((s, id) => ({ id, x: Math.floor(s.x), z: Math.floor(s.z), taken: false }));
     } else {
       camp.stones = campStones();
+    }
+
+    // Жилец без внятной внешности или ответа не восстанавливается вовсе:
+    // подставить умолчание значило бы придумать за игрока, кого он позвал.
+    if (Array.isArray(data.residents)) {
+      camp.residents = data.residents
+        .filter((r): r is { name: string; look: DwellerLook; answer: SelfAnswer } =>
+          r != null &&
+          typeof r.name === 'string' &&
+          r.name !== '' &&
+          DWELLER_LOOKS.includes(r.look as DwellerLook) &&
+          SELF_ANSWERS.includes(r.answer as SelfAnswer))
+        .map((r) => ({ name: r.name, look: r.look, answer: r.answer }));
+    }
+    if (Array.isArray(data.tents)) {
+      camp.tents = data.tents
+        .filter((t) => t != null && typeof t.x === 'number' && typeof t.z === 'number')
+        .map((t) => ({ x: Math.floor(t.x), z: Math.floor(t.z) }));
     }
 
     for (const slot of GEAR_ORDER) {
