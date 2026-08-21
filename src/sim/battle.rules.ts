@@ -13,6 +13,7 @@ import {
   apply,
   battleOver,
   createBattle,
+  enemyPlan,
   current,
   initiative,
   movePerTurn,
@@ -35,6 +36,7 @@ function duo(kind: 'minion' | 'warrior' | 'mage' = 'minion'): BattleState {
   const c = hexToWorld({ q: 8, r: 8 });
   const e = hexToWorld({ q: 9, r: 8 });
   return createBattle(
+    N, open(),
     { x: c.x, z: c.z, wounds: 3, speed: 1.67, reach: 1, ranged: false },
     [{ id: 0, kind, x: e.x, z: e.z, hp: ENEMY_STATS[kind].hp }],
   );
@@ -50,8 +52,8 @@ describe('Пошаговый бой', () => {
       { side: 'enemy' } as BattleUnit,
       { side: 'enemy' } as BattleUnit,
     ];
-    assert.deepEqual(initiative(units, [1.7, 2.2, 1.4]), [1, 0, 2], 'быстрый ходит раньше');
-    assert.deepEqual(initiative(units, [2, 2, 2]), [0, 1, 2], 'при равной скорости герой первый');
+    assert.deepEqual(initiative(units, [1.7, 2.2, 1.4]), [0, 1, 2], 'герой открывает раунд');
+    assert.deepEqual(initiative(units, [1.7, 1.4, 2.2]), [0, 2, 1], 'среди врагов — по Скорости');
     assert.deepEqual(initiative(units, [2, 2, 2]), initiative(units, [2, 2, 2]), 'порядок устойчив');
   });
 
@@ -76,6 +78,7 @@ describe('Пошаговый бой', () => {
     // в мире они стояли врозь. Бой от этого падать не должен.
     const c = hexToWorld({ q: 5, r: 5 });
     const state = createBattle(
+      N, open(),
       { x: c.x, z: c.z, wounds: 3, speed: 1.67, reach: 1, ranged: false },
       [
         { id: 0, kind: 'minion', x: c.x, z: c.z, hp: 4 },
@@ -180,5 +183,53 @@ describe('Пошаговый бой', () => {
       false,
       'удар прошёл мимо правил досягаемости',
     );
+  });
+});
+
+describe('Пошаговый бой: конечность', () => {
+  test('ход состоит из одного перемещения и одного действия', () => {
+    // Без этого бой не кончается никогда: план «дойти» остаётся выполнимым
+    // после каждого шага, очередь не двигается. Золотой мастер показал это
+    // как 95% провалов при нуле полученных ран — цифра ноль в такой метрике
+    // всегда значит ошибку, а не баланс.
+    const state = duo();
+    const actor = current(state)!;
+    const first = [...moves(state, N, open(), actor).values()][0]!;
+    assert.equal(apply(state, N, open(), { kind: 'move', to: first.hex }, flat, nameOf), true);
+    assert.equal(
+      apply(state, N, open(), { kind: 'move', to: actor.hex }, flat, nameOf),
+      false,
+      'боец сходил дважды за ход',
+    );
+  });
+
+  test('шаг на месте не считается ходом', () => {
+    const state = duo();
+    const actor = current(state)!;
+    assert.ok(
+      !moves(state, N, open(), actor).has(hexKey(actor.hex)),
+      'собственный гекс попал в ходы — очередь встанет',
+    );
+  });
+
+  test('бой сходится: очередь всегда доходит до конца', () => {
+    // Исчерпывающая проверка того, что вешало игру: гоняем бой правилами
+    // обеих сторон и требуем, чтобы он кончился за разумное число ходов.
+    for (const kind of ['minion', 'warrior', 'mage'] as const) {
+      const state = duo(kind);
+      let turns = 0;
+      while (battleOver(state) === null && turns < 500) {
+        const unit = current(state)!;
+        const plan = enemyPlan(state, N, open(), unit, ENEMY_STATS[kind].chases);
+        // Обе стороны ходят одним правилом: вопрос не в тактике, а в том,
+        // что очередь обязана двигаться при любом решении.
+        if (!apply(state, N, open(), plan, flat, nameOf)) {
+          apply(state, N, open(), { kind: 'wait' }, flat, nameOf);
+        }
+        if (current(state)!.acted) advance(state);
+        turns += 1;
+      }
+      assert.ok(battleOver(state) !== null, `${kind}: бой не сошёлся за 500 ходов`);
+    }
   });
 });

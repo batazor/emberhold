@@ -15,16 +15,13 @@
  *
  * Запуск: npm run ammo
  */
-import { TICK } from '../src/core/loop';
-import { POLICIES, dangerGrid } from '../src/sim/bot';
-import { visionRadius } from '../src/sim/config';
+import { POLICIES, playRaid } from '../src/sim/bot';
+import { mulberry32 } from '../src/core/rng';
 import { emptyGear } from '../src/sim/gear';
 import { createHero, loadout } from '../src/sim/heroes';
-import { findPath } from '../src/sim/pathfinding';
-import { commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
-import type { RaidState } from '../src/sim/raid';
+import type { RaidOptions } from '../src/sim/raid';
 import { totalOf } from '../src/sim/resources';
-import type { Cell, Tier } from '../src/sim/types';
+import type { Tier } from '../src/sim/types';
 
 const RUNS = 200;
 const TIERS: readonly Tier[] = [1, 2, 3];
@@ -46,65 +43,35 @@ interface Run {
   readonly dryAt: number | null;
 }
 
-/** Тот же осторожный игрок, которым мерится всё остальное. */
-function play(state: RaidState): Run {
-  const vision = visionRadius(state.loadout.knowledge, true, true);
-  const policy = POLICIES.cautious;
-  let guard = 0;
-  let dryAt: number | null = null;
-  const started = state.food;
-
-  while (state.status === 'running' && guard++ < 20000) {
-    if (dryAt === null && state.arrowsMax > 0 && state.arrows === 0) {
-      dryAt = started > 0 ? 1 - Math.max(0, state.food) / started : 1;
-    }
-    if (state.path.length === 0) {
-      const avoid = dangerGrid(state, policy.keepAway, vision);
-      const home = state.loc.evac;
-      const here = { x: Math.round(state.hero.x), z: Math.round(state.hero.z) };
-      const back = findPath(state.loc.size, state.loc.blocked, here, home).length;
-
-      let target: Cell | null = null;
-      if (state.food - policy.margin > back) {
-        let best = Infinity;
-        for (const c of state.loc.containers) {
-          if (c.opened) continue;
-          const d = findPath(state.loc.size, avoid, here, c).length;
-          if (d > 0 && d < best) {
-            best = d;
-            target = c;
-          }
-        }
-      }
-      if (target === null) target = home;
-      if (!commandMove(state, target)) commandMove(state, home);
-      if (state.path.length === 0) break;
-    }
-    stepRaid(state, TICK, true, state.loadout.knowledge);
-  }
-
-  const r = raidResult(state);
+/**
+ * Игрок берётся у бота целиком. Своя копия здесь была и пережила ровно
+ * до пошагового боя: игрок, не умеющий ходить в бою, вешает вылазку.
+ */
+function play(opts: RaidOptions): Run {
+  const r = playRaid(opts, POLICIES.cautious, mulberry32(opts.seed));
   return {
     spent: r.arrowsSpent,
     left: r.arrowsLeft,
-    max: state.arrowsMax,
+    max: r.arrowsSpent + r.arrowsLeft,
     dry: r.dryFights,
     haul: totalOf(r.carried),
     ok: r.status === 'evacuated',
-    dryAt,
+    // Глубина опустошения колчана из итога не выводится, и врать ею нельзя:
+    // прибор показывает то, что меряет, а не то, что удобно.
+    dryAt: r.arrowsLeft === 0 && r.arrowsSpent > 0 ? 1 : null,
   };
 }
 
 /** Лучник со снаряжением уровня `level`: колчан растёт от оружия (§14.3). */
-const archer = (seed: number, tier: Tier, level: number, arrows?: number): RaidState => {
+const archer = (seed: number, tier: Tier, level: number, arrows?: number): RaidOptions => {
   const gear = emptyGear();
   gear.weapon = level;
-  return createRaid({
+  return {
     ...CAMP[tier], seed, tier,
     loadout: loadout(createHero('archer', 0)),
     gear,
     ...(arrows === undefined ? {} : { arrows }),
-  });
+  };
 };
 
 const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);

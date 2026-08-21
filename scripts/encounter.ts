@@ -19,15 +19,12 @@
  *
  * Запуск: npm run encounter
  */
-import { TICK } from '../src/core/loop';
-import { POLICIES, dangerGrid } from '../src/sim/bot';
+import { POLICIES, playRaid } from '../src/sim/bot';
+import { mulberry32 } from '../src/core/rng';
 import { ENEMY_STATS } from '../src/sim/enemies';
-import { HERO_KNOWLEDGE, visionRadius } from '../src/sim/config';
 import { generateLocation } from '../src/sim/generate';
-import { findPath } from '../src/sim/pathfinding';
-import { commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
-import type { RaidState } from '../src/sim/raid';
-import type { Cell, EnemyKind, Tier } from '../src/sim/types';
+import type { RaidOptions } from '../src/sim/raid';
+import type { EnemyKind, Tier } from '../src/sim/types';
 
 /** Забегов на точку. Столько же, сколько при съёме нынешних чисел. */
 const RUNS = 60;
@@ -41,7 +38,7 @@ const CAMP = { kitchenLevel: 3, storageLevel: 3 };
  * Локация яруса с подменённым составом врагов. Геометрия, находки и провиант
  * остаются теми же — меняется ровно одно, иначе сравнивать будет нечего.
  */
-function withEnemies(seed: number, kinds: readonly EnemyKind[]): RaidState {
+function withEnemies(seed: number, kinds: readonly EnemyKind[]): RaidOptions {
   const loc = generateLocation(seed, TIER, 1);
   const kept = loc.enemies.slice(0, kinds.length);
   const enemies = kept.map((e, i) => ({
@@ -49,46 +46,21 @@ function withEnemies(seed: number, kinds: readonly EnemyKind[]): RaidState {
     kind: kinds[i]!,
     hp: ENEMY_STATS[kinds[i]!].hp,
   }));
-  return createRaid({ ...CAMP, seed, tier: TIER, loc: { ...loc, enemies } });
+  return { ...CAMP, seed, tier: TIER, loc: { ...loc, enemies } };
 }
 
-/** Осторожный игрок: идёт к ближайшей находке в обход опасности, уходит
- *  домой, когда провианта осталось на дорогу. Тот же, которым мерился §20.3. */
-function play(state: RaidState): { wounds: number; ok: boolean } {
-  const vision = visionRadius(HERO_KNOWLEDGE, true, true);
-  const policy = POLICIES.cautious;
-  let guard = 0;
-
-  while (state.status === 'running' && guard++ < 20000) {
-    if (state.path.length === 0) {
-      const avoid = dangerGrid(state, policy.keepAway, vision);
-      const home = state.loc.evac;
-      const left = state.food - policy.margin;
-      const back = findPath(state.loc.size, state.loc.blocked,
-        { x: Math.round(state.hero.x), z: Math.round(state.hero.z) }, home).length;
-
-      let target: Cell | null = null;
-      if (left > back) {
-        let best = Infinity;
-        for (const c of state.loc.containers) {
-          if (c.opened) continue;
-          const d = findPath(state.loc.size, avoid,
-            { x: Math.round(state.hero.x), z: Math.round(state.hero.z) }, c).length;
-          if (d > 0 && d < best) {
-            best = d;
-            target = c;
-          }
-        }
-      }
-      if (target === null) target = home;
-      if (!commandMove(state, target)) commandMove(state, home);
-      if (state.path.length === 0) break;
-    }
-    stepRaid(state, TICK, true, HERO_KNOWLEDGE);
-  }
-
-  return { wounds: state.woundsTaken, ok: raidResult(state).status === 'evacuated' };
-}
+/**
+ * Игрок берётся у бота целиком, а не пишется здесь заново.
+ *
+ * Своя копия тут была, и она пережила ровно до пошагового боя: игрок,
+ * не умеющий ходить в бою, вешает вылазку насмерть. Это второй раз, когда
+ * дубликат модели игрока стоил прогона, — первым была карта опасности.
+ * Модель одна, и живёт она там же, где политики.
+ */
+const play = (opts: RaidOptions): { wounds: number; ok: boolean } => {
+  const r = playRaid(opts, POLICIES.cautious, mulberry32(opts.seed));
+  return { wounds: r.woundsTaken, ok: r.status === 'evacuated' };
+};
 
 const KINDS = Object.keys(ENEMY_STATS) as EnemyKind[];
 const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);

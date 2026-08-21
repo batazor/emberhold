@@ -2,12 +2,8 @@ import { kitchenFood, storageCapacity } from './camp';
 import {
   ENEMY_WAKE_SHARE,
   FOOD_COST,
-  HERO_ATTACK_INTERVAL,
   HERO_REACH,
   ARROWS_PER_CONTAINER,
-  ARROW_SPEED,
-  HERO_RANGED_INTERVAL,
-  HERO_RANGED_REACH,
   MIN_PIERCE_SHARE,
   PIERCE_STEP,
   PROJECTILE_HIT,
@@ -31,7 +27,19 @@ import type { ConsumableId } from './consumables';
 import { generateLocation } from './generate';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
+import {
+  FOOD_PER_ROUND,
+  advance,
+  apply,
+  battleOver,
+  contactBroken,
+  createBattle,
+  current,
+  enemyPlan,
+} from './battle';
+import type { BattleAction, BattleUnit } from './battle';
 import { hasLineOfSight, idx } from './grid';
+import { hexToWorld } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
 import type {
   Cell,
@@ -189,6 +197,8 @@ export function createRaid(opts: RaidOptions): RaidState {
     arrowsMax: quiver,
     arrowsSpent: 0,
     dryFights: 0,
+    battle: null,
+    paidRound: 0,
     projectiles: [],
     nextProjectileId: 0,
     events: [],
@@ -229,13 +239,19 @@ export function commandMove(state: RaidState, target: Cell): boolean {
     z: Math.round(target.z),
   });
   if (goal === null) return false;
-  const path = findPath(
-    loc.size,
-    loc.blocked,
-    { x: Math.round(hero.x), z: Math.round(hero.z) },
-    goal,
-  );
-  if (path.length === 0) return false;
+  const here = { x: Math.round(hero.x), z: Math.round(hero.z) };
+  const path = findPath(loc.size, loc.blocked, here, goal);
+  if (path.length === 0) {
+    // Цель под ногами. Поиск пути возвращает пустоту — идти некуда, — и до
+    // пошагового боя это не случалось: герой приходил на клетку шагом,
+    // и приход разбирался сам. Бой сдвигает героя телепортом, и он может
+    // очнуться прямо на находке. «Дойти туда, где стою» значит «сделать
+    // то, что здесь есть», а не «ничего не делать»: иначе вылазка
+    // застревает молча.
+    if (goal.x !== here.x || goal.z !== here.z) return false;
+    state.path = [goal];
+    return true;
+  }
   state.path = path;
   return true;
 }
@@ -441,47 +457,9 @@ function stepProjectiles(state: RaidState, dt: number): void {
   state.projectiles = alive;
 }
 
-/** Выпустить снаряд. Точка прицеливания фиксируется здесь и больше
- *  не меняется — в этом весь смысл: уйти с линии обязано быть возможно. */
-function shoot(
-  state: RaidState,
-  from: 'hero' | 'enemy',
-  x: number,
-  z: number,
-  aimX: number,
-  aimZ: number,
-  speed: number,
-  power: number,
-  targetId: number,
-  kind: EnemyKind | null,
-): void {
-  state.projectiles.push({
-    id: state.nextProjectileId++,
-    from,
-    x,
-    z,
-    prevX: x,
-    prevZ: z,
-    aimX,
-    aimZ,
-    speed,
-    power,
-    targetId,
-    kind,
-  });
-}
-
-function stepCombat(state: RaidState, dt: number, vision: number): void {
+function stepContact(state: RaidState, dt: number, vision: number): void {
   const { hero, loc } = state;
-  let engaged = false;
-
-  // §11.3 — Защита складывается из класса и снаряжения: «кем идём» плюс
-  // «с чем». Считается один раз на шаг, а не на каждого противника: внутри
-  // шага она не меняется, и пересчёт на врага только звал бы вопрос,
-  // не может ли она разъехаться между двумя ударами одного тика.
-  const defense = state.loadout.defense + state.mods.defense;
-
-  hero.cooldown = Math.max(0, hero.cooldown - dt);
+  let touching = false;
 
   for (const enemy of loc.enemies) {
     if (enemy.hp <= 0) continue;
@@ -494,140 +472,44 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
     const dist = Math.hypot(dx, dz);
 
     // Игрок видит дальше, чем его видят: только так «проход через комнату»
-    // становится платным решением, а не внезапной смертью (§15).
+    // остаётся платным решением, а не внезапной свалкой (§15).
     if (!enemy.awake && dist <= vision * ENEMY_WAKE_SHARE && state.elapsed >= state.smokeUntil) {
       enemy.awake = true;
     }
     if (!enemy.awake) continue;
     if (dist > vision + 2) {
       enemy.awake = false;
-      enemy.telegraph = 0;
       continue;
     }
 
-    // Стрелок достаёт настолько, насколько видит: камень между ним и героем
-    // отменяет выстрел целиком (§11.3). У ближнего проверять нечего — он
-    // и так стоит вплотную.
-    const inRange =
-      dist <= stats.reach
-      && (!stats.ranged || hasLineOfSight(loc.size, loc.blocked, enemy.x, enemy.z, hero.x, hero.z));
+    // Контакт. У ближнего это касание, у стрелка — дистанция и линия:
+    // маг завязывает бой оттуда, откуда достаёт, и подходить не обязан.
+    const inReach = stats.ranged
+      ? dist <= stats.reach
+        && hasLineOfSight(loc.size, loc.blocked, enemy.x, enemy.z, hero.x, hero.z)
+      : dist <= stats.reach;
 
-    if (inRange) {
-      engaged = true;
-      enemy.cooldown = Math.max(0, enemy.cooldown - dt);
-      if (enemy.telegraph > 0) {
-        enemy.telegraph -= dt;
-        if (enemy.telegraph <= 0) {
-          // §11.7 «Заслон» — не получает урон 5 секунд. Замах при этом
-          // отыгрывается целиком: игрок должен видеть, что удар был отражён,
-          // а не что противник перестал бить.
-          if (stats.ranged) {
-            // Замах кончился — снаряд ушёл. Урон он донесёт сам и в свой
-            // момент; целится он туда, где герой стоял сейчас, и уйти
-            // с этой точки — единственный способ не получить болт.
-            shoot(
-              state, 'enemy', enemy.x, enemy.z, hero.x, hero.z,
-              stats.projectileSpeed, stats.attack, -1, enemy.kind,
-            );
-          } else if (skillActive(state, 'guard')) {
-            // §11.7 «Заслон» — не получает урон 5 секунд. Замах отыгрывается
-            // целиком: игрок должен видеть, что удар отражён, а не что
-            // противник перестал бить.
-            state.events.push('Заслон держит');
-          } else {
-            // §11.3 — Защита делит пробой: у героя с щитом тот же удар
-            // стоит меньше ран. Складывается из класса и снаряжения —
-            // «кем идём» и «с чем».
-            const took = woundsPerHit(stats.attack, defense);
-            hero.wounds -= took;
-            state.woundsTaken += took;
-            state.lastHitBy = enemy.kind;
-            state.lastWoundFrom = 'enemy';
-            state.events.push(`${stats.name} бьёт`);
-          }
-          enemy.cooldown = stats.attackInterval;
-        }
-      } else if (enemy.cooldown <= 0) {
-        enemy.telegraph = stats.telegraph;
-      }
-    } else {
-      enemy.telegraph = 0;
-      if (stats.chases && dist > 1e-3) {
-        const step = Math.min(dist - stats.reach * 0.9, stats.speed * dt);
-        if (step > 0) {
-          const nx = enemy.x + (dx / dist) * step;
-          const nz = enemy.z + (dz / dist) * step;
-          if (!loc.blocked[idx(loc.size, Math.round(nx), Math.round(nz))]) {
-            enemy.x = nx;
-            enemy.z = nz;
-          }
-        }
-      }
+    if (inReach) {
+      touching = true;
+      continue;
     }
 
-    // Противник держит дистанцию своего оружия (reach × 0.9), поэтому герой
-    // обязан доставать до неё. Иначе воин и маг не «бьют первым»
-    // (§15), а просто неуязвимы: их досягаемость больше геройской, и удар
-    // не проходит ни разу. Замер ловил это как 70% провалов в бою.
-    // У ближнего досягаемость героя дотягивается до его: он останавливается
-    // на длине своего оружия, и без этого воин с магом были бы не «бьют
-    // первым», а неуязвимы (§20.3.2). У стрелка правило противоположное:
-    // он стоит далеко именно затем, чтобы до него надо было дойти, и
-    // растягивать геройское оружие на всю дальность выстрела значило бы
-    // отменить его роль вместе с обходом.
-    const melee = stats.ranged ? HERO_REACH : Math.max(HERO_REACH, stats.reach);
-
-    // §14.3 — стреляем, пока есть чем. Пустой колчан не обезоруживает:
-    // герой берётся за нож и бьёт слабее, а не стоит столбом.
-    const shooting = state.loadout.ranged && state.arrows > 0;
-    const engageAt = shooting ? HERO_RANGED_REACH : melee;
-    const canSee =
-      !shooting
-      || hasLineOfSight(loc.size, loc.blocked, hero.x, hero.z, enemy.x, enemy.z);
-
-    if (dist <= engageAt && canSee && hero.cooldown <= 0) {
-      // §11.3 — герой снимает очки стойкости собственной Атакой. Ceil-функция
-      // делает её пороговой: разница видна не всегда, а на конкретных
-      // противниках, — и это то же «целое, а не полоска», что у ран.
-      if (shooting) {
-        state.arrows -= 1;
-        state.arrowsSpent += 1;
-        shoot(
-          state, 'hero', hero.x, hero.z, enemy.x, enemy.z,
-          ARROW_SPEED, state.loadout.attack, enemy.id, null,
-        );
-        if (state.arrows === 0) state.events.push('Колчан пуст');
-        // §14 — оружие ускоряет зачистку, а не увеличивает урон: меняется
-        // только пауза. Выстрел медленнее удара — стрелок платит темпом
-        // за дистанцию, иначе лук был бы просто лучше.
-        hero.cooldown = HERO_RANGED_INTERVAL * state.mods.attackInterval;
-        continue;
-      }
-
-      // Пустой колчан у стрелка — ближний бой ослабленным: удорожает
-      // зачистку, но не убивает (§14.3).
-      const dry = state.loadout.ranged && state.arrows <= 0;
-      enemy.hp -= state.loadout.attack * (dry ? RANGED_MELEE_PENALTY : 1);
-      hero.cooldown = HERO_ATTACK_INTERVAL * state.mods.attackInterval;
-      if (enemy.hp <= 0) {
-        enemy.awake = false;
-        state.kills += 1;
-        state.events.push(`${stats.name} падёт`);
+    // Не достаёт — подходит. Непреследующий стоит: держать зону — вся его
+    // роль, и подбегающий маг перестал бы быть магом (§15).
+    if (stats.chases && dist > 1e-3) {
+      const step = Math.min(dist - stats.reach * 0.9, stats.speed * dt);
+      if (step > 0) {
+        const nx = enemy.x + (dx / dist) * step;
+        const nz = enemy.z + (dz / dist) * step;
+        if (!loc.blocked[idx(loc.size, Math.round(nx), Math.round(nz))]) {
+          enemy.x = nx;
+          enemy.z = nz;
+        }
       }
     }
   }
 
-  // Провиант за стычку списывается один раз, а не каждый тик (§11.1).
-  if (engaged && !state.inFight) {
-    state.food -= FOOD_COST.fight;
-    state.fights += 1;
-    // §14.3 — стычка, проведённая без стрел: цена пустого колчана, и её
-    // надо предъявлять числом, а не обещать словом.
-    if (state.loadout.ranged && state.arrows <= 0) state.dryFights += 1;
-    state.inFight = true;
-  } else if (!engaged) {
-    state.inFight = false;
-  }
+  state.inFight = touching;
 }
 
 
@@ -676,9 +558,225 @@ function stepConsumables(state: RaidState): void {
   }
 }
 
+/**
+ * §11.3 — идёт ли бой. Пока идёт, мир стоит: шага нет, провианта за шаг нет,
+ * снаряды не летят. Наружу вынесено затем, что этот же вопрос задают рендер,
+ * интерфейс и бот, и каждый из них не должен знать, как устроено поле.
+ */
+export const inBattle = (state: RaidState): boolean => state.battle !== null;
+
+/**
+ * Завязать бой. Мир останавливается, бойцы встают на решётку там, где их
+ * застал контакт (§11.3). В бой идут только проснувшиеся: спящий за стеной
+ * к этой стычке отношения не имеет, и втягивать его значило бы наказывать
+ * игрока за то, чего он не делал.
+ */
+function openBattle(state: RaidState): void {
+  const engaged = state.loc.enemies.filter((e) => e.hp > 0 && e.awake);
+  if (engaged.length === 0) return;
+
+  state.battle = createBattle(
+    state.loc.size,
+    state.loc.blocked,
+    {
+      x: state.hero.x,
+      z: state.hero.z,
+      wounds: state.hero.wounds,
+      speed: HERO_SPEED * state.loadout.speedMul,
+      reach: HERO_REACH,
+      ranged: state.loadout.ranged && state.arrows > 0,
+    },
+    engaged.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z, hp: e.hp })),
+  );
+  // Завязка стоит провианта ровно как прежде (§11.1) — цена решения
+  // ввязаться не изменилась оттого, что бой стал пошаговым.
+  state.food -= FOOD_COST.fight;
+  state.fights += 1;
+  state.paidRound = 1;
+  state.path = [];
+  state.events.push('Бой');
+}
+
+/**
+ * Закончить бой и вернуть его итог в мир: раны героя, стойкость противников
+ * и то, где все оказались. Мир — источник правды о положении, поле боя —
+ * о том, что случилось.
+ */
+function closeBattle(state: RaidState): void {
+  const battle = state.battle;
+  if (battle === null) return;
+
+  for (const u of battle.units) {
+    const world = hexToWorld(u.hex);
+    if (u.side === 'hero') {
+      state.hero.wounds = u.hp;
+      state.hero.prevX = state.hero.x;
+      state.hero.prevZ = state.hero.z;
+      state.hero.x = world.x;
+      state.hero.z = world.z;
+      continue;
+    }
+    const enemy = state.loc.enemies.find((e) => e.id === u.id);
+    if (enemy === undefined) continue;
+    enemy.prevX = enemy.x;
+    enemy.prevZ = enemy.z;
+    enemy.x = world.x;
+    enemy.z = world.z;
+    if (u.hp <= 0 && enemy.hp > 0) state.kills += 1;
+    enemy.hp = u.hp;
+    if (u.hp <= 0) enemy.awake = false;
+  }
+
+  state.battle = null;
+  state.inFight = false;
+
+  // Бой сдвигает героя, а выход срабатывал только на шаге — и герой,
+  // оказавшийся на точке эвакуации после боя, застревал: идти некуда,
+  // выйти нечем. Замер видел это как вылазку, которая не кончается.
+  if (
+    state.evacOpen
+    && Math.round(state.hero.x) === state.loc.evac.x
+    && Math.round(state.hero.z) === state.loc.evac.z
+  ) {
+    state.status = 'evacuated';
+    state.path = [];
+  }
+}
+
+/**
+ * Один ход боя. Ходы противников считаются сами и сразу; на ходу героя шаг
+ * останавливается и ждёт решения — его принимает игрок или бот.
+ *
+ * Возвращает, стоит ли звать себя снова: так вся очередь противников
+ * доигрывается за один тик, а игрок не смотрит, как они ходят по одному
+ * за кадр.
+ */
+function stepBattle(state: RaidState): boolean {
+  const battle = state.battle;
+  if (battle === null) return false;
+
+  if (battleOver(battle) !== null) {
+    closeBattle(state);
+    return false;
+  }
+
+  // Раунд стоит провианта (§11.3): остановленное время не должно быть
+  // бесплатным убежищем, иначе стоять в бою выгоднее, чем идти.
+  if (battle.round > state.paidRound) {
+    state.paidRound = battle.round;
+    state.food -= FOOD_PER_ROUND;
+
+    // Начало раунда — момент, когда проверяется отрыв. Ушёл и пережил
+    // чужие ходы — бой кончился, мир пошёл дальше, противники остались
+    // разбужены и погонятся уже в реальном времени. Так §15 возвращает
+    // себе «обойти», которого пошаговый режим её лишил.
+    if (contactBroken(battle, state.loc.size, state.loc.blocked)) {
+      state.events.push('Оторвался');
+      closeBattle(state);
+      return false;
+    }
+  }
+
+  const unit = current(battle);
+  if (unit === undefined) return false;
+  if (unit.side === 'hero') return false; // ждём решения
+
+  const stats = ENEMY_STATS[unit.kind!];
+  const plan = enemyPlan(battle, state.loc.size, state.loc.blocked, unit, stats.chases);
+  applyBattle(state, plan);
+  return true;
+}
+
+/**
+ * Решение стороны героя. Зовётся игроком и ботом одинаково: у боя один вход,
+ * и «как ходит человек» с «как ходит бот» не расходятся по коду.
+ */
+export function commandBattle(state: RaidState, action: BattleAction): boolean {
+  const battle = state.battle;
+  if (battle === null || state.status !== 'running') return false;
+  const unit = current(battle);
+  if (unit === undefined || unit.side !== 'hero') return false;
+  return applyBattle(state, action);
+}
+
+/** Применить действие и передать ход, если он потрачен. */
+function applyBattle(state: RaidState, action: BattleAction): boolean {
+  const battle = state.battle!;
+  const unit = current(battle)!;
+  const before = unit.hex;
+
+  // §9 — раны обязаны считаться там же, где наносятся. Бой снимает их
+  // напрямую с бойца, и без этого замера счётчики молчат: золотой мастер
+  // показал «ран за вылазку 0» при живом бое, то есть прибор атрибуции
+  // остался цел, но перестал быть подключён.
+  const heroUnit = battle.units.find((u) => u.side === 'hero');
+  const woundsBefore = heroUnit?.hp ?? 0;
+
+  const ok = apply(
+    battle, state.loc.size, state.loc.blocked, action,
+    (from, to) => damageBetween(state, from, to),
+    (u) => (u.side === 'hero' ? 'Герой' : ENEMY_STATS[u.kind!].name),
+  );
+  if (!ok) return false;
+
+  if (heroUnit !== undefined && heroUnit.hp < woundsBefore) {
+    state.woundsTaken += woundsBefore - heroUnit.hp;
+    state.lastWoundFrom = 'enemy';
+    if (unit.side === 'enemy') state.lastHitBy = unit.kind;
+    state.hero.wounds = heroUnit.hp;
+  }
+
+  for (const e of battle.events) state.events.push(e);
+
+  // Стрелок тратит стрелу за выстрел — там же, где раньше (§14.3).
+  if (action.kind === 'attack' && unit.side === 'hero' && unit.ranged && state.arrows > 0) {
+    state.arrows -= 1;
+    state.arrowsSpent += 1;
+    if (state.arrows === 0) state.events.push('Колчан пуст');
+  }
+
+  // Шаг ходом не кончается: подойти и ударить — один ход. Кончают его удар,
+  // блок и ожидание, то есть всё, кроме перемещения.
+  if (action.kind === 'move' && !unit.acted) {
+    void before;
+    return true;
+  }
+  advance(battle);
+  return true;
+}
+
+/**
+ * §11.3 — урон считается теми же правилами, что и вне боя: у противника
+ * очки стойкости, у героя целые раны через пробой. Пошаговость меняет,
+ * когда бьют, а не как считается удар.
+ */
+function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): number {
+  if (from.side === 'hero') {
+    const dry = state.loadout.ranged && state.arrows <= 0;
+    return state.loadout.attack * (dry ? RANGED_MELEE_PENALTY : 1);
+  }
+  const stats = ENEMY_STATS[from.kind!];
+  void to;
+  return woundsPerHit(stats.attack, state.loadout.defense + state.mods.defense);
+}
+
 export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge: number): void {
   if (state.status !== 'running') return;
   state.events.length = 0;
+
+  // Пока идёт бой, мир стоит целиком: ни шага, ни провианта за шаг,
+  // ни полёта снарядов. Останавливается именно время, а не темп.
+  if (state.battle !== null) {
+    let guard = 0;
+    while (stepBattle(state) && guard++ < 64) { /* доигрываем чужие ходы */ }
+    if (state.hero.wounds <= 0) {
+      state.hero.wounds = 0;
+      state.status = 'failed';
+      state.path = [];
+    }
+    return;
+  }
+
   state.elapsed += dt;
   if (state.skillLeft > 0) state.skillLeft = Math.max(0, state.skillLeft - dt);
   const back = backSteps(state);
@@ -692,7 +790,10 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   // Снаряды двигаются до боя: выстрел, сделанный в этом тике, не долетает
   // в этом же. Иначе дальний бой отличался бы от ближнего только словом.
   stepProjectiles(state, dt);
-  stepCombat(state, dt, vision);
+  // Вне боя остаётся только завязка: разбудить и подойти. Сам бой считает
+  // поле (§11.3), и считать его дважды нельзя.
+  stepContact(state, dt, vision);
+  if (state.inFight && state.battle === null) openBattle(state);
 
   // Голод не убивает мгновенно: провиант обязан оставаться главной причиной
   // провала (§11.3), но провал должен наступать в дороге, а не внезапно.

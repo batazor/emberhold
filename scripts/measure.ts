@@ -9,96 +9,16 @@
  *
  * Запуск: npm run measure
  */
-import { TICK } from '../src/core/loop';
-import { POLICIES, dangerGrid } from '../src/sim/bot';
-import { ENEMY_STATS } from '../src/sim/enemies';
-import { idx } from '../src/sim/grid';
+import { mulberry32 } from '../src/core/rng';
+import { POLICIES, playRaid } from '../src/sim/bot';
+import { createRaid } from '../src/sim/raid';
 import { findPath } from '../src/sim/pathfinding';
-import { commandMove, createRaid, raidResult, stepRaid } from '../src/sim/raid';
-import type { RaidState } from '../src/sim/raid';
+import { ENEMY_STATS } from '../src/sim/enemies';
 import { emptyResources, RESOURCE_NAME } from '../src/sim/resources';
 import type { ResourceKind, Resources } from '../src/sim/resources';
-import type { Cell, Tier } from '../src/sim/types';
-import { HERO_KNOWLEDGE, visionRadius } from '../src/sim/config';
+import type { Tier } from '../src/sim/types';
 
 const RUNS = 300;
-const MAX_SECONDS = 240;
-/** Запас провианта, который бот оставляет себе сверх расчётного пути назад. */
-const SAFETY = 3;
-
-/**
- * Карта опасности берётся у бота, а не пишется здесь заново.
- *
- * До §11.3 моделей было две — своя у бота и своя у этого скрипта, — и обе
- * обходили врага по кругу. Это сходило с рук ровно до появления стрелка:
- * его опасность имеет форму линии, а не круга, и правка круговой модели
- * в одном месте не сдвинула замер ни на цифру. Две правды о том, как игрок
- * обходит врага, стоили ровно одного впустую потраченного прогона.
- *
- * Радиус обхода тот же, что у осторожной политики бота: этим ботом
- * калибровался §20.3, и менять его здесь значило бы менять единицу измерения.
- */
-const avoidMap = (state: RaidState, vision: number): Uint8Array =>
-  dangerGrid(state, POLICIES.cautious.keepAway, vision);
-
-/** Путь в обход опасности, а если обхода нет — напрямик. */
-function route(state: RaidState, avoid: Uint8Array, from: Cell, to: Cell): number {
-  const { loc } = state;
-  const safe = findPath(loc.size, avoid, from, to);
-  if (safe.length > 0) return safe.length;
-  return findPath(loc.size, loc.blocked, from, to).length;
-}
-
-/**
- * Политика бота: идти к ближайшему контейнеру, до которого хватает провианта
- * с учётом дороги назад, обходя замеченных противников. На одной ране —
- * уходить. Это осторожный игрок, а не оптимальный: его добыча — нижняя
- * граница, а не средний результат.
- */
-function decide(state: RaidState, vision: number): void {
-  const { loc, hero } = state;
-  const from = { x: Math.round(hero.x), z: Math.round(hero.z) };
-  const avoid = avoidMap(state, vision);
-
-  // Раненый герой не жадничает: §11.3 делает раны видимыми именно затем,
-  // чтобы это решение принималось.
-  if (state.bagTotal >= state.capacity || hero.wounds <= 1) {
-    moveAvoiding(state, avoid, loc.evac);
-    return;
-  }
-
-  let best: Cell | null = null;
-  let bestLen = Infinity;
-  for (const c of loc.containers) {
-    if (c.opened) continue;
-    const len = route(state, avoid, from, c);
-    if (len === 0) continue;
-    const back = loc.backSteps[idx(loc.size, c.x, c.z)] ?? -1;
-    if (back < 0) continue;
-    // шаги туда + вскрытие + шаги обратно + запас
-    const need = len + 5 + back + SAFETY;
-    if (need > state.food) continue;
-    if (len < bestLen) {
-      bestLen = len;
-      best = c;
-    }
-  }
-
-  moveAvoiding(state, avoid, best ?? loc.evac);
-}
-
-/** Сначала пробует безопасный путь, и только потом — прямой. */
-function moveAvoiding(state: RaidState, avoid: Uint8Array, to: Cell): void {
-  const { loc, hero } = state;
-  const from = { x: Math.round(hero.x), z: Math.round(hero.z) };
-  const safe = findPath(loc.size, avoid, from, to);
-  if (safe.length > 0) {
-    state.path = safe;
-    return;
-  }
-  commandMove(state, to);
-}
-
 interface TierStat {
   readonly tier: Tier;
   runs: number;
@@ -137,19 +57,12 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
   };
 
   for (let seed = 1; seed <= RUNS; seed++) {
-    const state = createRaid({ seed, tier, kitchenLevel, storageLevel });
-    const limit = Math.round(MAX_SECONDS / TICK);
-    const vision = visionRadius(HERO_KNOWLEDGE, true, true);
-    for (let i = 0; i < limit && state.status === 'running'; i++) {
-      if (state.path.length === 0) decide(state, vision);
-      // Ночь: вылазки в документе ночные, и это влияет на радиус и на врагов.
-      stepRaid(state, TICK, true, 5);
-      if (state.path.length === 0 && state.status === 'running' && state.food <= 0) {
-        commandMove(state, state.loc.evac);
-      }
-    }
-
-    const r = raidResult(state);
+    // Игрок берётся у бота целиком. Своя копия здесь была третьей по счёту
+    // — после карты опасности и приборов §22.6 — и пережила ровно до
+    // пошагового боя: игрок, не умеющий ходить в бою, вешает вылазку,
+    // и замер начинает мерить не игру, а обрыв. Одинаковые числа при
+    // разных правках — верный признак, что меряется не то.
+    const r = playRaid({ seed, tier, kitchenLevel, storageLevel }, POLICIES.cautious, mulberry32(seed));
     stat.runs += 1;
     stat.steps += r.steps;
     stat.seconds += r.durationSec;

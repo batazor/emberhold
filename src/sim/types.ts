@@ -1,6 +1,7 @@
 import type { GearMods } from './gear';
 import type { HeroLoadout } from './heroes';
 import type { ConsumableId } from './consumables';
+import type { BattleState } from './battle';
 import type { ResourceKind, Resources } from './resources';
 
 export type Tier = 0 | 1 | 2 | 3;
@@ -214,6 +215,14 @@ export interface RaidState {
   arrowsSpent: number;
   /** Стычек, проведённых с пустым колчаном, — цена сухого боя. */
   dryFights: number;
+  /**
+   * §11.3 — идущий бой. Пока он не null, мир стоит: шаги не делаются,
+   * провиант за шаг не тратится, снаряды не летят. Время останавливается
+   * целиком, а не «замедляется» — иначе получилось бы два хода часов.
+   */
+  battle: BattleState | null;
+  /** Раунд, за который провиант уже списан: раунд стоит еды, но один раз. */
+  paidRound: number;
   /** §11.3 — снаряды в полёте. Пустой массив у локации без стрелков. */
   projectiles: Projectile[];
   nextProjectileId: number;

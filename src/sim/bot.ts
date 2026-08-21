@@ -17,9 +17,22 @@ import type { BuildingId, CampState } from './camp';
 import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
 import { FORAGE_FOOD, TRAIL_STEP_DISCOUNT } from './heroes';
 import { ENEMY_STATS } from './enemies';
+import { alive, current, moves, targets } from './battle';
+import type { BattleAction } from './battle';
 import { distanceField, hasLineOfSight, idx } from './grid';
+import { hexDistance } from './hex';
+import type { Hex } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
-import { commandMove, createRaid, raidResult, stepFoodCost, stepRaid, useSkill } from './raid';
+import {
+  commandBattle,
+  commandMove,
+  createRaid,
+  raidResult,
+  inBattle,
+  stepFoodCost,
+  stepRaid,
+  useSkill,
+} from './raid';
 import type { RaidOptions } from './raid';
 import type { RaidResult, RaidState } from './raid';
 import { addResources, totalOf } from './resources';
@@ -230,6 +243,21 @@ export function playRaid(
   const vision = visionRadius(knowledge, true, true);
 
   while (state.status === 'running' && seconds < MAX_SECONDS) {
+    // §11.3 — идёт бой: мир стоит, и решать надо не «куда идти», а «что
+    // делать ходом». Ходы противников шаг доигрывает сам; сюда управление
+    // возвращается только на ходу героя.
+    if (inBattle(state)) {
+      // Отклонённое решение обязано кончаться ожиданием, а не повтором:
+      // иначе бот предлагает невозможное, поле отказывает, и очередь стоит.
+      // Живой игрок в такой ситуации просто пропускает ход.
+      if (!commandBattle(state, botBattlePlan(state, policy))) {
+        commandBattle(state, { kind: 'wait' });
+      }
+      stepRaid(state, TICK, true, knowledge);
+      seconds += TICK;
+      continue;
+    }
+
     const from = heroCell(state);
     const back = loc.backSteps[idx(size, from.x, from.z)] ?? 0;
     const toHere = distanceField(size, loc.blocked, from);
@@ -461,3 +489,72 @@ export const campNumbers = (camp: CampState): { food: number; cap: number } => (
   food: kitchenFood(camp.levels.kitchen),
   cap: storageCapacity(camp.levels.storage),
 });
+
+/**
+ * Тактика бота в пошаговом бою (§11.3).
+ *
+ * **Это измерительный прибор, а не игрок.** Вся калибровка §20.3 и §22 снята
+ * ботом, и бот с плохой тактикой меряет собственную глупость, а не игру.
+ * Поэтому правила здесь простые, читаемые и заведомо не глупые — модель
+ * осторожного человека, а не попытка играть оптимально:
+ *
+ * 1. **Мало ран — уходить из-под удара.** Не «геройски добить», а разорвать
+ *    контакт: живой игрок на последней ране отступает, и §11.2 объясняет
+ *    почему — ставка теряется вся сразу.
+ * 2. **Достаю — бью.** Самого израненного: добить дешевле, чем начать нового,
+ *    и это же уменьшает число тех, кто бьёт в ответ.
+ * 3. **Стрелок держит дистанцию.** Уходить из соседства и стрелять — вся
+ *    разница между луком и ножом; бот, подбегающий с луком, измерил бы
+ *    Лучника как плохого ближника (§14.3).
+ * 4. **Иначе подхожу.**
+ *
+ * Случайности нет: шаг детерминирован, и «иногда ошибаться как человек»
+ * сделало бы замеры невоспроизводимыми.
+ */
+export function botBattlePlan(state: RaidState, policy: Policy): BattleAction {
+  const battle = state.battle;
+  if (battle === null) return { kind: 'wait' };
+  const me = current(battle);
+  if (me === undefined || me.side !== 'hero') return { kind: 'wait' };
+
+  const { size, blocked } = state.loc;
+  const foes = alive(battle, 'enemy');
+  if (foes.length === 0) return { kind: 'wait' };
+
+  const reachable = targets(battle, size, blocked, me);
+  const hurt = me.hp <= policy.retreatAt;
+  const spots = [...moves(battle, size, blocked, me).values()];
+  const nearest = (h: Hex): number => Math.min(...foes.map((f) => hexDistance(h, f.hex)));
+
+  // 1. На последних ранах — вон из-под удара. Блок вместо бегства только
+  // тогда, когда бежать некуда: блок стоит хода и половину удара пропускает.
+  if (hurt) {
+    const away = spots
+      .filter((s) => nearest(s.hex) > nearest(me.hex))
+      .sort((a, b) => nearest(b.hex) - nearest(a.hex) || a.steps - b.steps)[0];
+    if (away !== undefined) return { kind: 'move', to: away.hex };
+    if (reachable.length === 0) return { kind: 'guard' };
+  }
+
+  // 2. Достаю — бью самого израненного.
+  if (reachable.length > 0) {
+    // Стрелок вплотную стреляет со штрафом позиции: отойти и выстрелить
+    // выгоднее, чем стрелять в упор, — но только если есть куда отойти.
+    if (me.ranged && nearest(me.hex) <= 1) {
+      const back = spots
+        .filter((s) => nearest(s.hex) > 1 && nearest(s.hex) <= me.reach)
+        .sort((a, b) => a.steps - b.steps)[0];
+      if (back !== undefined) return { kind: 'move', to: back.hex };
+    }
+    const weakest = reachable.reduce((a, b) => (a.hp <= b.hp ? a : b));
+    return { kind: 'attack', target: weakest.id };
+  }
+
+  // 3–4. Не достаю — иду туда, откуда достану. Стрелок целит в свою
+  // дистанцию, ближний — в соседство.
+  const want = me.ranged ? me.reach : 1;
+  const best = spots
+    .map((s) => ({ s, d: nearest(s.hex) }))
+    .sort((a, b) => Math.abs(a.d - want) - Math.abs(b.d - want) || a.s.steps - b.s.steps)[0];
+  return best === undefined ? { kind: 'wait' } : { kind: 'move', to: best.s.hex };
+}
