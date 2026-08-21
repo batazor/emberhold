@@ -319,6 +319,7 @@ export class CampHud {
       this.close();
       this.cb.onWalls();
     });
+    this.wallsButton = walls;
     // Кнопки «Отряд» здесь больше нет: отряд переехал в веер у большого
     // пальца (`features/fan`) и стоит на экране постоянно. Лист открывался
     // ради одного вопроса — кем идти, — и на него теперь отвечает лицо
@@ -332,6 +333,17 @@ export class CampHud {
     this.root.append(res, this.banner, this.task, space, this.sheet, this.slot, this.bar);
     parent.appendChild(this.root);
     this.close();
+  }
+
+  private wallsButton!: HTMLButtonElement;
+
+  /**
+   * Показ кнопки «Стены». В лагере на поляне (§16.1) стены пока не строятся:
+   * их рисует только сцена площадки, и кнопка обещала бы механику, которой
+   * в кадре нет. Скрыта, а не выключена: заготовка, как HUD прогулки.
+   */
+  showWalls(show: boolean): void {
+    this.wallsButton.style.display = show ? '' : 'none';
   }
 
   private makeBarButton(text: string, kind: SheetKind, primary = false): HTMLButtonElement {

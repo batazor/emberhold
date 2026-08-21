@@ -62,6 +62,7 @@ import {
   gladeFood,
   nearCamp,
   packGlade,
+  unpackGlade,
   restTick,
   CAMP_WOOD,
   KITCHEN_WOOD,
@@ -92,7 +93,7 @@ import {
   MINE_REASON,
 } from './sim/stones';
 import type { Stone } from './sim/stones';
-import { idx } from './sim/grid';
+import { distanceField, idx } from './sim/grid';
 import { inReach } from './sim/work';
 import type { Work } from './sim/work';
 import { refusal } from './sim/reason';
@@ -150,7 +151,7 @@ import type { OfferId } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
-import type { Cell, Tier } from './sim/types';
+import type { Cell, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { CursorWind } from './render/cursorWind';
 import { TiltWind } from './render/tiltWind';
@@ -1130,6 +1131,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   const place = regionAt(day).nodes[node];
   leaveTitle();
   inGlade = false;
+  inGladeCamp = false;
   chop = null;
   campPrompt.setVisible(false);
   // Регион пересобрался, пока панель была открыта, — идти некуда.
@@ -1360,6 +1362,7 @@ function toTitle(): void {
   // Ранний вечер: тени от букв уже длинные, но поле ещё зелёное, а не серое.
   setNight(0.08);
   inGlade = false;
+  inGladeCamp = false;
   showScene('title');
 }
 
@@ -1628,26 +1631,23 @@ function stepGladeCamp(dt: number): void {
  * места, которое сам и разбил.
  */
 function endGlade(): void {
-  // Кадр не меняется: то, что на экране в момент третьего бревна, — это
-  // и есть лагерь. Палатка и костёр на своих клетках (якорь), лес — тот же
-  // лес поляны со срубленным срубленным (снимок в сейве), камера, зум
-  // и свет остаются как стояли. Меняется подпись кадра, а не кадр.
-  const held = raid === null
-    ? null
-    : { x: raid.hero.x, z: raid.hero.z, zoom: rig.zoomLevel, night: rig.night };
+  // Кадр не меняется вовсе: то, что на экране в момент третьего бруска, —
+  // это и есть лагерь. Сцена, камера, зум, свет, лес и герой остаются как
+  // стоят; подменяется только нижний интерфейс — панель лагеря вместо полос
+  // вылазки. Отдельная сцена лагеря (CampView) осталась старым сейвам без
+  // снимка поляны и отладочным адресам — «второй лагерь чисто для тестов».
   if (raid !== null) {
     adoptGladeLayout(camp, raid.loc.size, PITCH_ORDER, pitched);
     camp.glade = packGlade(raid.loc);
   }
   onboarding.set('world');
-  toCamp();
-  if (held !== null) {
-    const c = campView.center;
-    campInput.hold(held.x - c.x, held.z - c.z);
-    rig.lookAt(held.x, held.z, true);
-    rig.setZoom(held.zoom, true);
-    rig.night = held.night;
-  }
+  inGlade = false;
+  inGladeCamp = true;
+  showScene('camp');
+  campHud.showWalls(false);
+  idleSeconds = 0;
+  onboarding.apply();
+  persist();
 }
 
 /**
@@ -1721,7 +1721,125 @@ function toGlade(): void {
   // «Вылазок» считало то, что не заканчивалось.
 }
 
+/** Лагерь на поляне (§16.1): сцена пролога и есть сцена лагеря. */
+let inGladeCamp = false;
+
+/** Наработанное за отлучку — первым и один раз, общий у обеих сцен лагеря. */
+function notifyWorked(): void {
+  if (worked.length === 0 || workShown) return;
+  workShown = true;
+  campHud.notify(`Пока вас не было: ${worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · ')}`);
+}
+
+/**
+ * Вход в лагерь. Тел у него два. Нормальная игра — поляна: лагерь стоит там,
+ * где кончился пролог, и сцена не подменяется никогда (`toGladeCamp`).
+ * Площадка CampView — язык старых сейвов без снимка поляны и отладочных
+ * адресов: второй лагерь существует чисто для тестов (`toPadCamp`).
+ */
 function toCamp(): void {
+  // Снятие прошлой сцены повторится в теле — и пусть: вызов идемпотентен,
+  // а правило арх-теста «каждый to* начинается с уборки» дороже одной строки.
+  leaveWalkSites();
+  if (camp.glade !== undefined) toGladeCamp();
+  else toPadCamp();
+}
+
+/**
+ * Лагерь на поляне: та же локация, что в прологе, — из снимка в сейве
+ * (`camp.glade`), с палаткой и костром на клетках, которые выбрал игрок.
+ * Вызывается на загрузке и на возврате из вылазки; в момент конца пролога
+ * не вызывается вовсе — там сцена уже стоит и не трогается (`endGlade`).
+ */
+function toGladeCamp(): void {
+  leaveTitle();
+  leaveWalkSites();
+  chop = null;
+  campMine = null;
+  raidView?.dispose();
+  const glade = camp.glade!;
+  const blocked = unpackGlade(glade);
+  const o = campOrigin(camp);
+  const hq = { x: o.x + camp.layout.hq.x, z: o.z + camp.layout.hq.z };
+  // Герой встаёт у входа в палатку, а не в её следе: клетка к югу от следа,
+  // при занятости — первая свободная по соседям следа.
+  let door = { x: hq.x + 1, z: hq.z + 2 };
+  if (blocked[idx(glade.size, door.x, door.z)]) {
+    outer: for (let dz = -1; dz <= 2; dz++) {
+      for (let dx = -1; dx <= 2; dx++) {
+        if (dx >= 0 && dx <= 1 && dz >= 0 && dz <= 1) continue;
+        const c = { x: hq.x + dx, z: hq.z + dz };
+        if (c.x < 0 || c.z < 0 || c.x >= glade.size || c.z >= glade.size) continue;
+        if (!blocked[idx(glade.size, c.x, c.z)]) { door = c; break outer; }
+      }
+    }
+  }
+  const loc: GameLocation = {
+    seed: 0,
+    tier: 0,
+    size: glade.size,
+    blocked,
+    evac: door,
+    // Бруски пролога подобраны, валунов на поляне нет (§13.4), врагов тоже:
+    // камень и добычу приносят вылазки.
+    containers: [],
+    stones: [],
+    enemies: [],
+    backSteps: distanceField(glade.size, blocked, door),
+  };
+  const hero = heroForRaid() ?? roster.heroes[0]!;
+  raidHero = null;
+  raid = createRaid({
+    seed: 0,
+    tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
+    followers: followersOf(hero),
+    loc,
+    // Провиант в лагере ничего не отсчитывает (§18.4): полосы скрыты
+    // сценой 'camp', а запас пополняется каждый тик.
+    food: gladeFood(),
+    capacity: gladeCapacity(),
+    evacOpen: false,
+    containerFood: 0,
+    hunger: false,
+    risk: false,
+    logging: false,
+  });
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, camp.gear.weapon);
+  hud.setGrass(grassPerTile);
+  rig.world.add(raidView.group);
+  campView.group.visible = false;
+  // Постройки пролога — на своих клетках поляны. Ставится только то, что
+  // игрок видел на поляне: Склад построен по правилам с начала игры, но
+  // в кадре его не было — и не появится, пока стройка не станет видимой.
+  for (const id of PITCH_ORDER) {
+    raidView.place(id, o.x + camp.layout[id].x, o.z + camp.layout[id].z);
+    raidView.setLevel(id, camp.levels[id]);
+  }
+  raidView.hideSite();
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  rig.setZoom(20, true);
+  // Поляна — на поверхности, и это день: тот же свет, что в прологе.
+  setNight(0.12);
+  resultShown = false;
+  inGlade = false;
+  inGladeCamp = true;
+  placing = null;
+  restAcc = 0;
+  resting = false;
+  gladeHint = '';
+  ear.reset(raid);
+  notifyWorked();
+  showScene('camp');
+  campHud.showWalls(false);
+  idleSeconds = 0;
+  onboarding.apply();
+  persist();
+}
+
+function toPadCamp(): void {
   leaveTitle();
   leaveWalkSites();
   chop = null;
@@ -1730,6 +1848,7 @@ function toCamp(): void {
   // в лагере провиант ничего не отсчитывает. Взамен — единственная
   // мелодия игры, и звучит она только здесь: всё это в таблице сцены.
   inGlade = false;
+  inGladeCamp = false;
   raidView?.dispose();
   raidView = null;
   raid = null;
@@ -1740,8 +1859,7 @@ function toCamp(): void {
   // только просят. Задание никуда не денется — оно живёт своей строкой
   // и не гаснет через четыре секунды.
   if (worked.length > 0 && !workShown) {
-    workShown = true;
-    campHud.notify(`Пока вас не было: ${worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · ')}`);
+    notifyWorked();
   } else if (homeless(camp) > 0) {
     campHud.notify(
       homeless(camp) === 1 ? 'Гостю негде спать — нужна палатка' : `Без крыши: ${homeless(camp)}`,
@@ -1768,6 +1886,7 @@ function toCamp(): void {
   campHero = createCampHero(camp);
   campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
   showScene('camp');
+  campHud.showWalls(true);
   idleSeconds = 0;
   onboarding.apply();
   persist();
@@ -1784,7 +1903,9 @@ const campInput = bindCampInput({
   canvas: rig.renderer.domElement,
   camera: rig,
   // Пока выбрана карточка стройки, камера не двигается: палец рисует стену.
-  active: () => mode === 'camp' && buildTool === null,
+  // На поляне панорамы нет: жест лагеря-на-поляне — прологовый, тап-ходьба,
+  // и камера ходит за героем.
+  active: () => mode === 'camp' && buildTool === null && !inGladeCamp,
   center: () => campView.center,
   area: () => campArea(camp.levels.hq),
   onTap: (clientX, clientY) => campTap(clientX, clientY),
@@ -2045,6 +2166,30 @@ canvas.addEventListener('pointerdown', (e) => {
     stopCampMining();
     const hit = rig.screenToGround(e.clientX, e.clientY);
     if (hit !== null) buildAt(hit, buildTool !== 'стена');
+    return;
+  }
+  // Лагерь на поляне: жест прологовый. Тап по палатке или костру открывает
+  // карточку здания, тап мимо — ведёт героя. Ловятся только те здания,
+  // которые стоят в кадре (PITCH_ORDER): Склад построен по правилам, но
+  // на поляне его не видно, и карточка невидимого читалась бы как поломка.
+  if (inGladeCamp) {
+    if (raid === null) return;
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    if (hit === null) return;
+    const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+    const o = campOrigin(camp);
+    // Запас в клетку вокруг следа 2×2 — как у площадки: в здание надо
+    // попадать пальцем, а не курсором.
+    const picked = PITCH_ORDER.find((id) => {
+      const p = camp.layout[id];
+      return Math.abs(cell.x - (o.x + p.x + 0.5)) <= 1.5 && Math.abs(cell.z - (o.z + p.z + 0.5)) <= 1.5;
+    });
+    if (picked !== undefined) {
+      campHud.openBuilding(picked);
+      return;
+    }
+    campHud.close();
+    if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
     return;
   }
   if (mode !== 'raid') return;
@@ -2714,12 +2859,54 @@ if (debugParams.has('bench')) {
   });
 }
 
+/**
+ * Тик систем лагеря: таймеры стройки, отряд, панель. Общий у обеих сцен
+ * лагеря — площадки и поляны (§16.1): лагерь один, сцен у него две.
+ */
+function stepCampSystems(dt: number, now: number): void {
+    idleSeconds += dt;
+    // Стена кончается тем же тиком, что и здание: слот один, освобождаться
+    // он обязан одинаково.
+    if (completeWallIfDue(wallsOf(), now) !== null) {
+      refreshWalls();
+      campHud.notify('Стройка кончена');
+      persist();
+    }
+    const finished = completeIfDue(camp, now);
+    if (finished !== null) {
+      track({ t: 'build_done', at: now, building: finished, level: camp.levels[finished] });
+      play('levelup');
+      campHud.notify(`${BUILDINGS[finished].name} готов`);
+      persist();
+    }
+    if (tickHeroes(now)) persist();
+    campHud.sync(camp, now, dt);
+    // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
+    // лагерь про героев не знает, и сказать ему может только тот, кто знает
+    // обоих.
+    campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
+    // Ведущий отмечен на лице, а карточка держит того, кого выбрали.
+    heroFan.picked = roster.active;
+    if (shownHero >= roster.heroes.length) shownHero = roster.active;
+    heroFan.draw();
+    heroCard.setBottom(campHud.bands().bottom + 6);
+    heroCard.sync(roster, shownHero, now, camp.levels.yard);
+}
+
 startLoop({
   update: (dt) => {
     const now = clock.now();
     // На заставке не тикает ничего: таймеры стройки досчитываются при входе
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
+    if (inGladeCamp && raid !== null) {
+      // Лагерь на поляне: ходьба — прологовая, а провиант в лагере ничего
+      // не отсчитывает (§18.4) — запас пополняется тем же тиком, что тратит.
+      stepRaid(raid, dt, false, 0);
+      raid.food = raid.foodMax;
+      stepCampSystems(dt, now);
+      return;
+    }
     if (mode === 'raid' && raid !== null) {
       const woundsBefore = raid.hero.hp;
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
@@ -2858,33 +3045,7 @@ startLoop({
       return;
     }
 
-    idleSeconds += dt;
-    // Стена кончается тем же тиком, что и здание: слот один, освобождаться
-    // он обязан одинаково.
-    if (completeWallIfDue(wallsOf(), now) !== null) {
-      refreshWalls();
-      campHud.notify('Стройка кончена');
-      persist();
-    }
-    const finished = completeIfDue(camp, now);
-    if (finished !== null) {
-      track({ t: 'build_done', at: now, building: finished, level: camp.levels[finished] });
-      play('levelup');
-      campHud.notify(`${BUILDINGS[finished].name} готов`);
-      persist();
-    }
-    if (tickHeroes(now)) persist();
-    campHud.sync(camp, now, dt);
-    // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
-    // лагерь про героев не знает, и сказать ему может только тот, кто знает
-    // обоих.
-    campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
-    // Ведущий отмечен на лице, а карточка держит того, кого выбрали.
-    heroFan.picked = roster.active;
-    if (shownHero >= roster.heroes.length) shownHero = roster.active;
-    heroFan.draw();
-    heroCard.setBottom(campHud.bands().bottom + 6);
-    heroCard.sync(roster, shownHero, now, camp.levels.yard);
+    stepCampSystems(dt, now);
   },
 
   render: (alpha) => {
@@ -2905,7 +3066,7 @@ startLoop({
       return;
     }
 
-    if (mode === 'raid' && raid !== null && raidView !== null) {
+    if ((mode === 'raid' || inGladeCamp) && raid !== null && raidView !== null) {
       raidView.sync(raid, alpha, dt, now, rig.dayFactor);
       // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
       // теми же правилами, которыми применит ход: кнопка, предлагающая
