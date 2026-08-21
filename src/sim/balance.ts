@@ -73,8 +73,8 @@ export const WOUND_COST: Record<RaidEnemyKind, number> = {
  */
 export const ENCOUNTER_WOUND: Record<RaidEnemyKind, number> = {
   minion: 0.0,
-  warrior: 0.47,
-  mage: 1.55,
+  warrior: 0.18,
+  mage: 0.6,
 };
 
 /**
@@ -87,6 +87,19 @@ export const ENCOUNTER_WOUND: Record<RaidEnemyKind, number> = {
  * ограничением при наборе.
  */
 export const MAX_ENEMIES = 4;
+
+/**
+ * §11.3 — какая доля локации, считая от дна, отдана противникам.
+ *
+ * Это ручка правила «провал приходит глубже середины локации»: чем меньше
+ * доля, тем дальше от входа первая встреча и тем позже приходит провал.
+ * Число подобрано `npm run measure` по его вердикту, а не назначено —
+ * и меняется вместе с ним, если сдвинется бой, генератор или бюджет ран.
+ *
+ * Ноль здесь невозможен по построению: `generate` берёт не меньше одной
+ * клетки, иначе локация осталась бы без противников вовсе.
+ */
+export const ENEMY_DEPTH_SHARE = 0.5;
 
 /* ---------- вход ---------- */
 
@@ -154,6 +167,13 @@ export function deriveTier(spec: TierSpec): TierNumbers {
   // Бюджет считается ценой присутствия, а не дуэли: иначе непреследующий
   // маг съедает вдвое больше бюджета, чем стоит на деле.
   const woundPoints = spec.woundBudget * HERO_WOUNDS;
+  /**
+   * Общее число противников. `reachable` держит его сравнимым с числом
+   * находок — иначе локация становится коридором из врагов; `MAX_ENEMIES` —
+   * потолок §15, за которым провал в бою становится нормой независимо
+   * от характеристик.
+   */
+  const room = Math.min(MAX_ENEMIES, Math.max(1, Math.round(reachable * 0.8)));
   const roster: RaidEnemyKind[] = [];
   let spent = 0;
   const afford = (kind: RaidEnemyKind): boolean => spent + ENCOUNTER_WOUND[kind] <= woundPoints;
@@ -175,7 +195,25 @@ export function deriveTier(spec: TierSpec): TierNumbers {
    */
   const lead: RaidEnemyKind | null =
     spec.size >= 18 ? 'mage' : spec.size >= 12 ? 'warrior' : null;
-  if (lead !== null && afford(lead)) put(lead);
+
+  /**
+   * **Сколько ведущих — решает бюджет ран.** Это единственное, на что он
+   * теперь тратится, и без этого он не тратится ни на что: скелет ран
+   * не стоит, потолок числа держит `room`, и ярус 3 расходовал 0,6 из 2,49,
+   * то есть ось ω из §22.1 не двигала ничего. Замер это и показал —
+   * 95% успеха на верхнем ярусе при обещанных разделом тридцати.
+   *
+   * Один слот всегда остаётся скелетам: §15 отдаёт им роль «учит, что бой
+   * дёшев», и это единственный противник, который давит провиантом,
+   * а не ранами. Ярус без них теряет не сложность, а фактуру.
+   */
+  const leadRoom = Math.max(1, room - 1);
+  if (lead !== null) {
+    while (roster.length < leadRoom && afford(lead)) put(lead);
+    // Бюджета не хватило даже на одного — ведущий всё равно обязан быть:
+    // ярус без своего типа перестаёт быть собой (§15).
+    if (roster.length === 0) put(lead);
+  }
 
   /**
    * Скелеты набираются **числом, а не бюджетом ран**, и это следствие замера,
@@ -186,12 +224,8 @@ export function deriveTier(spec: TierSpec): TierNumbers {
    * где он бесплатен, «набирать его из бюджета» — фигура речи: условие
    * выполняется всегда, и ограничивает состав только потолок.
    *
-   * Потолков два, и оба названы разделами. `room` держит число сравнимым
-   * с числом находок — иначе локация становится коридором из скелетов.
-   * `MAX_ENEMIES` — §15, замером выведенный предел, за которым провал
-   * в бою становится нормой независимо от характеристик.
+   * Ограничивает их число, а не бюджет: `room` выше.
    */
-  const room = Math.min(MAX_ENEMIES, Math.max(1, Math.round(reachable * 0.8)));
   while (roster.length < room && afford('minion')) put('minion');
 
   const woundsTaken = spent;
