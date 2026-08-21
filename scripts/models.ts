@@ -1367,7 +1367,14 @@ const VILLAGER: Pack = {
   /** Серое здесь — материал (волосы, железо), а не пустое поле атласа. */
   grey: 0,
   categoryOf: (name) => (name.includes('_') ? 'Предмет' : 'Житель'),
-  adopted: ['Blacksmith', 'Hunter', 'Villager_Hammer', 'Villager_Knife', 'Villlager_Stick'],
+  /**
+   * Предметы в бандл не едут отдельно: молот и нож запечены в кулаки
+   * владельцев на конвертации — модели без скелета, и вкладывать предмет
+   * в руку в рантайме не во что, узла кисти в запечённой статике нет.
+   * Палка осталась в каталоге без владельца: её хозяин по набору — ребёнок,
+   * а его тариф FREE даёт, но двор не просил.
+   */
+  adopted: ['Blacksmith', 'Hunter'],
   data: { file: 'src/render/villager.data.ts', prefix: 'VILLAGER', type: 'Villager' },
 };
 
