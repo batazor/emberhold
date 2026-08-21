@@ -82,6 +82,7 @@ import { topWalkable } from './sim/campTop';
 import { CASTLE_CELL, WALK } from './sim/castle';
 import {
   completeWallIfDue,
+  cycleTower,
   emptyWalls,
   gateBlock,
   nextTowerLevel,
@@ -92,7 +93,10 @@ import {
   stairsBlock,
   startTower,
   startWall,
+  raiseWall,
   strokeFit,
+  toggleGate,
+  putStairs,
   wallPieces,
   wallPrice,
   wallSeconds,
@@ -1616,6 +1620,83 @@ const debugNode = debugParams.get('node');
 if (debugNode !== null) {
   const n = Number(debugNode);
   if (today.some((place) => place.id === n)) toRaid(n);
+}
+
+/**
+ * Отладочные сцены (§6: воспроизводимость). Кадр, который нужно посмотреть,
+ * открывается сразу, а не проходом игры до него: чтобы проверить стену
+ * в лагере, незачем играть пролог.
+ *
+ * `?camp` — лагерь как он есть.
+ * `?camp=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
+ *   Ровно та планировка, на которой видно все четыре ответа сразу — ход
+ *   поверху, разрыв на башне, проезд под воротами и подъём.
+ *
+ * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
+ * но открыть их можно лишь адресом, которого в игре нет.
+ */
+const debugCamp = debugParams.get('camp');
+if (debugCamp !== null) {
+  if (debugCamp === 'walls') {
+    // Площадь по максимуму и полный карман камня: сцена заведена, чтобы
+    // смотреть стену, а не чтобы копить на неё. При Жилье ур. 1 кольцо
+    // занимает лагерь целиком, и смотреть внутри нечего.
+    // Сцена собирается с нуля каждый раз: `toCamp` сохраняет лагерь, и без
+    // сброса второй заход достраивал бы кольцо поверх прежнего.
+    camp.walls = emptyWalls();
+    camp.levels.hq = 5;
+    camp.levels.kitchen = 3;
+    camp.levels.storage = 3;
+    camp.resources.stone = 200;
+    camp.resources.wood = 200;
+    // Здания уводятся во двор: при раскладке по умолчанию они стоят по краю
+    // площади и кольцо не замыкается — стена на клетку здания не встаёт.
+    // Это не подгонка сцены, а то же, что пришлось бы сделать игроку.
+    // Координаты чётные: клетка стены — две клетки лагеря, и здание, стоящее
+    // не по этой сетке, съедает до четырёх её клеток вместо одной.
+    camp.layout.hq = { x: 2, z: 2 };
+    camp.layout.kitchen = { x: 6, z: 2 };
+    camp.layout.storage = { x: 2, z: 6 };
+    camp.layout.forge = { x: 6, z: 6 };
+    const walls = wallsOf();
+    const site = wallSite();
+    // Кольцо ставится мимо зданий: клетка стены — четыре клетки лагеря,
+    // и угол площади занят Жильём.
+    // Кольцо подаётся обходом, а не списком клеток: мазок соединяет соседние
+    // точки лесенкой, и зигзаг залил бы двор целиком.
+    const grid = Math.floor(campArea(camp.levels.hq) / CASTLE_CELL);
+    raiseWall(walls, site, [
+      { x: 0, z: 0 },
+      { x: grid - 1, z: 0 },
+      { x: grid - 1, z: grid - 1 },
+      { x: 0, z: grid - 1 },
+      { x: 0, z: 0 },
+    ]);
+    toggleGate(walls, { x: 1, z: grid - 1 });
+    cycleTower(walls, site, { x: grid - 1, z: 0 });
+    // Лестница ставится последней и на первую подходящую клетку: ей нужен
+    // и свободный двор, и сосед с готовым ходом, а где это совпало —
+    // зависит от того, куда встали здания.
+    const tops = topsOf();
+    for (let z = 1; z < grid - 1 && Object.keys(walls.stairs).length === 0; z++) {
+      for (let x = 1; x < grid - 1; x++) {
+        if (putStairs(walls, site, { x, z }, tops)) break;
+      }
+    }
+    persist();
+  }
+  toCamp();
+  // Ручка к состоянию сцены. Без неё отладочная сцена показывает кадр,
+  // но ответить на вопрос «а герой-то поднялся?» может только глаз.
+  // Живёт только вместе с отладочным адресом.
+  (window as unknown as { камень: unknown }).камень = {
+    camp,
+    hero: campHero,
+    rig,
+    nav: () => campNav(camp),
+    tap: (x: number, z: number, level: 'земля' | 'верх' = 'земля') =>
+      commandCampMove(camp, campHero, { x, z }, level),
+  };
 }
 
 if (debugParams.has('bench')) {
