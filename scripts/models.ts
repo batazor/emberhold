@@ -120,6 +120,20 @@ interface Pack {
    */
   readonly grid?: { readonly cols: number; readonly rows: number };
   /**
+   * Набор без атласа: цвет лежит не в картинке, а в именованных материалах
+   * glTF. Такой набор впервые пришёл строителем (§6.1.9), и для конвейера
+   * это не помеха, а упрощение: угадывать по окну оттенка нечего, набор
+   * сам называет материал словом.
+   *
+   * Таблица объявляется здесь — «материал → слот палитры», — а измеряется
+   * то, чего в ней нет: какой ровно цвет у материала в файлах, сколько
+   * треугольников он держит и в каких моделях встречается. Из таблицы
+   * собирается атлас шириной в один пиксель на материал, и дальше по коду
+   * набор ничем не отличается от атласного: те же UV, тот же сэмплер,
+   * тот же каталог.
+   */
+  readonly materials?: Readonly<Record<string, string>>;
+  /**
    * Модульный набор: деталь ставится в клетку сетки, и главный вопрос к ней
    * не «какого она цвета», а «чем она стыкуется с соседней». Объявляется
    * размер клетки; меряется остальное — высота хода поверху и то, какие рёбра
@@ -934,7 +948,101 @@ const WEAPONS: Pack = {
   data: { file: 'src/render/weapons.data.ts', prefix: 'WEAPONS', type: 'Weapon' },
 };
 
-const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS];
+
+/**
+ * Девятый набор: KayKit Medieval Builder (§6.1.9) — карта мира, а не лагерь.
+ * Плитка два на два, дом ниже героя: набор рисует местность сверху, и его
+ * дома — фишки на плитке, а не постройки, между которыми ходят.
+ *
+ * **Атласа у него нет вовсе**, и это первый такой набор: цвет лежит в
+ * четырнадцати именованных материалах. Поэтому таблица ниже объявлена, а не
+ * выведена окнами оттенка: набор сам называет материал словом, и угадывать
+ * по цвету значило бы выбросить то, что он уже сказал.
+ */
+const BUILDER_MATERIALS: Record<string, string> = {
+  // Земля и дерево — 54% треугольников набора: бока плиток, дороги, брёвна,
+  // крыши. Beige держит песчаный биом и солому, поэтому уходит в солому.
+  BrownDark: 'дерево-тень',
+  Brown: 'дерево',
+  Beige: 'солома',
+  // Зелень. Тёмная у набора бирюзовая (это его хвоя), светлая — трава плиток.
+  GreenDark: 'хвоя',
+  Green: 'трава',
+  // Камень: стены, скалы, горы. У набора он холодный, у нас тёплый, и это
+  // расхождение снимается ремапом — тем же, каким снято оно у замка.
+  StoneDark: 'камень',
+  Stone: 'камень-свет',
+  WoodDark: 'скол',
+  Metal: 'сталь',
+  White: 'иней',
+  // Тёмные прорези — окна, проёмы, тень под навесом. Цвет набора (#263236)
+  // и наш слот (#2b3138) отличаются на глаз неразличимо.
+  Black: 'металл-тень',
+  // Вода. Отдельного слота под неё в палитре нет, и заводить его сейчас
+  // не за чем: единственная вода в игре — реки на карте региона (§4.2),
+  // и нарисованы они как раз этим цветом.
+  Water: 'металл',
+  // Акценты: мишень, флажки, золото.
+  Red: 'краска-алая',
+  Yellow: 'латунь',
+};
+
+/** Что за деталь. Категория набора, а не игры: куда что пойдёт — §6.1.9. */
+const builderCategory = (name: string): string => {
+  if (name.startsWith('hex_')) return 'Плитка-гекс';
+  if (name.startsWith('square_')) return 'Плитка-квадрат';
+  if (name.startsWith('wall_')) return 'Стена';
+  if (name.startsWith('bridge')) return 'Мост';
+  if (name.startsWith('detail_tree') || name.startsWith('detail_forest') || name === 'forest') {
+    return 'Растительность';
+  }
+  if (name.startsWith('detail_rocks') || name === 'detail_hill' || name === 'mountain') return 'Рельеф';
+  return 'Постройка';
+};
+
+const BUILDER: Pack = {
+  id: 'builder',
+  title: 'KayKit Medieval Builder Pack 1.0',
+  dir: 'assets/kaykit-builder',
+  // Поле про атлас, которого у набора нет: цвет берётся из материалов.
+  atlas: '',
+  sources: ['glb/objects', 'glb/square', 'glb/hex'],
+  materials: BUILDER_MATERIALS,
+  ramps: [
+    { id: 'wood', title: 'дерево', slots: ['дерево-тень', 'дерево', 'солома'], hue: [0, 60], sat: [0.3, 1] },
+    { id: 'moss', title: 'зелень', slots: ['хвоя', 'трава'], hue: [90, 190], sat: [0.25, 1] },
+    { id: 'water', title: 'вода', slots: ['металл'], hue: [175, 200], sat: [0.5, 1] },
+    { id: 'paint', title: 'краска', slots: ['краска-алая', 'латунь'], hue: [330, 60], sat: [0.6, 1] },
+    { id: 'stone', title: 'камень', slots: ['металл-тень', 'камень', 'камень-свет', 'скол', 'сталь', 'иней'], hue: [0, 360], sat: [0, 0.3] },
+  ],
+  slots: [
+    'дерево-тень', 'дерево', 'солома',
+    'хвоя', 'трава',
+    'металл-тень', 'камень', 'камень-свет', 'скол', 'сталь', 'иней',
+    'металл',
+    'краска-алая', 'латунь',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  /**
+   * Модульным набор не объявлен, хотя плитка у него два на два. Обмер стыков
+   * написан под стену: он меряет, где у детали зубцы и какое ребро она
+   * оставляет открытым соседу. У плитки местности ребро открыто всегда,
+   * и тот же отчёт на ней выдаёт полторы сотни имён, ни одно из которых
+   * ничего не решает.
+   */
+  /** Серого поля у набора нет: серое здесь — камень, полноценный материал. */
+  grey: 0,
+  categoryOf: builderCategory,
+  /**
+   * Пусто: набор измерен, решение не принято (§6.1.9). Что куда подходит —
+   * там же, таблицей; в бандл пока не едет ни одна модель.
+   */
+  adopted: [],
+};
+
+const PACKS: readonly Pack[] =
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, BUILDER];
 
 /* ---------- png ---------- */
 
@@ -1080,7 +1188,8 @@ interface Gltf {
   images?: { name?: string; uri?: string; bufferView?: number }[];
   bufferViews: { buffer: number; byteOffset?: number; byteLength: number; byteStride?: number }[];
   buffers: { uri?: string; byteLength: number }[];
-  meshes: { primitives: { attributes: Record<string, number>; indices?: number }[] }[];
+  materials?: { name?: string; pbrMetallicRoughness?: { baseColorFactor?: number[] } }[];
+  meshes: { primitives: { attributes: Record<string, number>; indices?: number; material?: number }[] }[];
   nodes?: Node[];
   skins?: Skin[];
   animations?: Animation[];
@@ -1476,7 +1585,82 @@ interface Mesh {
  */
 const atlasCache = new Map<string, Image>();
 
+/* ---------- набор без атласа: цвет в именованных материалах ---------- */
+
+interface MaterialTable {
+  /** Порядок колонок синтетического атласа — порядок объявления в наборе. */
+  readonly names: readonly string[];
+  /** Измеренный цвет материала, sRGB 0…255. */
+  readonly color: ReadonlyMap<string, readonly [number, number, number]>;
+  /** Атлас шириной в пиксель на материал: дальше по коду набор обычный. */
+  readonly image: Image;
+  /** Ключ цвета (r<<16|g<<8|b) → слот палитры. */
+  readonly slot: ReadonlyMap<number, string>;
+}
+
+const materialTables = new Map<string, MaterialTable>();
+
+const colorKey = (r: number, g: number, b: number): number => (r << 16) | (g << 8) | b;
+
+/** Линейный цвет glTF → sRGB, как его показывает любой просмотрщик. */
+const toSrgb = (v: number): number => {
+  const c = v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(c * 255)));
+};
+
+/**
+ * Таблица материалов набора. Цвет **измеряется**, а не берётся из объявления:
+ * объявлено только то, в какой слот палитры материал ложится. Расхождение
+ * имени с файлами — ошибка, а не мелочь: молча пропущенный материал уехал бы
+ * в запасной слот и покрасил бы им половину набора.
+ */
+function materialTableOf(pack: Pack, files: readonly string[]): MaterialTable {
+  const declared = pack.materials!;
+  const color = new Map<string, readonly [number, number, number]>();
+  for (const file of files) {
+    const { gltf } = loadDoc(file);
+    for (const material of gltf.materials ?? []) {
+      const name = material.name ?? '';
+      const factor = material.pbrMetallicRoughness?.baseColorFactor ?? [1, 1, 1, 1];
+      const rgb = [toSrgb(factor[0]!), toSrgb(factor[1]!), toSrgb(factor[2]!)] as const;
+      const known = color.get(name);
+      if (known === undefined) {
+        color.set(name, rgb);
+        continue;
+      }
+      if (known[0] !== rgb[0] || known[1] !== rgb[1] || known[2] !== rgb[2]) {
+        throw new Error(`${basename(file)}: материал «${name}» другого цвета, чем в остальном наборе`);
+      }
+    }
+  }
+  const names = Object.keys(declared);
+  for (const name of names) {
+    if (!color.has(name)) throw new Error(`${pack.title}: материала «${name}» в файлах нет`);
+  }
+  for (const name of color.keys()) {
+    if (declared[name] === undefined) throw new Error(`${pack.title}: материал «${name}» не назван слотом`);
+  }
+
+  const rgba = new Uint8Array(names.length * 4);
+  const slot = new Map<number, string>();
+  names.forEach((name, i) => {
+    const [r, g, b] = color.get(name)!;
+    rgba[i * 4] = r;
+    rgba[i * 4 + 1] = g;
+    rgba[i * 4 + 2] = b;
+    rgba[i * 4 + 3] = 255;
+    slot.set(colorKey(r, g, b), declared[name]!);
+  });
+  return { names, color, image: { width: names.length, height: 1, rgba }, slot };
+}
+
+const tableOf = (pack: Pack): MaterialTable | undefined =>
+  pack.materials === undefined ? undefined : materialTables.get(pack.id);
+
 function atlasOf(doc: Doc, pack: Pack, packDir: string): { name: string; image: Image } {
+  // Набор без картинки: атлас собран из его же материалов (см. `materialTableOf`).
+  const table = tableOf(pack);
+  if (table !== undefined) return { name: 'материалы', image: table.image };
   const image = doc.gltf.images?.[0];
   const uri = image?.uri ?? (image === undefined ? pack.atlas : undefined);
   if (uri !== undefined) {
@@ -1515,6 +1699,7 @@ function loadMesh(
 ): Mesh {
   const doc = loadDoc(file);
   const { gltf, bin } = doc;
+  const table = tableOf(pack);
   const { name: atlas, image: atlasImage } = atlasOf(doc, pack, packDir);
 
   const positions: number[] = [];
@@ -1589,10 +1774,24 @@ function loadMesh(
     for (const prim of gltf.meshes[index]!.primitives) {
       const posIndex = prim.attributes['POSITION'];
       const uvIndex = prim.attributes['TEXCOORD_0'];
-      if (posIndex === undefined || uvIndex === undefined || prim.indices === undefined) continue;
+      if (posIndex === undefined || prim.indices === undefined) continue;
+      /**
+       * Набор без атласа: UV примитива никуда не показывают — цвет назван
+       * материалом. Тогда UV назначаются здесь, серединой его колонки
+       * в синтетическом атласе, и дальше по коду ничего не меняется.
+       */
+      const column = table === undefined
+        ? -1
+        : table.names.indexOf(gltf.materials?.[prim.material ?? -1]?.name ?? '');
+      if (table !== undefined && column < 0) {
+        throw new Error(`${basename(file)}: примитив без материала — красить его нечем`);
+      }
+      if (uvIndex === undefined && table === undefined) continue;
       const pos = readAccessor(gltf, bin, posIndex);
-      const uv = readAccessor(gltf, bin, uvIndex);
+      const uv = uvIndex === undefined ? null : readAccessor(gltf, bin, uvIndex);
       const idx = readAccessor(gltf, bin, prim.indices);
+      const uvAt = (v: number): [number, number] =>
+        table === undefined ? [uv![v * 2]!, uv![v * 2 + 1]!] : [(column + 0.5) / table.names.length, 0.5];
       verts += gltf.accessors[posIndex]!.count;
 
       /**
@@ -1634,8 +1833,9 @@ function loadMesh(
           const v = idx[i + k]!;
           const p = [pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!];
           put(vertexMatrix === null ? model : vertexMatrix(v), p);
-          cu += uv[v * 2]!;
-          cv += uv[v * 2 + 1]!;
+          const [tu, tv] = uvAt(v);
+          cu += tu;
+          cv += tv;
         }
         uvs.push(cu / 3, cv / 3);
       }
@@ -1653,7 +1853,7 @@ function loadMesh(
         for (let c = 0; c < 3; c++) {
           rawPos.push(m[c]! * p[0]! + m[4 + c]! * p[1]! + m[8 + c]! * p[2]! + m[12 + c]!);
         }
-        rawUv.push(uv[v * 2]!, uv[v * 2 + 1]!);
+        rawUv.push(...uvAt(v));
         for (let k = 0; k < 3; k++) {
           rawBone.push(joints === null ? rigid : joints[v * 4 + k]!);
           rawWeight.push(weights === null ? (k === 0 ? 1 : 0) : weights[v * 4 + k]!);
@@ -1735,6 +1935,15 @@ const greyOf = (pack: Pack): number => pack.grey ?? GREY;
  * ничего не решает; всё, что мимо окон, — включая серое — идёт в запасной.
  */
 function rampOf(pack: Pack, r: number, g: number, b: number): string {
+  // Набор назвал материал словом — угадывать по окну оттенка нечего. Слот
+  // известен, остаётся найти градиент, в котором он стоит: этим одним местом
+  // ветка и ограничивается, всё остальное считает тот же код, что и раньше.
+  const table = tableOf(pack);
+  if (table !== undefined) {
+    const named = table.slot.get(colorKey(r, g, b));
+    const ramp = pack.ramps.find((x) => x.slots.includes(named ?? ''));
+    return ramp?.id ?? pack.ramps[pack.ramps.length - 1]!.id;
+  }
   const { hue, sat } = hueSat(r, g, b);
   const lum = luminance(r, g, b);
   for (const ramp of pack.ramps) {
@@ -2026,10 +2235,19 @@ function deckOf(mesh: Mesh, cell: number): Deck {
 }
 
 function makeSampler(pack: Pack, atlases: readonly Image[], usage: Usage | undefined): Sampler {
-  const ranges = rampRanges(pack, atlases, usage);
+  const ranges = pack.materials === undefined ? rampRanges(pack, atlases, usage) : {};
   const index = new Map(pack.slots.map((s, i) => [s, i]));
 
+  const table = tableOf(pack);
   const slotOfColor = (r: number, g: number, b: number): number => {
+    // У набора с материалами ступень не выводится из яркости: она названа.
+    // Запасной путь недостижим — таблица проверена на все материалы файлов, —
+    // но написан правильно: `fallback` у набора это градиент, а не слот.
+    if (table !== undefined) {
+      const named = table.slot.get(colorKey(r, g, b));
+      const spare = pack.ramps.find((x) => x.id === pack.fallback)!.slots[0]!;
+      return index.get(named ?? spare) ?? index.get(spare)!;
+    }
     const ramp = pack.ramps.find((x) => x.id === rampOf(pack, r, g, b))!;
     const steps = ramp.slots.length;
     const { min, max } = ranges[ramp.id]!;
@@ -2520,6 +2738,10 @@ function report(pack: Pack, write: boolean): void {
 
   // Два прохода: сначала геометрия, потом цвет. Шкала градиента может зависеть
   // от того, что набор задел, а это известно только после чтения всех моделей.
+  // Таблица материалов — до чтения мешей: из неё собирается атлас, а без
+  // атласа модель прочитать нечем.
+  if (pack.materials !== undefined) materialTables.set(pack.id, materialTableOf(pack, files));
+
   const meshes = files.map((f) => ({
     name: basename(f).replace(/\.(gltf|glb)$/, ''),
     rel: f.slice(dir.length + 1),

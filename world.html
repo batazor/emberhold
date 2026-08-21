@@ -162,6 +162,9 @@
   .metric b{font-weight:600;}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;}
   .card{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--surface);}
+  .proto-bar{display:flex;gap:10px;align-items:center;margin:10px 0 8px;flex-wrap:wrap;}
+  .proto-cv{width:100%;height:auto;border:1px solid var(--line);border-radius:10px;
+    background:radial-gradient(120% 90% at 50% 20%,#17211f 0%,#0d1416 60%,#080d0e 100%);}
   .card canvas{display:block;width:96px;height:96px;margin:0 auto 8px;image-rendering:pixelated;background:var(--g-bg);border-radius:8px;}
   .card b{display:block;font-family:var(--ff-display);font-size:16px;margin-bottom:4px;}
   .card p{margin:0;font-size:13px;color:var(--dim);}
@@ -454,6 +457,41 @@
       <b>Знак фона, повторяющий глиф события, — это уже не фон, а ложное
       сообщение.</b></p>
   </div>
+
+<div class="sec">
+  <div class="hd"><div class="eyebrow">Проба</div><h2>Та же карта, собранная плитками</h2></div>
+  <p>Ниже — не решение и не замена плоской карте, а проба: <b>ровно та же местность</b>
+    (<code>sim/terrain.ts</code>) и ровно та же раздача точек (<code>sim/world.ts</code>),
+    выложенные плитками набора-строителя (§6.1.9). Ничего для этого придумывать не пришлось:
+    полоса высоты ячейки называет биом, путь реки — водяные плитки, знак «холм» и «ель» —
+    объекты набора. Плоская карта, выходит, уже была слоем данных под объёмную.</p>
+  <p>Рисует страница сама, тем же художником, что и книга замка: ортокамера 45°/30°,
+    плоское затенение, треугольники по цвету слота из каталога набора. Ни three, ни
+    запечённой геометрии в игре: набор так и остаётся измеренным, но не взятым.</p>
+  <div class="proto-bar">
+    <button id="pDay">Другой день</button>
+    <button id="pTurn">Повернуть</button>
+    <button id="pPal">Палитра набора</button>
+    <span id="pInfo" class="note"></span>
+  </div>
+  <canvas id="proto" class="proto-cv" width="1000" height="620"></canvas>
+  <p id="pWarn" class="flag" style="display:none"></p>
+  <div class="cols">
+    <div>
+      <h3>Что проба показала</h3>
+      <ul id="pFound"></ul>
+    </div>
+    <div>
+      <h3>Чего у набора нет</h3>
+      <p><b>Кладбища.</b> Точка-прогулка (§6.1.7) на объёмной карте остаётся камнями:
+        в наборе нет ни ограды, ни склепа, и подставить их можно только из другого
+        набора — то есть смешать два стиля на одном экране.</p>
+      <p><b>Ставки, богатства, клана и события.</b> Шесть каналов узла (см. «Цена канала»)
+        плитка не несёт ни одного. Объёмная карта их не отменяет — она обязана нарисовать
+        их поверх, и это главная незакрытая цена решения, а не мелочь оформления.</p>
+    </div>
+  </div>
+</div>
 
   <div class="sec">
     <div class="hd"><div class="eyebrow">Часть V</div><h2>Чего в мире нет и почему</h2></div>
@@ -1056,4 +1094,418 @@ try {
     ' (<code>npm run dev</code>). Копии их здесь нет намеренно: она разошлась бы' +
     ' с игрой молча. — ' + e.message + '</p>';
 }
+</script>
+
+<script type="module">
+/*
+ * Проба объёмной карты (§4.2, §6.1.9). Страница берёт местность и раздачу
+ * точек у игры, а плитки — у набора-строителя, и складывает из них тот же
+ * регион, который карта в лагере рисует чертой.
+ *
+ * Отрисовка своя: тот же художник, что в книге замка, — ортокамера 45°/30°,
+ * плоское затенение, дальние треугольники первыми. Ни three, ни запечённой
+ * геометрии: набор остаётся измеренным, но не взятым (§6.1.9).
+ */
+const P = { GLB: './assets/kaykit-builder/', };
+const warn = (text) => {
+  const w = document.getElementById('pWarn');
+  w.textContent = text;
+  w.style.display = '';
+};
+
+let cat, MATERIAL, regionAt, terrainAt, bandOf, COLS, ROWS;
+try {
+  cat = await (await fetch(P.GLB + 'catalog.json')).json();
+  MATERIAL = (await import('/src/render/palette.ts')).MATERIAL;
+  ({ regionAt } = await import('/src/sim/world.ts'));
+  ({ terrainAt, bandOf, COLS, ROWS } = await import('/src/sim/terrain.ts'));
+} catch (e) {
+  warn('Проба читает файлы проекта и работает только на dev-сервере: npm run dev, затем /world.html. ' + e);
+  throw e;
+}
+
+/* ---------- чтение моделей набора ---------- */
+
+const SIZE = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+const BYTES = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
+const READER = { 5120: 'getInt8', 5121: 'getUint8', 5122: 'getInt16', 5123: 'getUint16', 5125: 'getUint32', 5126: 'getFloat32' };
+const IDENT = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+
+function mul(a, b) {
+  const out = new Array(16).fill(0);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    let s = 0;
+    for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+    out[c * 4 + r] = s;
+  }
+  return out;
+}
+function local(node) {
+  if (node.matrix) return node.matrix;
+  const [x, y, z, w] = node.rotation ?? [0, 0, 0, 1];
+  const [sx, sy, sz] = node.scale ?? [1, 1, 1];
+  const [tx, ty, tz] = node.translation ?? [0, 0, 0];
+  const r = [
+    1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w),
+    2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w),
+    2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y),
+  ];
+  return [r[0]*sx, r[1]*sx, r[2]*sx, 0, r[3]*sy, r[4]*sy, r[5]*sy, 0,
+          r[6]*sz, r[7]*sz, r[8]*sz, 0, tx, ty, tz, 1];
+}
+const apply = (m, p) => [0,1,2].map((c) => m[c]*p[0] + m[4+c]*p[1] + m[8+c]*p[2] + m[12+c]);
+
+async function loadDoc(url) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x46546c67) throw new Error(url + ': не GLB');
+  let at = 12, gltf = null, bin = null;
+  while (at + 8 <= buf.byteLength) {
+    const length = dv.getUint32(at, true);
+    const type = dv.getUint32(at + 4, true);
+    const data = buf.slice(at + 8, at + 8 + length);
+    if (type === 0x4e4f534a) gltf = JSON.parse(new TextDecoder().decode(data));
+    else if (type === 0x004e4942) bin = data;
+    at += 8 + length;
+  }
+  return { gltf, dv: new DataView(bin) };
+}
+
+/**
+ * Треугольники модели и цвет каждого. Цвет не подбирается: каталог набора
+ * держит слот палитры на треугольник, и порядок треугольников — контракт
+ * с обмером (`scripts/models.ts`). Читается тот же порядок.
+ */
+const byName = new Map(cat.models.map((m) => [m.name, m]));
+const cache = new Map();
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+/** Наша палитра: слот каталога → цвет из общего списка §6.1. */
+const GAME_COLOR = cat.slots.map((name) => hex(MATERIAL[name]));
+/**
+ * Палитра самого набора. Не срисована: каталог хранит измеренный цвет
+ * материала, который лёг в каждую ступень, и здесь он читается оттуда.
+ * Рядом эти две палитры и отвечают на вопрос, ради которого проба заведена.
+ */
+const PACK_COLOR = (() => {
+  const out = cat.slots.map(() => '#888888');
+  for (const ramp of cat.ramps) ramp.slots.forEach((name, i) => {
+    const at = cat.slots.indexOf(name);
+    if (at >= 0) out[at] = ramp.source[i];
+  });
+  return out;
+})();
+let ours = true;
+const SLOT_COLOR = new Proxy({}, { get: (_, k) => (ours ? GAME_COLOR : PACK_COLOR)[k] });
+
+function model(name) {
+  if (!cache.has(name)) cache.set(name, read(name));
+  return cache.get(name);
+}
+async function read(name) {
+  const entry = byName.get(name);
+  if (entry === undefined) throw new Error('в наборе нет модели ' + name);
+  const { gltf, dv } = await loadDoc(P.GLB + entry.file);
+  const accessor = (index) => {
+    const acc = gltf.accessors[index], bv = gltf.bufferViews[acc.bufferView];
+    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
+    const stride = bv.byteStride ?? size * bytes;
+    const start = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = [];
+    for (let i = 0; i < acc.count; i++) {
+      const row = [];
+      for (let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
+      out.push(size === 1 ? row[0] : row);
+    }
+    return out;
+  };
+  const tris = [];
+  const walk = (at, parent) => {
+    const node = gltf.nodes[at];
+    const world = mul(parent, local(node));
+    if (node.mesh !== undefined) for (const prim of gltf.meshes[node.mesh].primitives) {
+      const pos = accessor(prim.attributes.POSITION), idx = accessor(prim.indices);
+      for (let i = 0; i < idx.length; i += 3) tris.push([0,1,2].map((k) => apply(world, pos[idx[i+k]])));
+    }
+    for (const child of node.children ?? []) walk(child, world);
+  };
+  for (const root of gltf.scenes[gltf.scene ?? 0].nodes) walk(root, IDENT);
+  const raw = atob(entry.slot);
+  const slot = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) slot[i] = raw.charCodeAt(i);
+  return { tris, slot };
+}
+
+/* ---------- раскладка ---------- */
+
+const CELL = 2;            // плитка набора — два на два
+// Ступень высоты. Полос столько же, сколько у плоской карты: пробовалось
+// загрубить до трёх — разницы на экране нет, а величина завелась бы лишняя.
+const STEP = 0.33;
+// Биомов у набора три, нашему миру нужны два: пустыни в нём нет, и песчаная
+// плитка осталась бы цветом без места. Полосы: три нижние — лес, две верхние —
+// камень.
+const BIOME = ['forest', 'forest', 'forest', 'rock', 'rock'];
+
+/**
+ * Цвет плитки назначается биомом, а не именем материала, и это первое, что
+ * вскрыла проба. Плитка набора — коробка два на один на два из двенадцати
+ * треугольников **одного** материала, и материалы у трёх биомов такие:
+ * лес `Green`, песок `Beige`, камень **`Brown`** — тот же самый, которым
+ * покрашены крыши и брёвна. Таблица «материал → слот» (§6.1.9) честно
+ * отправляет `Brown` в дерево, и каменное нагорье выходит цвета сосновой
+ * доски. Имя материала в наборе, выходит, называет не материал, а место
+ * в его палитре.
+ */
+const TILE_COLOR = {
+  forest: '#465c39',       // мох
+  rock: '#57544a',         // камень-свет: нагорье обязано быть светлее леса
+  sand: '#8a8a7e',         // соль-тень
+};
+/** Берег и бок плитки: земля, а не дерево. */
+const BANK_COLOR = '#3b2016';
+
+/** Через какие рёбра ячейки проходит русло: 0 −z, 1 +x, 2 +z, 3 −x. */
+function riverEdges(land) {
+  const out = new Map();
+  const mark = (i, j, edge) => {
+    if (i < 0 || j < 0 || i >= COLS || j >= ROWS) return;
+    const key = j * COLS + i;
+    const set = out.get(key) ?? new Set();
+    set.add(edge);
+    out.set(key, set);
+  };
+  for (const river of land.rivers) {
+    for (let k = 1; k < river.length; k++) {
+      const a = river[k - 1], b = river[k];
+      const ai = Math.min(COLS - 1, Math.floor(a.x * COLS)), aj = Math.min(ROWS - 1, Math.floor(a.y * ROWS));
+      const bi = Math.min(COLS - 1, Math.floor(b.x * COLS)), bj = Math.min(ROWS - 1, Math.floor(b.y * ROWS));
+      if (!out.has(aj * COLS + ai)) out.set(aj * COLS + ai, new Set());
+      if (!out.has(bj * COLS + bi)) out.set(bj * COLS + bi, new Set());
+      if (bi > ai) { mark(ai, aj, 1); mark(bi, bj, 3); }
+      if (bi < ai) { mark(ai, aj, 3); mark(bi, bj, 1); }
+      if (bj > aj) { mark(ai, aj, 2); mark(bi, bj, 0); }
+      if (bj < aj) { mark(ai, aj, 0); mark(bi, bj, 2); }
+    }
+  }
+  return out;
+}
+
+/** Плитка и поворот по тому, куда уходит вода. */
+function waterTile(biome, edges) {
+  const set = [...edges].sort();
+  if (set.length >= 2 && (set.includes(0) && set.includes(2))) return [`square_${biome}_waterStraight`, 0];
+  if (set.length >= 2 && (set.includes(1) && set.includes(3))) return [`square_${biome}_waterStraight`, 1];
+  // Поворот: два смежных ребра. Угол набора нарисован «из −z в +x»,
+  // остальные три получаются поворотом на 90°.
+  const turns = { '0,1': 0, '1,2': 1, '2,3': 2, '0,3': 3 };
+  const key = set.slice(0, 2).join(',');
+  if (turns[key] !== undefined) return [`square_${biome}_waterOuterCorner`, turns[key]];
+  return [`square_${biome}_waterStraight`, 0];
+}
+
+function layout(day) {
+  const region = regionAt(day);
+  const spots = [...region.nodes.map((n) => ({ x: n.x, y: n.y })), region.camp];
+  const land = terrainAt(day, spots);
+  const rivers = riverEdges(land);
+  const put = [];
+  // Высота ячейки — та же полоса, что красит плоскую карту, по среднему
+  // четырёх её углов. Сглаживание по соседям пробовалось и убрано: на экране
+  // его не видно, а лишний шаг обязан был бы объясниться.
+  const bandAt = (i, j) => {
+    const v = (a, b) => land.grid[b * (COLS + 1) + a].h;
+    return bandOf((v(i, j) + v(i + 1, j) + v(i, j + 1) + v(i + 1, j + 1)) / 4);
+  };
+
+  // Верх плитки, а не низ: коробка набора стоит от y до y+1, и объект,
+  // поставленный на её отметку, тонет в ней целиком. Первая проба именно
+  // так и утопила все девятнадцать точек — из земли торчали крыши.
+  const TOP = 1;
+  const cellY = [];
+  for (let j = 0; j < ROWS; j++) {
+    for (let i = 0; i < COLS; i++) {
+      const band = bandAt(i, j);
+      const y = band * STEP;
+      cellY[j * COLS + i] = y;
+      const biome = BIOME[band];
+      const edges = rivers.get(j * COLS + i);
+      const [name, turn] = edges !== undefined && edges.size > 0
+        ? waterTile(biome, edges)
+        : [`square_${biome}`, 0];
+      put.push({
+        name, x: (i + 0.5) * CELL, z: (j + 0.5) * CELL, y, turn,
+        // Трава, солома и дерево у плитки — это её верх; берег — низ.
+        recolor: {
+          'трава': TILE_COLOR[biome], 'солома': TILE_COLOR[biome], 'дерево': TILE_COLOR[biome],
+          'дерево-тень': BANK_COLOR,
+        },
+      });
+    }
+  }
+
+  // Знаки местности — те же три, что рисует плоская карта.
+  const MARK = { 'холм': 'detail_hill', 'ель': 'forest', 'болото': 'detail_rocks_small' };
+  for (const mark of land.marks) {
+    const i = Math.min(COLS - 1, Math.floor(mark.x * COLS));
+    const j = Math.min(ROWS - 1, Math.floor(mark.y * ROWS));
+    if (rivers.has(j * COLS + i)) continue;
+    put.push({ name: MARK[mark.kind], x: mark.x * COLS * CELL, z: mark.y * ROWS * CELL, y: cellY[j * COLS + i] + TOP, turn: (i + j) % 4 });
+  }
+
+  // Точки региона. Кладбища в наборе нет — оно остаётся камнями, и это
+  // не оформление, а находка пробы.
+  const NODE = { 'вылазка': 'mine', 'замок': 'castle', 'кладбище': 'detail_rocks' };
+  for (const node of region.nodes) {
+    const i = Math.min(COLS - 1, Math.floor(node.x * COLS));
+    const j = Math.min(ROWS - 1, Math.floor(node.y * ROWS));
+    put.push({ name: NODE[node.kind], x: node.x * COLS * CELL, z: node.y * ROWS * CELL, y: cellY[j * COLS + i] + TOP, turn: node.id % 4, node: true });
+  }
+  const ci = Math.min(COLS - 1, Math.floor(region.camp.x * COLS));
+  const cj = Math.min(ROWS - 1, Math.floor(region.camp.y * ROWS));
+  put.push({ name: 'house', x: region.camp.x * COLS * CELL, z: region.camp.y * ROWS * CELL, y: cellY[cj * COLS + ci] + TOP, turn: 2, node: true });
+  return { put, land, region };
+}
+
+/* ---------- художник ---------- */
+
+const EL = 30 * Math.PI / 180;
+let az = 45;
+const LIGHT = (() => { const v = [-0.55, 0.78, -0.31], l = Math.hypot(...v); return v.map((c) => c / l); })();
+
+function project(p) {
+  const a = az * Math.PI / 180;
+  const ca = Math.cos(a), sa = Math.sin(a), ce = Math.cos(EL), se = Math.sin(EL);
+  const x = p[0] * ca - p[2] * sa, y = p[1], z = p[0] * sa + p[2] * ca;
+  return [x, y * ce - z * se, y * se + z * ce];
+}
+function shade(color, k) {
+  const rgb = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+  return 'rgb(' + rgb.map((c) => Math.round(Math.min(255, c * k))).join(',') + ')';
+}
+
+async function paint(day) {
+  const canvas = document.getElementById('proto');
+  const ctx = canvas.getContext('2d');
+  const { put, land, region } = layout(day);
+  const names = [...new Set(put.map((p) => p.name))];
+  const loaded = new Map(await Promise.all(names.map(async (n) => [n, await model(n)])));
+
+  // Плитки и объекты копятся вместе с тем, к какому предмету принадлежат:
+  // порядок рисования решается по предмету, а не по треугольнику (см. ниже).
+  const tris = [], colors = [], owner = [];
+  put.forEach((inst, k) => {
+    const m = loaded.get(inst.name);
+    const a = inst.turn * Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
+    for (let t = 0; t < m.tris.length; t++) {
+      const src = m.tris[t];
+      tris.push(src.map((p) => [inst.x + p[0] * ca - p[2] * sa, inst.y + p[1], inst.z + p[0] * sa + p[2] * ca]));
+      const slot = cat.slots[m.slot[t]];
+      // Перекраска плитки по биому — про нашу палитру. В палитре набора
+      // плитка красится так, как её нарисовал автор, иначе сравнивать нечего.
+      colors.push((ours ? inst.recolor?.[slot] : null) ?? SLOT_COLOR[m.slot[t]] ?? '#3f3d34');
+      owner.push(k);
+    }
+  });
+
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const view = tris.map((t) => t.map(project));
+  let min = [Infinity, Infinity], max = [-Infinity, -Infinity];
+  for (const t of view) for (const p of t) {
+    if (p[0] < min[0]) min[0] = p[0];
+    if (p[0] > max[0]) max[0] = p[0];
+    if (p[1] < min[1]) min[1] = p[1];
+    if (p[1] > max[1]) max[1] = p[1];
+  }
+  const scale = Math.min((w - 24) / (max[0] - min[0] || 1), (h - 24) / (max[1] - min[1] || 1));
+  const ox = w / 2 - (min[0] + max[0]) / 2 * scale, oy = h / 2 + (min[1] + max[1]) / 2 * scale;
+
+  /*
+   * Художник, но по предметам, а не по треугольникам. Сортировка по глубине
+   * треугольника — та, что рисует одну модель в книге замка, — на сетке
+   * плиток разваливается: бок дальней плитки и верх ближней встречаются
+   * в одной плоскости, и порядок между ними решает разница в сотые. Проба
+   * показывала поле отдельных кубиков: у каждой плитки были видны обе
+   * боковые стенки, хотя рядом стоит соседка вплотную.
+   *
+   * Плиточной сетке порядок известен точно: сперва дальний ряд, потом
+   * ближний, а «дальше» — это меньшая проекция на ось взгляда. Внутри
+   * предмета треугольники по-прежнему считаются глубиной: у одной модели
+   * плоскости не смыкаются.
+   */
+  const rad = az * Math.PI / 180, sa = Math.sin(rad), ca = Math.cos(rad);
+  const instKey = put.map((inst) => inst.x * sa + inst.z * ca + inst.y * 0.001);
+  const depth = view.map((t) => (t[0][2] + t[1][2] + t[2][2]) / 3);
+  const order = view.map((_, i) => i).sort((a, b) =>
+    instKey[owner[a]] - instKey[owner[b]] || depth[a] - depth[b]).map((i) => [i]);
+  let drawn = 0;
+  for (const [i] of order) {
+    const t = tris[i];
+    const u = [t[1][0]-t[0][0], t[1][1]-t[0][1], t[1][2]-t[0][2]];
+    const v = [t[2][0]-t[0][0], t[2][1]-t[0][1], t[2][2]-t[0][2]];
+    const n = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+    const len = Math.hypot(...n) || 1;
+    const lit = Math.max(0, (n[0]*LIGHT[0] + n[1]*LIGHT[1] + n[2]*LIGHT[2]) / len);
+    const p = view[i];
+    /*
+     * Спиной к камере — не рисуется: половина треугольников набора это низ
+     * плитки и изнанка стенок.
+     *
+     * Знак проверен вручную на верхней грани плитки: её обход в экранных
+     * координатах даёт **плюс**, и лицо здесь — положительное. Со знаком
+     * наоборот верх плиток пропадал весь, а на экране оставались открытые
+     * коробки — поле кубиков, у которых видно обе стенки и дно. Полдня
+     * это выглядело как дырявая раскладка, хотя раскладка была цела.
+     */
+    const facing = (p[1][0]-p[0][0]) * (p[2][1]-p[0][1]) - (p[1][1]-p[0][1]) * (p[2][0]-p[0][0]);
+    if (facing <= 0) continue;
+    ctx.fillStyle = shade(colors[i], 0.55 + lit * 0.7);
+    ctx.beginPath();
+    ctx.moveTo(ox + p[0][0]*scale, oy - p[0][1]*scale);
+    ctx.lineTo(ox + p[1][0]*scale, oy - p[1][1]*scale);
+    ctx.lineTo(ox + p[2][0]*scale, oy - p[2][1]*scale);
+    ctx.closePath();
+    ctx.fill();
+    drawn++;
+  }
+
+  document.getElementById('pInfo').textContent =
+    `день ${day} · точек ${region.nodes.length} · плиток ${COLS * ROWS} · ` +
+    `треугольников ${tris.length}, нарисовано ${drawn}`;
+  return { tris: tris.length, drawn, land, region };
+}
+
+let day = 1;
+async function show() {
+  const stat = await paint(day);
+  const found = document.getElementById('pFound');
+  found.innerHTML =
+    '<li><b>Данные уже есть.</b> Ни одной новой величины проба не завела: биом ячейки — ' +
+    'полоса высоты, водяная плитка — путь реки, объект — знак местности или точка ' +
+    'региона. Плоская карта оказалась слоем данных под объёмную.</li>' +
+    '<li><b>Цвет плитки не выводится из имени материала.</b> Плитка набора — коробка ' +
+    'из двенадцати треугольников одного материала, и каменный биом покрашен ' +
+    '<code>Brown</code> — тем же, что крыши и брёвна. Таблица §6.1.9 честно отправляет ' +
+    'его в дерево, и нагорье выходит цвета сосновой доски. Здесь цвет назначен биомом, ' +
+    'а не материалом, и для настоящей карты это придётся записать решением.</li>' +
+    '<li><b>Биомов нужно два из трёх.</b> Песчаная плитка осталась бы цветом без места: ' +
+    'пустыни в мире нет.</li>' +
+    `<li><b>Цена кадра.</b> ${stat.tris} треугольников на регион, из них видно ` +
+    `${stat.drawn}. Для сравнения: весь набор скелетов, который игра держит в бандле, — ` +
+    '17 863. То есть объёмная карта дороже всей нежити игры примерно вдвое.</li>' +
+    '<li><b>Ступень высоты стала уступом</b> — и читается без легенды, тогда как ' +
+    'на плоской карте она была оттенком, который никто не обязан различать.</li>' +
+    '<li><b>Точка перестала быть точкой</b>, и это главная незакрытая цена. Шахта, ' +
+    'замок и дом — уже не кружок с кольцом: куда вешать ставку, богатство, клана ' +
+    'и событие, проба не отвечает.</li>';
+}
+
+document.getElementById('pDay').addEventListener('click', () => { day++; show(); });
+document.getElementById('pPal').addEventListener('click', (e) => {
+  ours = !ours;
+  e.target.textContent = ours ? 'Палитра набора' : 'Палитра игры';
+  show();
+});
+document.getElementById('pTurn').addEventListener('click', () => { az = (az + 90) % 360; show(); });
+await show();
 </script>
