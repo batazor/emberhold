@@ -566,7 +566,16 @@ export class CampHud {
      */
     const affordable =
       this.last !== null && upgradeBlock(this.last.camp, 'forge') === 'ok';
-    const quiet = (this.onb === 'build' && affordable) || this.onb === 'craft';
+    /*
+     * У кадра `craft` тот же капкан, и он злее: ковать нечем по построению —
+     * первый предмет стоит железа, а ярус 1 ещё заперт Кухней (§13.5).
+     * Спрятанная строка отняла бы «В мир», то есть единственный путь
+     * к торговцу, у которого это железо и берут. Кадр молчит только тогда,
+     * когда ковка вправду доступна.
+     */
+    const canForge =
+      this.last !== null && GEAR_ORDER.some((slot) => gearBlock(this.last!.camp, slot) === 'ok');
+    const quiet = (this.onb === 'build' && affordable) || (this.onb === 'craft' && canForge);
 
     // Подсказка кадра держится, пока кадр не сменится.
     const hint = ONB_HINT[this.onb];

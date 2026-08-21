@@ -10,6 +10,7 @@
  */
 import type { BuildingId } from './camp';
 import type { ConsumableId } from './consumables';
+import type { OfferId } from './trade';
 import type { HeroClassId, SkillId } from './heroes';
 import type { OnbStep } from './onboarding';
 import type { Tier } from './types';
@@ -58,6 +59,12 @@ export type TelemetryEvent =
   | { t: 'exit'; at: number; where: ExitPoint }
   /** §21.5 — берут ли все три и уходит ли камень. */
   | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' }
+  /**
+   * §13.5 — ходят ли к торговцу вообще и не обгоняет ли лавка глубину.
+   * Курс намеренно плохой, и обмен, случающийся чаще вылазки на ярус 1,
+   * означает, что он всё-таки щедр.
+   */
+  | { t: 'trade'; at: number; offer: OfferId }
   /**
    * Кадры онбординга. Метрика раскадровки — доля дошедших до первой
    * возвращения, цель не ниже 85%: всё, что ниже, значит, что мы теряем людей

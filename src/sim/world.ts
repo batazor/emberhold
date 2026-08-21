@@ -130,6 +130,35 @@ const GRID_Y = 4;
  */
 export type NodeKind = 'вылазка' | 'замок' | 'кладбище';
 
+/**
+ * Свойства вида узла — одной таблицей, а не россыпью проверок `kind === …`.
+ *
+ * Их накопилось семь на три вида, в двух файлах, и ни одну компилятор не ловил:
+ * `NodeKind` нигде не стоял в исчерпывающей позиции. Кладбище приехало третьим
+ * и половину проверок не задело — событие ему считалось как вылазке, хотя
+ * карточка про событие молчит, а в `entryBlock` оно проходило по совпадению,
+ * потому что `tier: 0`.
+ *
+ * `Record<NodeKind, …>` это чинит раз и навсегда: следующий вид узла не
+ * соберётся, пока не будет описан здесь.
+ */
+export interface KindTraits {
+  /** Прогулка: ни добычи, ни ставки, ни богатства — ходить можно, рисковать нечем. */
+  readonly walk: boolean;
+  /** Бывает ли здесь событие (§11.6). Модифицировать прогулке нечего. */
+  readonly events: boolean;
+  /** Запирает ли ярус Кухней (§22). У прогулки яруса нет. */
+  readonly gated: boolean;
+  /** Годится ли как цель «ещё вылазка» и как запасной вход при перезапуске. */
+  readonly raidable: boolean;
+}
+
+export const KIND: Record<NodeKind, KindTraits> = {
+  'вылазка': { walk: false, events: true, gated: true, raidable: true },
+  'замок': { walk: true, events: false, gated: false, raidable: false },
+  'кладбище': { walk: true, events: false, gated: false, raidable: false },
+};
+
 export interface WorldNode {
   readonly id: number;
   readonly name: string;
@@ -371,7 +400,7 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
     // читает как «через сколько сюда снова стоит идти».
     const restShifts = rich >= RICH_MAX ? 0 : Math.max(1, Math.ceil((rich + 1 - v) / RICH_REST));
     const node = region.nodes[i]!;
-    const event = node.kind === 'замок' ? null : eventAt(day, node.id, t);
+    const event = KIND[node.kind].events ? eventAt(day, node.id, t) : null;
     return { rich, clan: clan[i]!, restShifts, event };
   });
 }
@@ -393,7 +422,7 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
 export function firstRaidNode(day: number, t: number): number | null {
   const region = regionAt(day);
   const world = worldAt(t, []);
-  const raids = region.nodes.filter((n) => n.kind === 'вылазка');
+  const raids = region.nodes.filter((n) => KIND[n.kind].raidable);
   if (raids.length === 0) return null;
   const rank = (n: WorldNode): number => {
     const state = world[region.nodes.indexOf(n)];
