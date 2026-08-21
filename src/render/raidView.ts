@@ -5,6 +5,7 @@ import {
   buildingGeometry,
   enemyGeometry,
   enemyParts,
+  dwellerParts,
   guardParts,
   heroGeometry,
   heroParts,
@@ -19,7 +20,9 @@ import {
   ARCHER_SPEED,
   PATROL_SPEED,
   SQUAD,
+  DWELLER_SPEED,
   archerAt,
+  dwellersAt,
   garrisonOf,
   patrolAt,
   type Garrison,
@@ -30,6 +33,7 @@ import { fireOf } from './models';
 import { Rigged } from './rigged';
 import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
+import { inYard } from '../sim/castleSite';
 import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
@@ -161,6 +165,13 @@ const ATTACK_RATE: Record<EnemyKind, number> = {
  * множителем в рендере.
  */
 const MAX_RATE = 3;
+
+/**
+ * До чего гаснут стены замка, пока герой во дворе. Не до нуля: замок обязан
+ * остаться постройкой, по которой ходят, а не пропасть — сквозь стену должно
+ * быть видно, что она стена.
+ */
+const CASTLE_FADE = 0.45;
 const rateFor = (speed: number, scale: number): number =>
   Math.min(MAX_RATE, speed / Math.max(1e-3, SLIDE * scale));
 const walkRate = (kind: EnemyKind, scale: number): number =>
@@ -205,6 +216,19 @@ interface EnemyView {
 export class RaidView {
   readonly group = new THREE.Group();
   private readonly enemyViews = new Map<number, EnemyView>();
+  /**
+   * Жильцы двора (§6.1.6.1). Держатся отдельно от противников, потому что
+   * ими и не являются: ни полоски жизни, ни замаха, ни клипа падения —
+   * жилец только ходит и стоит.
+   */
+  private readonly dwellerViews: { rig: Rigged; facing: number }[] = [];
+  /**
+   * Материал замка. Держится отдельной ссылкой затем, чтобы гасить стены,
+   * пока герой во дворе (§6.1.6.1): иначе кадр показывает стену вместо того,
+   * ради чего в замок заходят.
+   */
+  private castleMat: THREE.MeshLambertMaterial | null = null;
+  private castleFade = 1;
   private readonly containerMeshes = new Map<number, THREE.Mesh>();
   private hero!: THREE.Group;
   /** Есть у класса с моделью набора; у примитивных классов остаётся null. */
@@ -638,6 +662,7 @@ export class RaidView {
     }
 
     const mat = this.track(castleMaterial());
+    this.castleMat = mat;
     const dummy = new THREE.Object3D();
     for (const [model, list] of byModel) {
       // Геометрия живёт в общем кэше castle.ts и переживает вид: её не track.
@@ -695,6 +720,14 @@ export class RaidView {
       this.group.add(rig.root);
       this.archer = { rig, facing: 0 };
     }
+
+    // Жильцы двора (§6.1.6.1) — тем же порядком и по той же причине: свой
+    // скелет каждому, иначе двое с одним шагали бы нога в ногу.
+    for (const walk of this.garrison.yard) {
+      const rig = new Rigged(dwellerParts(walk.look), this.blocking);
+      this.group.add(rig.root);
+      this.dwellerViews.push({ rig, facing: 0 });
+    }
   }
 
   /**
@@ -715,6 +748,21 @@ export class RaidView {
       view.facing = RaidView.turnTo(view.facing, man.facing, dt);
       view.rig.root.rotation.y = view.facing;
       view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+    }
+
+    // Жильцы идут на тех же часах, что и гарнизон: одна локация — одно время,
+    // и отладочная перемотка `setWatch` двигает всех разом.
+    const folk = dwellersAt(this.garrison, this.watch);
+    for (let i = 0; i < this.dwellerViews.length; i++) {
+      const view = this.dwellerViews[i]!;
+      const man = folk[i];
+      if (man === undefined) continue;
+      view.rig.update(dt);
+      view.rig.root.position.set(man.x, 0, man.z);
+      view.facing = RaidView.turnTo(view.facing, man.facing, dt);
+      view.rig.root.rotation.y = view.facing;
+      if (man.walking) view.rig.play('ходьба', rateFor(DWELLER_SPEED, view.rig.root.scale.y));
+      else view.rig.play('покой');
     }
 
     if (this.archer === null) return;
@@ -1253,6 +1301,33 @@ export class RaidView {
       else this.heroRig.play('покой');
     }
 
+    /**
+     * Стены гаснут, пока герой во дворе. Замер: стена в две клетки при камере
+     * в 30° прячет за собой около четырёх с половиной клеток земли, и на
+     * четверти двора герой оказывается скрыт целиком, на трети — наполовину.
+     * До жителей (§6.1.6.1) прятать во дворе было некого, и свойство
+     * не значило ничего.
+     *
+     * Гаснет весь замок, а не ближняя стена: детали едут одной `InstancedMesh`
+     * на модель с общим материалом, и погасить одну из них значило бы завести
+     * второй материал и делить детали по нему каждый кадр. А главное — гаснет
+     * он ровно тогда, когда игрок внутри, то есть когда смотреть снаружи уже
+     * незачем. Тень стена при этом отбрасывает прежнюю: стена не исчезла,
+     * её просто видно насквозь.
+     */
+    if (this.castleMat !== null && this.keep !== null) {
+      const inside = inYard(this.keep, { x: Math.round(hero.x), z: Math.round(hero.z) });
+      const goal = inside ? CASTLE_FADE : 1;
+      this.castleFade += (goal - this.castleFade) * Math.min(1, dt * 5);
+      const mat = this.castleMat;
+      const clear = this.castleFade < 0.995;
+      if (mat.transparent !== clear) {
+        mat.transparent = clear;
+        mat.needsUpdate = true;
+      }
+      mat.opacity = this.castleFade;
+    }
+
     for (const e of this.loc.enemies) {
       const view = this.enemyViews.get(e.id);
       if (view === undefined) continue;
@@ -1384,6 +1459,8 @@ export class RaidView {
     });
     // Скелет у каждой особи свой, и три не освобождает его вместе с группой.
     for (const view of this.enemyViews.values()) view.rig.dispose();
+    for (const view of this.dwellerViews) view.rig.dispose();
+    this.dwellerViews.length = 0;
     for (const view of this.squad) view.rig.dispose();
     this.squad.length = 0;
     this.archer?.rig.dispose();

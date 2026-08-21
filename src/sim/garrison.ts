@@ -1,8 +1,15 @@
 /**
- * Гарнизон замка (§6.1.6): отряд, обходящий периметр, и стрелок, который
- * иногда выходит на стену. Локация замка до этого стояла пустой намеренно —
- * постройка была, а живущих в ней не было, — и первое, чем её наполняют,
- * это не добыча и не бой, а то, что показывает: замок чей-то.
+ * Кто в замке (§6.1.6, §6.1.6.1). Трое родом: отряд, обходящий периметр,
+ * стрелок, который иногда выходит на стену, и жильцы двора. Локация замка
+ * до этого стояла пустой намеренно — постройка была, а живущих в ней
+ * не было, — и первое, чем её наполняют, это не добыча и не бой, а то,
+ * что показывает: замок чей-то.
+ *
+ * **Все трое считаются одним способом, и это решение.** Сперва жильцы были
+ * написаны отдельным модулем со своим состоянием, которое кто-то обязан
+ * продвигать шагом; двух систем ходьбы в одной локации не бывает — одну
+ * из них перестанут понимать. Жильцы переписаны здесь и тем же способом:
+ * чистой функцией времени.
  *
  * **Гарнизон ничего не решает и ничем не грозит.** Он не занимает клеток,
  * не мешает ходьбе, не дерётся и не попадает в `GameLocation.enemies`:
@@ -39,6 +46,9 @@ import {
   type Piece,
   type Spot,
 } from './castle';
+import { idx } from './grid';
+import { findPath } from './pathfinding';
+import type { Cell, GameLocation } from './types';
 
 /* ---------- числа ---------- */
 
@@ -83,6 +93,38 @@ export const ARCHER_REST = 17;
 export const ARCHER_STAND = 14;
 export const ARCHER_STEPS = 4;
 
+/**
+ * Жильцы двора. Гарнизон стережёт, а живёт в замке кто-то ещё, и отличить
+ * одно от другого можно только силуэтом — тем же правилом, каким различаются
+ * скелеты (§15) и сам гарнизон: снаряжение, а не порода.
+ *
+ * ВРЕМЕННОЕ, §0.1: рабочие подписи к моделям набора, а не имена мира.
+ */
+export type DwellerLook = 'маг' | 'плут';
+export const DWELLER_LOOKS: readonly DwellerLook[] = ['маг', 'плут'];
+
+/**
+ * Шаг жильца — медленнее и гарнизона, и героя (1,67 клетки в секунду,
+ * §17.4). Дозор идёт по делу, герой тем более; жилец никуда не идёт,
+ * он тут живёт.
+ */
+export const DWELLER_SPEED = 0.85;
+
+/** Сколько жилец стоит на углу обхода. Ровно затем, чтобы стоящего было
+ *  видно стоящим: обход без остановок — конвейер, а не жизнь двора. */
+export const DWELLER_STAND = 2.4;
+
+/** Свободных клеток двора на одного жильца. Как и привидения на кладбище
+ *  (§6.1.7.1), жильцы считаются плотностью: двор выпадает разный, и число,
+ *  верное на одном, на другом означало бы толпу или пустоту. */
+const DWELLER_TILES = 34;
+const DWELLERS_MIN = 2;
+const DWELLERS_MAX = 4;
+
+/** Углов у обхода. Два дали бы хождение по отрезку туда-обратно, четыре
+ *  на тесном дворе не находят места друг от друга. */
+const YARD_CORNERS = 3;
+
 /* ---------- то, что считается один раз ---------- */
 
 /** Точка стены, на которой можно стоять: клетка локации и высота хода. */
@@ -100,6 +142,17 @@ export interface Run {
   readonly posts: readonly Post[];
 }
 
+/** Обход жильца: замкнутая ломаная по клеткам двора и углы, на которых
+ *  он останавливается постоять. */
+export interface YardWalk {
+  readonly look: DwellerLook;
+  readonly path: readonly Cell[];
+  /** Индексы вершин `path`, на которых жилец стоит по прибытии. */
+  readonly stops: readonly number[];
+  /** Полный круг в секундах — ход плюс все стоянки. */
+  readonly cycle: number;
+}
+
 export interface Garrison {
   readonly seed: number;
   /** Тропа обхода: замкнутая ломаная по углам прямоугольника. */
@@ -110,6 +163,8 @@ export interface Garrison {
   readonly way: 1 | -1;
   /** Участки верха стены. Пусто — стрелку выходить некуда. */
   readonly runs: readonly Run[];
+  /** Обходы жильцов двора. Пусто — двор не даёт замкнуть ни одного кольца. */
+  readonly yard: readonly YardWalk[];
 }
 
 /** Клетка локации, в которую попадает клетка плана: центр её квадрата. */
@@ -204,11 +259,179 @@ const postOf = (castle: Castle, at: Spot, spot: Spot, deck: number): Post => ({
   facing: outwardOf(castle, spot),
 });
 
+/* ---------- двор ---------- */
+
+/** Свободные клетки двора в клетках локации. */
+function yardTiles(castle: Castle, at: Spot, loc: GameLocation): Cell[] {
+  const out: Cell[] = [];
+  for (const spot of castle.yard) {
+    for (let dz = 0; dz < CASTLE_CELL; dz++) {
+      for (let dx = 0; dx < CASTLE_CELL; dx++) {
+        const x = at.x + spot.x * CASTLE_CELL + dx;
+        const z = at.z + spot.z * CASTLE_CELL + dz;
+        if (x < 0 || z < 0 || x >= loc.size || z >= loc.size) continue;
+        if (loc.blocked[idx(loc.size, x, z)] === 0) out.push({ x, z });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Обходы жильцов. Считаются по **маске двора, а не по всей локации**:
+ * проезд под воротами проходим, и кратчайший путь между двумя углами двора
+ * имел бы полное право выйти наружу и вернуться. Жилец, гуляющий по лесу
+ * вокруг замка, — не жилец замка, а второй дозор.
+ *
+ * Путь ищет тот же `findPath`, которым ходит герой: другой поиск дал бы
+ * жильцу право пройти там, где герой не пройдёт, и это читалось бы
+ * как ошибка стены, а не как выбор маршрута.
+ */
+function yardWalks(
+  castle: Castle,
+  at: Spot,
+  loc: GameLocation,
+  trader: Cell | null,
+): YardWalk[] {
+  const tiles = yardTiles(castle, at, loc);
+  if (tiles.length === 0) return [];
+
+  const mask = new Uint8Array(loc.size * loc.size).fill(1);
+  for (const t of tiles) mask[idx(loc.size, t.x, t.z)] = 0;
+
+  const rng = mulberry32(castle.seed ^ 0x5f0c);
+  const count = Math.max(
+    DWELLERS_MIN,
+    Math.min(DWELLERS_MAX, Math.round(tiles.length / DWELLER_TILES)),
+  );
+  // Порог «врозь» — половина стороны двора. На тесном дворе он недостижим,
+  // и тогда берётся что нашлось: пусть жилец ходит мало, чем не ходит.
+  const apart = Math.max(2, Math.round(Math.sqrt(tiles.length) / 2));
+
+  const out: YardWalk[] = [];
+
+  /**
+   * Торговец (§13.5) — один из жильцов, и стоит он на месте. До сих пор
+   * лавка была точкой без тела: во дворе, где никого нет, невидимый торговец
+   * никому не мешал. С жильцами он стал единственным невидимым человеком
+   * среди видимых — игрок подходил бы к магу и ничего не получал, а панель
+   * открывалась бы от пустого места.
+   *
+   * **Стоящий и есть указатель.** Во дворе, где остальные гуляют, тот, кто
+   * не двигается, — это тот, к кому подходят; панель на подходе только
+   * подтверждает прочитанное. Второго органа — значка над головой,
+   * подсветки — не заводится: жест здесь один, как и в вылазке.
+   */
+  if (trader !== null) {
+    out.push({
+      look: 'плут',
+      path: [trader],
+      stops: [0],
+      cycle: DWELLER_STAND,
+    });
+  }
+
+  for (let i = out.length; i < count; i++) {
+    const corners: Cell[] = [];
+    for (let c = 0; c < YARD_CORNERS; c++) {
+      let pick: Cell | null = null;
+      for (let tries = 0; tries < 24 && pick === null; tries++) {
+        const cand = tiles[randInt(rng, tiles.length)]!;
+        if (corners.every((s) => Math.hypot(s.x - cand.x, s.z - cand.z) >= apart)) pick = cand;
+      }
+      corners.push(pick ?? tiles[randInt(rng, tiles.length)]!);
+    }
+
+    const path: Cell[] = [corners[0]!];
+    const stops: number[] = [];
+    let broken = false;
+    for (let c = 0; c < corners.length; c++) {
+      const leg = findPath(loc.size, mask, corners[c]!, corners[(c + 1) % corners.length]!);
+      if (leg.length === 0) {
+        broken = true;
+        break;
+      }
+      path.push(...leg);
+      // Угол — последняя клетка отрезка: дошёл до неё, значит обход повернул.
+      stops.push(path.length - 1);
+    }
+    // Кольцо кончается там же, где началось: последняя клетка совпадает
+    // с первой, и держать её дважды незачем.
+    if (broken || path.length < 2) continue;
+    path.pop();
+
+    let length = 0;
+    for (let k = 0; k < path.length; k++) {
+      const a = path[k]!;
+      const b = path[(k + 1) % path.length]!;
+      length += Math.hypot(b.x - a.x, b.z - a.z);
+    }
+    const trimmed = stops.map((v) => v % path.length);
+    out.push({
+      look: DWELLER_LOOKS[i % DWELLER_LOOKS.length]!,
+      path,
+      stops: trimmed,
+      cycle: length / DWELLER_SPEED + trimmed.length * DWELLER_STAND,
+    });
+  }
+  return out;
+}
+
+/** Где жилец на момент `t` и идёт ли он. */
+export interface Dweller extends Marcher {
+  readonly look: DwellerLook;
+  readonly walking: boolean;
+}
+
+/**
+ * Жильцы двора на момент `t` секунд от входа в локацию. Как и всё в этом
+ * модуле — чистая функция: один сид и одно `t` дают один кадр, сколько бы
+ * раз их ни позвали и в каком угодно порядке.
+ */
+export function dwellersAt(g: Garrison, t: number): Dweller[] {
+  return g.yard.map((w) => walkYard(w, t));
+}
+
+function walkYard(w: YardWalk, t: number): Dweller {
+  const stops = new Set(w.stops);
+  let left = w.cycle <= 0 ? 0 : ((t % w.cycle) + w.cycle) % w.cycle;
+  for (let i = 0; i < w.path.length; i++) {
+    const from = w.path[i]!;
+    const to = w.path[(i + 1) % w.path.length]!;
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const dist = Math.hypot(dx, dz);
+    const walk = dist / DWELLER_SPEED;
+    const facing = Math.atan2(dx, dz);
+    if (left < walk) {
+      const share = dist === 0 ? 0 : left / walk;
+      return { x: from.x + dx * share, z: from.z + dz * share, facing, walking: true, look: w.look };
+    }
+    left -= walk;
+    const next = (i + 1) % w.path.length;
+    if (stops.has(next)) {
+      if (left < DWELLER_STAND) {
+        return { x: to.x, z: to.z, facing, walking: false, look: w.look };
+      }
+      left -= DWELLER_STAND;
+    }
+  }
+  // Сюда не приходят: сумма отрезков и стоянок и есть цикл. Но вернуть
+  // начало честнее, чем ничего.
+  const home = w.path[0]!;
+  return { x: home.x, z: home.z, facing: 0, walking: false, look: w.look };
+}
+
 /**
  * Гарнизон площадки. Считается один раз на заход: ни одно из этих чисел
  * не меняется, пока стоит замок.
  */
-export function garrisonOf(site: { castle: Castle; at: Spot }): Garrison {
+export function garrisonOf(site: {
+  castle: Castle;
+  at: Spot;
+  loc: GameLocation;
+  trader?: Cell | null;
+}): Garrison {
   const { castle, at } = site;
   const x0 = at.x - PATROL_GAP;
   const z0 = at.z - PATROL_GAP;
@@ -228,6 +451,7 @@ export function garrisonOf(site: { castle: Castle; at: Spot }): Garrison {
     length,
     way: randInt(rng, 2) === 0 ? 1 : -1,
     runs: runsOf(castle, at),
+    yard: yardWalks(castle, at, site.loc, site.trader ?? null),
   };
 }
 
