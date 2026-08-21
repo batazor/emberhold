@@ -135,7 +135,7 @@
       <div class="key">
         <h3>Не больше двух</h3>
         <p>Два слота на вылазку. Купить всё нельзя, значит покупка остаётся выбором,
-          а не списком. Третий слот не продаётся ни за соль, ни за деньги —
+          а не списком. Третий слот не продаётся ни за камень, ни за деньги —
           это та же черта, что и второй слот стройки в §20.1.</p>
       </div>
     </div>
@@ -173,21 +173,21 @@
           <td>когда осталась одна рана</td>
           <td>возвращает одну рану</td>
           <td>ошибку маршрута: прошёл там, где стояли двое</td>
-          <td class="num">6 соли</td>
+          <td class="num">камень 6</td>
         </tr>
         <tr>
           <td><b>Дорожный паёк</b></td>
           <td>когда провиант дошёл до нуля</td>
           <td>даёт 15 провианта</td>
           <td>жадность на один зал глубже, чем стоило</td>
-          <td class="num">4 соли</td>
+          <td class="num">камень 4</td>
         </tr>
         <tr>
           <td><b>Дымовая шашка</b></td>
           <td>когда проснулись двое и больше</td>
           <td>разрывает контакт: все теряют героя</td>
           <td>свалку, из которой не выйти живым</td>
-          <td class="num">5 соли · 1 железо</td>
+          <td class="num">камень 5 · железо 1</td>
         </tr>
       </tbody>
     </table>
@@ -199,25 +199,25 @@
 
   <div class="sec">
     <div class="hd"><div class="eyebrow">04</div><h2>Цена: из неё выводится вся починка</h2></div>
-    <p>Соль по §13 — мягкая валюта, которой к концу дня в избытке, и у неё сознательно
+    <p>Камень по §13 — мягкая валюта, которой к концу дня в избытке, и у неё сознательно
       слабые стоки. Расходники становятся её главным постоянным стоком. Но цена не
       берётся с потолка: она обязана попадать в те самые 60–80%.</p>
     <div class="lab">
       <div class="screen" style="align-items:center"><canvas id="cv2" width="680" height="280"></canvas></div>
       <div class="panel">
-        <label>Соли за вылазку <input type="range" id="inc" min="1" max="10" value="4"></label>
+        <label>Камня за вылазку <input type="range" id="inc" min="1" max="10" value="4"></label>
         <label>Цена расходника <input type="range" id="price" min="2" max="14" value="6"></label>
         <div class="rows" id="rows2"></div>
         <div id="verdict2"></div>
-        <div class="note">Двести вылазок подряд: игрок покупает, когда хватает соли.
+        <div class="note">Двести вылазок подряд: игрок покупает, когда хватает камня.
           Доля возвратов, где покупка была доступна, — та самая метрика §20.1.</div>
       </div>
     </div>
     <p>Отсюда правило цены: <b>расходник стоит примерно полторы вылазки своей валюты.</b>
       Дешевле — покупка доступна всегда, и экран возврата превращается в торговый
       автомат, где нечего решать. Дороже — возвращается та же дыра, только вместо
-      занятого слота её создаёт пустой кошелёк. При замеренных четырёх солях за
-      вылазку это 5–7 соли, откуда и взялась повязка за шесть.</p>
+      занятого слота её создаёт пустой кошелёк. При замеренных четырёх камнях за
+      вылазку это 5–7 единиц камня, откуда и взялась повязка за шесть.</p>
   </div>
 
   <div class="sec">
@@ -264,7 +264,7 @@
       <div>
         <h3>Стак и хранение на складе</h3>
         <p>«У меня их двенадцать» — это уже не сток, а накопленный жир.
-          Соль обязана уходить, иначе §13.2 не выполняется.</p>
+          Камень обязан уходить, иначе §13.2 не выполняется.</p>
       </div>
       <div>
         <h3>Расходники в локации</h3>
@@ -285,7 +285,7 @@
       <div>
         <h3>Расходники за деньги</h3>
         <p>Не в прототипе. Важно лишь, чтобы появление позже не потребовало
-          переделки: соль и деньги — разные входы в один расчёт, как в §20.5.</p>
+          переделки: камень и деньги — разные входы в один расчёт, как в §20.5.</p>
       </div>
     </div>
   </div>
@@ -297,7 +297,7 @@
       <tbody>
         <tr><td>Починилась ли главная дыра</td><td class="num">покупка доступна</td><td class="num">60–80%</td></tr>
         <tr><td>Не стал ли экран автоматом</td><td class="num">доля возвратов с покупкой расходника</td><td class="num">не выше 80%</td></tr>
-        <tr><td>Уходит ли соль</td><td class="num">остаток соли за 20 вылазок</td><td class="num">не растёт монотонно</td></tr>
+        <tr><td>Уходит ли камень</td><td class="num">остаток камня за 20 вылазок</td><td class="num">не растёт монотонно</td></tr>
         <tr><td>Не сломалась ли ставка</td><td class="num">доля провалов</td><td class="num">меняется не более чем на 5 п.п.</td></tr>
         <tr><td>Берут ли все три</td><td class="num">разброс покупок по видам</td><td class="num">ни один не ниже 15%</td></tr>
       </tbody>
@@ -472,13 +472,13 @@
   cv2.width=W2*DPR; cv2.height=H2*DPR; c2.scale(DPR,DPR);
 
   function simulate(income,price){
-    var salt=0, offers=0, buys=0, N=200, left=[];
+    var stone=0, offers=0, buys=0, N=200, left=[];
     for(var i=0;i<N;i++){
-      salt+=income;
-      if(salt>=price){offers++; salt-=price; buys++;}
-      left.push(salt);
+      stone+=income;
+      if(stone>=price){offers++; stone-=price; buys++;}
+      left.push(stone);
     }
-    return {rate:offers/N, buys:buys, salt:salt, left:left};
+    return {rate:offers/N, buys:buys, stone:stone, left:left};
   }
 
   function drawChart(res,price){
@@ -503,7 +503,7 @@
     var xp=pad+w*((price-2)/12), yp=pad+h*(1-res.rate);
     c2.beginPath(); c2.arc(xp,yp,5,0,Math.PI*2); c2.fillStyle="#D2662F"; c2.fill();
     c2.fillStyle="#9A9285"; c2.textAlign="center";
-    c2.fillText("цена расходника, соли",pad+w/2,H2-6);
+    c2.fillText("цена расходника, камня",pad+w/2,H2-6);
   }
 
   function syncPrice(){
@@ -513,8 +513,8 @@
     document.getElementById("rows2").innerHTML=
       "<div><span>покупка доступна</span><b>"+Math.round(res.rate*100)+"%</b></div>"+
       "<div><span>куплено за 200 вылазок</span><b>"+res.buys+"</b></div>"+
-      "<div><span>цена в вылазках соли</span><b>"+(price/income).toFixed(1)+"</b></div>"+
-      "<div><span>соли осталось</span><b>"+res.salt+"</b></div>";
+      "<div><span>цена в вылазках камня</span><b>"+(price/income).toFixed(1)+"</b></div>"+
+      "<div><span>камня осталось</span><b>"+res.stone+"</b></div>";
     var ok=res.rate>=0.6&&res.rate<=0.8;
     document.getElementById("verdict2").innerHTML=ok
       ? '<span class="chk ok">попадает в 60–80%</span>'
