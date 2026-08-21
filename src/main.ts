@@ -68,16 +68,38 @@ import {
   stepChop,
   treeAt,
 } from './sim/logging';
-import type { Chop, ChopBlock } from './sim/logging';
+import type { Chop } from './sim/logging';
+import {
+  MINE_STONE,
+  aimMine,
+  mineBlock,
+  mineProgress,
+  standNear,
+  startMine,
+  stepMine,
+  stepMineInto,
+  stoneAt,
+} from './sim/stones';
+import type { Stone } from './sim/stones';
+import { idx } from './sim/grid';
+import { inReach } from './sim/work';
+import type { Work, WorkBlock } from './sim/work';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
-import { addResources, emptyResources } from './sim/resources';
+import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
-import { campNav, commandCampMove, createCampHero, stepCampHero, type CampHero } from './sim/campWalk';
+import {
+  campNav,
+  commandCampMove,
+  createCampHero,
+  stepCampHero,
+  type CampHero,
+  type CampNav,
+} from './sim/campWalk';
 import { topWalkable } from './sim/campTop';
 import { CASTLE_CELL, WALK } from './sim/castle';
 import {
@@ -210,6 +232,14 @@ let resting = false;
  * нет вовсе.
  */
 let chop: Chop | null = null;
+/**
+ * Начатая добыча (§13.4): по какому валуну бьют и сколько осталось. Живёт
+ * здесь по той же причине, что и рубка, — шаг вылазки обязан оставаться
+ * тем же самым и у бота, где кайла нет вовсе.
+ */
+let mine: Work | null = null;
+/** То же в лагере: там рюкзака нет, и камень идёт прямо в кладовую. */
+let campMine: { work: Work; stone: Stone } | null = null;
 
 /**
  * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
@@ -225,12 +255,22 @@ const say = (text: string): void => {
 
 /** Почему рубить нельзя — словами игрока. Отказ обязан называть причину:
  *  молчащий отказ читается как поломка (§16.1). */
-const CHOP_DENY: Record<ChopBlock, string> = {
+const CHOP_DENY: Record<WorkBlock, string> = {
   ok: '',
-  'no-forest': 'Здесь не лес — рубить нечего',
-  'no-tree': 'Дерева здесь больше нет',
+  off: 'Здесь не лес — рубить нечего',
+  gone: 'Дерева здесь больше нет',
   far: 'К этому дереву не подойти',
   bag: 'Рюкзак полон — дерево некуда класть',
+};
+
+/** То же для кайла (§13.4). Словарь причин общий, слова — свои: игрок
+ *  видит камень, а не «работу по клетке». */
+const MINE_DENY: Record<WorkBlock, string> = {
+  ok: '',
+  off: 'Здесь нечего добывать',
+  gone: 'Камня здесь больше нет',
+  far: 'К этому камню не подойти',
+  bag: 'Рюкзак полон — камень некуда класть',
 };
 
 /** Что сейчас написано в строке подсказки пролога. Сравнение затем, чтобы
@@ -1104,10 +1144,11 @@ function tryPlace(cell: Cell): void {
 
 /* ---------- вырубка (§13.3) ---------- */
 
-/** Бросить топор: игрок ушёл или дерева не стало. */
+/** Бросить инструмент: игрок ушёл или того, по чему били, не стало. */
 function stopChopping(): void {
   chop = null;
-  raidView?.hideChop();
+  mine = null;
+  raidView?.hideWork();
 }
 
 /**
@@ -1143,10 +1184,10 @@ function stepChopping(dt: number): void {
   // Пока герой в дороге, работы ещё нет: пятно под деревом врало бы о том,
   // что топор уже стучит.
   if (raid.path.length > 0) {
-    raidView?.hideChop();
+    raidView?.hideWork();
     return;
   }
-  raidView?.showChop(chop.cell.x, chop.cell.z, chopProgress(chop));
+  raidView?.showWork(chop.cell.x, chop.cell.z, chopProgress(chop));
   if (step.swing) {
     play('build');
     raidView?.hitTree(chop.cell.x, chop.cell.z);
@@ -1155,6 +1196,54 @@ function stepChopping(dt: number): void {
     // Кромка не открывается никогда (§12.1), и на месте упавшего дерева там
     // встаёт следующее: рубка по краю бесконечна именно этим.
     raidView?.fellTree(chop.cell.x, chop.cell.z, isEdge(raid.loc, chop.cell));
+    stopChopping();
+  }
+}
+
+/* ---------- добыча камня (§13.4) ---------- */
+
+/**
+ * Тап по валуну. Жест тот же, что у дерева: герой идёт сам и начинает
+ * работать, когда дойдёт. Отказ здесь бывает один — полный рюкзак:
+ * «далеко» не отказ, а дорога.
+ */
+function startMining(cell: Cell): void {
+  if (raid === null) return;
+  const block = mineBlock(raid.hero, raid.loc.stones, cell, raid.bagTotal < raid.capacity);
+  if (block !== 'ok' && block !== 'far') {
+    play('deny');
+    say(MINE_DENY[block]);
+    return;
+  }
+  chop = null;
+  mine = aimMine(raid, cell, commandMove);
+  raidView?.showMarker(cell.x, cell.z);
+}
+
+/**
+ * Тик работы кайлом. Звук замаха играется здесь, а прибавку в рюкзаке
+ * озвучивает ухо вылазки (`raidAudio`) — то же правило §18.1, что у рубки.
+ */
+function stepMining(dt: number): void {
+  if (raid === null || mine === null) return;
+  const stone = stoneAt(raid.loc.stones, mine.cell);
+  const step = stepMine(raid, mine, dt);
+  if (step.stopped !== null) {
+    play('deny');
+    say(MINE_DENY[step.stopped]);
+    stopChopping();
+    return;
+  }
+  // Пока герой в дороге, работы ещё нет: пятно врало бы о том, что кайло
+  // уже стучит.
+  if (raid.path.length > 0) {
+    raidView?.hideWork();
+    return;
+  }
+  raidView?.showWork(mine.cell.x, mine.cell.z, mineProgress(mine));
+  if (step.swing && stone !== null) raidView?.hitStone(stone.id);
+  if (step.taken) {
+    if (stone !== null) raidView?.takeStone(stone.id);
     stopChopping();
   }
 }
@@ -1310,6 +1399,7 @@ function toGlade(): void {
 function toCamp(): void {
   leaveTitle();
   chop = null;
+  campMine = null;
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
   // в лагере провиант ничего не отсчитывает. Взамен — единственная
   // мелодия игры, и звучит она только здесь: всё это в таблице сцены.
@@ -1368,6 +1458,10 @@ const campInput = bindCampInput({
 function campTap(clientX: number, clientY: number): void {
   const hit = rig.screenToGround(clientX, clientY);
   if (hit === null) return;
+  // Любой тап бросает кайло: игрок занялся чем-то другим. Тап по тому же
+  // валуну начнёт работу заново — с нуля, а не с середины, и это честно:
+  // отойти и вернуться значит начать сначала.
+  stopCampMining();
   const picked = campView.buildingAt(hit.x, hit.z);
 
   // §20.4 — перестановка бесплатна и мгновенна: она вооружена из карточки,
@@ -1405,6 +1499,29 @@ function campTap(clientX: number, clientY: number): void {
     }
   }
 
+  /**
+   * Тап по валуну — та же добыча, что в вылазке (§13.4). Рюкзака в лагере
+   * нет: камень идёт прямо в кладовую, потому что склад в двух шагах.
+   *
+   * Валун спрашивается раньше здания, и это не произвол. Здание ловит тап
+   * с запасом в клетку вокруг следа (`buildingAt`) — иначе в него трудно
+   * попасть пальцем, — а валун ловится ровно своей клеткой. Спроси мы
+   * здание первым, камень рядом с Кухней стал бы нетапаемым, и выглядело бы
+   * это поломкой. Условие «клетка свободна» держит вторую половину сделки:
+   * валун под переставленным зданием (§20.4) карточку не перебивает.
+   */
+  const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+  const free = cell.x >= 0 && cell.z >= 0 && cell.x < nav.area && cell.z < nav.area
+    && nav.ground[idx(nav.area, cell.x, cell.z)] === 0;
+  const stone = stoneAt(camp.stones, cell);
+  if (stone !== null && free && campHero.level === 'земля') {
+    campHud.close();
+    campView.highlight(null);
+    startCampMining(stone, nav);
+    return;
+
+  }
+
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
   // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
@@ -1413,7 +1530,68 @@ function campTap(clientX: number, clientY: number): void {
     return;
   }
   campHud.close();
-  commandCampMove(camp, campHero, { x: Math.round(hit.x), z: Math.round(hit.z) });
+  commandCampMove(camp, campHero, cell);
+}
+
+/* ---------- добыча камня в лагере (§13.4) ---------- */
+
+/** Взяться за валун: дойти до него или встать, если кайло уже достаёт. */
+function startCampMining(stone: Stone, nav: CampNav): void {
+  campMine = { work: startMine(stone), stone };
+  if (inReach(campHero, stone)) {
+    campHero.path.length = 0;
+    return;
+  }
+  const spot = standNear(campHero, stone, (x, z) =>
+    x >= 0 && z >= 0 && x < nav.area && z < nav.area && nav.ground[idx(nav.area, x, z)] === 0);
+  commandCampMove(camp, campHero, spot);
+}
+
+function stopCampMining(): void {
+  campMine = null;
+  campView.hideWork();
+}
+
+/**
+ * Тик работы кайлом в лагере. Отличий от вылазки два, и оба — про место:
+ * камень идёт в кладовую, а не в рюкзак, и добытое сразу сохраняется —
+ * лагерь переживает перезагрузку, и разобранный валун обязан её пережить
+ * тоже.
+ */
+function stepCampMining(dt: number): void {
+  if (campMine === null) return;
+  const { work, stone } = campMine;
+  const step = stepMineInto(
+    campHero,
+    campHero.path.length > 0,
+    camp.stones,
+    work,
+    dt,
+    camp.resources,
+  );
+  if (step.stopped !== null) {
+    play('deny');
+    campHud.notify(MINE_DENY[step.stopped]);
+    stopCampMining();
+    return;
+  }
+  if (campHero.path.length > 0) {
+    campView.hideWork();
+    return;
+  }
+  campView.showWork(work.cell.x, work.cell.z, mineProgress(work));
+  if (step.swing) {
+    play('build');
+    campView.hitStone(stone.id);
+  }
+  if (step.taken) {
+    campView.takeStone(stone.id);
+    campHud.notify(`+${MINE_STONE} · ${RESOURCE_NAME.stone}`);
+    campHud.sync(camp, clock.now(), 0);
+    play('levelup');
+    stopCampMining();
+    persist();
+  }
 }
 
 /* ---------- ввод вылазки ---------- */
@@ -1495,6 +1673,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // Стройка стен перехватывает палец целиком: пока карточка выбрана,
   // лагерь не крутится и здания не выбираются.
   if (mode === 'camp' && buildTool !== null) {
+    stopCampMining();
     const hit = rig.screenToGround(e.clientX, e.clientY);
     if (hit !== null) buildAt(hit, buildTool !== 'стена');
     return;
@@ -1515,6 +1694,12 @@ canvas.addEventListener('pointerdown', (e) => {
   // в локации их всего один.
   if (raid.logging && treeAt(raid.loc, cell)) {
     startChopping(cell);
+    return;
+  }
+  // Тап по валуну — добыча (§13.4). Спорить с деревом ему не о чем: дерево
+  // стоит на занятой клетке, валун лежит на проходимой.
+  if (stoneAt(raid.loc.stones, cell) !== null) {
+    startMining(cell);
     return;
   }
   stopChopping();
@@ -1643,6 +1828,22 @@ if (debugNode !== null) {
 }
 
 /**
+ * Ручка к состоянию вылазки для сцен `?tier=N` и `?node=N`. Без неё сцена
+ * показывает кадр, но ответить «взялся ли герой за валун и сколько осталось»
+ * может только глаз, а восемь секунд у камня незачем высиживать: работа
+ * отдаётся живой, и `работа().left` двигается руками.
+ */
+if (debugTier !== null || debugNode !== null) {
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    вылазка: () => raid,
+    камни: () => raid?.loc.stones ?? null,
+    работа: () => mine,
+    рубка: () => chop,
+  };
+}
+
+/**
  * Отладочные сцены (§6: воспроизводимость). Кадр, который нужно посмотреть,
  * открывается сразу, а не проходом игры до него: чтобы проверить стену
  * в лагере, незачем играть пролог.
@@ -1716,6 +1917,10 @@ if (debugCamp !== null) {
     nav: () => campNav(camp),
     tap: (x: number, z: number, level: 'земля' | 'верх' = 'земля') =>
       commandCampMove(camp, campHero, { x, z }, level),
+    // Начатая добыча (§13.4). Отдаётся сама работа, а не снимок: отладочной
+    // сцене положено не только показывать состояние, но и двигать его —
+    // высиживать восемь секунд у камня незачем.
+    работа: () => campMine,
   };
 }
 
@@ -1733,6 +1938,12 @@ if (debugParams.has('castle')) {
   if (place !== undefined) toRaid(place.id);
   (window as unknown as { камень: unknown }).камень = {
     site: () => castleNow,
+    // Начатая добыча (§13.4) и тот, кто её ведёт. Работы не видно глазом,
+    // пока пятно не выросло, а вопрос «взялся ли герой за камень» задаётся
+    // первым. Отдаётся сама работа, а не её снимок: отладочной сцене положено
+    // не только показывать состояние, но и двигать его.
+    работа: () => mine,
+    герой: () => raid?.hero ?? null,
     garrison: () => (castleNow === null ? null : garrisonOf(castleNow)),
     patrol: (t = 0) => (castleNow === null ? null : patrolAt(garrisonOf(castleNow), t)),
     archer: (t = 0) => (castleNow === null ? null : archerAt(garrisonOf(castleNow), t)),
@@ -1797,6 +2008,7 @@ startLoop({
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).
       stepChopping(dt);
+      stepMining(dt);
       ear.hear(raid);
       if (inGlade) {
         hud.sync(raid, dt);
@@ -1937,6 +2149,7 @@ startLoop({
       // Герой лагеря идёт тем же шагом, что и в вылазке: сначала считается
       // симуляцией, потом ставится в сцену.
       stepCampHero(camp, campHero, campDt);
+      stepCampMining(campDt);
       campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
       campView.update(campDt, now, rig.dayFactor);
       const c = campView.center;

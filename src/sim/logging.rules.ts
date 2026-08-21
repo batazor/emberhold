@@ -154,7 +154,7 @@ describe('Вырубка: дерево внутри поляны', () => {
     chopDown(state, tree);
     assert.equal(state.bag.wood, CHOP_WOOD, 'брусок не попал в сумку');
     assert.ok(!treeAt(state.loc, tree), 'дерево срублено, а клетка занята');
-    assert.equal(chopBlock(state, tree), 'no-tree', 'по пустой клетке снова рубят');
+    assert.equal(chopBlock(state, tree), 'gone', 'по пустой клетке снова рубят');
   });
 
   test('просека пересчитывает путь назад, а не оставляет старый', () => {
@@ -209,7 +209,7 @@ describe('Вырубка: когда нельзя', () => {
     for (let z = 0; z < state.loc.size; z++) {
       for (let x = 0; x < state.loc.size; x++) {
         if (!state.loc.blocked[idx(state.loc.size, x, z)]) continue;
-        assert.equal(chopBlock(state, { x, z }), 'no-forest');
+        assert.equal(chopBlock(state, { x, z }), 'off');
         return;
       }
     }

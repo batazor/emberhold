@@ -1,5 +1,5 @@
 import type { BuildingId, CampState } from './camp';
-import { BUILDING_ORDER, campArea, createCamp } from './camp';
+import { BUILDING_ORDER, campArea, campStones, createCamp } from './camp';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
 import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
@@ -75,6 +75,14 @@ interface SaveV1 {
    * этапов обязан открываться.
    */
   visits?: { n: number; s: number }[];
+  /**
+   * Валуны лагеря (§13.4) — те, что ещё целы. Поле необязательное и по той же
+   * причине, что отряд и стены: сейв прежних этапов обязан открываться.
+   * Отсутствие поля читается как «камни ещё не тронуты», а не «камней нет»:
+   * игрок, начавший до этой механики, увидит на площадке ровно то же, что
+   * начавший после, — иначе валуны достались бы только новым лагерям.
+   */
+  stones?: { x: number; z: number }[];
 }
 
 export interface LoadResult {
@@ -105,6 +113,9 @@ export function save(
     // Заходы старше окна на богатство уже не влияют — в сохранение они
     // не едут, иначе список растёт без предела.
     visits: liveVisits(camp.visits, watermark).map((v) => ({ n: v.node, s: v.shift })),
+    // Пишется остаток, а не список с пометками: разбитый валун — это просто
+    // камень, которого больше нет, и хранить о нём запись незачем.
+    stones: camp.stones.filter((s) => !s.taken).map((s) => ({ x: s.x, z: s.z })),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -206,6 +217,16 @@ export function load(): LoadResult {
         stairs: typeof w.stairs === 'object' && w.stairs !== null ? { ...w.stairs } : {},
         work: w.work ?? null,
       };
+    }
+
+    // Валуны: список — это то, что ещё лежит. Разбитые в сейв не попадают,
+    // поэтому читать их обратно нечего, а нумерация раздаётся заново.
+    if (Array.isArray(data.stones)) {
+      camp.stones = data.stones
+        .filter((s) => s != null && typeof s.x === 'number' && typeof s.z === 'number')
+        .map((s, id) => ({ id, x: Math.floor(s.x), z: Math.floor(s.z), taken: false }));
+    } else {
+      camp.stones = campStones();
     }
 
     for (const slot of GEAR_ORDER) {

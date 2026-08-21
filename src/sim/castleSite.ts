@@ -20,6 +20,7 @@
  * никому. Список сплошных ролей — единственное, что здесь объявлено.
  */
 import { distanceField, idx } from './grid';
+import { STONES, scatterStones } from './stones';
 import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
 import type { Cell, GameLocation } from './types';
 
@@ -118,6 +119,24 @@ export function generateCastleSite(seed: number): CastleSite {
   // Точка выхода обязана быть свободной: она же место, куда игрок приходит.
   blocked[idx(size, evac.x, evac.z)] = 0;
 
+  /**
+   * Валуны (§13.4) — в поле между лесом и стеной, и только там. Двор
+   * не завален камнем по той же причине, по которой замок вообще стоит
+   * на карте: внутрь заходят смотреть на постройку, и обломки под ногами
+   * читались бы как разрушение, которого игра не обещала. В поле же камень
+   * читается как то, из чего стену и сложили.
+   */
+  const keep = { x: at.x, z: at.z, w: castle.width * CASTLE_CELL, d: castle.depth * CASTLE_CELL };
+  const stones = scatterStones(
+    seed ^ 0x4b41,
+    size,
+    blocked,
+    STONES.castle,
+    (x, z) =>
+      (x < keep.x || z < keep.z || x >= keep.x + keep.w || z >= keep.z + keep.d)
+      && !(x === evac.x && z === evac.z),
+  );
+
   const loc: GameLocation = {
     seed,
     tier: 0,
@@ -125,6 +144,7 @@ export function generateCastleSite(seed: number): CastleSite {
     blocked,
     evac,
     containers: [],
+    stones,
     enemies: [],
     backSteps: distanceField(size, blocked, evac),
   };
