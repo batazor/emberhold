@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { TICK } from '../core/loop';
 import { createCamp, kitchenFood, storageCapacity } from './camp';
+import { bowQuiver, emptyGear } from './gear';
+import { createHero, loadout } from './heroes';
 import { POLICIES, botBattlePlan } from './bot';
 import {
   atRisk,
@@ -29,6 +31,47 @@ const run = (state: RaidState, seconds: number): void => {
 };
 
 describe('Вылазка', () => {
+  /**
+   * §14.3. Вместимость колчана задаёт лук, запас — лагерь, и путать их нельзя.
+   * Пока `arrowsMax` считался от взятого, ноль в лагере обнулял вместимость,
+   * а подбор упирается в `arrows < arrowsMax` — и пустой колчан не мог
+   * наполниться ничем, кроме покупки за железо. Ноль был поглощающим:
+   * потратил всё, железа нет — стрелкового класса больше нет.
+   */
+  test('§14.3 — пустой лагерный запас не запирает колчан', () => {
+    const opts = {
+      seed: 7,
+      tier: 0 as const,
+      kitchenLevel: 1,
+      storageLevel: 1,
+      loadout: loadout(createHero('archer', 0)),
+      gear: emptyGear(),
+    };
+    const empty = createRaid({ ...opts, arrows: 0 });
+    assert.equal(empty.arrows, 0, 'взять из пустого лагеря нечего');
+    assert.equal(empty.arrowsMax, bowQuiver(0), 'но колчан всё равно вмещает');
+    assert.ok(empty.arrows < empty.arrowsMax, 'значит подбор в вылазке возможен');
+
+    // Запас сверх вместимости в колчан не влезает — это и есть вторая половина
+    // правила: числа разные, но запас никогда не больше колчана.
+    const full = createRaid({ ...opts, arrows: 99 });
+    assert.equal(full.arrows, bowQuiver(0), 'взято не больше вместимости');
+  });
+
+  test('§14.3 — колчан не заводится у тех, кто не стреляет', () => {
+    const knight = createRaid({
+      seed: 7,
+      tier: 0,
+      kitchenLevel: 1,
+      storageLevel: 1,
+      loadout: loadout(createHero('knight', 0)),
+      gear: emptyGear(),
+      arrows: 99,
+    });
+    assert.equal(knight.arrowsMax, 0, 'у ближнего боя колчана нет вовсе');
+    assert.equal(knight.arrows, 0);
+  });
+
   test('§2 — Кухня и Склад задают провиант и рюкзак', () => {
     const raid = createRaid({ seed: 1, tier: 1, kitchenLevel: 3, storageLevel: 2 });
     // Значения берутся из кривых, а не повторяются числом: кривая Кухни выведена

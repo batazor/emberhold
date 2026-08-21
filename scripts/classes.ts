@@ -21,6 +21,7 @@
 import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';
 import type { PolicyName } from '../src/sim/bot';
+import { emptyGear } from '../src/sim/gear';
 import { CLASS_ORDER, HERO_CLASSES, SKILLS, createHero, loadout } from '../src/sim/heroes';
 import type { HeroClassId } from '../src/sim/heroes';
 import { totalOf } from '../src/sim/resources';
@@ -63,7 +64,14 @@ function measure(cls: HeroClassId, tier: Tier, useSkills: boolean, policy: Polic
   fired: number;
 } {
   const hero = createHero(cls, 0);
-  const gear = loadout(hero);
+  const kit = loadout(hero);
+  /**
+   * Снаряжение передаётся даже пустым. Без поля `gear` вылазка берёт `NO_MODS`
+   * (`raid.ts`), где колчан равен нулю, — и Лучник идёт стрелять без стрел:
+   * прибор мерил бы тогда не класс, а отсутствие поля. Стоило это 2% успеха
+   * на ярусе 0 против 100% с тем же пустым набором.
+   */
+  const gear = emptyGear();
   const carried: number[] = [];
   const depth: number[] = [];
   const seconds: number[] = [];
@@ -76,7 +84,7 @@ function measure(cls: HeroClassId, tier: Tier, useSkills: boolean, policy: Polic
     const seed = 1_000_003 * (tier + 1) + i * 7919;
     const rng = mulberry32(seed ^ 0x5f3759df);
     const r = playRaid(
-      { seed, tier, ...CAMP[tier], loadout: gear, useSkills },
+      { seed, tier, ...CAMP[tier], loadout: kit, gear, useSkills },
       POLICIES[policy],
       rng,
     );

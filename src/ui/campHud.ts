@@ -1,17 +1,20 @@
 import { formatDuration } from '../core/clock';
 import {
+  ARROW_PACK,
+  ARROW_PACK_COST,
   BUILDINGS,
   BUILDING_ORDER,
   BUILD_COST,
   BUILD_SECONDS,
+  canBuyArrows,
   gearBlock,
   itemCap,
   speedupCost,
   upgradeBlock,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
-import { GEAR, GEAR_COST, GEAR_ORDER, gearLine } from '../sim/gear';
-import type { GearSlot } from '../sim/gear';
+import { GEAR, GEAR_COST, GEAR_ORDER, OFFHAND, bowQuiver, gearLine } from '../sim/gear';
+import type { GearSlot, Offhand } from '../sim/gear';
 import {
   CONSUMABLES,
   CONSUMABLE_ORDER,
@@ -50,6 +53,10 @@ export interface CampCallbacks {
   onRaid(node: number): void;
   /** §14 — ковка и улучшение это одно действие: слот один, предмет один. */
   onCraft(slot: GearSlot): void;
+  /** §14.2 — переложить левую руку. Бесплатно и мгновенно: это не ковка. */
+  onSetOffhand(offhand: Offhand): void;
+  /** §14.3 — пачка стрел в лагерный запас. */
+  onBuyArrows(): void;
   /** §20.4 — перестановка: карточка вооружает режим, дальше тап по клетке. */
   onMove(id: BuildingId): void;
   /** §6.1.6 — стройка стен: карточка открывает панель, дальше жест по земле. */
@@ -63,6 +70,21 @@ const BLOCK_TEXT: Record<string, string> = {
   'slot-busy': 'Слот занят другой стройкой',
   resources: 'Не хватает ресурсов',
 };
+
+/**
+ * Ценник строкой: «железо 1 · камень 8». Один на все четыре места, где цена
+ * показывается, — постройки, ковка, припасы и колчан: формат ценника это
+ * решение панели, а не четырёх её методов.
+ *
+ * Пустая цена даёт пустую строку, а не «бесплатно»: решает вызывающий —
+ * у постройки рядом стоит ещё и время, у покупки не стоит ничего.
+ */
+const priceOf = (cost: Partial<Resources> | undefined): string =>
+  cost === undefined
+    ? ''
+    : (Object.entries(cost) as [ResourceKind, number][])
+        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .join(' · ');
 
 const GEAR_BLOCK_TEXT: Record<string, string> = {
   max: 'Лучше не бывает',
@@ -133,6 +155,16 @@ export class CampHud {
   private readonly sections = new Map<string, HTMLElement>();
   /** Раздел «Мастерская» — часть карточки Мастерской, а не отдельная витрина. */
   private readonly gearSection: HTMLElement;
+  /**
+   * §14.2 и §14.3 — две строки, которые не куются. Левая рука перекладывается
+   * бесплатно, колчан пополняется покупкой; таймера нет ни у той, ни у другой.
+   * Живут в листе Мастерской, а не в «Припасах»: припасы сгорают на выходе
+   * (§21), а рука и стрелы возвращаются с тем, кто вернулся.
+   */
+  private readonly handButton: HTMLButtonElement;
+  private readonly handEffect: HTMLElement;
+  private readonly quiverStatus: HTMLElement;
+  private readonly quiverButton: HTMLButtonElement;
   private readonly moveButton: HTMLButtonElement;
   private readonly bar: HTMLElement;
   private slots!: HTMLElement;
@@ -201,6 +233,58 @@ export class CampHud {
     this.gearSection = document.createElement('div');
     this.gearSection.className = 'gear';
     for (const slot of GEAR_ORDER) this.gearSection.appendChild(this.makeGearRow(slot));
+
+    // §14.2 — рука перекладывается тапом по самой строке: цены нет, поэтому
+    // и ценника нет, а «Выковать» здесь было бы враньём.
+    const hand = document.createElement('div');
+    hand.className = 'b-row';
+    const handTop = document.createElement('div');
+    handTop.className = 'b-top';
+    const handName = document.createElement('span');
+    handName.textContent = 'Левая рука';
+    handTop.appendChild(handName);
+    this.handEffect = document.createElement('div');
+    this.handEffect.className = 'b-eff';
+    const handBottom = document.createElement('div');
+    handBottom.className = 'b-bot';
+    const handHint = document.createElement('span');
+    handHint.className = 'dim';
+    handHint.textContent = 'бесплатно';
+    this.handButton = document.createElement('button');
+    handBottom.append(handHint, this.handButton);
+    this.handButton.addEventListener('click', () => {
+      if (this.last === null) return;
+      this.cb.onSetOffhand(this.last.camp.offhand === 'shield' ? 'torch' : 'shield');
+    });
+    hand.append(handTop, this.handEffect, handBottom);
+    this.gearSection.appendChild(hand);
+
+    // §14.3 — колчан. Вместимость задаёт лук, поэтому строка стоит здесь,
+    // а не в «Припасах»: без оружия она честно говорит, сколько влезет.
+    const quiver = document.createElement('div');
+    quiver.className = 'b-row';
+    const quiverTop = document.createElement('div');
+    quiverTop.className = 'b-top';
+    const quiverName = document.createElement('span');
+    quiverName.textContent = 'Колчан';
+    this.quiverStatus = document.createElement('span');
+    this.quiverStatus.className = 'dim';
+    quiverTop.append(quiverName, this.quiverStatus);
+    const quiverEffect = document.createElement('div');
+    quiverEffect.className = 'b-eff';
+    quiverEffect.textContent = 'Стрелы уходят в вылазку и возвращаются с героем';
+    const quiverBottom = document.createElement('div');
+    quiverBottom.className = 'b-bot';
+    const quiverCost = document.createElement('span');
+    quiverCost.className = 'dim';
+    quiverCost.textContent = priceOf(ARROW_PACK_COST);
+    this.quiverButton = document.createElement('button');
+    this.quiverButton.textContent = `Купить ${ARROW_PACK}`;
+    this.quiverButton.addEventListener('click', () => this.cb.onBuyArrows());
+    quiverBottom.append(quiverCost, this.quiverButton);
+    quiver.append(quiverTop, quiverEffect, quiverBottom);
+    this.gearSection.appendChild(quiver);
+
     this.sections.get('forge')?.appendChild(this.gearSection);
 
     // §20.4 — перестановка бесплатна и мгновенна, поэтому это кнопка
@@ -441,10 +525,7 @@ export class CampHud {
       const def = CONSUMABLES[id];
       const button = this.shopButtons.get(id);
       if (button === undefined) continue;
-      const price = (Object.entries(def.price) as [ResourceKind, number][])
-        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
-        .join(' · ');
-      button.textContent = `${def.name} · ${price}`;
+      button.textContent = `${def.name} · ${priceOf(def.price)}`;
       button.title = `${def.trigger} → ${def.effect}`;
       const full = camp.loadout.length >= CONSUMABLE_SLOTS;
       const afford = (Object.entries(def.price) as [ResourceKind, number][]).every(
@@ -523,6 +604,20 @@ export class CampHud {
           ? this.gearCostLine(level + 1)
           : (GEAR_BLOCK_TEXT[block] ?? '');
     }
+
+    // §14.2 — строка называет то, что в руке сейчас, а кнопка — то, на что
+    // меняют. Иначе игрок читает кнопку как состояние и переключает наугад.
+    const hand = OFFHAND[camp.offhand];
+    const other: Offhand = camp.offhand === 'shield' ? 'torch' : 'shield';
+    this.handEffect.textContent =
+      `${hand.name}: ${hand.effect(camp.gear.torch)} · ${hand.tradeoff}`;
+    this.handButton.textContent = `Взять: ${OFFHAND[other].name}`;
+
+    // §14.3 — вместимость задаёт лук. Без лука она всё равно не ноль, и это
+    // честно: колчан есть у любого, стреляет из него только стрелковый класс.
+    const cap = bowQuiver(camp.gear.weapon);
+    this.quiverStatus.textContent = `${camp.arrows} / ${cap}`;
+    this.quiverButton.disabled = !canBuyArrows(camp, cap);
   }
 
   /* ---------- онбординг ---------- */
@@ -631,19 +726,11 @@ export class CampHud {
   }
 
   private costLine(level: number): string {
-    const cost = BUILD_COST[level];
-    if (cost === undefined) return '';
-    return (Object.entries(cost) as [ResourceKind, number][])
-      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
-      .join(' · ');
+    return priceOf(BUILD_COST[level]);
   }
 
   private gearCostLine(level: number): string {
-    const cost = GEAR_COST[level];
-    if (cost === undefined) return '';
-    return (Object.entries(cost) as [ResourceKind, number][])
-      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
-      .join(' · ');
+    return priceOf(GEAR_COST[level]);
   }
 
   /** Итог вылазки: что зачислено на склад. */

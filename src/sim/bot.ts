@@ -15,7 +15,7 @@ import {
 } from './camp';
 import type { BuildingId, CampState } from './camp';
 import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
-import { FORAGE_FOOD, TRAIL_STEP_DISCOUNT } from './heroes';
+import { HAUL_CAPACITY, TRAIL_BACK_DISCOUNT } from './heroes';
 import { ENEMY_STATS } from './enemies';
 import { alive, current, moves, targets } from './battle';
 import type { BattleAction } from './battle';
@@ -24,6 +24,7 @@ import { hexDistance } from './hex';
 import type { Hex } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
 import {
+  backCost,
   commandBattle,
   commandMove,
   createRaid,
@@ -186,37 +187,66 @@ function maybeUseSkill(
   const skill = state.loadout.skill;
   const back = state.loc.backSteps[idx(state.loc.size, Math.round(state.hero.x), Math.round(state.hero.z))] ?? 0;
 
-  if (skill === 'forage' && state.food < back * FOOD_COST.step + policy.margin + FORAGE_FOOD) {
-    useSkill(state);
+  const size = state.loc.size;
+  const room = state.capacity - state.bagTotal;
+
+  /**
+   * Все три умения тратятся на одно: добрать в рюкзак то, что без них
+   * не влезает или не по карману. Момент у каждого свой, и мимо момента
+   * умение стоит ноль — ровно это прибор и показывал у прежних трёх.
+   */
+  if (skill === 'haul') {
+    // Заплечье тратится у **порога ухода**, а не у дна рюкзака. Бот уходит
+    // на `bagStop` — доле, а не полном рюкзаке, — и умение, потраченное
+    // позже этого порога, поднимает потолок тому, кто уже развернулся.
+    // Первая версия сторожила `room <= HAUL_CAPACITY` и давала ровно ноль.
+    const stopAt = state.capacity * policy.bagStop;
+    const tight = state.bagTotal >= stopAt - HAUL_CAPACITY;
+    const more = state.loc.containers.some((c) => !c.opened && (toHere[idx(size, c.x, c.z)] ?? -1) >= 0);
+    if (tight && more) useSkill(state);
     return;
   }
-  if (skill === 'guard') {
-    const close = state.loc.enemies.some(
-      (e) => e.hp > 0 && e.awake && Math.hypot(e.x - state.hero.x, e.z - state.hero.z) <= 1.6,
-    );
-    if (close) useSkill(state);
+
+  if (skill === 'cache') {
+    // Схрон тратится перед самой богатой достижимой находкой: множитель
+    // ложится на содержимое, и на пустой бочке он и множит пустоту.
+    const best = state.loc.containers
+      .filter((c) => !c.opened && (toHere[idx(size, c.x, c.z)] ?? -1) >= 0)
+      .sort((a, b) => b.amount - a.amount)[0];
+    if (best === undefined) return;
+    const near = (toHere[idx(size, best.x, best.z)] ?? 0) <= 3;
+    // Множить есть смысл только если прибавка влезет в рюкзак.
+    if (near && room > best.amount) useSkill(state);
     return;
   }
+
   if (skill === 'trail') {
     // Тропа тратится не на разворот, а на то, ради чего она дана: дотянуться
     // до находки, которая без скидки не по карману. Применение «когда пошёл
     // домой» звучит логично и не даёт ничего — дорога назад уже оплачена
     // решением, принятым раньше.
-    const full = FOOD_COST.step;
-    const cheap = full * (1 - TRAIL_STEP_DISCOUNT);
-    const size = state.loc.size;
+    const step = FOOD_COST.step;
     const reachable = state.loc.containers.some((c) => {
       if (c.opened) return false;
       const dTo = toHere[idx(size, c.x, c.z)] ?? -1;
       if (dTo < 0) return false;
-      const dHome = state.loc.backSteps[idx(size, c.x, c.z)] ?? 0;
-      const withoutSkill = state.food - (dTo * full + FOOD_COST.container + dHome * full);
-      const withSkill = state.food - (dTo * cheap + FOOD_COST.container + dHome * cheap);
+      const cell = idx(size, c.x, c.z);
+      const withoutSkill = state.food - (dTo * step + FOOD_COST.container + rawBack(state, cell) * step);
+      const withSkill = state.food - (dTo * step + FOOD_COST.container + discounted(state, cell) * step);
       return withoutSkill < policy.margin && withSkill >= policy.margin;
     });
     if (reachable || (goingHome && back > 8)) useSkill(state);
   }
 }
+
+/**
+ * Путь домой как есть — без скидки «Тропы». Нужен ровно в одном месте:
+ * решить, стоит ли умение тратить, то есть сравнить «сейчас» с «если потрачу».
+ * Везде остальном бот считает по `backCost`, то есть по дороге, которая есть.
+ */
+const rawBack = (state: RaidState, cell: number): number => state.loc.backSteps[cell] ?? 0;
+const discounted = (state: RaidState, cell: number): number =>
+  Math.ceil(rawBack(state, cell) * (1 - TRAIL_BACK_DISCOUNT));
 
 /** Один забег: бот ставит цель, симуляция её отрабатывает, бот решает заново. */
 export function playRaid(
@@ -259,7 +289,7 @@ export function playRaid(
     }
 
     const from = heroCell(state);
-    const back = loc.backSteps[idx(size, from.x, from.z)] ?? 0;
+    const back = backCost(state, idx(size, from.x, from.z));
     const toHere = distanceField(size, loc.blocked, from);
     const danger = dangerGrid(state, policy.keepAway, vision);
 
@@ -276,7 +306,10 @@ export function playRaid(
         if (c.opened) continue;
         const dTo = toHere[idx(size, c.x, c.z)] ?? -1;
         if (dTo < 0) continue;
-        const dHome = loc.backSteps[idx(size, c.x, c.z)] ?? 0;
+        // §11.7 «Тропа» — дорога считается той, которая есть сейчас, а не
+        // сырой. Иначе умение платит за себя только на бумаге: оно и дано,
+        // чтобы дальняя находка перестала быть дорогой.
+        const dHome = backCost(state, idx(size, c.x, c.z));
         // Цена шага берётся текущая: под Тропой дорога и туда, и обратно
         // дешевле, и именно на этом умение обязано превращаться в добычу.
         const step = stepFoodCost(state);

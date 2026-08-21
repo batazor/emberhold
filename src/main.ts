@@ -19,15 +19,17 @@ import {
   campArea,
   completeIfDue,
   craftGear,
+  buyArrows,
   gearBlock,
   moveBuilding,
   speedup,
+  setOffhand,
   speedupCost,
   startUpgrade,
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { GEAR, MAX_ITEM_LEVEL } from './sim/gear';
+import { GEAR, MAX_ITEM_LEVEL, OFFHAND, bowQuiver } from './sim/gear';
 import type { GearSlot } from './sim/gear';
 import { visionRadius } from './sim/config';
 import {
@@ -44,6 +46,8 @@ import {
   trainBlock,
 } from './sim/heroes';
 import type { HeroState, Roster } from './sim/heroes';
+import { HAND_SIZE, deal, draftReady } from './sim/draft';
+import type { DraftCardId } from './sim/draft';
 import { ONB_HINT, firstTapCell, grantLevelOffBooks, reveal } from './sim/onboarding';
 import type { OnbStep } from './sim/onboarding';
 import {
@@ -154,6 +158,8 @@ import { BattleHud } from './ui/battleHud';
 import { commandBattle, inBattle } from './sim/raid';
 import { current, moves, targets, unitAt } from './sim/battle';
 import { worldToHex, hexKey, hexToWorld } from './sim/hex';
+import { mulberry32 } from './core/rng';
+import { DraftScreen } from './ui/draftScreen';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
 import { bindCampInput } from './features/campInput';
@@ -384,7 +390,7 @@ const campHud = new CampHud(app, {
     // Кадр `craft` кончается первой ковкой, а не входом в вылазку: она и есть
     // то, ради чего Мастерская строилась. Раньше он висел до следующего входа,
     // то есть до того, как игрок сделает обещанное.
-    toRaid(node);
+    enterNode(node);
   },
   onCraft: (slot) => forge(slot),
   // §20.4 — карточка вооружает перестановку, дальше игрок бьёт по клетке.
@@ -394,6 +400,26 @@ const campHud = new CampHud(app, {
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
   onWalls: () => openWalls(),
+  // §14.2 — перекладка бесплатна и мгновенна, поэтому ни трат, ни таймера:
+  // всё, что тут происходит, это запись поля и строка игроку.
+  onSetOffhand: (offhand) => {
+    if (!setOffhand(camp, offhand)) return;
+    campHud.notify(`Левая рука: ${OFFHAND[offhand].name}`);
+    persist();
+  },
+  // §14.3 — пачка стрел. Отказ обязан быть слышен: молчащая кнопка читается
+  // как поломка, и это ровно то, чем колчан был до сих пор.
+  onBuyArrows: () => {
+    const cap = bowQuiver(camp.gear.weapon);
+    if (!buyArrows(camp, cap)) {
+      campHud.notify(
+        camp.arrows >= cap ? 'Колчан полон' : 'Стрелы: не хватает железа',
+      );
+      return;
+    }
+    campHud.notify(`Стрелы ${camp.arrows} / ${cap}`);
+    persist();
+  },
 });
 
 /* ---------- стройка стен (§6.1.6) ---------- */
@@ -560,12 +586,12 @@ const rosterPanel = new RosterPanel(campHud.slot, {
   onTrain: (index) => {
     const hero = roster.heroes[index];
     if (hero === undefined) return;
-    const block = trainBlock(roster, hero);
+    const block = trainBlock(roster, hero, camp.levels.yard);
     if (block !== 'ok') {
       campHud.notify(`${HERO_CLASSES[hero.cls].name}: ${TRAIN_REASON[block] ?? 'нельзя тренировать'}`);
       return;
     }
-    startTraining(roster, hero, clock.now());
+    startTraining(roster, hero, clock.now(), camp.levels.yard);
     track({ t: 'train_start', at: clock.now(), cls: hero.cls, level: hero.level });
     persist();
   },
@@ -576,6 +602,7 @@ const TRAIN_REASON: Record<string, string> = {
   busy: 'занят',
   'slot-busy': 'тренировочный слот занят',
   max: 'максимальный уровень',
+  'no-yard': 'тренировать негде — нужен Плац',
 };
 
 const BLOCK_REASON: Record<string, string> = {
@@ -616,6 +643,20 @@ function forge(slot: GearSlot): boolean {
   persist();
   return true;
 }
+
+/**
+ * §19 — экран сборов. Выбор обязателен и необратим: карта уходит в вылазку
+ * тем же вызовом, каким игрок её нажал, и нигде не сохраняется.
+ */
+const draftScreen = new DraftScreen(app, {
+  onChoose: (id) => {
+    track({ t: 'draft', at: clock.now(), card: id });
+    toRaid(pendingNode, id);
+  },
+});
+
+/** Куда игрок собрался, пока выбирает карту. */
+let pendingNode = 0;
 
 const startScreen = new StartScreen(app, {
   // До лагеря игрок доходит сам: кнопка открывает поляну, а лагерь
@@ -796,7 +837,7 @@ const returnScreen = new ReturnScreen(app, {
   },
   onRaid: (node) => {
     returnScreen.hide();
-    toRaid(node);
+    enterNode(node);
   },
   onCamp: () => {
     returnScreen.hide();
@@ -845,11 +886,14 @@ function finishRaidForHero(
     state.loc.tier,
     evacuated,
     now,
+    // §11.8 — Лазарет сокращает простой. Уровень читается здесь, а не внутри
+    // отряда: расписание героя — его дело, а цена времени — дело лагеря.
+    camp.levels.infirmary,
   );
   if (outcome.levels > 0) campHud.notify(`${name}: уровень ${hero.level}`);
   if (outcome.healSec > 0) {
     track({ t: 'heal_start', at: now, cls: hero.cls, wounds: outcome.wounds, seconds: outcome.healSec });
-    campHud.notify(`${name} ранен — Лазарет ${RosterPanel.healText(outcome.wounds)}`);
+    campHud.notify(`${name} ранен — лечение ${RosterPanel.healText(outcome.wounds, camp.levels.infirmary)}`);
   }
 }
 
@@ -915,7 +959,34 @@ function safestNode(now: number): number {
  * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
  * карточкой карты — сюда приходит уже принятое решение.
  */
-function toRaid(node: number): boolean {
+/**
+ * §19 — экран сборов встаёт между выбором точки и входом. Врезан здесь,
+ * а не внутри `toRaid`: раздача обязана случиться **до** того, как вылазка
+ * создана, — карта меняет её числа на входе, и подмешать их потом значило бы
+ * пересобирать локацию под уже показанный игроку выбор.
+ *
+ * Прогулки (замок, кладбище) сюда не попадают: в них нечего добывать, и
+ * карта, меняющая добычу и ставку, не значила бы там ничего.
+ */
+function enterNode(node: number): boolean {
+  const now = clock.now();
+  const day = dayAt(now);
+  const place = regionAt(day).nodes[node];
+  if (place === undefined || place.kind !== 'вылазка') return toRaid(node);
+  if (!draftReady(camp, place.tier)) return toRaid(node);
+
+  // Сид раздачи — от места и дня: перезаход в то же место в ту же смену даёт
+  // ту же руку, и переброс через выход-вход невозможен (§19.1).
+  const hand = deal(camp, place.tier, mulberry32(nodeSeed(day, node) ^ 0x19d7a));
+  if (hand.length < HAND_SIZE) return toRaid(node);
+
+  campHud.close();
+  pendingNode = node;
+  draftScreen.show(hand);
+  return true;
+}
+
+function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // Место и его богатство берутся на момент входа, а не на момент открытия
   // панели: панель могла провисеть полчаса, а смена мира — сорок минут.
   const now = clock.now();
@@ -983,10 +1054,14 @@ function toRaid(node: number): boolean {
     arrows: camp.arrows,
     // §21 — расходники: что взято в эту вылазку и сгорит на выходе.
     consumables: camp.loadout,
+    // §19 — карта сборов. Тратится на текущую вылазку и не хранится.
+    draft: chosen,
     // Первая вылазка держит выход закрытым до первой добычи (см. onboarding).
     evacOpen: !onboarding.inRaid,
   });
-  camp.arrows = Math.max(0, camp.arrows - raid.arrowsMax);
+  // Из лагеря уходит взятое, а не вместимость: с §14.3 это разные числа —
+  // колчан может быть шире, чем запас, который в него влез.
+  camp.arrows = Math.max(0, camp.arrows - raid.arrows);
   // §21 — купленное уходит в вылазку и не возвращается: сгорает независимо
   // от того, пригодилось или нет. Копить нечего.
   camp.loadout = [];
@@ -1483,7 +1558,10 @@ function toGlade(): void {
   // Поляна на поверхности — подложка «Подступы», светлая (§18.4).
   showScene('raid', 0);
   onboarding.apply();
-  track({ t: 'raid_start', at: clock.now(), tier: 0, food: raid.foodMax, capacity: raid.capacity });
+  // §9 — поляна не пишет `raid_start`. Она сцена вылазки по устройству, но не
+  // вылазка по смыслу: выхода нет, добычи нет, кончается она постройкой лагеря
+  // и `raid_end` не пишет никогда. Начало без конца перекашивало выборку —
+  // «Вылазок» считало то, что не заканчивалось.
 }
 
 function toCamp(): void {
@@ -2262,18 +2340,29 @@ startLoop({
       if (raid.status !== 'running' && !resultShown) {
         resultShown = true;
         const result = raidResult(raid);
+        /**
+         * §9 — прогулка по замку и кладбищу не вылазка, и в статистику не
+         * идёт. Различает их герой: настоящая вылазка идёт кем-то и зачисляет
+         * ему раны и опыт, у прогулки `raidHero` пуст с самого входа.
+         *
+         * Считалось это раньше наоборот: прогулки писали `raid_end` и растили
+         * `camp.raids`, не написав начала. Глубина выхода — «цифра важнее
+         * остальных» (§11.11) — считалась вместе с ними, а у прогулки глубина
+         * бессмысленна: ходить там некуда и не за чем.
+         */
+        const counts = raidHero !== null;
         // §14.3 — невыстреленное и подобранное возвращается вместе с героем.
         // Провалившийся не возвращает ничего: он и добычу теряет по §11.2,
         // и колчан у него отняли там же.
         if (result.status === 'evacuated') camp.arrows += result.arrowsLeft;
         addResources(camp.resources, result.carried);
-        camp.raids += 1;
+        if (counts) camp.raids += 1;
         finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);
         for (const id of result.fired) {
           track({ t: 'consumable', at: now, id, phase: 'fire' });
         }
         persist();
-        track({
+        if (counts) track({
           t: 'raid_end',
           at: now,
           tier: result.tier,
@@ -2327,7 +2416,7 @@ startLoop({
     }
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
-    rosterPanel.sync(roster, now);
+    rosterPanel.sync(roster, now, camp.levels.yard);
   },
 
   render: (alpha) => {

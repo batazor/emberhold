@@ -72,7 +72,7 @@ describe('Сохранение', () => {
       'emberhold/save',
       JSON.stringify({
         version: 1,
-        levels: { hq: 4, kitchen: 1, storage: 1, forge: 0 },
+        levels: { hq: 4, kitchen: 1, storage: 1, forge: 0 , infirmary: 0, yard: 0},
         heroes: { active: 0, list: [{ cls: 'salter', level: 5, xp: 120, wounds: 0, status: 'ready' }] },
       }),
     );
@@ -91,7 +91,7 @@ describe('Сохранение', () => {
       'emberhold/save',
       JSON.stringify({
         version: 1,
-        levels: { hq: 6, kitchen: 1, storage: 1, forge: 0 },
+        levels: { hq: 6, kitchen: 1, storage: 1, forge: 0 , infirmary: 0, yard: 0},
         heroes: {
           active: 0,
           list: [
@@ -140,7 +140,7 @@ describe('Сохранение', () => {
     // остаётся: перенос молчаливый, первое сохранение ляжет под новый ключ.
     store.set(
       'new-world/save',
-      JSON.stringify({ version: 1, savedAt: 0, watermark: 0, levels: { hq: 3, kitchen: 2, storage: 1, forge: 0 } }),
+      JSON.stringify({ version: 1, savedAt: 0, watermark: 0, levels: { hq: 3, kitchen: 2, storage: 1, forge: 0 , infirmary: 0, yard: 0} }),
     );
     assert.equal(load().camp.levels.hq, 3, 'старый ключ прочитан');
 
@@ -152,7 +152,7 @@ describe('Сохранение', () => {
 
   test('сейв переживает круг save → load', () => {
     const camp = createCamp();
-    camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0 };
+    camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0 , infirmary: 0, yard: 0};
     camp.resources = { stone: 50, wood: 40, iron: 20, crystal: 3 };
     camp.layout.kitchen = { x: 6, z: 3 };
     assert.equal(startUpgrade(camp, 'storage', 500), true);

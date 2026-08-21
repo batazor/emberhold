@@ -31,11 +31,10 @@ for (const row of r.rows) {
 console.log('\nТелеметрия (§9)');
 console.log('─'.repeat(92));
 console.log(`  Вылазок                    ${s.raids} из ${RAIDS}`);
-console.log(`  Провалов                   ${pct(s.failRate)}          цель: провиант 65% / бой 35% (§11.3)`);
+console.log(`  Провалов                   ${pct(s.failRate)}          как часто не доходят домой`);
 console.log(`  Глубина выхода             ${pct(s.avgDepthShare)}          ниже половины = уходят рано (§9)`);
 console.log(`  Вынесено за вылазку        ${s.avgCarried.toFixed(1)}`);
 console.log(`  Потеряно за вылазку        ${s.avgLost.toFixed(1)}`);
-console.log(`  Провианта на выходе        ${s.avgFoodLeft.toFixed(1)}`);
 console.log(`  Покупка была доступна      ${pct(s.buyOfferRate)}          цель 60–80% (§20.1)`);
 console.log(`  Из них выбрали стройку     ${pct(s.buyTakeRate)}`);
 console.log(

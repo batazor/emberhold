@@ -10,6 +10,7 @@
  */
 import type { BuildingId } from './camp';
 import type { ConsumableId } from './consumables';
+import type { DraftCardId } from './draft';
 import type { OfferId } from './trade';
 import type { HeroClassId, SkillId } from './heroes';
 import type { OnbStep } from './onboarding';
@@ -68,6 +69,12 @@ export type TelemetryEvent =
    * умение непонятно или бесполезно; это и есть его единственная проверка.
    */
   | { t: 'skill'; at: number; skill: SkillId; tier: Tier }
+  /**
+   * §19 — какую карту сборов взяли. Вопрос у события один: не вырождается ли
+   * выбор в привычку. Раздача правилами §19.1 разнообразна по построению,
+   * а вот берут ли игроки всегда одно и то же — покажет только это.
+   */
+  | { t: 'draft'; at: number; card: DraftCardId }
   /** §11.8 — работает ли ротация: сменил героя или подождал лечения. */
   | { t: 'hero_pick'; at: number; cls: HeroClassId; level: number; rotated: boolean }
   | { t: 'heal_start'; at: number; cls: HeroClassId; wounds: number; seconds: number }
@@ -138,7 +145,6 @@ export interface Summary {
   readonly avgDepthShare: number;
   readonly avgCarried: number;
   readonly avgLost: number;
-  readonly avgFoodLeft: number;
   /** §20.1 — доля возвратов, где покупка была доступна. Цель 60–80%. */
   readonly buyOfferRate: number;
   readonly buyTakeRate: number;
@@ -149,12 +155,6 @@ export interface Summary {
   readonly bought: Readonly<Record<string, number>>;
   readonly fired: Readonly<Record<string, number>>;
   readonly boughtTotal: number;
-  /**
-   * §22.6 — доля провалов, случившихся в бою. Главная метрика замены модели
-   * боя: без неё правка, сохранившая общую долю провалов, но перенёсшая их
-   * из провианта в бой, проходит золотой мастер незамеченной.
-   */
-  readonly combatFailShare: number;
   readonly avgWoundsTaken: number;
   readonly avgFights: number;
   /** Кто добивает чаще: атрибуция без неё ничего не говорит о том, что чинить. */
@@ -211,7 +211,6 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     avgDepthShare: mean(ends.map((e) => (e.locMaxBack > 0 ? e.maxBack / e.locMaxBack : 0))),
     avgCarried: mean(ends.map((e) => e.carried)),
     avgLost: mean(ends.map((e) => e.lost)),
-    avgFoodLeft: mean(ends.map((e) => e.foodLeft)),
     buyOfferRate: returns.length === 0 ? 0 : offered.length / returns.length,
     // Взятая покупка — и стройка, и ковка: §20.1 меряет, потратил ли игрок,
     // а не то, во что именно. Разделение видно по событию craft.
@@ -229,10 +228,6 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     bought,
     fired,
     boughtTotal,
-    // Доля считается от провалов, а не от вылазок: вопрос §22.6 — «из-за чего
-    // проигрывают», а не «часто ли». При нуле провалов доли не существует.
-    combatFailShare:
-      fails.length === 0 ? 0 : fails.filter((e) => e.cause === 'combat').length / fails.length,
     avgWoundsTaken: mean(ends.map((e) => e.woundsTaken)),
     avgFights: mean(ends.map((e) => e.fights)),
     fatalBy,

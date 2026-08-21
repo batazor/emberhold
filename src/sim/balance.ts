@@ -259,7 +259,7 @@ export const TIER_SPEC: Record<Tier, TierSpec> = {
   0: { size: 8, containers: 3, generosity: 0.9, capacityRatio: 1.5, woundBudget: 0.33, depthValue: 1.4, risk: 0, base: 2 },
   1: { size: 12, containers: 5, generosity: 0.5, capacityRatio: 1.7, woundBudget: 0.5, depthValue: 1.8, risk: 0.3, base: 2 },
   2: { size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.63, depthValue: 2.6, risk: 0.6, base: 3 },
-  3: { size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.83, depthValue: 3.5, risk: 1, base: 3 },
+  3: { size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.83, depthValue: 3.5, risk: 1, base: 4 },
 };
 
 /**

@@ -14,6 +14,8 @@
 import { tierBlock } from '../sim/camp';
 import type { CampState } from '../sim/camp';
 import { TIER_NAME, TIER_RISK } from '../sim/config';
+import { LOOT_SHARE, RESOURCE_NAME } from '../sim/resources';
+import type { ResourceKind } from '../sim/resources';
 import { EVENTS, effectOf } from '../sim/events';
 import type { EventId } from '../sim/events';
 import { formatDuration } from '../core/clock';
@@ -159,6 +161,18 @@ const ENTRY_REASON: Record<Exclude<EntryBlock, 'ok'>, string> = {
   kitchen: 'Провианта не хватит на такую глубину — нужна Кухня выше',
   onb: 'Первая вылазка идёт в другое место — оно одно горит на карте',
 };
+
+/**
+ * Что падает на ярусе, от частого к редкому. Порог в 10% отсекает то, что
+ * игрок за заход скорее всего не увидит: обещать кристалл там, где он капает
+ * раз в десять находок, значит продавать ярус тем, чего в нём нет.
+ */
+const lootLine = (tier: 0 | 1 | 2 | 3): string =>
+  (Object.entries(LOOT_SHARE[tier]) as [ResourceKind, number][])
+    .filter(([, share]) => share >= 0.1)
+    .sort((a, b) => b[1] - a[1])
+    .map(([kind]) => RESOURCE_NAME[kind])
+    .join(' · ');
 
 export class WorldMap {
   readonly root: HTMLElement;
@@ -481,6 +495,11 @@ export class WorldMap {
       `<b class="${fx.risk > 0 ? 'bad' : ''}">ставка ${Math.round(stake * 100)}%</b></div>` +
       `<div class="line"><span>Добыча</span>` +
       `<b class="${mul < 1 ? 'bad' : 'good'}">×${mul.toFixed(1).replace('.', ',')}</b></div>` +
+      // §13 — что здесь падает. Ставка называет цену яруса, а довод за него
+      // до сих пор не называл никто: железо идёт с первого, кристалл со
+      // второго, и узнать это можно было только сходив. Ставку игрок читает
+      // до входа — награда обязана читаться там же.
+      `<div class="line"><span>Падает</span><b>${lootLine(node.tier)}</b></div>` +
       `<div class="line"><span>Кто здесь</span>` +
       (clan === null
         ? '<b class="good">никого</b>'

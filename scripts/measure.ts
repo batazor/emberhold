@@ -13,6 +13,7 @@ import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';
 import { createRaid } from '../src/sim/raid';
 import { findPath } from '../src/sim/pathfinding';
+import { TIER_KITCHEN_GATE } from '../src/sim/balance';
 import { ENEMY_STATS } from '../src/sim/enemies';
 import { emptyResources, RESOURCE_NAME } from '../src/sim/resources';
 import type { ResourceKind, Resources } from '../src/sim/resources';
@@ -29,9 +30,12 @@ interface TierStat {
   seconds: number;
   depthShare: number;
   foodLeft: number;
-  /** §11.3 требует соотношения причин провала 65% провиант / 35% бой. */
-  byFood: number;
-  byCombat: number;
+  /**
+   * Что заход приносит в среднем — по всем вылазкам, а не по удачным.
+   * У провальной `carriedTotal` уже за вычетом ставки §11.2, поэтому это
+   * и есть цена яруса для игрока: «сколько стоит туда сходить».
+   */
+  haulAll: number;
   byKind: Record<string, number>;
   /** Сколько камня принёс каждый заход, включая провальные. Нужно затем, что
    *  цену первого здания решает не средний игрок, а тот, кому её не хватило:
@@ -50,8 +54,7 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     seconds: 0,
     depthShare: 0,
     foodLeft: 0,
-    byFood: 0,
-    byCombat: 0,
+    haulAll: 0,
     byKind: {},
     stoneRuns: [],
   };
@@ -68,22 +71,16 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     stat.seconds += r.durationSec;
     stat.depthShare += r.locMaxBack > 0 ? r.maxBack / r.locMaxBack : 0;
     stat.foodLeft += r.foodLeft;
-    if (r.status !== 'evacuated') {
-      // Причину больше не выводим здесь: её пишет сама вылазка по тому,
-      // откуда пришла последняя рана (§9). Прежнее правило «раны кончились
-      // раньше провианта» врало на стыке — голодного героя, добитого
-      // скелетом, оно относило к бою, а раненного в бою и доевшего
-      // провиант — к голоду. И, главное, знал причину только этот скрипт:
-      // живой игрок про свою смерть не рассказывал ничего.
-      if (r.cause === 'combat') {
-        stat.byCombat += 1;
-        const kind = r.lastHitBy ?? 'неизвестно';
-        stat.byKind[kind] = (stat.byKind[kind] ?? 0) + 1;
-      } else stat.byFood += 1;
+    // Кто нанёс последний удар. Вылазка знает это сама (§9), скрипт только
+    // складывает: прежнее правило «раны кончились раньше провианта» врало
+    // на стыке и знал его только этот файл.
+    if (r.status !== 'evacuated' && r.lastHitBy !== null) {
+      stat.byKind[r.lastHitBy] = (stat.byKind[r.lastHitBy] ?? 0) + 1;
     }
     // Провальный заход тоже считается: ставка §11.4 отнимает не всё, и вопрос
     // «хватит ли на Мастерскую» задаётся о любом возвращении, а не об удачном.
     stat.stoneRuns.push(r.carried.stone);
+    stat.haulAll += r.carriedTotal;
     if (r.status === 'evacuated') {
       stat.success += 1;
       stat.carriedTotal += r.carriedTotal;
@@ -93,51 +90,66 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
   return stat;
 }
 
-const PLAN: { tier: Tier; kitchen: number; storage: number }[] = [
-  // Пары «ярус — уровни зданий» взяты из кривой §16 и гейта по Кухне:
-  // на ярус 2 пускает Кухня 2, на ярус 3 — Кухня 3.
-  { tier: 0, kitchen: 1, storage: 1 },
-  { tier: 1, kitchen: 1, storage: 2 },
-  { tier: 2, kitchen: 2, storage: 3 },
-  { tier: 3, kitchen: 3, storage: 4 },
-];
+/**
+ * Пары «ярус — уровни зданий». Кухня берётся из `TIER_KITCHEN_GATE`, а не
+ * назначается здесь: гейт и есть то, с чем игрок на ярус попадает, и списывать
+ * его вторым числом означало мерить состояние, в котором игрока не бывает.
+ *
+ * Списанное разошлось на единицу: в таблице стояла Кухня 1 на ярусе 1, а гейт
+ * требует второй. Стоило это провала лестницы добычи — ярус 1 выносил меньше
+ * нулевого (4.5 против 5.2), и читалось это как «подниматься невыгодно», хотя
+ * бот просто заходил в локацию вдвое большую с провиантом предыдущего яруса.
+ * Комментарий рядом называл гейты «Кухня 2 на ярус 2», и это тоже неверно.
+ *
+ * Склад лестницей и остаётся: рюкзак гейтом не заперт, и его рост — часть
+ * кривой §16, а не условие входа.
+ */
+const PLAN: { tier: Tier; kitchen: number; storage: number }[] = ([0, 1, 2, 3] as Tier[]).map(
+  (tier) => ({ tier, kitchen: TIER_KITCHEN_GATE[tier], storage: tier + 1 }),
+);
 
 const num = (x: number, d = 1): string => x.toFixed(d).padStart(6);
 
 console.log(`Замер: ${RUNS} вылазок на ярус, бот-осторожный, ночь\n`);
-console.log('ярус  Кухня/Склад   успех   добыча   шагов   время   глубина  провиант');
-console.log('─'.repeat(74));
+console.log('ярус  Кухня/Склад   успех   добыча  в сред.   шагов   время   глубина');
+console.log('─'.repeat(66));
 
 const stats = PLAN.map(({ tier, kitchen, storage }) => {
   const s = measure(tier, kitchen, storage);
   const perSuccess = s.success > 0 ? s.carriedTotal / s.success : 0;
   console.log(
     `  ${tier}      ${kitchen} / ${storage}      ` +
-      `${num((s.success / s.runs) * 100, 0)}% ${num(perSuccess)}  ${num(s.steps / s.runs, 0)}  ` +
-      `${num(s.seconds / s.runs, 0)} с ${num((s.depthShare / s.runs) * 100, 0)}%  ${num(s.foodLeft / s.runs, 0)}`,
+      `${num((s.success / s.runs) * 100, 0)}% ${num(perSuccess)} ${num(s.haulAll / s.runs)}  ${num(s.steps / s.runs, 0)}  ` +
+      `${num(s.seconds / s.runs, 0)} с ${num((s.depthShare / s.runs) * 100, 0)}%`,
   );
   return s;
 });
 
-// §22.6 — прежние 65/35 сняты на старом бое и помечены черновыми. Цель
-// назначается пересчётом модели, а не повторяется здесь числом.
-console.log('\nПричины провала (цель — §22.6, прежние 65/35 черновые)');
-console.log('─'.repeat(74));
+/**
+ * Кто добивает. Прежде здесь стояла доля причин «провиант / бой» и цель §11.3
+ * «провиант основной». Соотношение снято с действия: провиант перестал быть
+ * осью сложности, и мерить его долю значило бы держать красный вердикт под
+ * требованием, которое никто не собирается выполнять.
+ *
+ * Разбивка по противникам осталась: она отвечает на другой вопрос — не «чем
+ * кончаются вылазки», а «кто именно их кончает», и на него ответ по-прежнему
+ * нужен, потому что ярус набирается составом.
+ */
+console.log('\nКто добивает');
+console.log('─'.repeat(66));
 for (const s of stats) {
   const fails = s.runs - s.success;
   if (fails === 0) {
     console.log(`  ярус ${s.tier}: провалов нет`);
     continue;
   }
+  const by = Object.entries(s.byKind)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${ENEMY_STATS[k as keyof typeof ENEMY_STATS]?.name ?? k} ${n}`)
+    .join(' · ');
   console.log(
-    `  ярус ${s.tier}: провалов ${((fails / s.runs) * 100).toFixed(0)}% — ` +
-      `провиант ${((s.byFood / fails) * 100).toFixed(0)}% · бой ${((s.byCombat / fails) * 100).toFixed(0)}%` +
-      (s.byCombat > 0
-        ? ` (${Object.entries(s.byKind)
-            .sort((a, b) => b[1] - a[1])
-            .map(([k, n]) => `${ENEMY_STATS[k as keyof typeof ENEMY_STATS]?.name ?? k} ${n}`)
-            .join(' · ')})`
-        : ''),
+    `  ярус ${s.tier}: провалов ${((fails / s.runs) * 100).toFixed(0)}%` +
+      (by === '' ? '' : ` — ${by}`),
   );
 }
 
@@ -188,24 +200,33 @@ console.log('─'.repeat(74));
   }
 
   /**
-   * 2. Бой не должен быть основным источником провалов (§11.3).
+   * 2. Подниматься обязано быть выгодно.
    *
-   * Единственное утверждение раздела, которое §22.6 прямо объявляет
-   * пережившим пересчёт: оно про порядок величин, а не про долю. Поэтому
-   * здесь нет числа из документа — здесь есть «основной», то есть больше
-   * половины.
+   * Ярус называет цену ставкой §11.2 — 0 / 30 / 60 / 100% добычи при провале, —
+   * и продаёт за неё глубину. Сделка состоялась, если средний заход на ярусе
+   * приносит больше, чем средний заход ярусом ниже: сравнивать надо по всем
+   * вылазкам, а не по удачным, иначе ставка в сравнение не входит вовсе
+   * и дорогой ярус выглядит выгодным ровно потому, что дорогой.
+   *
+   * Сырая добыча удачного захода этого вопроса не решает: она может расти,
+   * пока растёт и доля провалов, и тогда игрок платит за глубину больше,
+   * чем она стоит.
    */
-  const loud = stats
-    .map((s) => ({ tier: s.tier, fails: s.runs - s.success, combat: s.byCombat }))
-    .filter((s) => s.fails > 0 && s.combat / s.fails > 0.5);
-  if (loud.length === 0) {
-    console.log('  ✓ Провалы ведёт провиант, а не бой (§11.3).');
+  const worth = stats
+    .filter((s) => s.runs > 0)
+    .map((s) => ({ tier: s.tier, avg: s.haulAll / s.runs }));
+  const bad = worth.filter((s, i) => i > 0 && s.avg <= worth[i - 1]!.avg);
+  if (bad.length === 0) {
+    console.log('  ✓ Подниматься выгодно: средний заход дорожает с ярусом.');
   } else {
-    console.log(
-      `  ⚠ БОЙ ВЕДЁТ ПРОВАЛЫ на ярусах ${loud.map((s) => s.tier).join(', ')}: ` +
-        `${loud.map((s) => `${((s.combat / s.fails) * 100).toFixed(0)}%`).join(', ')}.\n` +
-        '    §11.3 требует обратного, и это требование пересчёт §22.6 переживает.',
-    );
+    for (const s of bad) {
+      const prev = worth[worth.findIndex((x) => x.tier === s.tier) - 1]!;
+      console.log(
+        `  ⚠ ЯРУС ${s.tier} НЕ ОКУПАЕТ СТАВКУ: средний заход ${s.avg.toFixed(1)} ` +
+          `против ${prev.avg.toFixed(1)} на ярусе ${prev.tier}.\n` +
+          '    Ставка §11.2 растёт, а цена яруса — нет: подниматься невыгодно.',
+      );
+    }
   }
 
   // Прибор, ничего не измеривший, обязан назвать себя сломанным, а не выдать
