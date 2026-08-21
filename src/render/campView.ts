@@ -66,7 +66,7 @@ export class CampView {
   private readonly disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
   private hero!: THREE.Mesh;
   /** Где герой стоит: мировые координаты, их ведёт симуляция. */
-  private heroAt = { x: 0, z: 0 };
+  private heroAt = { x: 0, y: 0, z: 0 };
   private heroFacing = 0;
   private site: THREE.Mesh | null = null;
   /** Свет костра. Один на лагерь: горит тот огонь, что стоит у кухни. */
@@ -348,7 +348,9 @@ export class CampView {
 
     // Герой стоит там, куда пришёл. Раньше он каждый кадр возвращался
     // к Жилью — и лагерь был единственным местом игры, где не ходят.
-    this.hero.position.set(this.heroAt.x, 0.55, this.heroAt.z);
+    // 0.55 — начало модели, `heroAt.y` — ярус: на стене герой стоит выше
+    // ровно на измеренную высоту настила.
+    this.hero.position.set(this.heroAt.x, 0.55 + this.heroAt.y, this.heroAt.z);
     this.hero.rotation.y = this.heroFacing;
 
     this.syncSite(now);
@@ -497,9 +499,10 @@ export class CampView {
   }
 
   /** Куда пришёл герой. Клетка — то же, что и в вылазке, плюс полклетки. */
-  setHero(x: number, z: number, facing: number): void {
+  setHero(x: number, z: number, facing: number, y = 0): void {
     this.heroAt.x = x;
     this.heroAt.z = z;
+    this.heroAt.y = y;
     this.heroFacing = facing;
   }
 

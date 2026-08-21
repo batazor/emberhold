@@ -24,7 +24,18 @@
  * Чего стена **даёт**, здесь по-прежнему нет: это вопрос §12 и отдельного
  * замера, а не стройки.
  */
-import { CASTLE_CELL, TOWER_MAX, buildTower, buildWall, keyOf, type Piece, type Spot } from './castle';
+import {
+  CASTLE_CELL,
+  DIRS,
+  STAIRS,
+  TOWER_MAX,
+  buildTower,
+  buildWall,
+  fitTurn,
+  keyOf,
+  type Piece,
+  type Spot,
+} from './castle';
 import { canAfford, spend, type Resources } from './resources';
 import { mulberry32 } from '../core/rng';
 
@@ -149,7 +160,9 @@ export const wallSpots = (walls: CampWalls): Spot[] => walls.cells.map(parseKey)
  * Почему сюда нельзя. Строка, а не `false`: панель обязана сказать, что
  * не так, — «нельзя» без причины читается как поломка интерфейса.
  */
-export type WallBlock = 'ok' | 'вне площади' | 'занято зданием' | 'нет стены' | 'не прямая' | 'снаружи';
+export type WallBlock =
+  | 'ok' | 'вне площади' | 'занято зданием' | 'нет стены' | 'не прямая'
+  | 'снаружи' | 'вести некуда';
 
 /** Занята ли клетка стены зданием: здание 2×2 и клетка стены 2×2 — ровно одна. */
 function onBuilding(
@@ -225,18 +238,42 @@ export function gateBlock(walls: CampWalls, spot: Spot): WallBlock {
   return a[0] === -b[0]! && a[1] === -b[1]! ? 'ok' : 'не прямая';
 }
 
-/** Лестница встаёт на пустую клетку, у которой есть сосед-стена. */
-export function stairsBlock(walls: CampWalls, site: WallSite, spot: Spot): WallBlock {
+/**
+ * Куда лестница выведет, если встанет в эту клетку: сосед-стена, по верху
+ * которого ходят. `null` — вести некуда.
+ *
+ * Соседа-стены мало: рядом может стоять башня, у которой зубцы по всем
+ * четырём рёбрам, и подъём упрётся в глухую площадку. Игрок заплатил бы
+ * камень и время за лестницу в никуда.
+ */
+export function stairsTarget(walls: CampWalls, spot: Spot, tops: ReadonlySet<string>): number {
+  const set = new Set(walls.cells);
+  return DIRS.findIndex(([dx, dz]) => {
+    const key = keyOf({ x: spot.x + dx, z: spot.z + dz });
+    return set.has(key) && tops.has(key);
+  });
+}
+
+/**
+ * Лестница встаёт на пустую клетку, у которой есть сосед с ходом поверху.
+ * `tops` — клетки, по верху которых ходят; их считает `campTop.ts`, и знать
+ * про него здесь не нужно, достаточно ответа.
+ */
+export function stairsBlock(
+  walls: CampWalls,
+  site: WallSite,
+  spot: Spot,
+  tops?: ReadonlySet<string>,
+): WallBlock {
   const set = new Set(walls.cells);
   if (set.has(keyOf(spot))) return 'занято зданием';
   if (wallBlock(site, spot) !== 'ok') return wallBlock(site, spot);
-  const near = [
-    [-1, 0],
-    [1, 0],
-    [0, -1],
-    [0, 1],
-  ].some(([dx, dz]) => set.has(keyOf({ x: spot.x + dx!, z: spot.z + dz! })));
-  return near ? 'ok' : 'нет стены';
+  const near = DIRS.some(([dx, dz]) => set.has(keyOf({ x: spot.x + dx, z: spot.z + dz })));
+  if (!near) return 'нет стены';
+  // Башню могут поставить и после лестницы — запретить это нельзя, и проверка
+  // панели остаётся лучшим усилием. Граф верха отработает верно в любом случае.
+  if (tops !== undefined && stairsTarget(walls, spot, tops) < 0) return 'вести некуда';
+  return 'ok';
 }
 
 /**
@@ -420,29 +457,33 @@ export function toggleGate(walls: CampWalls, spot: Spot): boolean {
 }
 
 /** Лестница: поворот выводится из того, к какой стене она примыкает. */
-export function putStairs(walls: CampWalls, site: WallSite, spot: Spot): boolean {
+export function putStairs(
+  walls: CampWalls,
+  site: WallSite,
+  spot: Spot,
+  tops?: ReadonlySet<string>,
+): boolean {
   const key = keyOf(spot);
   if (walls.stairs[key] !== undefined) {
     delete walls.stairs[key];
     return true;
   }
-  if (stairsBlock(walls, site, spot) !== 'ok') return false;
+  if (stairsBlock(walls, site, spot, tops) !== 'ok') return false;
   const set = new Set(walls.cells);
-  const dir = [
-    [-1, 0],
-    [1, 0],
-    [0, -1],
-    [0, 1],
-  ].findIndex(([dx, dz]) => set.has(keyOf({ x: spot.x + dx!, z: spot.z + dz! })));
+  // Сосед с ходом поверху предпочтительнее любого: лестница обязана вести
+  // на площадку, а не в глухую башню.
+  const dir = tops === undefined
+    ? DIRS.findIndex(([dx, dz]) => set.has(keyOf({ x: spot.x + dx, z: spot.z + dz })))
+    : stairsTarget(walls, spot, tops);
   if (dir < 0) return false;
-  // Ход у лестницы выходит одним ребром, −z; поворот — тот, при котором
-  // это ребро смотрит на стену. Считает его тот же `fitTurn`, что и в замке.
-  walls.stairs[key] = TURN_TO[dir]!;
+  // Ход у лестницы выходит одним ребром, −z; поворот — тот, при котором это
+  // ребро смотрит на стену. Считает его `fitTurn` — тот же, что в замке,
+  // а не своя таблица: две копии одного вывода разошлись бы молча.
+  const turn = fitTurn(STAIRS.open, [dir]);
+  if (turn < 0) return false;
+  walls.stairs[key] = turn;
   return true;
 }
-
-/** Четверть поворота лестницы по направлению на стену. Порядок — как в DIRS. */
-const TURN_TO: readonly number[] = [1, 3, 0, 2];
 
 /**
  * Снести всё, что стоит в клетке, и вернуть за это камень. Возвращается

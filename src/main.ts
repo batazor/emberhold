@@ -77,7 +77,9 @@ import { addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
-import { commandCampMove, createCampHero, stepCampHero, type CampHero } from './sim/campWalk';
+import { campNav, commandCampMove, createCampHero, stepCampHero, type CampHero } from './sim/campWalk';
+import { topWalkable } from './sim/campTop';
+import { CASTLE_CELL, WALK } from './sim/castle';
 import {
   completeWallIfDue,
   emptyWalls,
@@ -364,6 +366,16 @@ let buildTool: WallTool | null = null;
 let stroke: Spot[] | null = null;
 
 const wallsOf = (): NonNullable<typeof camp.walls> => (camp.walls ??= emptyWalls());
+
+/** Клетки стены, по верху которых ходят: их спрашивает лестница. */
+const topsOf = (): ReadonlySet<string> => {
+  const nav = campNav(camp);
+  const out = new Set<string>();
+  for (let z = 0; z < nav.top.grid; z++) {
+    for (let x = 0; x < nav.top.grid; x++) if (topWalkable(nav.top, { x, z })) out.add(`${x}:${z}`);
+  }
+  return out;
+};
 const wallSite = (): WallSite => ({
   area: campArea(camp.levels.hq),
   layout: camp.layout,
@@ -430,7 +442,8 @@ function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
     return finishWall(startWall(walls, camp.resources, 'ворота', [spot], clock.now(), busy));
   }
   if (buildTool === 'лестница') {
-    const why = stairsBlock(walls, site, spot);
+    const tops = topsOf();
+    const why = stairsBlock(walls, site, spot, tops);
     if (why !== 'ok') return finishWall(`Лестница: ${why}`);
     return finishWall(startWall(walls, camp.resources, 'лестница', [spot], clock.now(), busy));
   }
@@ -1244,7 +1257,7 @@ function toCamp(): void {
   // а не по открытию панели.
   campView.setWalls(wallPieces(wallsOf()));
   campHero = createCampHero(camp);
-  campView.setHero(campHero.x, campHero.z, campHero.facing);
+  campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
   showScene('camp');
   idleSeconds = 0;
   onboarding.apply();
@@ -1289,6 +1302,26 @@ function campTap(clientX: number, clientY: number): void {
     selected = null;
     campView.highlight(null);
     return;
+  }
+
+  // Ярус выбирается раньше здания: тап по верху стены над следом здания
+  // иначе открыл бы карточку постройки, которая под стеной.
+  const up = rig.screenToGround(clientX, clientY, undefined, WALK * CASTLE_CELL);
+  const nav = campNav(camp);
+  if (up !== null) {
+    const spot = wallSpotOf(Math.round(up.x), Math.round(up.z));
+    // Камера смотрит сверху вниз, настил непрозрачен: если луч пересёк его
+    // внутри ходибельной клетки, именно настил в этом пикселе и нарисован.
+    // Погрешность остаётся у боков башен и зубцов выше настила — тот же класс
+    // ошибки, что у зданий на плоскости земли, и чинится он только рейкастом
+    // по мешам.
+    if (topWalkable(nav.top, spot)) {
+      campHud.close();
+      campView.highlight(null);
+      const why = commandCampMove(camp, campHero, { x: Math.round(up.x), z: Math.round(up.z) }, 'верх');
+      if (why === 'нет лестницы') campHud.notify('Наверх — по лестнице');
+      return;
+    }
   }
 
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
@@ -1713,7 +1746,7 @@ startLoop({
       // Герой лагеря идёт тем же шагом, что и в вылазке: сначала считается
       // симуляцией, потом ставится в сцену.
       stepCampHero(camp, campHero, campDt);
-      campView.setHero(campHero.x, campHero.z, campHero.facing);
+      campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
       campView.update(campDt, now, rig.dayFactor);
       const c = campView.center;
       // Тот же кадр, что и в toCamp, плюс то, куда игрок увёз камеру.

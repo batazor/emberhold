@@ -40,6 +40,13 @@ interface SaveV1 {
   loadout?: CampState['loadout'];
   raids: number;
   /**
+   * Стены лагеря (§6.1.6). Поле необязательное, версия сейва ради него
+   * не поднята — тем же приёмом, что отряд и снаряжение: сейв, записанный
+   * до стройки стен, обязан открываться. Без этого поля всё построенное
+   * пропадало при перезагрузке, а стройка стоит камня и времени.
+   */
+  walls?: CampState['walls'];
+  /**
    * Отряд (§11.8). Поле необязательное, и версия сейва ради него не поднята:
    * сохранение этапов 1–4 обязано открываться — иначе на каждом этапе игрок
    * терял бы лагерь, а мы — возможность сравнить замеры до и после.
@@ -94,6 +101,7 @@ export function save(
     loadout: camp.loadout,
     raids: camp.raids,
     gear: camp.gear,
+    walls: camp.walls,
     // Заходы старше окна на богатство уже не влияют — в сохранение они
     // не едут, иначе список растёт без предела.
     visits: liveVisits(camp.visits, watermark).map((v) => ({ n: v.node, s: v.shift })),
@@ -185,6 +193,19 @@ export function load(): LoadResult {
     const c = data.construction;
     if (c != null && BUILDING_ORDER.includes(c.building) && typeof c.endsAt === 'number') {
       camp.construction = c;
+    }
+
+    // Стены. Читается по полям, а не целиком: чужой или испорченный сейв
+    // не должен подсовывать симуляции список неизвестной формы.
+    const w = data.walls;
+    if (w != null) {
+      camp.walls = {
+        cells: Array.isArray(w.cells) ? w.cells.filter((k) => typeof k === 'string') : [],
+        towers: typeof w.towers === 'object' && w.towers !== null ? { ...w.towers } : {},
+        gates: Array.isArray(w.gates) ? w.gates.filter((k) => typeof k === 'string') : [],
+        stairs: typeof w.stairs === 'object' && w.stairs !== null ? { ...w.stairs } : {},
+        work: w.work ?? null,
+      };
     }
 
     for (const slot of GEAR_ORDER) {

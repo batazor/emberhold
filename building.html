@@ -306,6 +306,15 @@
           примерно столько же. Иначе оно либо мелочь, за которую не жалко
           единственный слот, либо карьера.</p>
       </div>
+      <div class="key">
+        <h3>Наверх — по лестнице</h3>
+        <p>По стене ходят: ярусов два, и весь верх набора лежит на одной высоте —
+          и стена, и шапка башни, и шапка над воротами. Клетка проходима поверху,
+          если у детали есть площадка и есть <b>хоть одно открытое ребро</b>, —
+          поэтому башня и ворота ход рвут, а участки между ними проходимы.
+          Подняться можно только лестницей, и она не встанет к глухой башне:
+          вести ей оттуда некуда.</p>
+      </div>
       <div>
         <h3>Границы: чего здесь нет</h3>
         <p>Что стена <b>даёт</b>, не решено — это вопрос §12 и отдельного замера.
@@ -327,10 +336,11 @@
  */
 const box = document.getElementById('wallPanel');
 const note = document.getElementById('wallNote');
-let mod, walls, sim;
+let mod, walls, sim, simTop;
 try{
   mod = await import('/src/ui/buildPanel.ts');
   sim = await import('/src/sim/campWalls.ts');
+  simTop = await import('/src/sim/campTop.ts');
   walls = sim.emptyWalls();
 }catch(e){
   note.textContent = 'Раздел читает файлы проекта и работает только на dev-сервере: npm run dev, затем /building.html. ' + e;
@@ -410,8 +420,19 @@ function paint(){
   note.textContent = 'Поле стены ' + GRID + '×' + GRID + ' при площади ' + AREA + '×' + AREA +
     '. Серая клетка — Жильё, туда стена не встанет. Стоит: стен ' + count['стена'] +
     ', башен ' + count['башня'] + ', ворот ' + count['ворота'] + ', лестниц ' + count['лестница'] +
-    '. Деталей набора это ' + sim.wallPieces(walls).length + '.';
+    '. Деталей набора это ' + sim.wallPieces(walls).length +
+    '. По верху ходят ' + topCount() + ' из ' + walls.cells.length + '.';
   panel.update(walls, 0);
+}
+
+/** Сколько клеток стены проходимы поверху: башни и ворота ход рвут. */
+function topCount(){
+  const top = simTop.wallTop(walls, AREA, new Uint8Array(AREA * AREA));
+  let n = 0;
+  for(let z = 0; z < top.grid; z++){
+    for(let x = 0; x < top.grid; x++) if(simTop.topWalkable(top, {x, z})) n++;
+  }
+  return n;
 }
 
 function act(spot, finished){

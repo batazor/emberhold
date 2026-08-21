@@ -133,6 +133,54 @@ export const TOWER = {
 export const CAP = 0.3;
 
 /**
+ * Высота площадки хода у каждой принятой детали, в её собственных единицах.
+ * `null` — ходить по ней не по чему.
+ *
+ * Числа не назначены: их снимает `npm run models` растеризацией рельефа
+ * и пишет в `catalog.json` полем `deck`. Здесь они повторены затем, что
+ * симуляции нужен ответ в Node без чтения каталога, — и что списки не
+ * разошлись, проверяет `castle.rules.ts` тем же циклом, каким сверяет `open`.
+ *
+ * Таблица отдельная, а не поле в `Part`, потому что настил нужен и у деталей,
+ * которые `Part` не являются: арку ворот, надвратную шапку и створку ставит
+ * `wallPieces` руками.
+ */
+export const DECK: Readonly<Record<string, number | null>> = {
+  'wall': 1.18,
+  'wall-pillar': 1.18,
+  'wall-corner': 1.18,
+  'wall-corner-slant': 1.18,
+  'wall-corner-half-tower': 1.31,
+  'wall-half': 1.18,
+  'wall-to-narrow': 1.18,
+  'tower-square': 1.18,
+  'wall-narrow-stairs': 1.18,
+  'tower-square-base': null,
+  'tower-square-mid': null,
+  'tower-square-mid-windows': null,
+  'tower-square-arch': null,
+  'tower-square-top': 0.17,
+  'tower-square-top-roof': 0.87,
+  'tower-square-top-roof-high': null,
+  'tower-square-top-roof-rounded': 0.79,
+  'gate': 0.8,
+  'flag': null,
+  'flag-pennant': null,
+};
+
+/** Настил детали или `null`. Незнакомая деталь — тоже `null`: не выдумываем. */
+export const deckOf = (model: string): number | null => DECK[model] ?? null;
+
+/** Деталь словаря по имени модели: нужна всем, кому нужен её обмер. */
+export function partOf(model: string): Part | undefined {
+  for (const bag of Object.values(PARTS)) {
+    const hit = bag.find((p) => p.model === model);
+    if (hit !== undefined) return hit;
+  }
+  return STAIRS.model === model ? STAIRS : undefined;
+}
+
+/**
  * Потолок роста башни — три яруса, и это не круглое число.
  *
  * Апгрейд башни здесь **только вверх**: след на земле не меняется никогда,

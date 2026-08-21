@@ -6,7 +6,8 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createCamp, startUpgrade } from './camp';
+import { campArea, createCamp, startUpgrade } from './camp';
+import { cycleTower, putStairs, raiseWall, toggleGate } from './campWalls';
 import { createRoster } from './heroes';
 import { load, save, wipe } from './save';
 
@@ -136,5 +137,35 @@ describe('Сохранение', () => {
     assert.equal(back.construction?.building, 'storage');
     assert.equal(watermark, 777);
     wipe();
+  });
+});
+
+describe('Сохранение: стены лагеря', () => {
+  test('построенное переживает перезагрузку', () => {
+    const camp = createCamp();
+    camp.levels.hq = 5;
+    const site = { area: campArea(5), layout: {}, levels: {} };
+    raiseWall(camp.walls!, site, [{ x: 0, z: 0 }, { x: 3, z: 0 }]);
+    cycleTower(camp.walls!, site, { x: 3, z: 0 });
+    toggleGate(camp.walls!, { x: 1, z: 0 });
+    putStairs(camp.walls!, site, { x: 1, z: 1 });
+
+    save(camp, createRoster(), 0);
+    const back = load().camp;
+    assert.deepEqual(back.walls?.cells, camp.walls!.cells, 'стены не вернулись');
+    assert.deepEqual(back.walls?.towers, camp.walls!.towers, 'башни не вернулись');
+    assert.deepEqual(back.walls?.gates, camp.walls!.gates, 'ворота не вернулись');
+    assert.deepEqual(back.walls?.stairs, camp.walls!.stairs, 'лестницы не вернулись');
+  });
+
+  test('лагерь без стройки возвращается пустым, а не сломанным', () => {
+    // Сейв, записанный до появления стен, поля не содержит вовсе: загрузка
+    // обязана открыть такой лагерь, а не уронить его.
+    const camp = createCamp();
+    save(camp, createRoster(), 0);
+    const back = load().camp;
+    assert.ok(back.walls !== undefined, 'лагерь вернулся без поля стен');
+    assert.deepEqual(back.walls?.cells, []);
+    assert.deepEqual(back.walls?.stairs, {});
   });
 });
