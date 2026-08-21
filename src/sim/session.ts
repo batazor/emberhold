@@ -164,6 +164,11 @@ export function playSession(seed: number): SessionResult {
       steps: raid.steps,
       foodLeft: raid.foodLeft,
       durationSec: Math.round(raid.durationSec),
+      cause: raid.cause,
+      lastHitBy: raid.lastHitBy,
+      woundsTaken: raid.woundsTaken,
+      fights: raid.fights,
+      kills: raid.kills,
     });
     for (const id of raid.fired) track({ t: 'consumable', at: now, id, phase: 'fire' });
     addResources(camp.resources, raid.carried);

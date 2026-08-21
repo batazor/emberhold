@@ -13,6 +13,9 @@
   "raidsPerSession": 20,
   "metrics": {
     "failRate": 0.0438,
+    "combatFailShare": 0.2083,
+    "avgWoundsTaken": 0.725,
+    "avgFights": 3.2125,
     "avgDepthShare": 0.7871,
     "buyOfferRate": 0.775,
     "buyTakeRate": 0.8807,

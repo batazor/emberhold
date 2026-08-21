@@ -36,6 +36,11 @@ const TOLERANCE: Record<Kind, { abs?: number; rel?: number }> = {
 
 const METRICS: readonly { key: string; kind: Kind; label: string }[] = [
   { key: 'failRate', kind: 'доля', label: 'провалов' },
+  // §22.6 — без состава провалов мастер слеп к бою: правка, перенёсшая
+  // провалы из провианта в бой при той же доле, прошла бы незамеченной.
+  { key: 'combatFailShare', kind: 'доля', label: 'из них в бою' },
+  { key: 'avgWoundsTaken', kind: 'среднее', label: 'ран за вылазку' },
+  { key: 'avgFights', kind: 'среднее', label: 'стычек за вылазку' },
   { key: 'avgDepthShare', kind: 'доля', label: 'глубина выхода' },
   { key: 'buyOfferRate', kind: 'доля', label: 'покупка доступна' },
   { key: 'buyTakeRate', kind: 'доля', label: 'из них выбрали стройку' },
@@ -59,6 +64,9 @@ function measure(): Record<string, number> {
 
   return {
     failRate: pick((r) => r.summary.failRate),
+    combatFailShare: pick((r) => r.summary.combatFailShare),
+    avgWoundsTaken: pick((r) => r.summary.avgWoundsTaken),
+    avgFights: pick((r) => r.summary.avgFights),
     avgDepthShare: pick((r) => r.summary.avgDepthShare),
     buyOfferRate: pick((r) => r.summary.buyOfferRate),
     buyTakeRate: pick((r) => r.summary.buyTakeRate),

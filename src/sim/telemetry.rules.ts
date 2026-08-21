@@ -7,12 +7,27 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { events, setEvents, summarize } from './telemetry';
+import type { TelemetryEvent } from './telemetry';
+
+type End = Extract<TelemetryEvent, { t: 'raid_end' }>;
+
+/**
+ * Конец вылазки с умолчаниями. Заведён затем, чтобы проверка про глубину
+ * не перечисляла поля боя, а проверка про бой — поля глубины: иначе каждая
+ * новая метрика правит все тесты сразу и перестаёт быть проверяемой.
+ */
+const end = (over: Partial<End>): End => ({
+  t: 'raid_end', at: 0, tier: 1, failed: false,
+  maxBack: 0, locMaxBack: 20, carried: 0, lost: 0, steps: 0, foodLeft: 0, durationSec: 0,
+  cause: 'evacuated', lastHitBy: null, woundsTaken: 0, fights: 0, kills: 0,
+  ...over,
+});
 
 describe('Телеметрия и экран возврата', () => {
   test('§9 — сводка отвечает на «эвакуируются ли слишком рано»', () => {
     setEvents([
-      { t: 'raid_end', at: 0, tier: 1, failed: false, maxBack: 5, locMaxBack: 20, carried: 6, lost: 0, steps: 30, foodLeft: 40, durationSec: 60 },
-      { t: 'raid_end', at: 1, tier: 1, failed: true, maxBack: 15, locMaxBack: 20, carried: 0, lost: 4, steps: 50, foodLeft: 0, durationSec: 90 },
+      end({ at: 0, failed: false, maxBack: 5, carried: 6, lost: 0, steps: 30, foodLeft: 40, durationSec: 60 }),
+      end({ at: 1, failed: true, maxBack: 15, carried: 0, lost: 4, steps: 50, foodLeft: 0, durationSec: 90, cause: 'food' }),
     ]);
     const s = summarize(events());
     assert.equal(s.raids, 2);
@@ -20,6 +35,31 @@ describe('Телеметрия и экран возврата', () => {
     assert.equal(s.avgDepthShare, 0.5, '(5/20 + 15/20) / 2');
     assert.equal(s.avgCarried, 3);
     assert.equal(s.avgLost, 2);
+  });
+
+  test('§22.6 — доля боевых провалов считается от провалов, а не от вылазок', () => {
+    setEvents([
+      end({ at: 0, failed: false }),
+      end({ at: 1, failed: false }),
+      end({ at: 2, failed: true, cause: 'food' }),
+      end({ at: 3, failed: true, cause: 'combat', lastHitBy: 'warrior' }),
+      end({ at: 4, failed: true, cause: 'combat', lastHitBy: 'mage' }),
+    ]);
+    const s = summarize(events());
+    assert.equal(s.failRate, 0.6, 'три провала из пяти вылазок');
+    assert.equal(
+      s.combatFailShare, 2 / 3,
+      'из трёх провалов два боевых — вопрос §22.6 «из-за чего проигрывают», а не «часто ли»',
+    );
+    assert.deepEqual(s.fatalBy, { warrior: 1, mage: 1 }, 'без атрибуции неясно, что чинить');
+  });
+
+  test('§22.6 — успешная вылазка не попадает в атрибуцию боя', () => {
+    setEvents([end({ at: 0, failed: false, woundsTaken: 2, fights: 3, kills: 4 })]);
+    const s = summarize(events());
+    assert.equal(s.combatFailShare, 0, 'провалов нет — доли не существует');
+    assert.equal(s.avgWoundsTaken, 2, 'раны считаются и у выживших: бой был');
+    assert.equal(s.avgFights, 3);
   });
 
   test('§20.1 — считается доля возвратов с доступной покупкой', () => {

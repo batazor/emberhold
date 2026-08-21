@@ -12,7 +12,8 @@ import type { BuildingId } from './camp';
 import type { ConsumableId } from './consumables';
 import type { HeroClassId, SkillId } from './heroes';
 import type { OnbStep } from './onboarding';
-import type { Tier } from './types';
+import type { RaidCause } from './raid';
+import type { EnemyKind, Tier } from './types';
 
 export type ExitPoint = 'raid' | 'camp' | 'return';
 
@@ -33,6 +34,21 @@ export type TelemetryEvent =
       steps: number;
       foodLeft: number;
       durationSec: number;
+      /**
+       * §9 — почему кончилась. Раньше причину знал только замерный скрипт,
+       * то есть §22.6 проверялся ботом и никем больше.
+       */
+      cause: RaidCause;
+      /** Кто добил. null — вылазка кончилась не боем. */
+      lastHitBy: EnemyKind | null;
+      /**
+       * §9 — бой пишется итогом, а не событием на удар: буфер кольцевой,
+       * и событие на стычку вымыло бы начало сессии за несколько десятков
+       * вылазок, то есть сломало бы метрики §20 ради метрик §11.
+       */
+      woundsTaken: number;
+      fights: number;
+      kills: number;
     }
   /** §20.1 — главная кнопка экрана возврата: трата или повтор. */
   | {
@@ -126,6 +142,16 @@ export interface Summary {
   readonly bought: Readonly<Record<string, number>>;
   readonly fired: Readonly<Record<string, number>>;
   readonly boughtTotal: number;
+  /**
+   * §22.6 — доля провалов, случившихся в бою. Главная метрика замены модели
+   * боя: без неё правка, сохранившая общую долю провалов, но перенёсшая их
+   * из провианта в бой, проходит золотой мастер незамеченной.
+   */
+  readonly combatFailShare: number;
+  readonly avgWoundsTaken: number;
+  readonly avgFights: number;
+  /** Кто добивает чаще: атрибуция без неё ничего не говорит о том, что чинить. */
+  readonly fatalBy: Readonly<Record<string, number>>;
 }
 
 const mean = (xs: number[]): number =>
@@ -165,6 +191,13 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
 
   const offered = returns.filter((r) => r.canBuy);
 
+  const fails = ends.filter((e) => e.failed);
+  const fatalBy: Record<string, number> = {};
+  for (const e of fails) {
+    if (e.lastHitBy === null) continue;
+    fatalBy[e.lastHitBy] = (fatalBy[e.lastHitBy] ?? 0) + 1;
+  }
+
   return {
     raids: ends.length,
     failRate: ends.length === 0 ? 0 : ends.filter((e) => e.failed).length / ends.length,
@@ -189,5 +222,12 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     bought,
     fired,
     boughtTotal,
+    // Доля считается от провалов, а не от вылазок: вопрос §22.6 — «из-за чего
+    // проигрывают», а не «часто ли». При нуле провалов доли не существует.
+    combatFailShare:
+      fails.length === 0 ? 0 : fails.filter((e) => e.cause === 'combat').length / fails.length,
+    avgWoundsTaken: mean(ends.map((e) => e.woundsTaken)),
+    avgFights: mean(ends.map((e) => e.fights)),
+    fatalBy,
   };
 }

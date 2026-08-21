@@ -164,10 +164,15 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     stat.depthShare += r.locMaxBack > 0 ? r.maxBack / r.locMaxBack : 0;
     stat.foodLeft += r.foodLeft;
     if (r.status !== 'evacuated') {
-      // Раны кончились — бой; иначе героя добил голод.
-      if (state.hero.wounds <= 0 && state.food > 0) {
+      // Причину больше не выводим здесь: её пишет сама вылазка по тому,
+      // откуда пришла последняя рана (§9). Прежнее правило «раны кончились
+      // раньше провианта» врало на стыке — голодного героя, добитого
+      // скелетом, оно относило к бою, а раненного в бою и доевшего
+      // провиант — к голоду. И, главное, знал причину только этот скрипт:
+      // живой игрок про свою смерть не рассказывал ничего.
+      if (r.cause === 'combat') {
         stat.byCombat += 1;
-        const kind = state.lastHitBy ?? 'неизвестно';
+        const kind = r.lastHitBy ?? 'неизвестно';
         stat.byKind[kind] = (stat.byKind[kind] ?? 0) + 1;
       } else stat.byFood += 1;
     }
@@ -209,7 +214,9 @@ const stats = PLAN.map(({ tier, kitchen, storage }) => {
   return s;
 });
 
-console.log('\nПричины провала (§11.3 хочет провиант 65% / бой 35%)');
+// §22.6 — прежние 65/35 сняты на старом бое и помечены черновыми. Цель
+// назначается пересчётом модели, а не повторяется здесь числом.
+console.log('\nПричины провала (цель — §22.6, прежние 65/35 черновые)');
 console.log('─'.repeat(74));
 for (const s of stats) {
   const fails = s.runs - s.success;

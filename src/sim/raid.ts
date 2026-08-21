@@ -25,7 +25,7 @@ import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
 import { idx } from './grid';
 import { findPath, nearestWalkable } from './pathfinding';
-import type { Cell, GameLocation, RaidState, RaidStatus, Tier } from './types';
+import type { Cell, EnemyKind, GameLocation, RaidState, RaidStatus, Tier } from './types';
 
 export interface RaidOptions {
   readonly seed: number;
@@ -148,6 +148,10 @@ export function createRaid(opts: RaidOptions): RaidState {
     fired: [],
     smokeUntil: 0,
     lastHitBy: null,
+    lastWoundFrom: null,
+    woundsTaken: 0,
+    fights: 0,
+    kills: 0,
     evacOpen: opts.evacOpen ?? true,
     events: [],
   };
@@ -350,7 +354,9 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
             state.events.push('Заслон держит');
           } else {
             hero.wounds -= 1;
+            state.woundsTaken += 1;
             state.lastHitBy = enemy.kind;
+            state.lastWoundFrom = 'enemy';
             state.events.push(`${stats.name} бьёт`);
           }
           enemy.cooldown = stats.attackInterval;
@@ -385,6 +391,7 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
       hero.cooldown = HERO_ATTACK_INTERVAL * state.mods.attackInterval;
       if (enemy.wounds <= 0) {
         enemy.awake = false;
+        state.kills += 1;
         state.events.push(`${stats.name} падёт`);
       }
     }
@@ -393,6 +400,7 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
   // Провиант за стычку списывается один раз, а не каждый тик (§11.1).
   if (engaged && !state.inFight) {
     state.food -= FOOD_COST.fight;
+    state.fights += 1;
     state.inFight = true;
   } else if (!engaged) {
     state.inFight = false;
@@ -467,6 +475,8 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
     if (state.starve >= 6) {
       state.starve = 0;
       state.hero.wounds -= 1;
+      state.woundsTaken += 1;
+      state.lastWoundFrom = 'hunger';
       state.events.push('Голод');
     }
   }
@@ -496,6 +506,31 @@ export interface RaidResult {
   readonly durationSec: number;
   /** Что сработало за вылазку — §21.5 меряет разброс по видам. */
   readonly fired: readonly ConsumableId[];
+  /**
+   * §9 — почему вылазка кончилась. Прежде причину выводил замерный скрипт
+   * по правилу «раны кончились раньше провианта», то есть знал её только бот.
+   * Здесь она берётся из того, откуда пришла последняя рана, и потому верна
+   * и для голодного героя, добитого скелетом, и для раненного в бою,
+   * доевшего провиант.
+   */
+  readonly cause: RaidCause;
+  readonly woundsTaken: number;
+  readonly fights: number;
+  readonly kills: number;
+  /** Кто нанёс последний удар. null — вылазка кончилась не боем. */
+  readonly lastHitBy: EnemyKind | null;
+}
+
+/** §9 — три исхода вылазки, различимые в телеметрии. */
+export type RaidCause = 'evacuated' | 'food' | 'combat';
+
+/**
+ * Провал читается по последней ране, а не по остатку провианта: голод и удар
+ * отнимают её одинаково, и различить их постфактум нельзя.
+ */
+export function raidCause(state: RaidState): RaidCause {
+  if (state.status === 'evacuated') return 'evacuated';
+  return state.lastWoundFrom === 'enemy' ? 'combat' : 'food';
 }
 
 /**
@@ -541,6 +576,11 @@ export function raidResult(state: RaidState): RaidResult {
     locMaxBack: locationDepth(state.loc),
     durationSec: state.elapsed,
     fired: [...state.fired],
+    cause: raidCause(state),
+    woundsTaken: state.woundsTaken,
+    fights: state.fights,
+    kills: state.kills,
+    lastHitBy: raidCause(state) === 'combat' ? state.lastHitBy : null,
   };
 }
 

@@ -1627,6 +1627,11 @@ startLoop({
           steps: result.steps,
           foodLeft: result.foodLeft,
           durationSec: Math.round(result.durationSec),
+          cause: result.cause,
+          lastHitBy: result.lastHitBy,
+          woundsTaken: result.woundsTaken,
+          fights: result.fights,
+          kills: result.kills,
         });
         hud.setVisible(false);
         // Кадр 8: в первый раз выбора нет — путь ведёт в лагерь, иначе
