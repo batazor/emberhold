@@ -3,8 +3,9 @@ import {
   ENEMY_WAKE_SHARE,
   FOOD_COST,
   HERO_ATTACK_INTERVAL,
-  HERO_ATTACK_REF,
   HERO_REACH,
+  MIN_PIERCE_SHARE,
+  PIERCE_STEP,
   HERO_SPEED,
   TIER_RISK,
   WEIGHT_SLOWDOWN,
@@ -320,9 +321,27 @@ function stepMovement(state: RaidState, dt: number): void {
   }
 }
 
+/**
+ * §11.3 — сколько ран стоит удар этого противника по этому герою.
+ *
+ * Защита не отменяет удар, а делит пробой: часть проходит всегда
+ * (MIN_PIERCE_SHARE), поэтому неуязвимости не существует по построению.
+ * Раны при этом остаются целыми — меняется не их дробность, а их число.
+ */
+export function woundsPerHit(attack: number, defense: number): number {
+  const pierce = Math.max(attack * MIN_PIERCE_SHARE, attack - defense / 2);
+  return 1 + Math.floor(Math.max(0, pierce - 1) / PIERCE_STEP);
+}
+
 function stepCombat(state: RaidState, dt: number, vision: number): void {
   const { hero, loc } = state;
   let engaged = false;
+
+  // §11.3 — Защита складывается из класса и снаряжения: «кем идём» плюс
+  // «с чем». Считается один раз на шаг, а не на каждого противника: внутри
+  // шага она не меняется, и пересчёт на врага только звал бы вопрос,
+  // не может ли она разъехаться между двумя ударами одного тика.
+  const defense = state.loadout.defense + state.mods.defense;
 
   hero.cooldown = Math.max(0, hero.cooldown - dt);
 
@@ -360,8 +379,12 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
           if (skillActive(state, 'guard')) {
             state.events.push('Заслон держит');
           } else {
-            hero.wounds -= 1;
-            state.woundsTaken += 1;
+            // §11.3 — Защита делит пробой: у героя с щитом тот же удар
+            // стоит меньше ран. Складывается из класса и снаряжения —
+            // «кем идём» и «с чем».
+            const took = woundsPerHit(stats.attack, defense);
+            hero.wounds -= took;
+            state.woundsTaken += took;
             state.lastHitBy = enemy.kind;
             state.lastWoundFrom = 'enemy';
             state.events.push(`${stats.name} бьёт`);
@@ -392,10 +415,10 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
     // не проходит ни разу. Замер ловил это как 70% провалов в бою.
     const engageAt = Math.max(HERO_REACH, stats.reach);
     if (dist <= engageAt && hero.cooldown <= 0) {
-      // §11.3 — герой снимает очки стойкости. Пока Атака в бой не входит,
-      // урон равен эталону: замена шкалы обязана быть рефактором, а не правкой
-      // баланса, и золотой мастер не имеет права сдвинуться от неё.
-      enemy.hp -= HERO_ATTACK_REF;
+      // §11.3 — герой снимает очки стойкости собственной Атакой. Ceil-функция
+      // делает её пороговой: разница видна не всегда, а на конкретных
+      // противниках, — и это то же «целое, а не полоска», что у ран.
+      enemy.hp -= state.loadout.attack;
       // §14 — оружие ускоряет зачистку, а не увеличивает урон: меняется
       // только пауза между ударами.
       hero.cooldown = HERO_ATTACK_INTERVAL * state.mods.attackInterval;

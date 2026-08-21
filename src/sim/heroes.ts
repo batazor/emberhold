@@ -1,4 +1,5 @@
 import { HERO_WOUNDS } from './balance';
+import { HERO_ATTACK_REF } from './config';
 
 /**
  * Этап 5 (§8): герои. Реализует §3, §11.7 и §11.8 и раскадровку `heroes.html`.
@@ -427,6 +428,10 @@ export interface HeroLoadout {
   readonly bagMul: number;
   readonly speedMul: number;
   readonly skill: SkillId;
+  /** §11.3 — сколько очков стойкости снимает удар. Растёт с уровнем. */
+  readonly attack: number;
+  /** §11.3 — делит пробой: сколько ран стоит удар по герою. */
+  readonly defense: number;
 }
 
 export function loadout(hero: HeroState): HeroLoadout {
@@ -439,6 +444,11 @@ export function loadout(hero: HeroState): HeroLoadout {
     bagMul: def.bagMul,
     speedMul: def.speedMul,
     skill: def.skill,
+    // §11.3 — обе характеристики теперь входят в бой, а не только
+    // показываются. Берутся с уровнем: рост героя обязан быть виден в бою,
+    // иначе тренировка не чувствуется (§11.8).
+    attack: stats(hero).attack,
+    defense: stats(hero).defense,
   };
 }
 
@@ -452,4 +462,10 @@ export const DEFAULT_LOADOUT: HeroLoadout = {
   bagMul: 1,
   speedMul: 1,
   skill: 'forage',
+  // Эталонные значения, а не значения класса: этим героем ходят золотой
+  // мастер и вся калибровка §20.3, и он обязан бить ровно так, как бил
+  // безымянный герой этапов 1–4. Атака равна HP_PER_WOUND, Защита нулевая —
+  // тогда удар стоит одной раны, как и раньше.
+  attack: HERO_ATTACK_REF,
+  defense: 0,
 };

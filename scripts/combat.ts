@@ -23,7 +23,7 @@ import { emptyGear } from '../src/sim/gear';
 import type { GearState } from '../src/sim/gear';
 import { CLASS_ORDER, HERO_CLASSES, createHero, loadout } from '../src/sim/heroes';
 import type { HeroClassId, HeroLoadout } from '../src/sim/heroes';
-import { createRaid, stepRaid } from '../src/sim/raid';
+import { createRaid, stepRaid, woundsPerHit } from '../src/sim/raid';
 import { distanceField } from '../src/sim/grid';
 import type { EnemyKind, GameLocation } from '../src/sim/types';
 
@@ -150,6 +150,38 @@ for (const level of [0, 3, 5]) {
 }
 
 /**
+ * Пробой напрямую: сколько ран стоит удар каждого типа при каждой Защите.
+ *
+ * Дуэль показывает итог, а он лумпяный — порог переходится не всегда, — и по
+ * нему нельзя понять, Защита ли не работает или просто не дотянула до порога.
+ * Таблица показывает сам порог, поэтому вопрос «где начинает окупаться щит»
+ * получает ответ числом, а не подбором.
+ */
+console.log('══ пробой: ран за удар при разной Защите ══');
+{
+  const defenses = [0, 2, 3, 6, 9, 12, 16];
+  console.log('противник      Атака │ ' + defenses.map((d) => `З${d}`.padStart(4)).join(''));
+  for (const k of KINDS) {
+    const a = ENEMY_STATS[k].attack;
+    console.log(
+      `${ENEMY_STATS[k].name.padEnd(14)}${String(a).padStart(5)} │ ` +
+        defenses.map((d) => String(woundsPerHit(a, d)).padStart(4)).join(''),
+    );
+  }
+  const flat = KINDS.every((k) => {
+    const a = ENEMY_STATS[k].attack;
+    return defenses.every((d) => woundsPerHit(a, d) === woundsPerHit(a, 0));
+  });
+  console.log(
+    flat
+      ? '\n⚠ ЗАЩИТА НИЧЕГО НЕ ДЕЛИТ: строки плоские. Пока каждый удар стоит одной\n' +
+          '  раны, делить нечего, и характеристика остаётся числом в панели.'
+      : '\n✓ Порог существует: есть Защита, которая снимает вторую рану.',
+  );
+  console.log('');
+}
+
+/**
  * Проверка чувствительности — то, ради чего скрипт написан. Если прогон
  * с изменённой характеристикой совпадает с исходным, характеристика в бой
  * не входит, и число в панели героя — украшение. Никакое рассуждение
@@ -181,7 +213,8 @@ const bump = (over: Partial<{ attack: number; defense: number }>): Duel[] => {
 const rows: [string, Duel[]][] = [
   ['как есть', base],
   ['Атака +3', bump({ attack: HERO_CLASSES[REF].base.attack + 3 })],
-  ['Защита +3', bump({ defense: HERO_CLASSES[REF].base.defense + 3 })],
+  ['Защита +6', bump({ defense: HERO_CLASSES[REF].base.defense + 6 })],
+  ['Защита +12', bump({ defense: HERO_CLASSES[REF].base.defense + 12 })],
 ];
 
 console.log('вариант    │ ' + KINDS.map((k) => ENEMY_STATS[k].name.padEnd(13)).join(''));
@@ -196,7 +229,7 @@ const same = (a: Duel[], b: Duel[]): boolean =>
   a.every((d, i) => d.ttk === b[i]!.ttk && d.wounds === b[i]!.wounds);
 
 const attackDead = same(base, rows[1]![1]);
-const defenseDead = same(base, rows[2]![1]);
+const defenseDead = same(base, rows[2]![1]) && same(base, rows[3]![1]);
 
 console.log('');
 if (attackDead && defenseDead) {
@@ -207,6 +240,6 @@ if (attackDead && defenseDead) {
   );
 } else {
   if (attackDead) console.log('⚠ Атака не меняет бой: строка «Атака +3» совпала с исходной.');
-  if (defenseDead) console.log('⚠ Защита не меняет бой: строка «Защита +3» совпала с исходной.');
+  if (defenseDead) console.log('⚠ Защита не меняет бой: обе её строки совпали с исходной.');
   if (!attackDead && !defenseDead) console.log('✓ Обе характеристики двигают бой.');
 }
