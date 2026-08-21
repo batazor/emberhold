@@ -11,8 +11,6 @@ import { WEAPONS_PALETTE } from './palette';
 import type { AdventurerModelName } from './adventurers.data';
 import { folkGeometry, folkParts } from './folk';
 import type { FolkModelName } from './folk.data';
-import { villagerGeometry } from './villager';
-import type { VillagerModelName } from './villager.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import type { RiggedParts } from './rigged';
@@ -592,35 +590,21 @@ export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind
  * недосмотр — второй житель стоит килобайтов у всех игроков ровно столько же,
  * сколько первый, и заводится решением, а не строкой в списке.
  */
-const DWELLER_MODEL: Partial<Record<DwellerLook, FolkModelName>> = {
+const DWELLER_MODEL: Record<DwellerLook, FolkModelName> = {
   'поселенец': 'Settler',
   'торговец': 'Merchant',
-};
-
-/**
- * Жители набора §6.1.13 — кузнец и охотник. Модели статичные: их риг
- * (rigify) на общий `Rig_Medium` не ретаргетится, скелет выброшен при
- * конвертации, и `dwellerParts` для них не существует — во дворе они стоят.
- */
-const CRAFTSMAN_MODEL: Partial<Record<DwellerLook, VillagerModelName>> = {
+  // Кузнец и охотник съездили в игру статикой набора §6.1.13 и перерисованы
+  // сюда: на общем риге они дышат в покое, а молот и нож сидят на кости
+  // `hand.r` и ходят вместе с кистью в любом клипе.
   'кузнец': 'Blacksmith',
   'охотник': 'Hunter',
 };
 
-/** Стоит ли за обликом статичная модель — и какая. */
-export const craftsmanGeometry = (look: DwellerLook): THREE.BufferGeometry | null => {
-  const model = CRAFTSMAN_MODEL[look];
-  return model === undefined ? null : villagerGeometry(model, heroHeight(GUARD_LIKE));
-};
-
-export const dwellerParts = (look: DwellerLook): RiggedParts => {
-  const model = DWELLER_MODEL[look];
-  if (model === undefined) throw new Error(`у облика «${look}» нет рига: он стоящий, craftsmanGeometry`);
+export const dwellerParts = (look: DwellerLook): RiggedParts =>
   // Рост берётся у героя по той же причине, что у гарнизона: жильцы и герой —
   // люди одного мира, и разный рост читался бы не «другой человек»,
   // а «другой масштаб сцены».
-  return folkParts(model, heroHeight(GUARD_LIKE));
-};
+  folkParts(DWELLER_MODEL[look], heroHeight(GUARD_LIKE));
 
 /**
  * Жилец лагеря неподвижной геометрией. Именно неподвижной, и это решение,
@@ -633,7 +617,7 @@ export const dwellerParts = (look: DwellerLook): RiggedParts => {
  * сказать, что в лагере живёт кто-то другой.
  */
 export const residentGeometry = (look: DwellerLook): THREE.BufferGeometry =>
-  craftsmanGeometry(look) ?? folkGeometry(DWELLER_MODEL[look]!, heroHeight(GUARD_LIKE));
+  folkGeometry(DWELLER_MODEL[look], heroHeight(GUARD_LIKE));
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
 export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {

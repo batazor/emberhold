@@ -5,7 +5,6 @@ import {
   buildingGeometry,
   enemyGeometry,
   enemyParts,
-  craftsmanGeometry,
   dwellerParts,
   guardParts,
   heroGeometry,
@@ -247,9 +246,7 @@ export class RaidView {
    * ими и не являются: ни полоски жизни, ни замаха, ни клипа падения —
    * жилец только ходит и стоит.
    */
-  /** `rig` пуст у стоящих ремесленников (§6.1.13): их модели без скелета,
-   *  и тело у них — неподвижный меш, а не скин. */
-  private readonly dwellerViews: { root: THREE.Object3D; rig: Rigged | null; facing: number }[] = [];
+  private readonly dwellerViews: { rig: Rigged; facing: number }[] = [];
   /**
    * Материал замка. Держится отдельной ссылкой затем, чтобы гасить стены,
    * пока герой во дворе (§6.1.6.1): иначе кадр показывает стену вместо того,
@@ -970,18 +967,9 @@ export class RaidView {
     // Жильцы двора (§6.1.6.1) — тем же порядком и по той же причине: свой
     // скелет каждому, иначе двое с одним шагали бы нога в ногу.
     for (const walk of this.garrison.yard) {
-      // Кузнец и охотник — статика без скелета (§6.1.13): им не нужен ни
-      // свой риг, ни клип покоя, они стоят у края двора неподвижно.
-      const still = craftsmanGeometry(walk.look);
-      if (still !== null) {
-        const body = new THREE.Mesh(still, this.blocking);
-        this.group.add(body);
-        this.dwellerViews.push({ root: body, rig: null, facing: 0 });
-        continue;
-      }
       const rig = new Rigged(dwellerParts(walk.look), this.blocking);
       this.group.add(rig.root);
-      this.dwellerViews.push({ root: rig.root, rig, facing: 0 });
+      this.dwellerViews.push({ rig, facing: 0 });
     }
   }
 
@@ -1015,12 +1003,10 @@ export class RaidView {
       const view = this.dwellerViews[i]!;
       const man = folk[i];
       if (man === undefined) continue;
-      view.root.position.set(man.x, 0, man.z);
-      view.facing = RaidView.turnTo(view.facing, man.facing, dt);
-      view.root.rotation.y = view.facing;
-      // Стоящему ремесленнику двигать нечего: скелета нет, клип не играется.
-      if (view.rig === null) continue;
       view.rig.update(dt);
+      view.rig.root.position.set(man.x, 0, man.z);
+      view.facing = RaidView.turnTo(view.facing, man.facing, dt);
+      view.rig.root.rotation.y = view.facing;
       if (man.walking) view.rig.play('ходьба', rateFor(DWELLER_SPEED, view.rig.root.scale.y));
       else view.rig.play('покой');
     }
@@ -1943,7 +1929,7 @@ export class RaidView {
     for (const view of this.enemyViews.values()) view.rig.dispose();
     this.settler?.rig.dispose();
     this.settler = null;
-    for (const view of this.dwellerViews) view.rig?.dispose();
+    for (const view of this.dwellerViews) view.rig.dispose();
     this.dwellerViews.length = 0;
     for (const view of this.squad) view.rig.dispose();
     this.squad.length = 0;
