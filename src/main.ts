@@ -831,11 +831,16 @@ function toRaid(node: number): boolean {
     // выходом, а не уровень предмета, и перекладывается он бесплатно.
     gear: camp.gear,
     offhand: camp.offhand,
+    // §14.3 — колчан наполняется на выходе из лагерного запаса. Взятое
+    // уходит из лагеря целиком: то, что не выстрелили, вернётся с героем,
+    // а то, что осталось в мёртвом, — нет.
+    arrows: camp.arrows,
     // §21 — расходники: что взято в эту вылазку и сгорит на выходе.
     consumables: camp.loadout,
     // Первая вылазка держит выход закрытым до первой добычи (см. onboarding).
     evacOpen: !onboarding.inRaid,
   });
+  camp.arrows = Math.max(0, camp.arrows - raid.arrowsMax);
   // §21 — купленное уходит в вылазку и не возвращается: сгорает независимо
   // от того, пригодилось или нет. Копить нечего.
   camp.loadout = [];
@@ -1618,6 +1623,10 @@ startLoop({
       if (raid.status !== 'running' && !resultShown) {
         resultShown = true;
         const result = raidResult(raid);
+        // §14.3 — невыстреленное и подобранное возвращается вместе с героем.
+        // Провалившийся не возвращает ничего: он и добычу теряет по §11.2,
+        // и колчан у него отняли там же.
+        if (result.status === 'evacuated') camp.arrows += result.arrowsLeft;
         addResources(camp.resources, result.carried);
         camp.raids += 1;
         finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);

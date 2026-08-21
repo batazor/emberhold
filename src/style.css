@@ -390,3 +390,13 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .build-card.raze .build-pick[aria-pressed="true"] { background: #3a2320; border-color: #7a4038; }
 .build-note { font-size: 11.5px; }
 .build-note.warn { color: #d4543a; }
+
+/* §14.3 — колчан в нижней строке вылазки. Сегментами, как раны (§11.3):
+   игрок считает штуки, а не читает долю. Потолок вместимости — восемь,
+   и он про это же: девять полосок на узком экране взглядом не считаются. */
+#hud .raid-slot.quiver { display: inline-flex; gap: 2px; padding: 4px 6px; }
+#hud .raid-slot.quiver i {
+  width: 3px; height: 11px; border-radius: 1px;
+  background: var(--ink); opacity: 0.85;
+}
+#hud .raid-slot.quiver i.spent { opacity: 0.22; }

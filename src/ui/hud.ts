@@ -194,10 +194,23 @@ export class Hud {
     // §21: слоты молчат. Пока расходник цел, слот тусклый; счётчиков,
     // кулдаунов и подсказок нет — всё мигающее отнимает внимание у двух
     // полос, ради которых панель существует.
-    const key = `${state.consumables.join(',')}|${state.fired.join(',')}`;
+    // §14.3 — колчан живёт здесь, а не пятой полосой сверху. Верхняя панель
+    // держит четыре строки из §11, и пятая превратила бы её в приборную
+    // доску; нижняя же означает ровно то же самое — «что я взял с собой,
+    // и оно тратится само». Сегментами, а не числом: §11.2 требует, чтобы
+    // игрок считал штуки, и раны уже считаются так же.
+    const key = `${state.consumables.join(',')}|${state.fired.join(',')}|${state.arrows}/${state.arrowsMax}`;
     if (key !== this.slotsKey) {
       this.slotsKey = key;
       this.slots.innerHTML = '';
+      if (state.arrowsMax > 0) {
+        const quiver = document.createElement('span');
+        quiver.className = 'raid-slot quiver';
+        quiver.innerHTML =
+          Array.from({ length: state.arrowsMax }, (_, i) =>
+            i < state.arrows ? '<i></i>' : '<i class="spent"></i>').join('');
+        this.slots.appendChild(quiver);
+      }
       for (const id of state.consumables) {
         const el = document.createElement('span');
         el.className = 'raid-slot';

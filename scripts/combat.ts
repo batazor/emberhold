@@ -23,7 +23,7 @@ import { emptyGear } from '../src/sim/gear';
 import type { GearState } from '../src/sim/gear';
 import { CLASS_ORDER, HERO_CLASSES, createHero, loadout } from '../src/sim/heroes';
 import type { HeroClassId, HeroLoadout } from '../src/sim/heroes';
-import { createRaid, stepRaid, woundsPerHit } from '../src/sim/raid';
+import { commandMove, createRaid, stepRaid, woundsPerHit } from '../src/sim/raid';
 import { distanceField } from '../src/sim/grid';
 import type { EnemyKind, GameLocation } from '../src/sim/types';
 
@@ -90,7 +90,10 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
     storageLevel: 9,
     loadout: hero,
     gear,
-    loc: duelField(kind, ENEMY_STATS[kind].reach * 0.9),
+    // Ставим на дистанции выстрела стрелка либо на длину оружия ближнего:
+    // в обоих случаях это то расстояние, с которого противник начинает бить,
+    // а герой уже идёт.
+    loc: duelField(kind, Math.min(ENEMY_STATS[kind].reach * 0.9, 4)),
     food: 9999,
     hunger: false,
   });
@@ -102,6 +105,11 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
   let t = 0;
 
   while (t < GIVE_UP && enemy.hp > 0 && state.status === 'running') {
+    // Герой сам идёт на противника. Со стрелком иначе нельзя: он стоит
+    // далеко именно затем, чтобы до него шли, и неподвижный герой мерил бы
+    // не бой, а собственную неподвижность. Лучник по дороге стреляет —
+    // и это ровно то, чем он отличается.
+    if (state.path.length === 0) commandMove(state, { x: Math.round(enemy.x), z: Math.round(enemy.z) });
     stepRaid(state, TICK, false, hero.knowledge);
     if (enemy.hp < before) {
       swings += 1;

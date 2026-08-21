@@ -4,9 +4,14 @@ import {
   FOOD_COST,
   HERO_ATTACK_INTERVAL,
   HERO_REACH,
+  ARROWS_PER_CONTAINER,
+  ARROW_SPEED,
+  HERO_RANGED_INTERVAL,
+  HERO_RANGED_REACH,
   MIN_PIERCE_SHARE,
   PIERCE_STEP,
   PROJECTILE_HIT,
+  RANGED_MELEE_PENALTY,
   HERO_SPEED,
   TIER_RISK,
   WEIGHT_SLOWDOWN,
@@ -62,6 +67,12 @@ export interface RaidOptions {
    * измеряли при калибровке §20.3, иначе все прежние замеры несравнимы.
    */
   readonly offhand?: Offhand;
+  /**
+   * §14.3 — сколько стрел лежит в лагере. Берётся не больше колчана;
+   * необязательно, потому что до §14.3 стрел не было вовсе, и прежние
+   * прогоны обязаны считаться ровно как считались.
+   */
+  readonly arrows?: number;
   /** Что игрок купил перед входом (§21). По умолчанию — ничего. */
   readonly consumables?: readonly ConsumableId[];
   /**
@@ -121,6 +132,7 @@ export function createRaid(opts: RaidOptions): RaidState {
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
   const mods = opts.gear === undefined ? NO_MODS : gearMods(opts.gear, opts.offhand ?? 'torch');
+  const quiver = loadout.ranged ? Math.min(mods.arrows, Math.max(0, opts.arrows ?? mods.arrows)) : 0;
   return {
     loc,
     loadout,
@@ -170,6 +182,13 @@ export function createRaid(opts: RaidOptions): RaidState {
     fights: 0,
     kills: 0,
     evacOpen: opts.evacOpen ?? true,
+    // §14.3 — колчан наполняется на выходе, из лагерного запаса и не выше
+    // вместимости. У ближника вместимость нулевая, и «ноль стрел у Лучника»
+    // с «нет колчана у Рыцаря» не смешиваются: различает их loadout.ranged.
+    arrows: quiver,
+    arrowsMax: quiver,
+    arrowsSpent: 0,
+    dryFights: 0,
     projectiles: [],
     nextProjectileId: 0,
     events: [],
@@ -284,6 +303,13 @@ function arriveAt(state: RaidState, cell: Cell): void {
       const taken = Math.min(container.amount, state.capacity - state.bagTotal);
       state.bag[container.kind] += taken;
       state.bagTotal += taken;
+      // §14.3 — стрелы подбираются, и это отменяет §21.4 осознанно:
+      // приберечь их нельзя, потому что тратит их бой, а не игрок.
+      if (state.loadout.ranged && state.arrows < state.arrowsMax) {
+        const picked = Math.min(ARROWS_PER_CONTAINER, state.arrowsMax - state.arrows);
+        state.arrows += picked;
+        if (picked > 0) state.events.push(`+${picked} · стрелы`);
+      }
       const found = `+${taken} · ${RESOURCE_NAME[container.kind]}`;
       state.events.push(state.risk ? `${found} · под угрозой ${atRisk(state)}` : found);
     }
@@ -549,14 +575,39 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
     // он стоит далеко именно затем, чтобы до него надо было дойти, и
     // растягивать геройское оружие на всю дальность выстрела значило бы
     // отменить его роль вместе с обходом.
-    const engageAt = stats.ranged ? HERO_REACH : Math.max(HERO_REACH, stats.reach);
-    if (dist <= engageAt && hero.cooldown <= 0) {
+    const melee = stats.ranged ? HERO_REACH : Math.max(HERO_REACH, stats.reach);
+
+    // §14.3 — стреляем, пока есть чем. Пустой колчан не обезоруживает:
+    // герой берётся за нож и бьёт слабее, а не стоит столбом.
+    const shooting = state.loadout.ranged && state.arrows > 0;
+    const engageAt = shooting ? HERO_RANGED_REACH : melee;
+    const canSee =
+      !shooting
+      || hasLineOfSight(loc.size, loc.blocked, hero.x, hero.z, enemy.x, enemy.z);
+
+    if (dist <= engageAt && canSee && hero.cooldown <= 0) {
       // §11.3 — герой снимает очки стойкости собственной Атакой. Ceil-функция
       // делает её пороговой: разница видна не всегда, а на конкретных
       // противниках, — и это то же «целое, а не полоска», что у ран.
-      enemy.hp -= state.loadout.attack;
-      // §14 — оружие ускоряет зачистку, а не увеличивает урон: меняется
-      // только пауза между ударами.
+      if (shooting) {
+        state.arrows -= 1;
+        state.arrowsSpent += 1;
+        shoot(
+          state, 'hero', hero.x, hero.z, enemy.x, enemy.z,
+          ARROW_SPEED, state.loadout.attack, enemy.id, null,
+        );
+        if (state.arrows === 0) state.events.push('Колчан пуст');
+        // §14 — оружие ускоряет зачистку, а не увеличивает урон: меняется
+        // только пауза. Выстрел медленнее удара — стрелок платит темпом
+        // за дистанцию, иначе лук был бы просто лучше.
+        hero.cooldown = HERO_RANGED_INTERVAL * state.mods.attackInterval;
+        continue;
+      }
+
+      // Пустой колчан у стрелка — ближний бой ослабленным: удорожает
+      // зачистку, но не убивает (§14.3).
+      const dry = state.loadout.ranged && state.arrows <= 0;
+      enemy.hp -= state.loadout.attack * (dry ? RANGED_MELEE_PENALTY : 1);
       hero.cooldown = HERO_ATTACK_INTERVAL * state.mods.attackInterval;
       if (enemy.hp <= 0) {
         enemy.awake = false;
@@ -570,6 +621,9 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
   if (engaged && !state.inFight) {
     state.food -= FOOD_COST.fight;
     state.fights += 1;
+    // §14.3 — стычка, проведённая без стрел: цена пустого колчана, и её
+    // надо предъявлять числом, а не обещать словом.
+    if (state.loadout.ranged && state.arrows <= 0) state.dryFights += 1;
     state.inFight = true;
   } else if (!engaged) {
     state.inFight = false;
@@ -691,6 +745,10 @@ export interface RaidResult {
   readonly kills: number;
   /** Кто нанёс последний удар. null — вылазка кончилась не боем. */
   readonly lastHitBy: EnemyKind | null;
+  /** §14.3 — колчан обязан пустеть не всегда и не никогда; это меряется. */
+  readonly arrowsSpent: number;
+  readonly arrowsLeft: number;
+  readonly dryFights: number;
 }
 
 /** §9 — три исхода вылазки, различимые в телеметрии. */
@@ -753,6 +811,9 @@ export function raidResult(state: RaidState): RaidResult {
     fights: state.fights,
     kills: state.kills,
     lastHitBy: raidCause(state) === 'combat' ? state.lastHitBy : null,
+    arrowsSpent: state.arrowsSpent,
+    arrowsLeft: state.arrows,
+    dryFights: state.dryFights,
   };
 }
 

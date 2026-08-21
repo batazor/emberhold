@@ -81,6 +81,8 @@ export interface HeroClassDef {
   readonly base: Stats;
   /** Что растёт с уровнем: по единице за уровень в эти характеристики. */
   readonly growth: Stats;
+  /** §14.3 — бьёт с дистанции и тратит стрелы. */
+  readonly ranged: boolean;
 }
 
 /**
@@ -116,6 +118,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     speedMul: 1.1,
     base: { attack: 4, defense: 3, knowledge: 10, might: 3 },
     growth: { attack: 1, defense: 0, knowledge: 1, might: 0 },
+    ranged: true,
   },
   knight: {
     id: 'knight',
@@ -128,6 +131,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     speedMul: 1,
     base: { attack: 5, defense: 6, knowledge: 0, might: 4 },
     growth: { attack: 1, defense: 1, knowledge: 0, might: 0 },
+    ranged: false,
   },
   rogue: {
     id: 'rogue',
@@ -140,6 +144,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     speedMul: 1,
     base: { attack: 3, defense: 2, knowledge: 5, might: 5 },
     growth: { attack: 0, defense: 0, knowledge: 1, might: 1 },
+    ranged: false,
   },
 };
 
@@ -432,6 +437,12 @@ export interface HeroLoadout {
   readonly attack: number;
   /** §11.3 — делит пробой: сколько ран стоит удар по герою. */
   readonly defense: number;
+  /**
+   * §14.3 — стреляет ли этот класс. Отдельно от числа стрел: пустой колчан
+   * у Лучника и отсутствие колчана у Рыцаря — разные состояния, и путать
+   * их нельзя ни в бою, ни на экране.
+   */
+  readonly ranged: boolean;
 }
 
 export function loadout(hero: HeroState): HeroLoadout {
@@ -449,6 +460,7 @@ export function loadout(hero: HeroState): HeroLoadout {
     // иначе тренировка не чувствуется (§11.8).
     attack: stats(hero).attack,
     defense: stats(hero).defense,
+    ranged: def.ranged,
   };
 }
 
@@ -472,4 +484,7 @@ export const DEFAULT_LOADOUT: HeroLoadout = {
   // на бойце вовсе без Защиты и получал два провала из трёх на двух воинах.
   attack: HERO_ATTACK_REF,
   defense: 3,
+  // Ближний: этим героем мерилась вся калибровка §20.3, и дальний бой
+  // сделал бы её результаты несравнимыми с прежними.
+  ranged: false,
 };

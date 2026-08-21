@@ -142,6 +142,7 @@ export function playSession(seed: number): SessionResult {
         storageLevel: camp.levels.storage,
         gear: camp.gear,
         offhand: camp.offhand,
+        arrows: camp.arrows,
         consumables: camp.loadout,
       },
       POLICIES.balanced,

@@ -15,6 +15,7 @@
     "measure": "tsx scripts/measure.ts",
     "combat": "tsx scripts/combat.ts",
     "encounter": "tsx scripts/encounter.ts",
+    "ammo": "tsx scripts/ammo.ts",
     "classes": "tsx scripts/classes.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
