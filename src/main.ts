@@ -720,6 +720,9 @@ const heroFan = new FanControl({
       heroCard.setVisible(false);
       residentCard.sync(camp, shownResident);
       residentCard.setVisible(true);
+      // На поляне лицо не только открывает карточку — оно передаёт ведение:
+      // тап по земле теперь ведёт этого жильца, тап по дереву — рубка.
+      controlResident(shownResident);
       return;
     }
     const hero = roster.heroes[index];
@@ -728,6 +731,7 @@ const heroFan = new FanControl({
     shownHero = index;
     residentCard.setVisible(false);
     heroCard.setVisible(true);
+    controlHero();
     const block = raidBlock(hero);
     if (block !== 'ok') {
       campHud.notify(refusal(HERO_CLASSES[hero.cls].name, RAID_REASON[block]));
@@ -885,6 +889,42 @@ function meetCallbacks(): MeetPanelCallbacks {
       gladeHint = '';
     },
   };
+}
+
+/**
+ * Кем водит лагерь (§16.1): −1 — герой, иначе номер жильца. Симуляция одна
+ * на всех: при передаче управления позиция героя паркуется, и raid.hero
+ * временно ходит ногами жильца — те же тапы, та же дорога, та же рубка.
+ */
+let controlled = -1;
+let parkedHero: { x: number; z: number } | null = null;
+
+function controlResident(idx: number): void {
+  if (!inGladeCamp || raid === null || raidView === null || controlled === idx) return;
+  const at = raidView.residentAt(idx);
+  if (at === null) return;
+  stopChopping();
+  if (controlled === -1) parkedHero = { x: raid.hero.x, z: raid.hero.z };
+  raid.hero.x = raid.hero.prevX = at.x;
+  raid.hero.z = raid.hero.prevZ = at.z;
+  raid.path.length = 0;
+  raidView.setHeroParked(true);
+  controlled = idx;
+}
+
+function controlHero(): void {
+  if (!inGladeCamp || raid === null || controlled === -1) return;
+  stopChopping();
+  // Жилец остаётся стоять, где остановился: до следующего входа в лагерь —
+  // потом он снова сядет к костру (`seatResidents`).
+  if (parkedHero !== null) {
+    raid.hero.x = raid.hero.prevX = parkedHero.x;
+    raid.hero.z = raid.hero.prevZ = parkedHero.z;
+  }
+  raid.path.length = 0;
+  raidView?.setHeroParked(false);
+  controlled = -1;
+  parkedHero = null;
 }
 
 /**
@@ -1787,6 +1827,16 @@ function stepChopping(dt: number): void {
     // Кромка не открывается никогда (§12.1), и на месте упавшего дерева там
     // встаёт следующее: рубка по краю бесконечна именно этим.
     raidView?.fellTree(chop.cell.x, chop.cell.z, isEdge(raid.loc, chop.cell));
+    // В лагере рюкзака нет (§13.5): дерево идёт прямо в кладовую, просека
+    // пишется в снимок поляны — срубленное обязано пережить перезагрузку.
+    if (inGladeCamp) {
+      addResources(camp.resources, raid.bag);
+      raid.bag = emptyResources();
+      raid.bagTotal = 0;
+      camp.glade = packGlade(raid.loc);
+      campHud.sync(camp, clock.now(), 0);
+      persist();
+    }
     stopChopping();
   }
 }
@@ -2092,8 +2142,12 @@ function toGladeCamp(): void {
     containerFood: 0,
     hunger: false,
     risk: false,
-    logging: false,
+    // Лес лагеря рубится (§13.3): дерево — сразу в кладовую, просека
+    // остаётся в снимке поляны навсегда.
+    logging: true,
   });
+  controlled = -1;
+  parkedHero = null;
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
@@ -2488,6 +2542,12 @@ canvas.addEventListener('pointerdown', (e) => {
       return;
     }
     campHud.close();
+    // Тап по дереву — рубка (§13.3), тем же жестом, что в прологе: идёт сам
+    // и работает, когда дойдёт. Рубит тот, кого ведут, — герой или жилец.
+    if (raid.logging && treeAt(raid.loc, cell)) {
+      startChopping(cell);
+      return;
+    }
     if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
     return;
   }
@@ -3124,7 +3184,7 @@ function stepCampSystems(dt: number, now: number): void {
     // обоих.
     campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
     // Ведущий отмечен на лице, а карточка держит того, кого выбрали.
-    heroFan.picked = roster.active;
+    heroFan.picked = controlled >= 0 ? roster.heroes.length + controlled : roster.active;
     if (shownHero >= roster.heroes.length) shownHero = roster.active;
     heroFan.draw();
     heroCard.setBottom(campHud.bands().bottom + 6);
@@ -3145,6 +3205,17 @@ startLoop({
       // не отсчитывает (§18.4) — запас пополняется тем же тиком, что тратит.
       stepRaid(raid, dt, false, 0);
       raid.food = raid.foodMax;
+      stepChopping(dt);
+      if (controlled >= 0) {
+        raidView?.driveResident(
+          controlled,
+          raid.hero.x,
+          raid.hero.z,
+          raid.path.length > 0,
+          chop !== null,
+          dt,
+        );
+      }
       syncMeet();
       stepCampSystems(dt, now);
       return;

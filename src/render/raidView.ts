@@ -878,6 +878,42 @@ export class RaidView {
   private residents: Rigged[] = [];
 
   /**
+   * Ведение передано жильцу (§16.1): герой стоит, где остановился, и сцена
+   * его не возит — позиция симуляции в это время принадлежит жильцу.
+   */
+  private heroParked = false;
+
+  setHeroParked(parked: boolean): void {
+    this.heroParked = parked;
+  }
+
+  /** Где стоит жилец — чтобы передать ему позицию симуляции без рывка. */
+  residentAt(i: number): { x: number; z: number } | null {
+    const rig = this.residents[i];
+    return rig === undefined
+      ? null
+      : { x: rig.root.position.x, z: rig.root.position.z };
+  }
+
+  /**
+   * Вести жильца рукой лагеря: позиция приходит из той же симуляции, что
+   * водит героя, а клип выбирается по делу — идёт, рубит, стоит.
+   */
+  driveResident(i: number, x: number, z: number, walking: boolean, working: boolean, dt: number): void {
+    const rig = this.residents[i];
+    if (rig === undefined) return;
+    const dx = x - rig.root.position.x;
+    const dz = z - rig.root.position.z;
+    if (Math.hypot(dx, dz) > 1e-4) {
+      rig.root.rotation.y = RaidView.turnTo(rig.root.rotation.y, Math.atan2(dx, dz), dt);
+    }
+    rig.root.position.set(x, 0, z);
+    if (walking) rig.play('ходьба', rateFor(HERO_SPEED, rig.root.scale.y));
+    else if (working) rig.play('удар', STRIKE / SWING_SECONDS);
+    else rig.play('покой');
+  }
+
+  /**
    * Поставить жильцов. Список пересобирается целиком: жильцов единицы,
    * и следить за диффом здесь дороже, чем посадить заново.
    */
@@ -1699,7 +1735,7 @@ export class RaidView {
     const hz = heroTarget === null
       ? lerp(hero.prevZ, hero.z, alpha)
       : lerp(this.hero.position.z, heroTarget.z, Math.min(1, dt * 9));
-    this.hero.position.set(hx, 0, hz);
+    if (!this.heroParked) this.hero.position.set(hx, 0, hz);
 
     this.syncGrid(state);
     this.syncParty(state, alpha, dt);
@@ -1708,11 +1744,15 @@ export class RaidView {
     while (turn > Math.PI) turn -= Math.PI * 2;
     while (turn < -Math.PI) turn += Math.PI * 2;
     // §17.2: разворот не мгновенный, 120–150 мс — иначе читается как рывок.
-    this.hero.rotation.y += turn * Math.min(1, dt * 8);
+    if (!this.heroParked) this.hero.rotation.y += turn * Math.min(1, dt * 8);
     // Герой на риге ходит клипом, примитивный — прежним покачиванием: у него
     // ног нет, и качать его — единственное, чем ход отличается от стойки.
     const heroWalking = state.path.length > 0;
-    if (this.heroRig === null) {
+    if (this.heroParked) {
+      // Стоит и ждёт: симуляция в это время водит жильца, не его.
+      this.heroRig?.update(dt);
+      this.heroRig?.play('покой');
+    } else if (this.heroRig === null) {
       this.hero.children[0]!.position.y = 0.6 + (heroWalking ? Math.sin(time / 90) * 0.04 : 0);
     } else {
       this.heroRig.update(dt);
