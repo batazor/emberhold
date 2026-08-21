@@ -23,11 +23,13 @@ import {
   moveBuilding,
   speedup,
   speedupCost,
+  buyArrows,
+  setOffhand,
   startUpgrade,
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { GEAR, MAX_ITEM_LEVEL } from './sim/gear';
+import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
 import type { GearSlot } from './sim/gear';
 import { visionRadius } from './sim/config';
 import {
@@ -413,6 +415,27 @@ const campHud = new CampHud(app, {
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
   onWalls: () => openWalls(),
+  /**
+   * §14.3 — пачка стрел. Колчан наполняется только здесь: в вылазке стрелы
+   * тратятся, донесённое возвращается в лагерь, а взяться им больше неоткуда.
+   * До этой кнопки колчан начинался пустым и мог только убывать — Лучник
+   * всегда дрался со штрафом пустого колчана.
+   */
+  onBuyArrows: () => {
+    const cap = gearMods(camp.gear, camp.offhand).arrows;
+    if (!buyArrows(camp, cap)) {
+      campHud.notify('Стрелы: не хватает железа или колчан полон');
+      return;
+    }
+    campHud.notify(`Стрелы ${camp.arrows} / ${cap}`);
+    persist();
+  },
+  /** §14.2 — переложить предмет в левой руке. Бесплатно и без таймера. */
+  onOffhand: (hand) => {
+    if (!setOffhand(camp, hand)) return;
+    campHud.notify(`В левой руке: ${OFFHAND[hand].name.toLowerCase()}`);
+    persist();
+  },
   /**
    * Задание «поставить палатку» (`sim/residents.ts`). Отказ звучит так же,
    * как виден (§18.3), а вид пересобирается тем же путём, каким он
@@ -910,7 +933,11 @@ function finishRaidForHero(
   if (outcome.levels > 0) campHud.notify(`${name}: уровень ${hero.level}`);
   if (outcome.healSec > 0) {
     track({ t: 'heal_start', at: now, cls: hero.cls, wounds: outcome.wounds, seconds: outcome.healSec });
-    campHud.notify(`${name} ранен — Лазарет ${RosterPanel.healText(outcome.wounds)}`);
+    // «Лазарет» здесь называть нельзя: здания с таким именем в игре нет
+    // (§7 отложил его вместе с Плацем), а строка обещала игроку постройку,
+    // которую он пойдёт искать в лагере и не найдёт. Лечение идёт само,
+    // по монотонному времени, и сказать надо ровно это.
+    campHud.notify(`${name} ранен — в строю через ${RosterPanel.healText(outcome.wounds)}`);
   }
 }
 
@@ -2616,6 +2643,10 @@ startLoop({
     }
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
+    // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
+    // лагерь про героев не знает, и сказать ему может только тот, кто знает
+    // обоих.
+    campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
     rosterPanel.sync(roster, now);
   },
 
