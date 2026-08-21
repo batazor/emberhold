@@ -25,7 +25,8 @@
     "clips": "tsx scripts/clips.ts",
     "audio": "tsx scripts/audio.ts",
     "play": "tsx scripts/play.ts",
-    "tents": "tsx scripts/tents.ts"
+    "tents": "tsx scripts/tents.ts",
+    "fan": "tsx scripts/fan.ts"
   },
   "dependencies": {
     "three": "^0.180.0"
