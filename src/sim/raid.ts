@@ -16,7 +16,7 @@ import {
   visionRadius,
 } from './config';
 import { ENEMY_STATS } from './enemies';
-import { DEFAULT_LOADOUT, FORAGE_FOOD, SKILLS, TRAIL_STEP_DISCOUNT } from './heroes';
+import { CACHE_LOOT, DEFAULT_LOADOUT, HAUL_CAPACITY, SKILLS, TRAIL_BACK_DISCOUNT } from './heroes';
 import type { HeroLoadout } from './heroes';
 import { NO_MODS, gearMods } from './gear';
 import type { GearState, Offhand } from './gear';
@@ -28,6 +28,8 @@ import {
 import type { ConsumableId } from './consumables';
 import { generateLocation } from './generate';
 import { effectOf } from './events';
+import { effectOfCard } from './draft';
+import type { DraftCardId } from './draft';
 import type { EventId } from './events';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
@@ -150,20 +152,39 @@ export interface RaidOptions {
    * считают вылазку без событий, иначе прежние числа несравнимы.
    */
   readonly event?: EventId | null;
+  /**
+   * §19 — карта сборов, выбранная перед входом. По умолчанию нет, и это то же
+   * требование, что у события: бот, калибровка §20.3 и золотой мастер считают
+   * вылазку без карт, иначе прежние числа несравнимы.
+   */
+  readonly draft?: DraftCardId | null;
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
   // Событие сворачивается в числа на входе — ровно как снаряжение: вылазке
   // нужны множители, а не имя того, что происходит снаружи.
   const event = effectOf(opts.event ?? null);
+  // §19 — карта сворачивается в числа там же и так же, как событие: вылазке
+  // незачем знать про карты, ей нужны провиант, вместимость, обзор и ставка.
+  const draft = effectOfCard(opts.draft ?? null);
   const loc =
-    opts.loc ?? generateLocation(opts.seed, opts.tier, (opts.lootMul ?? 1) * event.loot, event.enemies);
+    opts.loc ?? generateLocation(opts.seed, opts.tier, (opts.lootMul ?? 1) * event.loot * draft.loot, event.enemies);
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
   const mods = opts.gear === undefined ? NO_MODS : gearMods(opts.gear, opts.offhand ?? 'torch');
-  const quiver = loadout.ranged ? Math.min(mods.arrows, Math.max(0, opts.arrows ?? mods.arrows)) : 0;
-  const supply = opts.food ?? kitchenFood(opts.kitchenLevel);
+  /**
+   * §14.3 — вместимость и запас это две разные величины, и раньше они были
+   * одной. `arrowsMax` считался от того, сколько взяли, поэтому ноль в лагере
+   * делал ноль вместимости, а подбор упирается в `arrows < arrowsMax` —
+   * и с пустым колчаном не срабатывал никогда. Ноль был поглощающим: выйти
+   * из него не давал ни один источник, кроме покупки за железо.
+   */
+  const quiverCap = loadout.ranged ? mods.arrows : 0;
+  const quiver = Math.min(quiverCap, Math.max(0, opts.arrows ?? quiverCap));
+  // §19 — карта провианта прибавляется и к запасу, и к потолку: полоса HUD
+  // читает потолок, и оставленный прежним он показал бы «103 из 78».
+  const supply = Math.max(1, (opts.food ?? kitchenFood(opts.kitchenLevel)) + draft.food);
 
   /**
    * §11.7 — отряд. Пока в нём один боец: состав приходит снаружи, и вылазка
@@ -176,9 +197,8 @@ export function createRaid(opts: RaidOptions): RaidState {
   /** Боец отряда. Ведущий и следующие собираются одним кодом: разница
    *  между ними только в том, кто задаёт путь. */
   const make = (id: number, who: HeroLoadout): Fighter => {
-    const quiverOf = who.ranged
-      ? Math.min(mods.arrows, Math.max(0, opts.arrows ?? mods.arrows))
-      : 0;
+    const capOf = who.ranged ? mods.arrows : 0;
+    const quiverOf = Math.min(capOf, Math.max(0, opts.arrows ?? capOf));
     return {
       id,
       loadout: who,
@@ -188,11 +208,11 @@ export function createRaid(opts: RaidOptions): RaidState {
       prevX: loc.evac.x,
       prevZ: loc.evac.z,
       facing: 0,
-      hp: HERO_HP + who.hp + mods.wounds,
-      hpMax: HERO_HP + who.hp + mods.wounds,
+      hp: HERO_HP + who.hp + mods.wounds + draft.hp,
+      hpMax: HERO_HP + who.hp + mods.wounds + draft.hp,
       cooldown: 0,
       arrows: quiverOf,
-      arrowsMax: quiverOf,
+      arrowsMax: capOf,
       food: supply,
       foodMax: supply,
     };
@@ -208,11 +228,11 @@ export function createRaid(opts: RaidOptions): RaidState {
     prevZ: loc.evac.z,
     facing: 0,
     // Раны — от класса (§11.7) плюс броня (§14).
-    hp: HERO_HP + loadout.hp + mods.wounds,
-    hpMax: HERO_HP + loadout.hp + mods.wounds,
+    hp: HERO_HP + loadout.hp + mods.wounds + draft.hp,
+    hpMax: HERO_HP + loadout.hp + mods.wounds + draft.hp,
     cooldown: 0,
     arrows: quiver,
-    arrowsMax: quiver,
+    arrowsMax: quiverCap,
     food: supply,
     foodMax: supply,
   }];
@@ -239,9 +259,11 @@ export function createRaid(opts: RaidOptions): RaidState {
     // Склад × класс, потом снаряжение: сумка прибавляет, оружие отнимает (§14).
     // Прибавка идёт после доли класса, иначе рюкзак Лучника съедал бы
     // четверть выкованного короба, о чём игроку никто не говорил.
-    capacity: opts.capacity ?? Math.max(
+    capacity: Math.max(
       1,
-      Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity,
+      (opts.capacity ??
+        Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity) +
+        draft.bag,
     ),
     path: [],
     status: 'running',
@@ -254,9 +276,14 @@ export function createRaid(opts: RaidOptions): RaidState {
     hunger: opts.hunger ?? true,
     logging: opts.logging ?? false,
     risk: opts.risk ?? true,
-    riskAdd: event.risk,
-    visionAdd: event.vision,
+    riskAdd: event.risk + draft.risk,
+    visionAdd: event.vision + draft.vision,
     stepMul: event.step,
+    // §19 — множитель пути назад. Единица без карты; «Верёвка» ставит 0,75.
+    backMul: draft.back,
+    // §11.1 — цена стычки. Карта её переписывает («Точило»), а не сдвигает:
+    // число в §11.1 названо целым, и половин провианта в игре нет.
+    fightFood: draft.fightFood ?? FOOD_COST.fight,
     consumables: [...(opts.consumables ?? [])],
     fired: [],
     smokeUntil: 0,
@@ -271,7 +298,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     // вместимости. У ближника вместимость нулевая, и «ноль стрел у Лучника»
     // с «нет колчана у Рыцаря» не смешиваются: различает их loadout.ranged.
     arrows: quiver,
-    arrowsMax: quiver,
+    arrowsMax: quiverCap,
     arrowsSpent: 0,
     dryFights: 0,
     battle: null,
@@ -288,6 +315,27 @@ export function backSteps(state: RaidState): number {
   const cell = idx(loc.size, Math.round(hero.x), Math.round(hero.z));
   const d = loc.backSteps[cell];
   return d === undefined || d < 0 ? 0 : d;
+}
+
+/**
+ * §11.7 «Тропа» и §19 «Верёвка» — во что дорога домой обходится **при
+ * планировании**. Отдельно от `backSteps` намеренно: сырое расстояние идёт
+ * в телеметрию глубины (§11.11, `maxBack`), и скидка не должна делать заход
+ * мельче, чем он был. Игроку и боту нужно другое число — сколько идти отсюда.
+ */
+export function backCost(state: RaidState, cell: number): number {
+  const d = state.loc.backSteps[cell];
+  const raw = d === undefined || d < 0 ? 0 : d;
+  // Карта работает всю вылазку, умение — тридцать секунд; сокращают они одну
+  // и ту же дорогу и потому перемножаются.
+  const skill = skillActive(state, 'trail') ? 1 - TRAIL_BACK_DISCOUNT : 1;
+  return Math.ceil(raw * state.backMul * skill);
+}
+
+/** То же для клетки, на которой герой стоит: строка «Путь назад» в HUD. */
+export function backLeft(state: RaidState): number {
+  const { loc, hero } = state;
+  return backCost(state, idx(loc.size, Math.round(hero.x), Math.round(hero.z)));
 }
 
 /** Самая дальняя достижимая точка локации в шагах. Нужна, чтобы глубина
@@ -370,11 +418,11 @@ function skillActive(state: RaidState, id: RaidState['loadout']['skill']): boole
  * что его нет, а потому, что он в его план не попал.
  */
 export function stepFoodCost(state: RaidState): number {
-  // Тяжёлая броня дороже в дороге (§14): множители «Тропы» и брони
-  // перемножаются — умение сокращает и утяжелённый шаг тоже.
+  // Тяжёлая броня дороже в дороге (§14). «Тропы» здесь больше нет: она
+  // сокращает дорогу, а не цену шага, — иначе платит провиантом, который
+  // перестал быть осью сложности (§11.3, снято).
   return (
     FOOD_COST.step *
-    (skillActive(state, 'trail') ? 1 - TRAIL_STEP_DISCOUNT : 1) *
     state.mods.foodStep *
     state.stepMul
   );
@@ -386,7 +434,9 @@ export function useSkill(state: RaidState): boolean {
   const def = SKILLS[state.loadout.skill];
   state.skillUsed = true;
   state.skillLeft = def.seconds;
-  if (state.loadout.skill === 'forage') feed(state, FORAGE_FOOD);
+  // Заплечье действует не срок, а до конца вылазки: потолок рюкзака поднят
+  // один раз и остаётся поднятым. Поэтому у него `seconds: 0`.
+  if (state.loadout.skill === 'haul') state.capacity += HAUL_CAPACITY;
   state.events.push(`${def.name}: ${def.effect}`);
   return true;
 }
@@ -404,7 +454,10 @@ function arriveAt(state: RaidState, cell: Cell): void {
     } else {
       container.opened = true;
       spend(state, state.containerFood);
-      const taken = Math.min(container.amount, state.capacity - state.bagTotal);
+      // §11.7 «Схрон» — находка щедрее, пока умение держится. Множитель
+      // ложится на содержимое, а не на взятое: упереться в рюкзак он не мешает.
+      const inside = skillActive(state, 'cache') ? container.amount * CACHE_LOOT : container.amount;
+      const taken = Math.min(inside, state.capacity - state.bagTotal);
       state.bag[container.kind] += taken;
       state.bagTotal += taken;
       // §14.3 — стрелы подбираются, и это отменяет §21.4 осознанно:
@@ -819,7 +872,7 @@ function openBattle(state: RaidState): void {
   );
   // Завязка стоит провианта ровно как прежде (§11.1) — цена решения
   // ввязаться не изменилась оттого, что бой стал пошаговым.
-  spend(state, FOOD_COST.fight);
+  spend(state, state.fightFood);
   state.fights += 1;
   state.paidRound = 1;
   // §11.7 — сколько бойцов успело втянуться. Прибор спрашивает этим: если

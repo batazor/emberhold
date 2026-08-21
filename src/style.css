@@ -421,6 +421,37 @@ button[disabled] { opacity: 0.4; cursor: default; }
   pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
 }
 
+/* ---------- драфт сборов (§19) ---------- */
+/* Экран, а не строка внизу: это единственное решение между картой и входом,
+   и оно обязано занять экран целиком — иначе игрок пролистывает его пальцем,
+   не прочитав. Кнопки «пропустить» нет: §19.1 запрещает переброс, а пропуск
+   это тот же переброс, растянутый на две вылазки. */
+#draft {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 16px calc(16px + env(safe-area-inset-left)) calc(16px + env(safe-area-inset-bottom));
+  background: rgba(8, 7, 6, 0.72); z-index: 20;
+}
+#draft .panel { width: 100%; max-width: 460px; }
+#draft h2 { margin: 0 0 2px; font-size: 20px; }
+#draft > .panel > p { margin: 0 0 12px; font-size: 13px; }
+#draft .cards { display: flex; flex-direction: column; gap: 8px; }
+/* Ряд на телефоне и три колонки на широком: три карты рядом читаются как
+   выбор, а в столбик — как список, где верхняя главная. */
+@media (min-width: 520px) {
+  #draft .cards { flex-direction: row; align-items: stretch; }
+  #draft .card { flex: 1 1 0; }
+}
+#draft .card {
+  display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  padding: 12px 14px; text-align: left; line-height: 1.35;
+}
+#draft .card .axis {
+  font-style: normal; font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--dim);
+}
+#draft .card b { font-size: 15px; }
+#draft .card .gives { font-size: 13px; color: var(--good); }
+#draft .card .costs { font-size: 13px; color: var(--bad); }
 /* ---------- задание лагеря ---------- */
 /* Строка, а не уведомление: «кому-то негде спать» не перестаёт быть правдой
    оттого, что игрок отвернулся. Стоит под ресурсами, потому что просит она

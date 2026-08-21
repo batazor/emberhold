@@ -1,7 +1,7 @@
 import { TIER_NAME, TIER_RISK } from '../sim/config';
 import { CONSUMABLES } from '../sim/consumables';
 import { SKILLS } from '../sim/heroes';
-import { atRisk, backSteps } from '../sim/raid';
+import { atRisk, backLeft } from '../sim/raid';
 import type { RaidState } from '../sim/raid';
 import type { Reveal } from '../sim/onboarding';
 
@@ -176,7 +176,9 @@ export class Hud {
 
     // Путь назад показан долей провианта, которая на него уйдёт: полоса
     // отвечает на вопрос «хватит ли», а число — на «сколько шагов».
-    const back = backSteps(state);
+    // §11.7 «Тропа» — строка показывает то, во что дорога обходится сейчас,
+    // а не сырое расстояние: игрок обязан видеть, за что потратил умение.
+    const back = backLeft(state);
     const needed = food > 0 ? Math.min(1, back / food) : 1;
     this.backBar.style.width = `${needed * 100}%`;
     this.backBar.className = needed > 0.9 ? 'bad' : needed > 0.6 ? 'warn' : 'dimbar';

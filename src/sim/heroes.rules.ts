@@ -11,7 +11,8 @@ import { HERO_HP } from './balance';
 import { createCamp } from './camp';
 import { visionRadius } from './config';
 import {
-  FORAGE_FOOD,
+  CACHE_LOOT,
+  HAUL_CAPACITY,
   HERO_CLASSES,
   MAX_WOUNDS,
   TRAIN_PER_LEVEL,
@@ -20,6 +21,7 @@ import {
   createHero,
   createRoster,
   firstReady,
+  healPerWound,
   healSeconds,
   loadout,
   raidBlock,
@@ -29,10 +31,11 @@ import {
   syncRoster,
   trainBlock,
   trainCap,
+  trainPerLevel,
   xpToNext,
 } from './heroes';
 import type { HeroState } from './heroes';
-import { createRaid, stepRaid, useSkill } from './raid';
+import { backCost, backSteps, createRaid, stepRaid, useSkill } from './raid';
 import { load, save, wipe } from './save';
 
 describe('Отряд', () => {
@@ -75,17 +78,43 @@ describe('Отряд', () => {
     const [first, second, third] = roster.heroes as [HeroState, HeroState, HeroState];
     first.level = 5;
     assert.equal(trainCap(roster), 3, 'потолок — на два ниже лучшего');
+
+    // Плац тренировку **включает**, а не ускоряет: без него ответ один
+    // и он строже всех прочих — тренировать негде.
+    assert.equal(trainBlock(roster, second, 0), 'no-yard', 'без Плаца тренировки нет');
+    assert.equal(startTraining(roster, second, 0, 0), false);
+
+    const YARD = 1;
     // Лучшего героя тренировать нельзя раньше, чем упрёшься в слот:
     // причина возвращается по порядку строгости, и потолок строже занятости.
-    assert.equal(trainBlock(roster, first), 'cap', 'на потолке тренировать нечего');
+    assert.equal(trainBlock(roster, first, YARD), 'cap', 'на потолке тренировать нечего');
 
-    assert.equal(startTraining(roster, second, 0), true);
-    assert.equal(trainBlock(roster, third), 'slot-busy', 'слот тренировки один');
+    assert.equal(startTraining(roster, second, 0, YARD), true);
+    assert.equal(trainBlock(roster, third, YARD), 'slot-busy', 'слот тренировки один');
     refreshHeroes(roster, TRAIN_PER_LEVEL);
-    assert.equal(second.level, 2, '1 уровень за 2 часа');
+    assert.equal(second.level, 2, '1 уровень за 2 часа на Плацу ур. 1');
 
     second.level = 3;
-    assert.equal(trainBlock(roster, second), 'cap', 'догнал потолок — дальше вылазками');
+    assert.equal(trainBlock(roster, second, YARD), 'cap', 'догнал потолок — дальше вылазками');
+  });
+
+  /**
+   * Оба здания трогают расписание отряда, и трогают его по-разному: Лазарет
+   * ускоряет то, что работает и без него, Плац включает то, чего без него нет.
+   * Асимметрия намеренная — см. комментарии к `healPerWound` и `trainPerLevel`.
+   */
+  test('§11.8 — Лазарет ускоряет лечение, но лечат и без него', () => {
+    const plain = healSeconds(2, 0);
+    const built = healSeconds(2, 3);
+    assert.ok(plain > 0, 'без Лазарета раны всё равно лечатся');
+    assert.ok(built < plain, 'с Лазаретом быстрее');
+    assert.ok(healPerWound(6) >= 60, 'лечение не становится мгновенным');
+  });
+
+  test('§11.8 — Плац ускоряет тренировку с уровнем', () => {
+    assert.equal(trainPerLevel(1), TRAIN_PER_LEVEL, 'ур. 1 — два часа, как в §11.8');
+    assert.ok(trainPerLevel(3) < trainPerLevel(1), 'выше уровень — быстрее');
+    assert.ok(trainPerLevel(6) >= 1800, 'но не быстрее получаса');
   });
 
   test('§11.7 — классы различаются рюкзаком, ранами и обзором', () => {
@@ -120,13 +149,16 @@ describe('Отряд', () => {
       storageLevel: 3,
       loadout: loadout(createHero('rogue', 0)),
     });
-    const before = state.food;
     assert.equal(useSkill(state), true);
-    assert.equal(state.food, before + FORAGE_FOOD, 'Прикорм: +20 провианта');
     assert.equal(useSkill(state), false, 'второй раз нельзя');
   });
 
-  test('§11.7 — под Заслоном урона нет', () => {
+  /**
+   * Три умения платят добычей и дорогой, и ни одно — провиантом или боем
+   * (§11.7). Правило сторожит именно это: прежние три платили снятыми
+   * валютами и потому не двигали ни добычу, ни успех.
+   */
+  test('§11.7 — Заплечье поднимает потолок рюкзака до конца вылазки', () => {
     const state = createRaid({
       seed: 91,
       tier: 2,
@@ -134,19 +166,43 @@ describe('Отряд', () => {
       storageLevel: 4,
       loadout: loadout(createHero('knight', 0)),
     });
-    const enemy = state.loc.enemies[0];
-    assert.ok(enemy !== undefined, 'на ярусе 2 есть противники');
-    // Ставим героя вплотную: проверяется именно защита, а не подход к врагу.
-    state.hero.x = enemy.x;
-    state.hero.z = enemy.z;
-    enemy.awake = true;
+    const before = state.capacity;
     useSkill(state);
-    const wounds = state.hero.hp;
-    for (let t = 0; t < 4; t += TICK) stepRaid(state, TICK, false, 0);
-    assert.equal(state.hero.hp, wounds, 'пять секунд Заслона держат');
+    assert.equal(state.capacity, before + HAUL_CAPACITY, 'рюкзак стал шире');
+    assert.equal(state.skillLeft, 0, 'срока нет: поднято до конца вылазки');
   });
 
-  test('§11.7 — Тропа удешевляет шаг на четверть', () => {
+  test('§11.7 — Схрон удваивает находку, пока действует', () => {
+    const make = (): ReturnType<typeof createRaid> =>
+      createRaid({
+        seed: 91,
+        tier: 2,
+        kitchenLevel: 4,
+        storageLevel: 4,
+        loadout: loadout(createHero('rogue', 0)),
+      });
+    const plain = make();
+    const cache = make();
+    useSkill(cache);
+    assert.ok(cache.skillLeft > 0, 'Схрон действует срок');
+
+    // Вскрываем одну и ту же находку в обеих вылазках: разойтись они могут
+    // только содержимым, а рюкзак заведомо не мешает — он пуст.
+    const open = (state: ReturnType<typeof createRaid>): number => {
+      const c = state.loc.containers[0]!;
+      state.hero.x = c.x;
+      state.hero.z = c.z;
+      state.path = [{ x: c.x, z: c.z }];
+      for (let t = 0; t < 1; t += TICK) stepRaid(state, TICK, false, 0);
+      return state.bagTotal;
+    };
+    const one = open(plain);
+    const two = open(cache);
+    assert.ok(one > 0, 'находка вскрыта');
+    assert.equal(two, Math.min(one * CACHE_LOOT, cache.capacity), 'Схрон дал вдвое');
+  });
+
+  test('§11.7 — Тропа сокращает путь домой, а не цену шага', () => {
     const make = (): ReturnType<typeof createRaid> =>
       createRaid({
         seed: 91,
@@ -175,7 +231,29 @@ describe('Отряд', () => {
       stepRaid(trail, TICK, false, 0);
     }
     assert.equal(plain.steps, trail.steps, 'шагов поровну');
-    assert.ok(trail.food > plain.food, 'но провианта Тропа тратит меньше');
+    assert.equal(trail.food, plain.food, 'провиант Тропа не трогает вовсе');
+
+    // Скидка меряется на дальней клетке, а не на той, где герой оказался:
+    // шаги целые, и на трёх четверть не видна — `ceil` вернёт те же три.
+    // Это не изъян умения, а его цена: до дна оно окупается, у входа нет.
+    let deep = 0;
+    let far = 0;
+    for (let i = 0; i < plain.loc.backSteps.length; i++) {
+      const d = plain.loc.backSteps[i]!;
+      if (d > far) {
+        far = d;
+        deep = i;
+      }
+    }
+    assert.ok(far >= 4, 'на ярусе 1 есть куда зайти');
+    assert.ok(
+      backCost(trail, deep) < backCost(plain, deep),
+      'с дальней клетки дорога домой под Тропой короче — это и есть её эффект',
+    );
+
+    // Глубина захода при этом не подделана: телеметрия §11.11 читает сырое
+    // расстояние, и скидка умения не делает заход мельче, чем он был.
+    assert.equal(backSteps(trail), backSteps(plain), 'сырая глубина та же');
   });
 
   test('§3 — итог вылазки переносит потери в расписание', () => {

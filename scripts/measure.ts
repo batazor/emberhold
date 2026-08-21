@@ -13,6 +13,7 @@ import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';
 import { createRaid } from '../src/sim/raid';
 import { findPath } from '../src/sim/pathfinding';
+import { TIER_KITCHEN_GATE } from '../src/sim/balance';
 import { ENEMY_STATS } from '../src/sim/enemies';
 import { emptyResources, RESOURCE_NAME } from '../src/sim/resources';
 import type { ResourceKind, Resources } from '../src/sim/resources';
@@ -41,6 +42,12 @@ interface TierStat {
   byFood: number;
   byCombat: number;
   byKind: Record<string, number>;
+  /**
+   * Что заход приносит в среднем — по всем вылазкам, а не по удачным.
+   * У провальной `carriedTotal` уже за вычетом ставки §11.2, поэтому это
+   * и есть цена яруса для игрока: «сколько стоит туда сходить».
+   */
+  haulAll: number;
   /** Сколько камня принёс каждый заход, включая провальные. Нужно затем, что
    *  цену первого здания решает не средний игрок, а тот, кому её не хватило:
    *  среднее по 300 вылазкам такого игрока не показывает вовсе. */
@@ -60,6 +67,7 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     failDepth: 0,
     okDepth: 0,
     foodLeft: 0,
+    haulAll: 0,
     byFood: 0,
     byCombat: 0,
     byKind: {},
@@ -97,6 +105,7 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     // Провальный заход тоже считается: ставка §11.4 отнимает не всё, и вопрос
     // «хватит ли на Мастерскую» задаётся о любом возвращении, а не об удачном.
     stat.stoneRuns.push(r.carried.stone);
+    stat.haulAll += r.carriedTotal;
     if (r.status === 'evacuated') {
       stat.success += 1;
       stat.carriedTotal += r.carriedTotal;
@@ -106,19 +115,28 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
   return stat;
 }
 
-const PLAN: { tier: Tier; kitchen: number; storage: number }[] = [
-  // Пары «ярус — уровни зданий» взяты из кривой §16 и гейта по Кухне:
-  // на ярус 2 пускает Кухня 2, на ярус 3 — Кухня 3.
-  { tier: 0, kitchen: 1, storage: 1 },
-  { tier: 1, kitchen: 1, storage: 2 },
-  { tier: 2, kitchen: 2, storage: 3 },
-  { tier: 3, kitchen: 3, storage: 4 },
-];
+/**
+ * Пары «ярус — уровни зданий». Кухня берётся из `TIER_KITCHEN_GATE`, а не
+ * назначается здесь: гейт и есть то, с чем игрок на ярус попадает, и списывать
+ * его вторым числом означало мерить состояние, в котором игрока не бывает.
+ *
+ * Списанное разошлось на единицу: в таблице стояла Кухня 1 на ярусе 1, а гейт
+ * требует второй. Стоило это лестницы добычи — ярус 1 выносил меньше нулевого,
+ * и читалось это как «подниматься невыгодно», хотя бот просто заходил
+ * в локацию вдвое большую с провиантом предыдущего яруса. Комментарий рядом
+ * называл гейты «Кухня 2 на ярус 2», и это тоже было неверно.
+ *
+ * Склад лестницей и остаётся: рюкзак гейтом не заперт, и его рост — часть
+ * кривой §16, а не условие входа.
+ */
+const PLAN: { tier: Tier; kitchen: number; storage: number }[] = ([0, 1, 2, 3] as Tier[]).map(
+  (tier) => ({ tier, kitchen: TIER_KITCHEN_GATE[tier], storage: tier + 1 }),
+);
 
 const num = (x: number, d = 1): string => x.toFixed(d).padStart(6);
 
 console.log(`Замер: ${RUNS} вылазок на ярус, бот-осторожный, ночь\n`);
-console.log('ярус  Кухня/Склад   успех   добыча   шагов   время   глубина  провиант');
+console.log('ярус  Кухня/Склад   успех   добыча  в сред.   шагов   время   глубина  провиант');
 console.log('─'.repeat(74));
 
 const stats = PLAN.map(({ tier, kitchen, storage }) => {
@@ -126,7 +144,7 @@ const stats = PLAN.map(({ tier, kitchen, storage }) => {
   const perSuccess = s.success > 0 ? s.carriedTotal / s.success : 0;
   console.log(
     `  ${tier}      ${kitchen} / ${storage}      ` +
-      `${num((s.success / s.runs) * 100, 0)}% ${num(perSuccess)}  ${num(s.steps / s.runs, 0)}  ` +
+      `${num((s.success / s.runs) * 100, 0)}% ${num(perSuccess)} ${num(s.haulAll / s.runs)}  ${num(s.steps / s.runs, 0)}  ` +
       `${num(s.seconds / s.runs, 0)} с ${num((s.depthShare / s.runs) * 100, 0)}%  ${num(s.foodLeft / s.runs, 0)}`,
   );
   return s;
@@ -255,6 +273,36 @@ console.log('─'.repeat(74));
         `${(s.fail * 100).toFixed(0)}%, дошедший до ${(s.ok * 100).toFixed(0)}%.\n` +
         '    Дальше — безопаснее, и вся ставка §11.2 обещает не то, что берёт.',
     );
+  }
+
+  /**
+   * 3. Подниматься обязано быть выгодно.
+   *
+   * Ярус называет цену ставкой §11.2 — 0 / 30 / 60 / 100% добычи при провале, —
+   * и продаёт за неё глубину. Сделка состоялась, если средний заход на ярусе
+   * приносит больше, чем средний заход ярусом ниже: сравнивать надо по всем
+   * вылазкам, а не по удачным, иначе ставка в сравнение не входит вовсе
+   * и дорогой ярус выглядит выгодным ровно потому, что дорогой.
+   *
+   * Сырая добыча удачного захода этого вопроса не решает: она может расти,
+   * пока растёт и доля провалов, и тогда игрок платит за глубину больше,
+   * чем она стоит.
+   */
+  const worth = stats
+    .filter((s) => s.runs > 0)
+    .map((s) => ({ tier: s.tier, avg: s.haulAll / s.runs }));
+  const poor = worth.filter((s, i) => i > 0 && s.avg <= worth[i - 1]!.avg);
+  if (poor.length === 0) {
+    console.log('  ✓ Подниматься выгодно: средний заход дорожает с ярусом.');
+  } else {
+    for (const s of poor) {
+      const prev = worth[worth.findIndex((x) => x.tier === s.tier) - 1]!;
+      console.log(
+        `  ⚠ ЯРУС ${s.tier} НЕ ОКУПАЕТ СТАВКУ: средний заход ${s.avg.toFixed(1)} ` +
+          `против ${prev.avg.toFixed(1)} на ярусе ${prev.tier}.\n` +
+          '    Ставка §11.2 растёт, а цена яруса — нет: подниматься невыгодно.',
+      );
+    }
   }
 
   // Прибор, ничего не измеривший, обязан назвать себя сломанным, а не выдать

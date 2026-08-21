@@ -13,7 +13,6 @@
   "raidsPerSession": 20,
   "metrics": {
     "failRate": 0.0875,
-    "combatFailShare": 0.75,
     "avgDamageTaken": 13.0125,
     "avgFights": 1.475,
     "avgDepthShare": 0.787,
@@ -21,7 +20,6 @@
     "buyTakeRate": 1,
     "avgCarried": 7.3625,
     "avgLost": 0.1625,
-    "avgFoodLeft": 17.8125,
     "medianReturnMin": 333.9286,
     "hq": 2.375,
     "kitchen": 2,

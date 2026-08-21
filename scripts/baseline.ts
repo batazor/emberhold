@@ -38,7 +38,6 @@ const METRICS: readonly { key: string; kind: Kind; label: string }[] = [
   { key: 'failRate', kind: 'доля', label: 'провалов' },
   // §22.6 — без состава провалов мастер слеп к бою: правка, перенёсшая
   // провалы из провианта в бой при той же доле, прошла бы незамеченной.
-  { key: 'combatFailShare', kind: 'доля', label: 'из них в бою' },
   { key: 'avgDamageTaken', kind: 'среднее', label: 'урона за вылазку' },
   { key: 'avgFights', kind: 'среднее', label: 'стычек за вылазку' },
   { key: 'avgDepthShare', kind: 'доля', label: 'глубина выхода' },
@@ -46,7 +45,6 @@ const METRICS: readonly { key: string; kind: Kind; label: string }[] = [
   { key: 'buyTakeRate', kind: 'доля', label: 'из них выбрали стройку' },
   { key: 'avgCarried', kind: 'среднее', label: 'вынесено за вылазку' },
   { key: 'avgLost', kind: 'среднее', label: 'потеряно за вылазку' },
-  { key: 'avgFoodLeft', kind: 'среднее', label: 'провианта на выходе' },
   { key: 'medianReturnMin', kind: 'среднее', label: 'возврат после таймера, мин' },
   { key: 'hq', kind: 'уровень', label: 'Жильё на конец' },
   { key: 'kitchen', kind: 'уровень', label: 'Кухня на конец' },
@@ -64,7 +62,6 @@ function measure(): Record<string, number> {
 
   return {
     failRate: pick((r) => r.summary.failRate),
-    combatFailShare: pick((r) => r.summary.combatFailShare),
     avgDamageTaken: pick((r) => r.summary.avgDamageTaken),
     avgFights: pick((r) => r.summary.avgFights),
     avgDepthShare: pick((r) => r.summary.avgDepthShare),
@@ -72,7 +69,6 @@ function measure(): Record<string, number> {
     buyTakeRate: pick((r) => r.summary.buyTakeRate),
     avgCarried: pick((r) => r.summary.avgCarried),
     avgLost: pick((r) => r.summary.avgLost),
-    avgFoodLeft: pick((r) => r.summary.avgFoodLeft),
     medianReturnMin: pick((r) => r.summary.medianReturnMin),
     hq: pick((r) => r.levels.hq),
     kitchen: pick((r) => r.levels.kitchen),

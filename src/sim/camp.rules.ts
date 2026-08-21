@@ -8,7 +8,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  ARROW_PACK,
+  ARROW_PACK_COST,
   BUILD_COST,
+  buyArrows,
   campArea,
   completeIfDue,
   createCamp,
@@ -17,6 +20,7 @@ import {
   moveBuilding,
   speedup,
   speedupCost,
+  setOffhand,
   startUpgrade,
   storageCapacity,
   suggestUpgrade,
@@ -25,6 +29,7 @@ import {
   villagerCount,
 } from './camp';
 import { modelKitchenFood } from './balance';
+import { bowQuiver } from './gear';
 
 describe('Лагерь', () => {
   test('§20.4 — здание не может превысить Жильё', () => {
@@ -36,7 +41,7 @@ describe('Лагерь', () => {
 
   test('§20.1 — слот один', () => {
     const camp = createCamp();
-    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 0 };
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 0 , infirmary: 0, yard: 0};
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     assert.equal(startUpgrade(camp, 'kitchen', 1000), true);
     assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy');
@@ -96,7 +101,7 @@ describe('Лагерь', () => {
 
   test('ускорение длинной стройки тратит камень и завершает её', () => {
     const camp = createCamp();
-    camp.levels = { hq: 5, kitchen: 4, storage: 1, forge: 0 };
+    camp.levels = { hq: 5, kitchen: 4, storage: 1, forge: 0 , infirmary: 0, yard: 0};
     camp.resources = { stone: 9999, wood: 9999, iron: 9999, crystal: 9999 };
     startUpgrade(camp, 'kitchen', 0); // до ур. 5 — три часа
     const before = camp.resources.stone;
@@ -176,9 +181,9 @@ describe('Лагерь', () => {
   test('camp.html — жителей 2 + по одному на четыре уровня, потолок 10', () => {
     const camp = createCamp();
     assert.equal(villagerCount(camp), 2);
-    camp.levels = { hq: 4, kitchen: 4, storage: 4, forge: 0 };
+    camp.levels = { hq: 4, kitchen: 4, storage: 4, forge: 0 , infirmary: 0, yard: 0};
     assert.equal(villagerCount(camp), 5);
-    camp.levels = { hq: 6, kitchen: 6, storage: 6, forge: 0 };
+    camp.levels = { hq: 6, kitchen: 6, storage: 6, forge: 0 , infirmary: 0, yard: 0};
     assert.equal(villagerCount(camp), 6);
   });
 
@@ -198,7 +203,7 @@ describe('Цены построек', () => {
     // Мастерская здесь уже стоит: её первый уровень бесплатен и мгновенен (§20.3),
     // и пока её нет, она перебивает любое платное предложение. Это отдельное
     // правило, оно проверяется в gear.rules.ts.
-    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 };
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 , infirmary: 0, yard: 0};
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     // У Кухни и Склада ур. 1 — одинаковая цена второго уровня, берётся первый
     // по порядку; главное, что предложение вообще есть.
@@ -231,6 +236,44 @@ describe('Цены построек', () => {
       if (l < 3) assert.equal(cost.iron ?? 0, 0, `железо на уровне ${l}`);
       if (l < 5) assert.equal(cost.crystal ?? 0, 0, `кристалл на уровне ${l}`);
     }
+  });
+
+  /**
+   * §14.3. Пустой стартовый колчан запирал сам себя, и это стоило класса:
+   * пачка стоит железа, железо падает с яруса 1, ярус 1 отпирает Кухня ур. 2,
+   * а Лучник доступен сразу после пролога. Подбор в вылазке дефект не лечил —
+   * он упирается в `arrows < arrowsMax`, и при пустом запасе вместимость
+   * колчана роли не играла. Правило сторожит именно вход, а не покупку.
+   */
+  test('§14.3 — колчан не заводится пустым', () => {
+    assert.ok(createCamp().arrows > 0, 'новый лагерь выдаёт стрелы');
+  });
+
+  test('§14.3 — пачка покупается и не лезет выше вместимости', () => {
+    const camp = createCamp();
+    const cap = bowQuiver(camp.gear.weapon);
+    camp.arrows = 0;
+    camp.resources = { stone: 0, wood: 0, iron: 99, crystal: 0 };
+
+    assert.ok(buyArrows(camp, cap), 'железа хватает — пачка куплена');
+    assert.equal(camp.arrows, Math.min(cap, ARROW_PACK), 'сверх вместимости не влезает');
+    assert.equal(camp.resources.iron, 99 - (ARROW_PACK_COST.iron ?? 0), 'железо списано');
+
+    camp.arrows = cap;
+    assert.equal(buyArrows(camp, cap), false, 'полный колчан не покупает');
+  });
+
+  /**
+   * §14.2 — рука перекладывается бесплатно, поэтому единственное, что здесь
+   * можно сломать, это молчание: повтор того же значения обязан отличаться
+   * от смены, иначе интерфейсу нечего сказать игроку.
+   */
+  test('§14.2 — левая рука перекладывается и различает повтор', () => {
+    const camp = createCamp();
+    assert.equal(camp.offhand, 'torch', 'умолчание — фонарь');
+    assert.ok(setOffhand(camp, 'shield'), 'смена руки состоялась');
+    assert.equal(camp.offhand, 'shield');
+    assert.equal(setOffhand(camp, 'shield'), false, 'повтор ничего не меняет');
   });
 
   test('§20.3 — цена растёт с уровнем', () => {

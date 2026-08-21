@@ -75,7 +75,7 @@ describe('Мастерская', () => {
    */
   test('§20.1 — ковка работает, пока слот стройки занят', () => {
     const camp = createCamp();
-    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 };
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 , infirmary: 0, yard: 0};
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
     assert.equal(startUpgrade(camp, 'kitchen', 0), true);
     assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy', 'стройка встала в очередь');
@@ -88,7 +88,7 @@ describe('Мастерская', () => {
 
   test('§14 — предмет не может быть лучше своей Мастерской', () => {
     const camp = createCamp();
-    camp.levels = { hq: 2, kitchen: 1, storage: 1, forge: 1 };
+    camp.levels = { hq: 2, kitchen: 1, storage: 1, forge: 1 , infirmary: 0, yard: 0};
     camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
     assert.equal(craftGear(camp, 'bag'), true, 'ур. 1 доступен');
     assert.equal(gearBlock(camp, 'bag'), 'forge-cap', 'ур. 2 требует Мастерскую ур. 2');
@@ -102,7 +102,7 @@ describe('Мастерская', () => {
     const a = createCamp();
     const b = createCamp();
     for (const camp of [a, b]) {
-      camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 };
+      camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 , infirmary: 0, yard: 0};
       camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
       craftGear(camp, 'ring');
       craftGear(camp, 'ring');
@@ -209,7 +209,7 @@ describe('Снаряжение в вылазке', () => {
 
   test('§14 — снаряжение не теряется при провале', () => {
     const camp = createCamp();
-    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 };
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 , infirmary: 0, yard: 0};
     camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
     craftGear(camp, 'weapon');
     craftGear(camp, 'armor');
@@ -236,7 +236,7 @@ describe('Снаряжение в вылазке', () => {
     };
     wipe();
     const camp = createCamp();
-    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 2 };
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 2 , infirmary: 0, yard: 0};
     camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
     craftGear(camp, 'torch');
     craftGear(camp, 'torch');

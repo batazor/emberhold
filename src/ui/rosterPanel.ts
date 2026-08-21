@@ -6,6 +6,7 @@ import {
   raidBlock,
   stats,
   trainBlock,
+  trainPerLevel,
   trainCap,
   xpToNext,
   TRAIN_REASON,
@@ -111,7 +112,13 @@ export class RosterPanel {
     this.root.style.display = visible ? 'flex' : 'none';
   }
 
-  sync(roster: Roster, now: number): void {
+  /**
+   * Уровень Плаца приходит числом, а не состоянием лагеря: панель отряда про
+   * лагерь ничего не знает и знать не должна. Лазарет сюда не передаётся —
+   * остаток лечения уже лежит в `busyUntil`, и пересчитывать его здесь
+   * значило бы держать два источника одного числа.
+   */
+  sync(roster: Roster, now: number, yardLevel = 0): void {
     // Строк ровно столько, сколько героев открыто (§11.8). Запертые классы
     // не показываются: пустой слот с надписью «Жильё ур. 4» — это витрина,
     // а не решение, а витрин в игре нет.
@@ -151,13 +158,13 @@ export class RosterPanel {
       row.pick.disabled = block !== 'ok' || active;
       row.pick.textContent = active ? 'Идёт этим' : 'Идти этим';
 
-      const tb = trainBlock(roster, hero);
+      const tb = trainBlock(roster, hero, yardLevel);
       row.train.disabled = tb !== 'ok';
       row.train.textContent =
         hero.status === 'training'
           ? `Тренируется · ${formatDuration(Math.max(0, (hero.busyUntil ?? now) - now))}`
           : tb === 'ok'
-            ? 'Тренировать · 2 ч'
+            ? `Тренировать · ${formatDuration(trainPerLevel(yardLevel))}`
             : TRAIN_REASON[tb];
     });
 
@@ -180,7 +187,7 @@ export class RosterPanel {
   }
 
   /** Сколько будет лечиться герой с таким числом ран — для баннера возврата. */
-  static healText(wounds: number): string {
-    return formatDuration(healSeconds(wounds));
+  static healText(wounds: number, infirmaryLevel = 0): string {
+    return formatDuration(healSeconds(wounds, infirmaryLevel));
   }
 }

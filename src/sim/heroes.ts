@@ -30,7 +30,7 @@ import { HERO_HP } from './balance';
  * Попутно ушла двусмысленность: строка 'warrior' означала и героя, и врага.
  */
 export type HeroClassId = 'knight' | 'archer' | 'rogue';
-export type SkillId = 'trail' | 'guard' | 'forage';
+export type SkillId = 'trail' | 'haul' | 'cache';
 export type HeroStatus = 'ready' | 'raid' | 'healing' | 'training';
 
 export interface Stats {
@@ -63,16 +63,34 @@ export interface SkillDef {
  * можно зайти и вернуться. Умение, не связанное с ним, добавляет кнопку
  * и не добавляет выбора, поэтому в игру не берётся.
  */
+/** Насколько «Тропа» сокращает путь домой. */
+export const TRAIL_BACK_DISCOUNT = 0.25;
+/** Сколько вместимости разово добавляет «Заплечье». */
+export const HAUL_CAPACITY = 4;
+/** Во сколько раз «Схрон» увеличивает находку, пока действует. */
+export const CACHE_LOOT = 2;
+
+/**
+ * §11.7 — умение раз за вылазку. **Все три платят добычей или дорогой**, и это
+ * не выбор темы, а следствие замера: прежние эффекты платили провиантом
+ * (Тропа удешевляла шаг, Схрон досыпал 20 еды) и боем (Заслон снимал урон),
+ * а провиант перестал быть осью сложности (§11.3, снято). Прибор это и
+ * показывал: срабатывало умение в 13–40% вылазок, а двигало добычу на +0.00
+ * и успех на ±0.0 п.п. — на трёх классах и трёх политиках сразу.
+ *
+ * Новые эффекты выбраны по тому, что в вылазке вправду связывает. Уходят из
+ * локации, когда полон рюкзак, поэтому платят все трое через него: Заплечье
+ * поднимает потолок, Схрон — величину находки, Тропа — цену пути до дальней.
+ * Разные способы купить одно и то же, и в этом смысл: класс отвечает на
+ * вопрос «чем добираешь», а не «на сколько ты сильнее».
+ */
 export const SKILLS: Record<SkillId, SkillDef> = {
   trail: { id: 'trail', name: 'Тропа', effect: 'путь назад −25% на 30 с', seconds: 30 },
-  guard: { id: 'guard', name: 'Заслон', effect: 'не получает урон 5 с', seconds: 5 },
-  forage: { id: 'forage', name: 'Схрон', effect: 'разово +20 провианта', seconds: 0 },
+  haul: { id: 'haul', name: 'Заплечье', effect: `+${HAUL_CAPACITY} вместимости до конца вылазки`, seconds: 0 },
+  cache: { id: 'cache', name: 'Схрон', effect: 'находки вдвое больше 20 с', seconds: 20 },
 };
 
-/** Насколько «Тропа» удешевляет шаг. См. комментарий к TRAIL_STEP_DISCOUNT ниже. */
-export const TRAIL_STEP_DISCOUNT = 0.25;
-/** «Прикорм» — разово +20 провианта (§11.7). */
-export const FORAGE_FOOD = 20;
+
 
 export interface HeroClassDef {
   readonly id: HeroClassId;
@@ -140,7 +158,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     name: 'Рыцарь',
     strong: 'защита, здоровье',
     weak: 'обзор −1',
-    skill: 'guard',
+    skill: 'haul',
     // Единственный класс с прибавкой. Треть базы — та же доля, какой
     // прежде были четыре раны против трёх (§11.7).
     hp: 7,
@@ -155,7 +173,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     name: 'Бандит',
     strong: 'рюкзак +30%, добыча',
     weak: 'защита',
-    skill: 'forage',
+    skill: 'cache',
     hp: 0,
     bagMul: 1.3,
     speedMul: 1,
@@ -291,35 +309,60 @@ export function stats(hero: HeroState): Stats {
  */
 export const MAX_WOUNDS = 3;
 
-/** §11.8 — 6 минут за рану, максимум 18. */
+/** §11.8 — 6 минут за рану без Лазарета. Потолок — три раны. */
 export const HEAL_PER_WOUND = 6 * 60;
-export const HEAL_MAX = 18 * 60;
+export const HEAL_WOUND_CAP = 3;
+export const HEAL_MAX = HEAL_WOUND_CAP * HEAL_PER_WOUND;
 
-export function healSeconds(wounds: number): number {
-  return Math.min(HEAL_MAX, Math.max(0, wounds) * HEAL_PER_WOUND);
+/**
+ * Сколько стоит рана при Лазарете уровня `level`. Ноль — здания нет.
+ *
+ * **Лазарет ускоряет лечение, но не включает его**, и это не симметрия
+ * с Плацем, а необходимость: раненый герой обязан вылечиться при любом
+ * лагере. Запереть лечение зданием значило бы завести состояние, из
+ * которого игрок не выходит, — а §3 обещает обратное, «провал стоит одной
+ * вылазки, а не прогресса».
+ */
+export const healPerWound = (level: number): number =>
+  Math.max(60, HEAL_PER_WOUND - 50 * Math.max(0, level));
+
+export function healSeconds(wounds: number, infirmaryLevel = 0): number {
+  const per = healPerWound(infirmaryLevel);
+  return Math.min(HEAL_WOUND_CAP * per, Math.max(0, wounds) * per);
 }
 
 /**
  * Вернувшийся герой ранен и занят лечением (§3). Раны не лечатся внутри
  * вылазки — только здесь, в лагере.
  */
-export function startHealing(hero: HeroState, now: number): boolean {
+export function startHealing(hero: HeroState, now: number, infirmaryLevel = 0): boolean {
   if (hero.wounds <= 0) {
     hero.status = 'ready';
     hero.busyUntil = null;
     return false;
   }
   hero.status = 'healing';
-  hero.busyUntil = now + healSeconds(hero.wounds);
+  hero.busyUntil = now + healSeconds(hero.wounds, infirmaryLevel);
   return true;
 }
 
 /* ---------- тренировка ---------- */
 
-/** §11.8 — 1 уровень за 2 часа. */
+/** §11.8 — 1 уровень за 2 часа на Плацу ур. 1. */
 export const TRAIN_PER_LEVEL = 2 * 3600;
 /** §11.8 — потолок: на два уровня ниже лучшего героя. */
 export const TRAIN_GAP = 2;
+
+/**
+ * Сколько стоит уровень на Плацу уровня `level`.
+ *
+ * **Плац тренировку включает, а не ускоряет** — в отличие от Лазарета.
+ * §11.8 так его и называет: «Плац поднимает уровень без вылазок». Здание,
+ * которое только ускоряет уже работающее, не проходит фильтр §2 — там
+ * требуется ответ на «что я смогу»; здесь ответ есть, и он новый.
+ */
+export const trainPerLevel = (level: number): number =>
+  Math.max(1800, TRAIN_PER_LEVEL - 900 * Math.max(0, level - 1));
 
 /** Потолок тренировки: догоняющая механика для запасных, а не альтернатива
  *  игре. Лучший герой в расчёт входит, поэтому обогнать его нельзя. */
@@ -328,10 +371,11 @@ export function trainCap(roster: Roster): number {
   return Math.max(1, best - TRAIN_GAP);
 }
 
-export type TrainBlock = 'ok' | 'busy' | 'cap' | 'slot-busy' | 'max';
+export type TrainBlock = 'ok' | 'busy' | 'cap' | 'slot-busy' | 'max' | 'no-yard';
 
 /** Причина, а не булево: игрок должен видеть, чем именно закрыто (как §20.4). */
-export function trainBlock(roster: Roster, hero: HeroState): TrainBlock {
+export function trainBlock(roster: Roster, hero: HeroState, yardLevel = 0): TrainBlock {
+  if (yardLevel <= 0) return 'no-yard';
   if (hero.level >= MAX_HERO_LEVEL) return 'max';
   if (hero.status !== 'ready') return 'busy';
   if (hero.level >= trainCap(roster)) return 'cap';
@@ -350,12 +394,18 @@ export const TRAIN_REASON: Record<Exclude<TrainBlock, 'ok'>, string> = {
   cap: 'Потолок — на два уровня ниже лучшего',
   'slot-busy': 'Тренировочный слот занят',
   max: 'Максимальный уровень',
+  'no-yard': 'Нужен Плац',
 };
 
-export function startTraining(roster: Roster, hero: HeroState, now: number): boolean {
-  if (trainBlock(roster, hero) !== 'ok') return false;
+export function startTraining(
+  roster: Roster,
+  hero: HeroState,
+  now: number,
+  yardLevel = 0,
+): boolean {
+  if (trainBlock(roster, hero, yardLevel) !== 'ok') return false;
   hero.status = 'training';
-  hero.busyUntil = now + TRAIN_PER_LEVEL;
+  hero.busyUntil = now + trainPerLevel(yardLevel);
   return true;
 }
 
@@ -422,6 +472,7 @@ export function applyRaidOutcome(
   tier: number,
   evacuated: boolean,
   now: number,
+  infirmaryLevel = 0,
 ): RaidOutcome {
   // Раны лечения — своя шкала лагеря, а не класса. Класс задаёт, сколько
   // здоровья у бойца; сколько времени он потом чинится — вопрос §11.8,
@@ -434,11 +485,11 @@ export function applyRaidOutcome(
   hero.status = 'ready';
   hero.busyUntil = null;
   const levels = addXp(hero, raidXp(carried, tier, evacuated));
-  const healing = startHealing(hero, now);
+  const healing = startHealing(hero, now, infirmaryLevel);
   return {
     wounds: hero.wounds,
     levels,
-    healSec: healing ? healSeconds(hero.wounds) : 0,
+    healSec: healing ? healSeconds(hero.wounds, infirmaryLevel) : 0,
   };
 }
 
@@ -532,7 +583,7 @@ export const DEFAULT_LOADOUT: HeroLoadout = {
   knowledge: 5,
   bagMul: 1,
   speedMul: 1,
-  skill: 'forage',
+  skill: 'cache',
   // Эталонные значения, а не значения класса: этим героем ходят золотой
   // мастер и вся калибровка §20.3, и от него же считается весь бестиарий
   // (§22.6): рядовой стоит четверти его здоровья, воин — половины.

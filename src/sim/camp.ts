@@ -2,23 +2,30 @@ import type { ConsumableId } from './consumables';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
 import { modelKitchenFood, TIER_KITCHEN_GATE as GATE } from './balance';
-import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, emptyGear } from './gear';
+import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear } from './gear';
 import type { GearSlot, GearState, Offhand } from './gear';
+import { healPerWound, trainPerLevel } from './heroes';
 import type { Tier } from './types';
 import type { Visit } from './world';
 import { emptyWalls, type CampWalls } from './campWalls';
 import { STONES, scatterStones, type Stone } from './stones';
 
 /**
- * Прототип v0 (§7): три здания плюс Мастерская. Лазарет и Плац ждут — они
- * оперируют расписанием отряда, а Мастерская закрывает дыру в петле возврата
- * (§20.1) и потому идёт первой.
+ * Шесть зданий §2. Мастерская пришла первой сверх среза §7, потому что
+ * закрывала дыру в петле возврата (§20.1); Лазарет и Плац — следом, и оба
+ * оперируют расписанием отряда, а не вылазкой.
+ *
+ * Порядок §16: Мастерская (Жильё 2) → Лазарет (3) → Плац (4). Он выведен
+ * из кривой ввода, а не из удобства: Лазарет вводится после первого ранения,
+ * Плац — на второй-третий день, когда простой отряда уже заметен.
  */
 import type { Resident } from './residents';
 
-export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge';
+export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge' | 'infirmary' | 'yard';
 
-export const BUILDING_ORDER: readonly BuildingId[] = ['hq', 'kitchen', 'storage', 'forge'];
+export const BUILDING_ORDER: readonly BuildingId[] = [
+  'hq', 'kitchen', 'storage', 'forge', 'infirmary', 'yard',
+];
 
 export const MAX_LEVEL = 6;
 
@@ -78,6 +85,30 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
         : `Снаряжение до ур. ${itemCap(l)} — ковка и улучшение без таймера`,
     unlockHq: 2,
   },
+  infirmary: {
+    id: 'infirmary',
+    name: 'Лазарет',
+    effect: (l) =>
+      l <= 0
+        ? `Лечение быстрее: сейчас ${minutes(healPerWound(0))} за рану`
+        : `Лечение ${minutes(healPerWound(l))} за рану — столько отряд простаивает`,
+    unlockHq: 3,
+  },
+  yard: {
+    id: 'yard',
+    name: 'Плац',
+    effect: (l) =>
+      l <= 0
+        ? 'Тренировка запасных без вылазок'
+        : `Уровень за ${minutes(trainPerLevel(l))} — запасной догоняет отряд`,
+    unlockHq: 4,
+  },
+};
+
+/** Минуты строкой для ценников зданий: «6 мин», «1 ч 30 мин». */
+const minutes = (sec: number): string => {
+  const m = Math.round(sec / 60);
+  return m < 60 ? `${m} мин` : m % 60 === 0 ? `${m / 60} ч` : `${(m / 60) | 0} ч ${m % 60} мин`;
 };
 
 /**
@@ -227,11 +258,18 @@ export interface CampState {
  * Отдельной константой она стала ради валунов: их кладут мимо зданий,
  * и вторая копия начальных мест разошлась бы с первой молча.
  */
+/**
+ * Третий столбец (x = 6) появляется вместе с Лазаретом: до Жилья ур. 3
+ * площадка 6×6…7×7 его не вмещает, а раньше третьего уровня ни Лазарета,
+ * ни Плаца не существует. Переставить их игрок волен свободно (§20.4).
+ */
 const START_LAYOUT: Record<BuildingId, { x: number; z: number }> = {
   hq: { x: 1, z: 1 },
   kitchen: { x: 4, z: 1 },
   storage: { x: 1, z: 4 },
   forge: { x: 4, z: 4 },
+  infirmary: { x: 6, z: 1 },
+  yard: { x: 6, z: 4 },
 };
 
 /**
@@ -261,12 +299,14 @@ export function campStones(): Stone[] {
 
 export function createCamp(): CampState {
   return {
-    levels: { hq: 1, kitchen: 1, storage: 1, forge: 0 },
+    levels: { hq: 1, kitchen: 1, storage: 1, forge: 0, infirmary: 0, yard: 0 },
     layout: {
       hq: { ...START_LAYOUT.hq },
       kitchen: { ...START_LAYOUT.kitchen },
       storage: { ...START_LAYOUT.storage },
       forge: { ...START_LAYOUT.forge },
+      infirmary: { ...START_LAYOUT.infirmary },
+      yard: { ...START_LAYOUT.yard },
     },
     resources: emptyResources(),
     construction: null,
@@ -276,7 +316,18 @@ export function createCamp(): CampState {
     // Умолчание — фонарь: так левая рука вела себя до §14.2, и ни один
     // прежний прогон от появления поля не сдвинулся ни на число.
     offhand: 'torch',
-    arrows: 0,
+    /**
+     * §14.3 — колчан заводится полным, а не пустым. Пустой запирал сам себя:
+     * пачка стоит железа, железо падает с яруса 1, ярус 1 отпирает Кухня ур. 2,
+     * а до неё Лучник — класс, доступный сразу после пролога (`HERO_HQ_GATE`), —
+     * выходил без единой стрелы. Подбор в вылазке этого не чинил: он упирается
+     * в `arrows < arrowsMax`, а вместимость от пустого запаса не зависит.
+     *
+     * Дальше запас держит себя сам: что не выстрелили — возвращается, контейнеры
+     * досыпают, железо докупает. Стартовая пачка нужна только чтобы петля
+     * началась.
+     */
+    arrows: bowQuiver(0),
     loadout: [],
     raids: 0,
     visits: [],
