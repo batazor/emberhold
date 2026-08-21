@@ -33,6 +33,8 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
 | `craftpix-props/glb/*.glb` — 16 моделей: дороги трёх мостовых по четыре формы плитки и четыре фонаря; конвертация из FBX набора Blender'ом один-в-один | [free-game-assets.itch.io/free-environment-props-3d-low-poly-pack](https://free-game-assets.itch.io/free-environment-props-3d-low-poly-pack), тариф FREE | craftpix royalty-free | craftpix.net |
 | `craftpix-props/Texture.png` — атлас набора, десять цветовых полос | там же | craftpix royalty-free | craftpix.net |
+| `villager-npc/glb/*.glb` — 5 моделей: кузнец, охотник, молот, нож, палка; конвертация из FBX набора Blender'ом, у жителей при конвертации опущены руки из T-позы, риг набора (rigify) в GLB не переносился | [standout7.itch.io/villagernpc](https://standout7.itch.io/villagernpc), тариф FREE | CC0 1.0 | standout7 |
+| `villager-npc/Villagers_Texture.png` — атлас набора, сетка градиентных клеток | там же | CC0 1.0 | standout7 |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
