@@ -9,6 +9,8 @@ import { WEAPONS_MODELS } from './weapons.data';
 import { weaponOf } from './weapons';
 import { WEAPONS_PALETTE } from './palette';
 import type { AdventurerModelName } from './adventurers.data';
+import { folkParts } from './folk';
+import type { FolkModelName } from './folk.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import type { RiggedParts } from './rigged';
@@ -460,22 +462,26 @@ export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind
  * и отличить одно от другого можно только силуэтом — тем же правилом, каким
  * различаются скелеты (§15) и сам гарнизон: снаряжение, а не порода.
  *
- * Предмет у обоих правый: набор отдаёт узел `handslot.r` и только его,
- * поэтому щита в левой руке не бывает ни у кого. Это ответ набора, а не
- * выбор снаряжения: числами жильцы не описаны вовсе.
+ * **Модели свои, а не из набора.** До сих пор жильцами работали маг и плут
+ * KayKit — приключенцы, изображающие горожан: посох, кинжал, снаряжённый
+ * силуэт, и двор читался лагерем искателей, а не жильём. Поселенец и торговец
+ * нарисованы под эту роль (набор `folk`), и предмета в руке у них нет вовсе:
+ * узел `handslot.r` в риге есть, вкладывать в него нечего.
+ *
+ * Одинаковыми выходят все гуляющие: поселенец один. Это состояние, а не
+ * недосмотр — второй житель стоит килобайтов у всех игроков ровно столько же,
+ * сколько первый, и заводится решением, а не строкой в списке.
  */
-const DWELLER_MODEL: Record<DwellerLook, readonly [AdventurerModelName, AdventurerModelName]> = {
-  маг: ['Mage', 'staff'],
-  плут: ['Rogue', 'dagger'],
+const DWELLER_MODEL: Record<DwellerLook, FolkModelName> = {
+  'поселенец': 'Settler',
+  'торговец': 'Merchant',
 };
 
-export const dwellerParts = (look: DwellerLook): RiggedParts => {
-  const [model, held] = DWELLER_MODEL[look];
+export const dwellerParts = (look: DwellerLook): RiggedParts =>
   // Рост берётся у героя по той же причине, что у гарнизона: жильцы и герой —
   // люди одного мира, и разный рост читался бы не «другой человек»,
   // а «другой масштаб сцены».
-  return adventurerParts(model, heroHeight(GUARD_LIKE), adventurerHeld(held));
-};
+  folkParts(DWELLER_MODEL[look], heroHeight(GUARD_LIKE));
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
 export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {

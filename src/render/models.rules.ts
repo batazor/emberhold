@@ -19,6 +19,9 @@ import { C, triangles } from './blocking';
 import { ADVENTURERS_MODELS } from './adventurers.data';
 import { adventurerGeometry } from './adventurers';
 import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf } from './models';
+import { dwellerParts } from './models';
+import { DWELLER_LOOKS, type DwellerLook } from '../sim/garrison';
+import { FOLK_SLOTS } from './folk.data';
 import { FOREST_SLOTS } from './forest.data';
 import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
 import { CASTLE_SCALE, castleGeometry } from './castle';
@@ -29,6 +32,7 @@ import {
   FOREST_SLOT_ORDER,
   GRAVEYARD_SLOT_ORDER,
   MATERIAL,
+  FOLK_SLOT_ORDER,
   SKELETON_SLOT_ORDER,
   WEAPONS_SLOT_ORDER,
 } from './palette';
@@ -135,13 +139,18 @@ describe('Артбук: бюджет треугольников', () => {
 
   test('готовый набор героев укладывается в свой потолок — килобайты', () => {
     /**
-     * Потолок посчитан, а не выбран: 272 КБ — это ровно то, что взято
-     * сейчас, округлённое вверх до десятка. Взято четверо — герой вылазки
-     * и трое жителей замка (§6.1.6) — и четыре предмета им в руки.
+     * Потолок посчитан, а не выбран: 140 КБ — это ровно то, что взято
+     * сейчас, округлённое вверх до десятка. Взято двое — герой вылазки
+     * и рыцарь гарнизона (§6.1.6) — и три предмета им в руки.
+     *
+     * Было 280 на четверых: магом и плутом работали жильцы двора, пока
+     * их не нарисовали своими (§6.1.6.1). Потолок опущен вслед за составом
+     * намеренно — оставленный прежним, он молча разрешил бы вернуть в бандл
+     * сто сорок килобайт, за которые уже заплачено один раз.
      *
      * Персонаж тяжелее любой другой модели в игре: один стоит примерно
-     * как весь набор кладбища. Поэтому оставшиеся двое персонажей набора
-     * в этот потолок не влезают **намеренно**: взять ещё одного — решение
+     * как весь набор кладбища. Поэтому оставшиеся персонажи набора в этот
+     * потолок не влезают **намеренно**: взять ещё одного — решение
      * с обоснованием, а не строка в списке `adopted`.
      *
      * Считается по самому файлу и в gzip, как у скелетов: перечислять поля
@@ -150,7 +159,44 @@ describe('Артбук: бюджет треугольников', () => {
     const source = readFileSync(new URL('./adventurers.data.ts', import.meta.url), 'utf8');
     const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
     const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
-    assert.ok(kb <= 280, `набор героев: ${kb} КБ gzip > 280 КБ`);
+    assert.ok(kb <= 140, `набор героев: ${kb} КБ gzip > 140 КБ`);
+  });
+
+  /**
+   * Свои модели (§6.1.6.1). Проверяется то же, что у чужих наборов, и по той же
+   * причине: своя модель едет в бандл теми же килобайтами, а её слоты так же
+   * молча расходятся с палитрой. Единственное послабление — потолок
+   * треугольников: девятьсот считались под модель, рисуемую примитивами,
+   * и к скинованному персонажу не относятся ни у чужого набора, ни у своего.
+   */
+  test('у каждого жильца двора есть модель, и она непустая', () => {
+    // Торговец дописан к списку руками, и это не небрежность: `DWELLER_LOOKS` —
+    // очередь гуляющих, а он в неё не входит по §13.5, он ставится отдельно
+    // и стоит. Проверить при этом надо обоих: опечатка в имени модели даёт
+    // пустую геометрию молча — жилец просто не рисуется, а игра работает.
+    const looks: readonly DwellerLook[] = [...DWELLER_LOOKS, 'торговец'];
+    for (const look of looks) {
+      const parts = dwellerParts(look);
+      assert.ok(triangles(parts.body) > 0, `${look}: пустая геометрия`);
+    }
+  });
+
+  test('слоты жильцов не разошлись с палитрой артбука', () => {
+    assert.deepEqual([...FOLK_SLOTS], [...FOLK_SLOT_ORDER]);
+    for (const name of FOLK_SLOTS) {
+      assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  test('свои модели укладываются в свой потолок — килобайты', () => {
+    /**
+     * 40 КБ — взятое сейчас, округлённое вверх до десятка: двое жильцов.
+     * Считается тем же способом, что у скелетов и героев.
+     */
+    const source = readFileSync(new URL('./folk.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    assert.ok(kb <= 40, `свои модели: ${kb} КБ gzip > 40 КБ`);
   });
 
   test('у героя в руке есть предмет, и он стоит на узле набора', () => {

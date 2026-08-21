@@ -100,8 +100,13 @@ export const ARCHER_STEPS = 4;
  *
  * ВРЕМЕННОЕ, §0.1: рабочие подписи к моделям набора, а не имена мира.
  */
-export type DwellerLook = 'маг' | 'плут';
-export const DWELLER_LOOKS: readonly DwellerLook[] = ['маг', 'плут'];
+export type DwellerLook = 'поселенец' | 'торговец';
+
+/**
+ * Кем выходят гуляющие. Торговца в списке нет намеренно: он не выбирается
+ * очередью, а ставится отдельно и единственный — стоящий (§13.5).
+ */
+export const DWELLER_LOOKS: readonly DwellerLook[] = ['поселенец'];
 
 /**
  * Шаг жильца — медленнее и гарнизона, и героя (1,67 клетки в секунду,
@@ -324,7 +329,7 @@ function yardWalks(
    */
   if (trader !== null) {
     out.push({
-      look: 'плут',
+      look: 'торговец',
       path: [trader],
       stops: [0],
       cycle: DWELLER_STAND,
