@@ -215,32 +215,6 @@ describe('Стройка стен: башня, ворота, лестница', 
 });
 
 describe('Стена закрывает путь', () => {
-  test('здание не переставляется сквозь стену', () => {
-    const camp = createCamp();
-    camp.levels.hq = 5;
-    const site: WallSite = { area: campArea(5), layout: camp.layout, levels: camp.levels };
-    // Свободный угол площади: туда Склад переставился бы, если бы не стена.
-    const spot = { x: 3, z: 3 };
-    assert.ok(moveBuilding(camp, 'storage', 6, 6), 'без стены угол свободен');
-    camp.layout.storage = { x: 1, z: 4 };
-
-    raiseWall(camp.walls!, site, [spot]);
-    assert.ok(wallAt(camp.walls!, 6, 6), 'стена не заняла клетку лагеря');
-    assert.ok(!moveBuilding(camp, 'storage', 6, 6), 'здание прошло сквозь стену');
-    assert.deepEqual(camp.layout.storage, { x: 1, z: 4 }, 'здание всё-таки переехало');
-  });
-
-  test('стена и здание не встают друг на друга ни с какой стороны', () => {
-    const camp = createCamp();
-    camp.levels.hq = 5;
-    const site: WallSite = { area: campArea(5), layout: camp.layout, levels: camp.levels };
-    // Жильё стоит в 1,1 — это клетка стены 0,0: стена туда не встаёт.
-    assert.equal(wallBlock(site, { x: 0, z: 0 }), 'занято зданием');
-    // А там, где стена уже стоит, не встаёт здание.
-    raiseWall(camp.walls!, site, [{ x: 4, z: 4 }]);
-    assert.ok(!moveBuilding(camp, 'storage', 8, 8), 'здание встало на стену');
-  });
-
   test('клетка стены закрывает все четыре клетки лагеря под собой', () => {
     const walls = emptyWalls();
     raiseWall(walls, bare(5), [{ x: 2, z: 2 }]);
@@ -249,6 +223,17 @@ describe('Стена закрывает путь', () => {
     }
     assert.ok(!wallAt(walls, 6, 4), 'стена закрыла соседнюю клетку');
     assert.ok(!wallAt(walls, 3, 4), 'стена закрыла соседнюю клетку');
+  });
+
+  test('зданию стена не мешает: планировка остаётся свободной', () => {
+    const camp = createCamp();
+    camp.levels.hq = 5;
+    const site: WallSite = { area: campArea(5), layout: camp.layout, levels: camp.levels };
+    raiseWall(camp.walls!, site, [{ x: 3, z: 3 }]);
+    assert.ok(wallAt(camp.walls!, 6, 6), 'стена не заняла клетку лагеря');
+    // §20.4 — перестановка выразительная, а не логистическая: стена держит
+    // игрока, а не планировку.
+    assert.ok(moveBuilding(camp, 'storage', 6, 6), 'стена не пустила здание');
   });
 });
 
