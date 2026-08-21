@@ -12,6 +12,7 @@
  */
 import { mulberry32 } from '../core/rng';
 import { POLICIES, playRaid } from './bot';
+import { resolveRaids } from './siege';
 import {
   BUILDING_ORDER,
   BUILD_SECONDS,
@@ -131,6 +132,16 @@ export function playSession(seed: number): SessionResult {
       if (done !== null) {
         track({ t: 'build_done', at: now, building: done, level: camp.levels[done] });
       }
+      /**
+       * §6.1.6 — набеги за время отсутствия. Сводятся там же, где достроенное
+       * здание, и по той же причине: и то и другое случилось без игрока.
+       *
+       * Бот стен не строит и потому получает набег полной ценой. Это
+       * не занижение, а известный предел модели — ровно такой же, как то,
+       * что он не покупает стрел (§14.3): прибор обязан играть в ту же игру,
+       * что игрок, и пока он играет хуже, числа читаются как нижняя граница.
+       */
+      resolveRaids(camp, now);
     }
 
     const tier = bestTier(camp);

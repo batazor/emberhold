@@ -67,6 +67,12 @@ interface SaveV1 {
   /** §14.3 — запас стрел в лагере. Отсутствие читается нулём. */
   arrows?: number;
   /**
+   * §6.1.6 — номер последнего сведённого набега. Отсутствие читается как
+   * «первый заход»: сейв, записанный до набегов, принадлежит игроку, который
+   * их не пропускал, и встречать его недостачей за всё это время нельзя.
+   */
+  raidedAt?: number;
+  /**
    * Кадр онбординга (`onboarding.html`). Тоже необязательное поле: сейв,
    * записанный до онбординга, принадлежит игроку, который уже играл, —
    * его нельзя возвращать в первые три минуты. Отсутствие поля читается
@@ -116,6 +122,7 @@ export function save(
     gear: camp.gear,
     offhand: camp.offhand,
     arrows: camp.arrows,
+    ...(camp.raidedAt === undefined ? {} : { raidedAt: camp.raidedAt }),
     walls: camp.walls,
     // Заходы старше окна на богатство уже не влияют — в сохранение они
     // не едут, иначе список растёт без предела.
@@ -246,6 +253,9 @@ export function load(): LoadResult {
     // фонарём. Так вёл себя лагерь до появления левой руки, и сейв прежних
     // этапов открывается ровно тем, чем закрывался.
     camp.offhand = data.offhand === 'shield' ? 'shield' : 'torch';
+    if (typeof data.raidedAt === 'number' && Number.isFinite(data.raidedAt)) {
+      camp.raidedAt = Math.floor(data.raidedAt);
+    }
     if (typeof data.arrows === 'number' && data.arrows >= 0) {
       camp.arrows = Math.floor(data.arrows);
     }
