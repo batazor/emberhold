@@ -21,6 +21,8 @@
 import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';
 import type { PolicyName } from '../src/sim/bot';
+import { emptyGear } from '../src/sim/gear';
+import type { GearState } from '../src/sim/gear';
 import { CLASS_ORDER, HERO_CLASSES, SKILLS, createHero, loadout } from '../src/sim/heroes';
 import type { HeroClassId } from '../src/sim/heroes';
 import { totalOf } from '../src/sim/resources';
@@ -55,7 +57,31 @@ interface Row {
 const mean = (xs: readonly number[]): number =>
   xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
 
-function measure(cls: HeroClassId, tier: Tier, useSkills: boolean, policy: PolicyName): {
+/**
+ * С каким снаряжением сравнивать классы.
+ *
+ * Голыми руками сравнивать нельзя, и это не вкус, а гейты игры. Лучник
+ * открывается Жильём ур. 2 (`HERO_HQ_GATE`) — ровно тем же уровнем, каким
+ * открывается Мастерская (`unlockHq`). Голорукого Лучника в игре не бывает
+ * никогда: к моменту, когда он появляется, ковка уже доступна. Бандит ждёт
+ * четвёртого уровня и тем более выходит одетым.
+ *
+ * Прибор же ставил всем троим ноль — то есть мерил положение одного Рыцаря
+ * и раздавал его вывод остальным. Отсюда и «вырождено вниз»: класс, чей
+ * колчан платится в Мастерской, сравнивали до Мастерской.
+ *
+ * Ноль оставлен и меряется: он есть у Рыцаря, и на нём видно, чего стоит
+ * первая вылазка. Но вердикт снимается по всем уровням сразу.
+ */
+const GEAR_LEVELS: readonly number[] = [0, 3];
+
+const gearAt = (level: number): GearState => {
+  const g = emptyGear();
+  for (const slot of Object.keys(g) as (keyof GearState)[]) g[slot] = level;
+  return g;
+};
+
+function measure(cls: HeroClassId, tier: Tier, useSkills: boolean, policy: PolicyName, gearLevel: number): {
   success: number;
   carried: number;
   depth: number;
@@ -63,7 +89,8 @@ function measure(cls: HeroClassId, tier: Tier, useSkills: boolean, policy: Polic
   fired: number;
 } {
   const hero = createHero(cls, 0);
-  const gear = loadout(hero);
+  const kit = loadout(hero);
+  const gear = gearAt(gearLevel);
   const carried: number[] = [];
   const depth: number[] = [];
   const seconds: number[] = [];
@@ -76,7 +103,7 @@ function measure(cls: HeroClassId, tier: Tier, useSkills: boolean, policy: Polic
     const seed = 1_000_003 * (tier + 1) + i * 7919;
     const rng = mulberry32(seed ^ 0x5f3759df);
     const r = playRaid(
-      { seed, tier, ...CAMP[tier], loadout: gear, useSkills },
+      { seed, tier, ...CAMP[tier], loadout: kit, gear, useSkills },
       POLICIES[policy],
       rng,
     );
@@ -106,12 +133,12 @@ const POLICY_NAME: Record<PolicyName, string> = {
   sloppy: 'небрежный',
 };
 
-function run(policy: PolicyName): Row[] {
+function run(policy: PolicyName, gearLevel: number): Row[] {
 const rows: Row[] = [];
 for (const cls of CLASS_ORDER) {
   for (const tier of TIERS) {
-    const plain = measure(cls, tier, false, policy);
-    const withSkill = measure(cls, tier, true, policy);
+    const plain = measure(cls, tier, false, policy, gearLevel);
+    const withSkill = measure(cls, tier, true, policy, gearLevel);
     rows.push({
       cls,
       tier,
@@ -217,16 +244,29 @@ return idle;
 console.log(`Классы: ${RUNS} вылазок на ярус на политику, локации общие для всех классов`);
 
 const idleEverywhere = new Set<HeroClassId>(CLASS_ORDER);
-for (const policy of POLICY_LIST) {
-  const idle = report(policy, run(policy));
-  for (const cls of CLASS_ORDER) if (!idle.includes(cls)) idleEverywhere.delete(cls);
+for (const level of GEAR_LEVELS) {
+  console.log(
+    `\n${'='.repeat(72)}\nСНАРЯЖЕНИЕ УР. ${level === 0 ? '— (пусто, положение первой вылазки)' : level}`,
+  );
+  for (const policy of POLICY_LIST) {
+    const idle = report(policy, run(policy, level));
+    for (const cls of CLASS_ORDER) if (!idle.includes(cls)) idleEverywhere.delete(cls);
+  }
 }
 
-// Итог по всем политикам сразу: класс вырожден, только если он не находит
-// себе ниши ни у осторожного, ни у среднего, ни у жадного игрока.
+/**
+ * Итог по всем политикам и всем уровням снаряжения сразу.
+ *
+ * Уровни здесь не для полноты. Лучник открывается Жильём ур. 2, тем же
+ * уровнем открывается Мастерская: голорукого Лучника в игре не бывает,
+ * и вырожденность, найденная только на нулевом снаряжении, — вырожденность
+ * положения, которого нет.
+ */
 console.log(
   idleEverywhere.size === 0
-    ? '\n✓ Не вырождено: каждый класс где-то первый — хотя бы при одной манере игры.'
+    ? '\n✓ Не вырождено: каждый класс где-то первый — хотя бы при одной манере игры\n'
+      + '  и одном уровне снаряжения.'
     : `\n⚠ ВЫРОЖДЕНО ВНИЗ: ${[...idleEverywhere].map((c) => HERO_CLASSES[c].name).join(', ')} ` +
-        '— не первый ни на одном ярусе ни при одной манере игры.',
+        '— не первый ни по одной оси\n  ни на одном ярусе, ни при одной манере игры, '
+        + 'ни на одном уровне снаряжения.',
 );
