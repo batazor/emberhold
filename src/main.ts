@@ -77,6 +77,7 @@ import { addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
+import { commandCampMove, createCampHero, stepCampHero, type CampHero } from './sim/campWalk';
 import {
   completeWallIfDue,
   emptyWalls,
@@ -354,6 +355,9 @@ const buildPanel = new BuildPanel({
   },
 });
 campHud.slot.appendChild(buildPanel.root);
+
+/** Герой лагеря: он же тот, кто ходил по поляне в прологе (§16.1). */
+let campHero: CampHero = createCampHero(camp);
 
 let buildTool: WallTool | null = null;
 /** Клетки, через которые ведут палец. Не null — мазок идёт прямо сейчас. */
@@ -1232,6 +1236,8 @@ function toCamp(): void {
   // Стены, построенные игроком, — часть лагеря: они встают вместе с ним,
   // а не по открытию панели.
   campView.setWalls(wallPieces(wallsOf()));
+  campHero = createCampHero(camp);
+  campView.setHero(campHero.x, campHero.z, campHero.facing);
   showScene('camp');
   idleSeconds = 0;
   onboarding.apply();
@@ -1278,11 +1284,15 @@ function campTap(clientX: number, clientY: number): void {
     return;
   }
 
-  // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо
-  // закрывает лист — то есть возвращает игроку весь экран с лагерем.
+  // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
+  // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
-  if (picked === null) campHud.close();
-  else campHud.openBuilding(picked);
+  if (picked !== null) {
+    campHud.openBuilding(picked);
+    return;
+  }
+  campHud.close();
+  commandCampMove(camp, campHero, { x: Math.round(hit.x), z: Math.round(hit.z) });
 }
 
 /* ---------- ввод вылазки ---------- */
@@ -1693,6 +1703,10 @@ startLoop({
       if (now - lastCampFrame < 1000 / 30) return;
       const campDt = Math.min(0.1, (now - lastCampFrame) / 1000);
       lastCampFrame = now;
+      // Герой лагеря идёт тем же шагом, что и в вылазке: сначала считается
+      // симуляцией, потом ставится в сцену.
+      stepCampHero(camp, campHero, campDt);
+      campView.setHero(campHero.x, campHero.z, campHero.facing);
       campView.update(campDt, now, rig.dayFactor);
       const c = campView.center;
       // Тот же кадр, что и в toCamp, плюс то, куда игрок увёз камеру.
