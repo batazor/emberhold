@@ -888,6 +888,38 @@ function meetCallbacks(): MeetPanelCallbacks {
 }
 
 /**
+ * Жильцы в кадре: сидят у костра, лицом к огню — те же люди, что в веере.
+ * Места ищутся тем же правилом, что у поселенца знакомства: свободная
+ * клетка с чистыми соседями, мимо следов построек и мимо сидящего гостя.
+ */
+function seatResidents(): void {
+  if (raid === null || raidView === null) return;
+  const o = campOrigin(camp);
+  const fire = { x: o.x + camp.layout.kitchen.x + 1, z: o.z + camp.layout.kitchen.z + 1 };
+  const busy: Cell[] = [];
+  const taken = (x: number, z: number): boolean => {
+    if (meetAt !== null && x === meetAt.x && z === meetAt.z) return true;
+    if (busy.some((c) => c.x === x && c.z === z)) return true;
+    return PITCH_ORDER.some((id) => {
+      const p = camp.layout[id];
+      return x >= o.x + p.x && x <= o.x + p.x + 1 && z >= o.z + p.z && z <= o.z + p.z + 1;
+    });
+  };
+  const list = camp.residents.flatMap((r) => {
+    const sit = sitSpotNear(fire, raid!.loc, taken);
+    if (sit === null) return [];
+    busy.push(sit);
+    return [{
+      look: r.look,
+      x: sit.x + 0.5,
+      z: sit.z + 0.5,
+      facing: Math.atan2(fire.x - (sit.x + 0.5), fire.z - (sit.z + 0.5)),
+    }];
+  });
+  raidView.setResidents(list);
+}
+
+/**
  * Посадить поселенца у лагеря (§16.1): после первой вылазки, пока в лагере
  * нет жильцов. Каждый вход — заново: человек пришёл знакомиться, а не
  * мелькнуть один раз.
@@ -2075,6 +2107,7 @@ function toGladeCamp(): void {
   }
   raidView.hideSite();
   seatSettler(door);
+  seatResidents();
   rig.lookAt(raid.hero.x, raid.hero.z, true);
   rig.setZoom(20, true);
   // Поляна — на поверхности, и это день: тот же свет, что в прологе.

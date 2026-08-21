@@ -874,6 +874,25 @@ export class RaidView {
    * поселенец не делает больше ничего: он не покой играет, а именно сидит —
    * все прочие в кадре стоят и ходят, и разница видна без подписи.
    */
+  /** Жильцы лагеря у костра (§6.1.4): сидят, как сидел поселенец знакомства. */
+  private residents: Rigged[] = [];
+
+  /**
+   * Поставить жильцов. Список пересобирается целиком: жильцов единицы,
+   * и следить за диффом здесь дороже, чем посадить заново.
+   */
+  setResidents(list: readonly { look: DwellerLook; x: number; z: number; facing: number }[]): void {
+    for (const rig of this.residents) rig.dispose();
+    this.residents = list.map((r) => {
+      const rig = new Rigged(dwellerParts(r.look), this.blocking);
+      rig.root.position.set(r.x, 0, r.z);
+      rig.root.rotation.y = r.facing;
+      rig.play('сидит');
+      this.group.add(rig.root);
+      return rig;
+    });
+  }
+
   putSettler(look: DwellerLook, x: number, z: number, facing = 0): void {
     this.settler?.rig.dispose();
     const rig = new Rigged(dwellerParts(look), this.blocking);
@@ -1862,6 +1881,9 @@ export class RaidView {
     this.syncStones(dt);
     this.syncGarrison(dt);
     this.syncSettler(dt);
+    // Тик миксера жильцов: без него клип не играется, и человек сидит
+    // в позе привязки — то есть стоит навытяжку со сломанным видом.
+    for (const rig of this.residents) rig.update(dt);
     this.syncGrass(hx, hz, time);
 
     if (this.evacRing !== null) {
