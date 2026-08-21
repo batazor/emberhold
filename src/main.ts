@@ -31,8 +31,6 @@ import {
 import type { BuildingId, CampState } from './sim/camp';
 import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
 import type { GearSlot } from './sim/gear';
-import { resolveRaids } from './sim/siege';
-import type { RaidLoss } from './sim/siege';
 import { visionRadius } from './sim/config';
 import {
   HERO_CLASSES,
@@ -93,7 +91,6 @@ import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
-import type { ResourceKind } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { KIND, dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
@@ -211,10 +208,6 @@ const finishedOffline = completeIfDue(camp, startedAt); // стройка мог
 if (finishedOffline !== null) {
   track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
 }
-// §6.1.6 — набеги, случившиеся, пока игра была закрыта. Считаются там же
-// и тем же приёмом, что достроенное здание: время монотонное, состояние
-// не тикает, вернувшегося встречает результат.
-let raidedOffline = resolveRaids(camp, startedAt);
 
 let mode: 'title' | 'camp' | 'raid' = 'title';
 let raid: RaidState | null = null;
@@ -518,7 +511,7 @@ const wallSite = (): WallSite => ({
 
 function openWalls(): void {
   buildPanel.setVisible(true);
-  buildPanel.update(wallsOf(), clock.now(), wallSite());
+  buildPanel.update(wallsOf(), clock.now());
   campHud.notify('Стены: выберите карточку, дальше жест по земле');
 }
 
@@ -526,7 +519,7 @@ function openWalls(): void {
 function refreshWalls(): void {
   campView.setWalls(wallPieces(wallsOf()));
   campView.setFences(fencePieces(wallsOf()));
-  buildPanel.update(wallsOf(), clock.now(), wallSite());
+  buildPanel.update(wallsOf(), clock.now());
 }
 
 /** Тап или мазок по земле в режиме стройки. Возвращает: жест обработан. */
@@ -606,7 +599,7 @@ function finishWall(result: string): boolean {
   }
   play('build');
   buildPanel.setNote(null);
-  buildPanel.update(wallsOf(), clock.now(), wallSite());
+  buildPanel.update(wallsOf(), clock.now());
   campHud.sync(camp, clock.now(), 0);
   persist();
   return true;
@@ -773,24 +766,6 @@ function buy(id: ConsumableId): boolean {
   campHud.notify(`${CONSUMABLES[id].name} — в вылазку`);
   persist();
   return true;
-}
-
-/**
- * Сказать про набег (§6.1.6). Одна строка, а не экран: набег — то, что
- * случилось без игрока, и разворачивать это в событие значило бы наказывать
- * его ещё и вниманием. Кольцо, которое выдержало, говорит об этом тоже —
- * иначе стену не за что похвалить, и игрок не узнает, что она сработала.
- */
-function sayRaid(loss: RaidLoss): void {
-  const times = loss.raids > 1 ? ` ×${loss.raids}` : '';
-  if (loss.total <= 0) {
-    campHud.notify(`Набег${times}: кольцо выдержало`);
-    return;
-  }
-  const what = (Object.entries(loss.taken) as [ResourceKind, number][])
-    .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
-    .join(' · ');
-  campHud.notify(`Набег${times}: унесли ${what}`);
 }
 
 function persist(): void {
@@ -2664,18 +2639,6 @@ startLoop({
       track({ t: 'build_done', at: now, building: finished, level: camp.levels[finished] });
       play('levelup');
       campHud.notify(`${BUILDINGS[finished].name} готов`);
-      persist();
-    }
-    // Набег, случившийся без игры, объявляется здесь, а не при загрузке:
-    // там панели ещё нет, и строка ушла бы в пустоту.
-    if (raidedOffline !== null) {
-      sayRaid(raidedOffline);
-      raidedOffline = null;
-      persist();
-    }
-    const raided = resolveRaids(camp, now);
-    if (raided !== null) {
-      sayRaid(raided);
       persist();
     }
     if (tickHeroes(now)) persist();

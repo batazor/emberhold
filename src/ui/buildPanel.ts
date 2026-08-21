@@ -14,11 +14,8 @@
  * а общий счёт — камень и минуты — растёт под карточками, пока палец ведёт.
  * Узнать цену после того, как отпустил, было бы поздно.
  *
- * **Что стена даёт, панель теперь говорит.** Нижняя строка считает то же
- * самое, что считает набег (`sim/siege.ts`): доходит ли снаружи до зданий.
- * Игрок ведёт пальцем и видит, как «открыто построек 4 из 4» превращается
- * в «кольцо замкнуто», — до этого стена стоила камня и слота стройки
- * и не отвечала ничем.
+ * Чего стена **даёт**, панель по-прежнему не решает: это вопрос §12
+ * и отдельного замера.
  *
  * Панель — DOM, а не сцена: она ничего не рисует и не знает про three.
  * Что стройка сделала с лагерем, показывает `CampView`.
@@ -35,9 +32,7 @@ import {
   type CampWalls,
   type WallTool,
 } from '../sim/campWalls';
-import type { WallSite } from '../sim/campWalls';
 import { FENCE } from '../sim/fence';
-import { wallLine } from '../sim/siege';
 import { TOWER_MAX } from '../sim/castle';
 
 export interface BuildPanelCallbacks {
@@ -82,8 +77,6 @@ export class BuildPanel {
   readonly root: HTMLElement;
   private readonly cards = new Map<WallTool, Card>();
   private readonly note: HTMLElement;
-  /** Что кольцо даёт против набега (§6.1.6, `siege.ts`). */
-  private readonly guard: HTMLElement;
   private readonly timer: HTMLElement;
   private readonly bar: HTMLElement;
   private readonly fill: HTMLElement;
@@ -114,9 +107,6 @@ export class BuildPanel {
     this.note = document.createElement('div');
     this.note.className = 'build-note dim';
 
-    this.guard = document.createElement('div');
-    this.guard.className = 'build-note';
-
     // Полоса стройки: та же мерка, что у зданий, — сколько осталось ждать.
     this.timer = document.createElement('div');
     this.timer.className = 'build-note dim';
@@ -126,7 +116,7 @@ export class BuildPanel {
     this.fill = document.createElement('i');
     this.bar.appendChild(this.fill);
 
-    this.root.append(head, list, this.bar, this.timer, this.guard, this.note);
+    this.root.append(head, list, this.bar, this.timer, this.note);
     this.setNote(null);
   }
 
@@ -201,7 +191,7 @@ export class BuildPanel {
    * гаснут: слот один на лагерь, и вторую стройку начать всё равно нельзя —
    * живая кнопка, которая откажет, врёт сильнее, чем погашенная.
    */
-  update(walls: CampWalls, now: number, site?: WallSite): void {
+  update(walls: CampWalls, now: number): void {
     const work = walls.work ?? null;
     const busy = work != null;
     for (const [, card] of this.cards) card.button.disabled = busy;
@@ -238,17 +228,6 @@ export class BuildPanel {
     }
     const raze = this.cards.get('снос');
     if (raze !== undefined) raze.count.textContent = '';
-
-    /**
-     * Что кольцо даёт — прямо здесь и прямо сейчас.
-     *
-     * Абзац в заголовке файла говорил: «Чего стена даёт, панель по-прежнему
-     * не решает». Теперь решает, и решает не текстом, а тем же счётом,
-     * которым это считает набег (`siege.ts`): доходит ли снаружи до зданий.
-     * Игрок обводит лагерь и видит, как строка меняется, — это и есть
-     * обратная связь, которой у стены не было.
-     */
-    this.guard.textContent = site === undefined ? '' : wallLine(walls, site);
   }
 
   /**
