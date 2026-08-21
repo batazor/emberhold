@@ -18,7 +18,17 @@ import { EVENTS, effectOf } from '../sim/events';
 import type { EventId } from '../sim/events';
 import { formatDuration } from '../core/clock';
 import { CLANS, RICH_MAX, SHIFT_SEC, dayAt, lootMul, regionAt, worldAt } from '../sim/world';
-import type { NodeState, Region, WorldNode } from '../sim/world';
+import { KIND } from '../sim/world';
+import type { NodeKind, NodeState, Region, WorldNode } from '../sim/world';
+
+/**
+ * Цвет кольца у прогулочных мест. Богатства у них нет, и шкала им ни к чему —
+ * цвет тут просто называет вид места.
+ */
+const WALK_COLOR: Partial<Record<NodeKind, string>> = {
+  'замок': '#c8a24a',
+  'кладбище': '#9fb6d8',
+};
 
 /** Цвет узла по богатству: от выработанной к полной жиле. */
 const RICH_COLOR: readonly string[] = ['#d4543a', '#c07a3a', '#c8a24a', '#7fb069'];
@@ -355,9 +365,9 @@ export class WorldMap {
       ctx.fill();
       // Толщина кольца — ярус: цена места видна раньше подписи. У замка
       // яруса нет, и кольцо у него тонкое всегда.
-      const walk = node.kind !== 'вылазка';
+      const walk = KIND[node.kind].walk;
       ctx.lineWidth = walk ? 1.4 : 1 + node.tier * 0.9;
-      ctx.strokeStyle = node.kind === 'замок' ? '#c8a24a' : node.kind === 'кладбище' ? '#9fb6d8' : color;
+      ctx.strokeStyle = walk ? WALK_COLOR[node.kind] ?? '#c8a24a' : color;
       ctx.stroke();
 
       // Выработанная — крест. Цифру «0 из 3» на карте не прочитать, а решение
@@ -380,7 +390,7 @@ export class WorldMap {
 
       // §11.6 — что здесь сегодня. Глиф в левом верху: нутро занято крестом,
       // правый верх флагом клана.
-      const event = node.kind === 'замок' ? null : state?.event ?? null;
+      const event = KIND[node.kind].events ? state?.event ?? null : null;
       if (event !== null) drawEventGlyph(ctx, event, x, y, r, w, h);
 
       ctx.restore();
@@ -397,7 +407,11 @@ export class WorldMap {
     // вылазке «ровно одно место» обязано значить ровно одно, иначе игрок
     // уходит гулять по стенам вместо того, ради чего кадр заведён.
     if (this.only !== null) return node.id === this.only ? 'ok' : 'onb';
-    if (node.kind === 'замок') return 'ok';
+    // Прогулку Кухня не запирает: рисковать там нечем, и провианта на неё
+    // не нужно. Прежде это было записано только про замок, а кладбище
+    // проходило по совпадению — у него `tier: 0`, и гейт нулевого яруса
+    // всегда открыт.
+    if (KIND[node.kind].gated === false) return 'ok';
     if (this.camp !== null && tierBlock(this.camp, node.tier) !== 'ok') return 'kitchen';
     return 'ok';
   }
@@ -509,7 +523,7 @@ export class WorldMap {
       '<div class="line"><span>Добыча</span><b>нет</b></div>' +
       '<div class="line"><span>Кто здесь</span><b class="bad">привидения</b></div>';
     this.note.textContent = 'Прогулка: добычи нет. Привидение медленнее вас — от него можно уйти.';
-    this.go.textContent = 'Пойти';
+    this.walkButton(node);
   }
 
   private paintKeepCard(node: WorldNode): void {
@@ -519,8 +533,21 @@ export class WorldMap {
       '<div class="line"><span>Добыча</span><b>нет</b></div>' +
       '<div class="line"><span>Кто здесь</span><b class="good">никого</b></div>';
     this.note.textContent = 'Прогулка: ни добычи, ни противников. Выход открыт сразу.';
+    this.walkButton(node);
+  }
+
+  /**
+   * Кнопка прогулочного места. Общая на все виды, и это не экономия строк:
+   * карточка кладбища состояние кнопки не сбрасывала вовсе, и после опасной
+   * вылазки та оставалась оранжевой и запертой — оранжевой, потому что
+   * `danger` вешается по ставке и никем не снимался, запертой, потому что
+   * `disabled` ставится гейтом Кухни.
+   *
+   * Ставки у прогулки нет (§6.1.6), значит оранжевой кнопке там взяться
+   * неоткуда, и заперта она может быть только кадром раскадровки.
+   */
+  private walkButton(node: WorldNode): void {
     this.go.textContent = 'Пойти';
-    // У замка ставки нет вовсе (§6.1.6) — и оранжевой кнопке там взяться неоткуда.
     this.go.classList.remove('danger');
     this.go.disabled = this.entryBlock(node) !== 'ok';
   }

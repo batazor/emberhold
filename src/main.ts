@@ -75,7 +75,7 @@ import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables'
 import type { ConsumableId } from './sim/consumables';
 import { addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
-import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import { KIND, dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import { campNav, commandCampMove, createCampHero, stepCampHero, type CampHero } from './sim/campWalk';
 import { topWalkable } from './sim/campTop';
@@ -805,7 +805,10 @@ function showScene(scene: Scene, tier: Tier = 0): void {
  * выбирают: перезапуск посреди кадра вылазки и отладочный вход.
  */
 function safestNode(now: number): number {
-  const nodes = regionAt(dayAt(now)).nodes;
+  // Только вылазки: у замка и кладбища `tier: 0`, и без фильтра сортировка
+  // ставила прогулку первой — перезапуск посреди кадра вылазки уводил гулять
+  // по стенам вместо того, что кадр обещает.
+  const nodes = regionAt(dayAt(now)).nodes.filter((n) => KIND[n.kind].raidable);
   return [...nodes].sort((a, b) => a.tier - b.tier)[0]?.id ?? 0;
 }
 
