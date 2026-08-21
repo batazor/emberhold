@@ -33,6 +33,7 @@ import {
   GRAVEYARD_SLOT_ORDER,
   MATERIAL,
   FOLK_SLOT_ORDER,
+  PROPS_SLOT_ORDER,
   SKELETON_SLOT_ORDER,
   WEAPONS_SLOT_ORDER,
 } from './palette';
@@ -40,6 +41,7 @@ import { WEAPONS_MODELS, WEAPONS_SLOTS } from './weapons.data';
 import { WEAPON_LADDER, weaponOf } from './weapons';
 import { MAX_ITEM_LEVEL } from '../sim/gear';
 import { GRAVEYARD_SLOTS } from './graveyard.data';
+import { PROPS_MODELS, PROPS_SLOTS } from './props.data';
 import { FENCE_SCALE, fenceGeometry } from './graveyard';
 import { FENCE, FENCE_MATERIALS } from '../sim/fence';
 import { SKELETON_SLOTS } from './skeleton.data';
@@ -407,6 +409,26 @@ describe('Артбук: замок', () => {
     assert.deepEqual([...CASTLE_SLOTS], [...CASTLE_SLOT_ORDER]);
     for (const name of CASTLE_SLOTS) {
       assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  test('слоты пропсов не разошлись с палитрой артбука', () => {
+    assert.deepEqual([...PROPS_SLOTS], [...PROPS_SLOT_ORDER]);
+    for (const name of PROPS_SLOTS) {
+      assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  test('дорожные плитки словаря пропсов поехали в бандл все', () => {
+    // Словарь рендера (`props.ts`) называет по четыре формы на семейство
+    // и по фонарю на локацию; каждая обязана быть в запечённых данных.
+    const named = [
+      'Road_stone_1', 'Road_stone_2', 'Road_stone_3', 'Road_stone_4',
+      'Road_wood_1', 'Road_wood_2', 'Road_wood_3', 'road_wood_4',
+      'Lamp_1', 'Lamp_2',
+    ];
+    for (const model of named) {
+      assert.ok(model in PROPS_MODELS, `«${model}» назван рендером, но в бандл не поехал`);
     }
   });
 

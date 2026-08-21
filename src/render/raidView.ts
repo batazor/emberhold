@@ -12,6 +12,8 @@ import {
 } from './models';
 import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
+import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
+import { roadPieces } from '../sim/roads';
 import { FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
 import type { GraveyardPartModelName } from './graveyard';
 import type { CastlePartModelName } from './castle';
@@ -310,6 +312,10 @@ export class RaidView {
   private readonly placed = new Map<BuildingId, THREE.Mesh>();
   /** Свет поставленного костра. Тот же, что потом горит в лагере. */
   private readonly fire = new Fire();
+  /** Плафоны фонарей замка: один материал на все, ночь поднимает эмиссию. */
+  private lampGlow: THREE.MeshLambertMaterial | null = null;
+  /** Огоньки фонарей — по точечному на столб, ночь зажигает их разом. */
+  private readonly lampLights: THREE.PointLight[] = [];
   /** Пятно под курсором в режиме выбора места и призрак здания над ним. */
   private site: THREE.Mesh | null = null;
   private ghost: THREE.Mesh | null = null;
@@ -809,6 +815,63 @@ export class RaidView {
         mesh.setMatrixAt(i, dummy.matrix);
       }
       this.group.add(mesh);
+    }
+
+    this.buildRoads(site);
+  }
+
+  /**
+   * Дорога замка и её фонари (§6.1.12). Клетки и форма плиток приходят
+   * из симуляции (`castleSite.ts` решает где, `roads.ts` — что ставить);
+   * рендер только расставляет готовое — тем же способом, что детали стен.
+   */
+  private buildRoads(site: CastleSite): void {
+    const pieces = roadPieces(site.roads);
+    if (pieces.length > 0) {
+      const mat = this.track(propsMaterial());
+      const byTile = new Map<string, typeof pieces>();
+      for (const piece of pieces) {
+        const list = byTile.get(piece.tile) ?? [];
+        list.push(piece);
+        byTile.set(piece.tile, list);
+      }
+      const dummy = new THREE.Object3D();
+      for (const [tile, list] of byTile) {
+        const { geometry, turn, lift } = roadGeometry('камень', tile as typeof pieces[number]['tile']);
+        const mesh = new THREE.InstancedMesh(geometry, mat, list.length);
+        // Плита лежит на земле и тени не отбрасывает: ей не с чего.
+        mesh.receiveShadow = true;
+        for (let i = 0; i < list.length; i++) {
+          const piece = list[i]!;
+          dummy.position.set(
+            site.at.x + piece.x * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+            0.01 + lift,
+            site.at.z + piece.z * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+          );
+          dummy.rotation.set(0, ((piece.turn + turn) * Math.PI) / 2, 0);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        }
+        this.group.add(mesh);
+      }
+    }
+
+    if (site.lamps.length > 0) {
+      const parts = lampParts(LAMP_OF['камень']);
+      const postMat = this.track(propsMaterial());
+      this.lampGlow = this.track(lampGlowMaterial());
+      for (const cell of site.lamps) {
+        const lamp = new THREE.Group();
+        const post = new THREE.Mesh(parts.post, postMat);
+        post.castShadow = true;
+        const glow = new THREE.Mesh(parts.glow, this.lampGlow);
+        const light = lampLight();
+        light.position.set(parts.lampAt[0], parts.lampAt[1], parts.lampAt[2]);
+        this.lampLights.push(light);
+        lamp.add(post, glow, light);
+        lamp.position.set(cell.x, 0, cell.z);
+        this.group.add(lamp);
+      }
     }
   }
 
@@ -1604,6 +1667,8 @@ export class RaidView {
     // Костёр мерцает и в прологе, и в вылазке: день приходит числом, потому
     // что поляна — это поверхность, а вылазка — ночь под землёй.
     this.fire.update(time, day);
+    // Фонари замка живут тем же днём: гаснут к полудню, горят к ночи.
+    if (this.lampGlow !== null) setLampsNight(1 - day, this.lampGlow, this.lampLights);
     if (this.hintRing.visible) {
       const pulse = 1 + Math.sin(time / 260) * 0.16;
       this.hintRing.scale.setScalar(pulse);

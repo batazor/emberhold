@@ -256,10 +256,18 @@ export function load(): LoadResult {
     // не должен подсовывать симуляции список неизвестной формы.
     const w = data.walls;
     if (w != null) {
+      const keys = (list: unknown): string[] =>
+        Array.isArray(list) ? list.filter((k) => typeof k === 'string') : [];
       camp.walls = {
-        cells: Array.isArray(w.cells) ? w.cells.filter((k) => typeof k === 'string') : [],
+        cells: keys(w.cells),
+        // Ограда, настил и фонари терялись здесь молча: список полей отстал
+        // от состояния стен, и постройка не переживала перезапуск.
+        fences: keys(w.fences),
+        ...(w.fence === undefined ? {} : { fence: w.fence }),
+        roads: keys(w.roads),
+        lamps: keys(w.lamps),
         towers: typeof w.towers === 'object' && w.towers !== null ? { ...w.towers } : {},
-        gates: Array.isArray(w.gates) ? w.gates.filter((k) => typeof k === 'string') : [],
+        gates: keys(w.gates),
         stairs: typeof w.stairs === 'object' && w.stairs !== null ? { ...w.stairs } : {},
         work: w.work ?? null,
       };

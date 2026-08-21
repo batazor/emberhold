@@ -50,6 +50,20 @@ export interface CastleSite {
    * а не одного шага от выхода. `null` — двора у этого плана не нашлось.
    */
   readonly trader: Cell | null;
+  /**
+   * Клетки дороги (`roads.ts`) — в клетках плана, той же сетки, что детали
+   * замка. Дорога ведёт от подхода снаружи под арку ворот и двором
+   * к торговцу: это и есть маршрут, которым локацию проходят, и мощение
+   * называет его до первого шага. Клетки подхода лежат за планом — сетка
+   * плана продолжается наружу, и `spotAt` переводит их так же.
+   */
+  readonly roads: readonly Spot[];
+  /**
+   * Фонари у дороги — в клетках локации. Два: у подхода снаружи и во дворе
+   * у торговца. Свет читается вехами маршрута, а не иллюминацией: фонарь
+   * стоит там, где у дороги смысловой конец.
+   */
+  readonly lamps: readonly Cell[];
 }
 
 /**
@@ -158,30 +172,12 @@ export function generateCastleSite(seed: number): CastleSite {
   // Точка выхода обязана быть свободной: она же место, куда игрок приходит.
   blocked[idx(size, evac.x, evac.z)] = 0;
 
-  /**
-   * Валуны (§13.5) — в поле между лесом и стеной, и только там. Двор
-   * не завален камнем по той же причине, по которой замок вообще стоит
-   * на карте: внутрь заходят смотреть на постройку, и обломки под ногами
-   * читались бы как разрушение, которого игра не обещала. В поле же камень
-   * читается как то, из чего стену и сложили.
-   */
-  const keep = { x: at.x, z: at.z, w: castle.width * CASTLE_CELL, d: castle.depth * CASTLE_CELL };
-  const stones = scatterStones(
-    seed ^ 0x4b41,
-    size,
-    blocked,
-    STONES.castle,
-    (x, z) =>
-      (x < keep.x || z < keep.z || x >= keep.x + keep.w || z >= keep.z + keep.d)
-      && !(x === evac.x && z === evac.z),
-  );
-
   /*
    * Торговец — в глубине двора, дальше всех от ворот. Ближняя к воротам
    * клетка сделала бы обмен придорожным ларьком: игрок вошёл бы под арку,
    * поменял и вышел, и замок остался бы тем же коридором, каким был.
    * Дальняя заставляет пройти двор — то есть увидеть постройку, ради которой
-   * место и заведено.
+   * место и заведено. Считается до камней: дороге (ниже) нужен адресат.
    */
   let trader: Cell | null = null;
   let far = -1;
@@ -195,6 +191,132 @@ export function generateCastleSite(seed: number): CastleSite {
     if (d > far) { far = d; trader = c; }
   }
 
+  /*
+   * Дорога — маршрут локации, названный мощением: подход снаружи, арка
+   * ворот, двором к торговцу. Внутри ведёт волна по клеткам двора — тем же
+   * четырёхсвязным соседством, каким ходит герой; снаружи — продолжение
+   * той же прямой, которой стоит выход: две клетки плана как раз покрывают
+   * поле до опушки.
+   */
+  const gatePlan: Spot = castle.gate;
+  const roads: Spot[] = [];
+  const roadKey = (s: Spot): string => `${s.x}:${s.z}`;
+  for (let step = 2; step >= 1; step--) {
+    roads.push({ x: gatePlan.x + out[0]! * step, z: gatePlan.z + out[1]! * step });
+  }
+  roads.push({ x: gatePlan.x, z: gatePlan.z });
+  if (trader !== null) {
+    const traderPlan: Spot = {
+      x: Math.floor((trader.x - at.x) / CASTLE_CELL),
+      z: Math.floor((trader.z - at.z) / CASTLE_CELL),
+    };
+    // Проходим только по свободному двору: часть его клеток занимает
+    // донжон с лестницей, и дорога сквозь них была бы дорогой в стену.
+    const openYard = castle.yard.filter((s) => {
+      const base = spotAt({ at }, s);
+      for (let dz = 0; dz < CASTLE_CELL; dz++) {
+        for (let dx = 0; dx < CASTLE_CELL; dx++) {
+          if (blocked[idx(size, base.x + dx, base.z + dz)]) return false;
+        }
+      }
+      return true;
+    });
+    const pass = new Set(openYard.map(roadKey));
+    pass.add(roadKey(gatePlan));
+    const from = new Map<string, Spot>();
+    const queue: Spot[] = [gatePlan];
+    const seen = new Set([roadKey(gatePlan)]);
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (cur.x === traderPlan.x && cur.z === traderPlan.z) break;
+      for (const d of [{ x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }]) {
+        const next = { x: cur.x + d.x, z: cur.z + d.z };
+        const key = roadKey(next);
+        if (!pass.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        from.set(key, cur);
+        queue.push(next);
+      }
+    }
+    if (seen.has(roadKey(traderPlan))) {
+      const tail: Spot[] = [];
+      let cur: Spot | undefined = traderPlan;
+      while (cur !== undefined && roadKey(cur) !== roadKey(gatePlan)) {
+        tail.push(cur);
+        cur = from.get(roadKey(cur));
+      }
+      for (const spot of tail.reverse()) roads.push(spot);
+    }
+  }
+
+  /*
+   * Фонари — вехи дороги: у подхода снаружи и у торговца во дворе. Стоят
+   * сбоку от полотна, на клетке локации рядом с плитой; клетка занятой
+   * не помечается — столб не стена, его обходят взглядом, а не походкой.
+   */
+  const lamps: Cell[] = [];
+  const roadSet = new Set(roads.map(roadKey));
+  const lampBy = (plan: Spot): Cell | null => {
+    const base = spotAt({ at }, plan);
+    const sides: Cell[] = [
+      { x: base.x - 1, z: base.z },
+      { x: base.x + CASTLE_CELL, z: base.z + CASTLE_CELL - 1 },
+      { x: base.x, z: base.z - 1 },
+      { x: base.x + CASTLE_CELL - 1, z: base.z + CASTLE_CELL },
+    ];
+    for (const cell of sides) {
+      if (cell.x < WOOD || cell.z < WOOD || cell.x >= size - WOOD || cell.z >= size - WOOD) continue;
+      if (blocked[idx(size, cell.x, cell.z)]) continue;
+      if (cell.x === evac.x && cell.z === evac.z) continue;
+      const plan2: Spot = {
+        x: Math.floor((cell.x - at.x) / CASTLE_CELL),
+        z: Math.floor((cell.z - at.z) / CASTLE_CELL),
+      };
+      if (roadSet.has(roadKey(plan2))) continue;
+      return cell;
+    }
+    return null;
+  };
+  const approach = roads[0];
+  if (approach !== undefined) {
+    const lamp = lampBy(approach);
+    if (lamp !== null) lamps.push(lamp);
+  }
+  const last = roads[roads.length - 1];
+  if (last !== undefined && roads.length > 3) {
+    const lamp = lampBy(last);
+    if (lamp !== null) lamps.push(lamp);
+  }
+
+  /**
+   * Валуны (§13.5) — в поле между лесом и стеной, и только там. Двор
+   * не завален камнем по той же причине, по которой замок вообще стоит
+   * на карте: внутрь заходят смотреть на постройку, и обломки под ногами
+   * читались бы как разрушение, которого игра не обещала. В поле же камень
+   * читается как то, из чего стену и сложили.
+   */
+  const keep = { x: at.x, z: at.z, w: castle.width * CASTLE_CELL, d: castle.depth * CASTLE_CELL };
+  // Дорога и фонари не заваливаются камнем: мощение зовёт идти по себе,
+  // и валун на плите отменял бы это приглашение.
+  const clear = new Set<string>();
+  for (const plan of roads) {
+    const base = spotAt({ at }, plan);
+    for (let dz = 0; dz < CASTLE_CELL; dz++) {
+      for (let dx = 0; dx < CASTLE_CELL; dx++) clear.add(`${base.x + dx}:${base.z + dz}`);
+    }
+  }
+  for (const lamp of lamps) clear.add(`${lamp.x}:${lamp.z}`);
+  const stones = scatterStones(
+    seed ^ 0x4b41,
+    size,
+    blocked,
+    STONES.castle,
+    (x, z) =>
+      (x < keep.x || z < keep.z || x >= keep.x + keep.w || z >= keep.z + keep.d)
+      && !(x === evac.x && z === evac.z)
+      && !clear.has(`${x}:${z}`),
+  );
+
   const loc: GameLocation = {
     seed,
     tier: 0,
@@ -206,5 +328,5 @@ export function generateCastleSite(seed: number): CastleSite {
     enemies: [],
     backSteps: distanceField(size, blocked, evac),
   };
-  return { loc, castle, at, trees, gate, trader };
+  return { loc, castle, at, trees, gate, trader, roads, lamps };
 }

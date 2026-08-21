@@ -26,6 +26,7 @@ import { emptyResources, type Resources } from './resources';
 import { CHOP_SECONDS, CHOP_WOOD } from './logging';
 import { LOOT_SHARE } from './resources';
 import { FENCE_MATERIALS, type FenceMaterial } from './fence';
+import { roadPieces } from './roads';
 import {
   WALL_COST,
   WALL_SECONDS,
@@ -53,6 +54,12 @@ import {
   stairsBlock,
   strokeCells,
   toggleGate,
+  lampBlock,
+  lampCells,
+  roadBlock,
+  roadCells,
+  roadSpots,
+  walkBlocked,
   wallBlock,
   wallAt,
   wallCount,
@@ -547,5 +554,73 @@ describe('Ограда в лагере (§6.1.7)', () => {
     assert.ok(razeWall(walls, { x: 0, z: 0 }, resources));
     assert.equal(resources.wood, 5, 'дерево не вернулось');
     assert.deepEqual(fenceCells(walls), []);
+  });
+});
+
+describe('Стройка стен: дорога и фонарь (§6.1.12)', () => {
+  test('настил ведётся мазком, платится деревом и не спорит со стеной за клетку', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const resources: Resources = { ...emptyResources(), wood: 20 };
+    const path = [{ x: 0, z: 1 }, { x: 3, z: 1 }];
+    const fit = strokeFit(walls, site, path, 'дорога');
+    assert.equal(fit.length, 4, 'мазок в четыре клетки дал не четыре');
+    assert.equal(startWall(walls, resources, 'дорога', fit, 0, false), 'ok');
+    // Единица дерева на четыре клетки — та же мерка, что у дощатой ограды.
+    assert.equal(resources.wood, 19, 'настил списал не единицу за четыре клетки');
+    completeWallIfDue(walls, wallSeconds('дорога', fit.length));
+    assert.equal(roadCells(walls).length, 4);
+    // Дорога не загораживает: клетка настила остаётся проходимой.
+    assert.equal(walkBlocked(walls, 0, CASTLE_CELL), false, 'настил заблокировал ходьбу');
+    // Стена поверх настила встаёт: полотно не занимает клетку.
+    assert.equal(wallBlock(site, { x: 1, z: 1 }), 'ok');
+    // А настил под стоящую стену — нет.
+    raiseWall(walls, site, [{ x: 2, z: 3 }, { x: 2, z: 3 }]);
+    assert.equal(roadBlock(walls, site, { x: 2, z: 3 }), 'busy');
+  });
+
+  test('плитки настила выводятся из соседей и стоят на его клетках', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const fit = strokeFit(walls, site, [{ x: 0, z: 1 }, { x: 2, z: 1 }, { x: 2, z: 3 }], 'дорога');
+    for (const spot of fit) roadCells(walls).push(keyOf(spot));
+    const pieces = roadPieces(roadSpots(walls));
+    assert.equal(pieces.length, roadCells(walls).length);
+    const bend = pieces.find((p) => p.x === 2 && p.z === 1);
+    assert.equal(bend?.tile, 'поворот', 'угол мазка не стал поворотом');
+  });
+
+  test('фонарь — тап по клетке: на настил можно, на второй фонарь нельзя', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const resources: Resources = { ...emptyResources(), wood: 5 };
+    roadCells(walls).push(keyOf({ x: 1, z: 1 }));
+    assert.equal(lampBlock(walls, site, { x: 1, z: 1 }), 'ok', 'фонарь не встал на настил');
+    assert.equal(startWall(walls, resources, 'фонарь', [{ x: 1, z: 1 }], 0, false), 'ok');
+    assert.equal(resources.wood, 4, 'фонарь списал не единицу дерева');
+    completeWallIfDue(walls, wallSeconds('фонарь', 1));
+    assert.deepEqual(lampCells(walls), [keyOf({ x: 1, z: 1 })]);
+    assert.equal(lampBlock(walls, site, { x: 1, z: 1 }), 'busy', 'второй фонарь в ту же клетку');
+    // Фонарь не загораживает клетку: столб обходят взглядом, а не походкой.
+    assert.equal(walkBlocked(walls, CASTLE_CELL, CASTLE_CELL), false);
+  });
+
+  test('снос возвращает дерево за настил и фонарь', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const resources: Resources = { ...emptyResources(), wood: 10 };
+    const fit = strokeFit(walls, site, [{ x: 0, z: 0 }, { x: 3, z: 0 }], 'дорога');
+    assert.equal(startWall(walls, resources, 'дорога', fit, 0, false), 'ok');
+    completeWallIfDue(walls, wallSeconds('дорога', fit.length));
+    assert.equal(startWall(walls, resources, 'фонарь', [{ x: 0, z: 2 }], 10, false), 'ok');
+    completeWallIfDue(walls, 10 + wallSeconds('фонарь', 1));
+    const before = resources.wood;
+    // Снос всего построенного возвращает ровно уплаченное: возврат за настил
+    // предельный, как у ограды, — сколько бы клеток ни сносили по одной.
+    for (const spot of fit) assert.ok(razeWall(walls, spot, resources));
+    assert.ok(razeWall(walls, { x: 0, z: 2 }, resources));
+    assert.equal(resources.wood, before + 2, 'снос вернул не то, чем платили');
+    assert.deepEqual(roadCells(walls), []);
+    assert.deepEqual(lampCells(walls), []);
   });
 });

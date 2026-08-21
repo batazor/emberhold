@@ -121,7 +121,10 @@ import {
   cycleFence,
   fenceMaterial,
   fencePieces,
+  lampBlock,
+  lampSpots,
   razeWall,
+  roadSpots,
   stairsBlock,
   startTower,
   startWall,
@@ -539,6 +542,8 @@ function openWalls(): void {
 function refreshWalls(): void {
   campView.setWalls(wallPieces(wallsOf()));
   campView.setFences(fencePieces(wallsOf()));
+  campView.setRoads(roadSpots(wallsOf()));
+  campView.setLamps(lampSpots(wallsOf()));
   buildPanel.update(wallsOf(), clock.now(), camp.resources);
 }
 
@@ -553,7 +558,7 @@ function buildAt(ground: { x: number; z: number }, finished: boolean): boolean {
   // Слот один на лагерь: стена и улучшение здания спорят за одно и то же.
   const busy = camp.construction !== null;
 
-  if (buildTool === 'стена' || buildTool === 'ограда') {
+  if (buildTool === 'стена' || buildTool === 'ограда' || buildTool === 'дорога') {
     const tool = buildTool;
     if (stroke === null) stroke = [];
     const last = stroke[stroke.length - 1];
@@ -571,7 +576,7 @@ function buildAt(ground: { x: number; z: number }, finished: boolean): boolean {
       const minutes = Math.round(wallSeconds(tool, fit.size) / 6) / 10;
       buildPanel.setNote(
         fit.size === 0
-          ? `Здесь ${tool === 'ограда' ? 'ограде' : 'стене'} не встать`
+          ? `Здесь ${tool === 'ограда' ? 'ограде' : tool === 'дорога' ? 'дороге' : 'стене'} не встать`
           : `${fit.size} кл. · ${paid} · ${minutes} мин`,
       );
       return true;
@@ -588,6 +593,11 @@ function buildAt(ground: { x: number; z: number }, finished: boolean): boolean {
     // Снять башню — не стройка: она разбирается сносом, как и всё остальное.
     if (nextTowerLevel(walls, spot) === null) return finishWall('top');
     return finishWall(startTower(walls, site, camp.resources, spot, clock.now(), busy));
+  }
+  if (buildTool === 'фонарь') {
+    const why = lampBlock(walls, wallSite(), spot);
+    if (why !== 'ok') return finishWall(why, 'Фонарь');
+    return finishWall(startWall(walls, camp.resources, 'фонарь', [spot], clock.now(), busy));
   }
   if (buildTool === 'ворота') {
     const why = gateBlock(walls, spot);
@@ -1747,6 +1757,8 @@ function toCamp(): void {
   // с ним, а не по открытию панели.
   campView.setWalls(wallPieces(wallsOf()));
   campView.setFences(fencePieces(wallsOf()));
+  campView.setRoads(roadSpots(wallsOf()));
+  campView.setLamps(lampSpots(wallsOf()));
   campHero = createCampHero(camp);
   campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
   showScene('camp');

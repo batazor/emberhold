@@ -46,10 +46,10 @@ import { canAfford, spend, type Resources } from './resources';
 import { mulberry32 } from '../core/rng';
 
 /** Что можно поставить. Карточки панели стройки — ровно этот список. */
-export type WallTool = 'стена' | 'ограда' | 'башня' | 'ворота' | 'лестница' | 'снос';
+export type WallTool = 'стена' | 'ограда' | 'дорога' | 'фонарь' | 'башня' | 'ворота' | 'лестница' | 'снос';
 
 export const WALL_TOOLS: readonly WallTool[] = [
-  'стена', 'ограда', 'башня', 'ворота', 'лестница', 'снос',
+  'стена', 'ограда', 'дорога', 'фонарь', 'башня', 'ворота', 'лестница', 'снос',
 ];
 
 /**
@@ -69,6 +69,15 @@ export interface CampWalls {
   /** Материал ограды, общий на весь лагерь: четыре ограды рядом читались бы
    *  не оградой, а забором из того, что было. */
   fence?: FenceMaterial;
+  /**
+   * Клетки дощатого настила (§6.1.12). Как ограда — отдельным списком:
+   * дорога не занимает клетку, по ней ходят, и класть её в общий список
+   * значило бы сделать её стеной. Старые сохранения поля не знают,
+   * поэтому везде читается через `roadCells`.
+   */
+  roads?: string[];
+  /** Клетки с фонарями (§6.1.12). Тоже позже сохранений: через `lampCells`. */
+  lamps?: string[];
   /** Клетки с башнями и их ярусы. */
   towers: Record<string, number>;
   /** Клетки с воротами. */
@@ -104,6 +113,8 @@ export const emptyWalls = (): CampWalls => ({
   cells: [],
   fences: [],
   fence: 'дерево',
+  roads: [],
+  lamps: [],
   towers: {},
   gates: [],
   stairs: {},
@@ -112,6 +123,12 @@ export const emptyWalls = (): CampWalls => ({
 
 /** Клетки ограды — с оглядкой на сохранения, которые их не знают. */
 export const fenceCells = (walls: CampWalls): string[] => (walls.fences ??= []);
+
+/** Клетки дороги — той же оглядкой: поле моложе сохранений. */
+export const roadCells = (walls: CampWalls): string[] => (walls.roads ??= []);
+
+/** Клетки фонарей — так же. */
+export const lampCells = (walls: CampWalls): string[] => (walls.lamps ??= []);
 
 /** Материал ограды. По умолчанию дерево: оно дешевле всех и его добывают. */
 export const fenceMaterial = (walls: CampWalls): FenceMaterial => walls.fence ?? 'дерево';
@@ -145,10 +162,27 @@ export const WALL_COST: Record<Exclude<WallTool, 'снос'>, number> = {
    * таблицы и в счёт не идёт.
    */
   'ограда': 1,
+  /** У дороги — то же: своя цена `ROAD_COST`, дробная и деревом. */
+  'дорога': 1,
+  /** Фонарь платится деревом: столб и есть бревно. Единица — за постройку. */
+  'фонарь': 1,
   'башня': 2,
   'ворота': 3,
   'лестница': 1,
 };
+
+/**
+ * Цена клетки настила — та же, что у дощатой ограды: единица дерева
+ * на четыре клетки. Мерка одна и взята оттуда же (`npm run fence`,
+ * замер §6.1.7): доска есть доска, и полотно под ногами не должно стоить
+ * иначе, чем та же доска, поставленная на ребро. Дорога при этом ничего
+ * не загораживает — она дешёвая именно потому, что она облик, а не защита.
+ */
+export const ROAD_COST = { resource: 'wood' as const, perCell: 0.25 };
+
+/** Сколько дерева стоит мазок настила. Округление вверх — на мазок. */
+export const roadAmount = (cells: number): number =>
+  cells <= 0 ? 0 : Math.ceil(cells * ROAD_COST.perCell);
 
 /**
  * Цена клетки ограды — **измерена, а не назначена** (`npm run fence`).
@@ -212,6 +246,10 @@ export const WALL_SECONDS: Record<Exclude<WallTool, 'снос'>, number> = {
    * 11,7 с, округлённые до читаемой пятёрки. Считает это `npm run fence`.
    */
   'ограда': 10,
+  /** Настил вдвое быстрее ограды: класть доску проще, чем ставить её. */
+  'дорога': 5,
+  /** Фонарь — столб с плафоном: как лестница, постройка на одну клетку. */
+  'фонарь': 20,
   'башня': 60,
   'ворота': 60,
   'лестница': 20,
@@ -226,6 +264,8 @@ export const wallPrice = (
   cells: number,
   material: FenceMaterial = 'дерево',
 ): Partial<Resources> => {
+  if (tool === 'дорога') return { wood: roadAmount(Math.max(1, cells)) };
+  if (tool === 'фонарь') return { wood: WALL_COST['фонарь'] * Math.max(1, cells) };
   if (tool !== 'ограда') return { stone: WALL_COST[tool] * Math.max(1, cells) };
   const amount = fenceAmount(material, cells);
   return fenceResource(material) === 'wood' ? { wood: amount } : { stone: amount };
@@ -344,6 +384,32 @@ export function fenceBlock(walls: CampWalls, site: WallSite, spot: Spot): WallBl
 }
 
 /**
+ * Можно ли положить настил. Всё, что у стены, плюс одно: настил не идёт
+ * под то, что стоит, — стену, ограду, лестницу. Ворота тоже в списке:
+ * под аркой у набора свой проезд, вторая плита дала бы пол на полу.
+ */
+export function roadBlock(walls: CampWalls, site: WallSite, spot: Spot): WallBlock {
+  const why = wallBlock(site, spot);
+  if (why !== 'ok') return why;
+  const key = keyOf(spot);
+  if (walls.cells.includes(key) || fenceCells(walls).includes(key)
+    || walls.stairs[key] !== undefined) return 'busy';
+  return 'ok';
+}
+
+/**
+ * Можно ли поставить фонарь. Те же занятости, что у настила, плюс сам
+ * фонарь: два столба в одной клетке — не свет, а частокол. На настил
+ * фонарь встаёт: столб на досках — обычный уличный жест.
+ */
+export function lampBlock(walls: CampWalls, site: WallSite, spot: Spot): WallBlock {
+  const why = roadBlock(walls, site, spot);
+  if (why !== 'ok') return why;
+  if (lampCells(walls).includes(keyOf(spot))) return 'busy';
+  return 'ok';
+}
+
+/**
  * Ворота встают только в клетку стены, у которой ровно два соседа и они
  * напротив: арка в углу упёрлась бы в поворот хода. Это то же правило,
  * которым ворота ставит генератор замка, — и оно здесь одно на двоих.
@@ -444,12 +510,18 @@ export function strokeFit(
   walls: CampWalls,
   site: WallSite,
   path: readonly Spot[],
-  tool: 'стена' | 'ограда' = 'стена',
+  tool: 'стена' | 'ограда' | 'дорога' = 'стена',
 ): Spot[] {
-  const set = new Set([...walls.cells, ...fenceCells(walls)]);
+  // У настила своя занятость: доска не спорит со стеной за клетку —
+  // ей нельзя лишь под стоящее и на саму себя.
+  const set = tool === 'дорога'
+    ? new Set(roadCells(walls))
+    : new Set([...walls.cells, ...fenceCells(walls)]);
   const out: Spot[] = [];
   for (const spot of strokeCells(path)) {
-    const why = tool === 'ограда' ? fenceBlock(walls, site, spot) : wallBlock(site, spot);
+    const why = tool === 'ограда' ? fenceBlock(walls, site, spot)
+      : tool === 'дорога' ? roadBlock(walls, site, spot)
+        : wallBlock(site, spot);
     if (why !== 'ok') continue;
     if (set.has(keyOf(spot))) continue;
     set.add(keyOf(spot));
@@ -557,6 +629,13 @@ export function completeWallIfDue(walls: CampWalls, now: number): WallWork | nul
   } else if (work.tool === 'ограда') {
     const cells = fenceCells(walls);
     for (const spot of spots) if (!cells.includes(keyOf(spot))) cells.push(keyOf(spot));
+  } else if (work.tool === 'дорога') {
+    const cells = roadCells(walls);
+    for (const spot of spots) if (!cells.includes(keyOf(spot))) cells.push(keyOf(spot));
+  } else if (work.tool === 'фонарь') {
+    const cells = lampCells(walls);
+    const spot = spots[0]!;
+    if (!cells.includes(keyOf(spot))) cells.push(keyOf(spot));
   } else if (work.tool === 'башня') {
     const spot = spots[0]!;
     if (!walls.cells.includes(keyOf(spot))) walls.cells.push(keyOf(spot));
@@ -653,6 +732,13 @@ export function razeWall(walls: CampWalls, spot: Spot, resources?: Resources): b
     if (walls.gates.includes(key)) resources.stone += WALL_COST['ворота'];
     if (walls.stairs[key] !== undefined) resources.stone += WALL_COST['лестница'];
     if (walls.cells.includes(key)) resources.stone += WALL_COST['стена'];
+    if (lampCells(walls).includes(key)) resources.wood += WALL_COST['фонарь'];
+    if (roadCells(walls).includes(key)) {
+      // Возврат за настил — предельный, как у ограды и по той же дыре:
+      // цена дробная, ресурс целый (см. ограду ниже).
+      const had = roadCells(walls).length;
+      resources.wood += roadAmount(had) - roadAmount(had - 1);
+    }
     if (fenceCells(walls).includes(key)) {
       /**
        * Возврат за ограду — **предельный**, а не поклеточный, и это не
@@ -678,9 +764,16 @@ function razeAt(walls: CampWalls, spot: Spot): boolean {
   const at = walls.cells.indexOf(key);
   const fences = fenceCells(walls);
   const fenceAt = fences.indexOf(key);
-  const had = at >= 0 || fenceAt >= 0 || walls.stairs[key] !== undefined;
+  const roads = roadCells(walls);
+  const roadAt = roads.indexOf(key);
+  const lamps = lampCells(walls);
+  const lampAt = lamps.indexOf(key);
+  const had = at >= 0 || fenceAt >= 0 || roadAt >= 0 || lampAt >= 0
+    || walls.stairs[key] !== undefined;
   if (at >= 0) walls.cells.splice(at, 1);
   if (fenceAt >= 0) fences.splice(fenceAt, 1);
+  if (roadAt >= 0) roads.splice(roadAt, 1);
+  if (lampAt >= 0) lamps.splice(lampAt, 1);
   delete walls.towers[key];
   delete walls.stairs[key];
   const gate = walls.gates.indexOf(key);
@@ -734,13 +827,21 @@ export function fencePieces(walls: CampWalls): FencePiece[] {
   return buildFence(cells, fenceMaterial(walls), { rng: mulberry32(1) });
 }
 
+/** Клетки настила — для рендера: форму плиток выводит `roads.ts`. */
+export const roadSpots = (walls: CampWalls): Spot[] => roadCells(walls).map(parseKey);
+
+/** Клетки фонарей — для рендера. */
+export const lampSpots = (walls: CampWalls): Spot[] => lampCells(walls).map(parseKey);
+
 /** Сколько чего стоит в лагере — для панели стройки. */
 export function wallCount(
   walls: CampWalls,
-): Record<'стена' | 'ограда' | 'башня' | 'ворота' | 'лестница', number> {
+): Record<Exclude<WallTool, 'снос'>, number> {
   return {
     'стена': walls.cells.length - Object.keys(walls.towers).length - walls.gates.length,
     'ограда': fenceCells(walls).length,
+    'дорога': roadCells(walls).length,
+    'фонарь': lampCells(walls).length,
     'башня': Object.keys(walls.towers).length,
     'ворота': walls.gates.length,
     'лестница': Object.keys(walls.stairs).length,
