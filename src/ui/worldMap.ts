@@ -435,7 +435,9 @@ export class WorldMap {
     // сюрприз после входа, которого раздел прямо не хочет.
     const fx = effectOf(state.event);
     const mul = lootMul(state.rich) * fx.loot;
-    const stake = TIER_RISK[node.tier] + fx.risk;
+    // Зажата единицей — как и в `atRisk`: на Дне база уже 100%, и «125%»
+    // было бы обещанием отнять больше, чем игрок несёт.
+    const stake = Math.min(1, TIER_RISK[node.tier] + fx.risk);
     const clan = state.clan === null ? null : CLANS[state.clan % CLANS.length]!;
 
     const pips = Array.from(
