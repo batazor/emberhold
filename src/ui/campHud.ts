@@ -10,8 +10,9 @@ import {
   upgradeBlock,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
-import { GEAR, GEAR_COST, GEAR_ORDER, gearLine } from '../sim/gear';
-import type { GearSlot } from '../sim/gear';
+import { ARROW_PACK, ARROW_PACK_COST, canBuyArrows } from '../sim/camp';
+import { GEAR, GEAR_COST, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine, gearMods } from '../sim/gear';
+import type { GearSlot, Offhand } from '../sim/gear';
 import {
   CONSUMABLES,
   CONSUMABLE_ORDER,
@@ -54,6 +55,10 @@ export interface CampCallbacks {
   onMove(id: BuildingId): void;
   /** §6.1.6 — стройка стен: карточка открывает панель, дальше жест по земле. */
   onWalls(): void;
+  /** §14.3 — пачка стрел за железо. Единственный способ наполнить колчан. */
+  onBuyArrows(): void;
+  /** §14.2 — что в левой руке: фонарь или щит. Бесплатно и мгновенно. */
+  onOffhand(offhand: Offhand): void;
 }
 
 const BLOCK_TEXT: Record<string, string> = {
@@ -136,6 +141,15 @@ export class CampHud {
   private readonly moveButton: HTMLButtonElement;
   private readonly bar: HTMLElement;
   private slots!: HTMLElement;
+  private quiver!: HTMLButtonElement;
+  private offhand!: HTMLElement;
+  private readonly offhandButtons = new Map<Offhand, HTMLButtonElement>();
+  /**
+   * Стреляет ли тот, кем сейчас идут. Колчан (§14.3) есть только у стрелка,
+   * а класс живёт в ростере, которого лагерь не знает и знать не должен:
+   * `CampState` — про постройки и припасы. Поэтому его сообщают снаружи.
+   */
+  private ranged = false;
 
   private open: SheetKind = null;
   /** Что говорить игроку и в каком порядке (`banner.ts`). */
@@ -228,6 +242,35 @@ export class CampHud {
     this.slots = document.createElement('div');
     this.slots.className = 'slots';
     shop.appendChild(this.slots);
+
+    /**
+     * §14.3 и §14.2 — колчан и левая рука.
+     *
+     * Обе механики были написаны, оттестированы и **не подключены ни к одной
+     * кнопке**: `buyArrows` и `setOffhand` не звал никто. Колчан начинался
+     * пустым и мог только убывать, то есть Лучник всегда дрался со штрафом
+     * пустого колчана, а левая рука навсегда оставалась фонарём. Две
+     * записанные решения игрок не мог принять вовсе.
+     *
+     * Место им здесь, а не в листе Мастерской: ковка стоит ресурсов и меняет
+     * предмет, а это — сборы перед выходом. Стрелы кончаются каждую вылазку,
+     * рука перекладывается бесплатно, и оба вопроса задаются ровно тогда же,
+     * когда игрок берёт расходники.
+     */
+    this.quiver = document.createElement('button');
+    this.quiver.addEventListener('click', () => this.cb.onBuyArrows());
+    shop.appendChild(this.quiver);
+
+    this.offhand = document.createElement('div');
+    this.offhand.className = 'slots';
+    for (const hand of OFFHAND_ORDER) {
+      const b = document.createElement('button');
+      b.className = 'slot';
+      b.addEventListener('click', () => this.cb.onOffhand(hand));
+      this.offhandButtons.set(hand, b);
+      this.offhand.appendChild(b);
+    }
+    shop.appendChild(this.offhand);
     this.sections.set('shop', shop);
     this.sheet.appendChild(shop);
 
@@ -452,6 +495,39 @@ export class CampHud {
       );
       button.disabled = full || !afford;
     }
+    /**
+     * §14.3 — колчан. Вместимость даёт лук (`gearMods`), и без лука строка
+     * не показывается вовсе: у ближника колчан не значит ничего, а кнопка,
+     * которая ничего не делает, хуже отсутствующей.
+     */
+    const cap = this.ranged ? gearMods(camp.gear, camp.offhand).arrows : 0;
+    this.quiver.style.display = cap > 0 ? '' : 'none';
+    if (cap > 0) {
+      const price = (Object.entries(ARROW_PACK_COST) as [ResourceKind, number][])
+        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .join(' · ');
+      this.quiver.textContent = `Стрелы ${camp.arrows} / ${cap} · +${ARROW_PACK} · ${price}`;
+      this.quiver.title = 'Колчан пустеет за вылазку — донесённое возвращается в лагерь';
+      this.quiver.disabled = !canBuyArrows(camp, cap);
+    }
+
+    /**
+     * §14.2 — левая рука. Выбор бесплатный и мгновенный: он обязан
+     * пересматриваться перед каждым выходом, иначе слот теряет смысл.
+     * Уровень у обоих предметов один и тот же — кован слот, а не предмет.
+     */
+    const level = camp.gear.torch;
+    this.offhand.style.display = level > 0 ? '' : 'none';
+    for (const hand of OFFHAND_ORDER) {
+      const b = this.offhandButtons.get(hand);
+      if (b === undefined) continue;
+      const def = OFFHAND[hand];
+      b.textContent = def.name;
+      b.title = gearItemLine(def, level);
+      b.className = 'slot' + (camp.offhand === hand ? '' : ' empty');
+      b.disabled = camp.offhand === hand;
+    }
+
     this.slots.innerHTML = '';
     for (let i = 0; i < CONSUMABLE_SLOTS; i++) {
       const taken = camp.loadout[i];
@@ -597,6 +673,17 @@ export class CampHud {
   }
 
   /* ---------- мелочи ---------- */
+
+  /**
+   * Кем идут: стрелок или ближник. Меняет только то, показывать ли колчан —
+   * §14.3 у ближника не значит ничего, и строка «Стрелы 0 / 2» у Рыцаря
+   * была бы обещанием механики, которой у него нет.
+   */
+  setRanged(ranged: boolean): void {
+    if (this.ranged === ranged) return;
+    this.ranged = ranged;
+    this.paintOpen();
+  }
 
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
