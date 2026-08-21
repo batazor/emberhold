@@ -176,17 +176,20 @@ export type DwellerLook = 'поселенец' | 'торговец' | 'кузн�
 /**
  * Кем выходят гуляющие. Торговца в списке нет намеренно: он не выбирается
  * очередью, а ставится отдельно и единственный — стоящий (§13.5).
- * Кузнеца и охотника нет решением, а не устройством: на общем риге они
- * ходить умеют, но ремесленник — человек при деле, и гуляющий кузнец
- * читался бы четвёртым поселенцем, а не кузнецом.
+ * Кузнеца и охотника нет по той же причине: они не гуляющие из очереди,
+ * а ремесленники со своим местом у края двора и короткой отлучкой от него.
  */
 export const DWELLER_LOOKS: readonly DwellerLook[] = ['поселенец'];
 
+/** Ремесленники: своё место у дела, долгая стоянка на нём и короткий круг. */
+export const CRAFT_LOOKS: ReadonlySet<DwellerLook> = new Set(['кузнец', 'охотник']);
+
 /**
- * Кто во дворе стоит, а не ходит. Торговец — по §13.5 (стоящий и есть
- * указатель точки обмена), кузнец и охотник — по ремеслу (выше).
+ * Сколько ремесленник стоит на клетке дела между отлучками. Против пары
+ * десятков секунд хода по кольцу это большая часть цикла: двор читает его
+ * занятым делом, которое иногда отпускает, — а не четвёртым поселенцем.
  */
-export const STANDING_LOOKS: ReadonlySet<DwellerLook> = new Set(['торговец', 'кузнец', 'охотник']);
+export const CRAFT_REST = 26;
 
 /**
  * Шаг жильца — медленнее и гарнизона, и героя (1,67 клетки в секунду,
@@ -236,6 +239,12 @@ export interface YardWalk {
   readonly stops: readonly number[];
   /** Полный круг в секундах — ход плюс все стоянки. */
   readonly cycle: number;
+  /**
+   * Стоянка на клетке дела — `path[0]` — вместо обычной `DWELLER_STAND`.
+   * Есть только у ремесленников: их круг — это не прогулка, а отлучка,
+   * и большую часть цикла они проводят дома.
+   */
+  readonly rest?: number;
 }
 
 export interface Garrison {
@@ -427,12 +436,14 @@ function yardWalks(
   }
 
   /**
-   * Кузнец и охотник — стоящие: ремесленник при деле, а не на прогулке
-   * (`DWELLER_LOOKS`). Стоят они **у края двора**, а не на проходе:
-   * стоящий посреди двора читается указателем — тем самым, каким торговец
-   * зовёт к обмену (§13.5), — а стоящий у стены читается занятым делом.
-   * Клетка каждого закрывается для чужих обходов по той же причине, что
-   * у торговца: неподвижного не расталкивают, его обходят дорогой.
+   * Кузнец и охотник — при деле, а не на прогулке. Место каждого — **у края
+   * двора**, не на проходе: стоящий посреди двора читается указателем — тем
+   * самым, каким торговец зовёт к обмену (§13.5), — а стоящий у стены
+   * читается занятым делом. Но дело отпускает: раз в цикл ремесленник
+   * обходит пару углов двора и возвращается — короткая отлучка
+   * (`CRAFT_REST` дома против пары десятков секунд хода), а не четвёртый
+   * поселенец. Клетка дела закрывается для чужих обходов по той же причине,
+   * что у торговца: подолгу стоящего не расталкивают, его обходят дорогой.
    */
   const edge = tiles.filter((c) =>
     [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => {
@@ -450,9 +461,69 @@ function yardWalks(
         && out.every((w) => Math.hypot(w.path[0]!.x - c.x, w.path[0]!.z - c.z) >= apart),
     );
     if (spots.length === 0) continue;
-    const spot = spots[randInt(rng, spots.length)]!;
-    mask[idx(loc.size, spot.x, spot.z)] = 1;
-    out.push({ look, path: [spot], stops: [0], cycle: DWELLER_STAND });
+    const home = spots[randInt(rng, spots.length)]!;
+
+    // Отлучка: короткое кольцо от дела через два угла двора и обратно.
+    // Углы ближе, чем у поселенцев (`apart / 2`): это обход своего угла
+    // двора, а не прогулка по всему. Не замкнулось — ремесленник просто
+    // стоит: пусть двор потеряет отлучку, чем кузнеца.
+    let path: Cell[] = [home];
+    let stops: number[] = [0];
+    let length = 0;
+    for (let attempt = 0; attempt < 8 && length === 0; attempt++) {
+      const corners: Cell[] = [home];
+      for (let c = 0; c < 2; c++) {
+        let pick: Cell | null = null;
+        for (let tries = 0; tries < 24 && pick === null; tries++) {
+          const cand = tiles[randInt(rng, tiles.length)]!;
+          // Угол отлучки не дальше `apart` от дела: кольцо обходит свой
+          // угол двора, а не весь двор.
+          if (mask[idx(loc.size, cand.x, cand.z)] === 0
+            && Math.hypot(home.x - cand.x, home.z - cand.z) <= apart
+            && corners.every((s) => Math.hypot(s.x - cand.x, s.z - cand.z) >= Math.max(2, apart / 2))) {
+            pick = cand;
+          }
+        }
+        if (pick !== null) corners.push(pick);
+      }
+      if (corners.length < 3) continue;
+      const legs: Cell[] = [home];
+      const ends: number[] = [];
+      let broken = false;
+      for (let c = 0; c < corners.length; c++) {
+        const leg = findPath(loc.size, mask, corners[c]!, corners[(c + 1) % corners.length]!);
+        if (leg.length === 0) {
+          broken = true;
+          break;
+        }
+        legs.push(...leg);
+        ends.push(legs.length - 1);
+      }
+      if (broken) continue;
+      legs.pop();
+      let laps = 0;
+      for (let k = 0; k < legs.length; k++) {
+        const a = legs[k]!;
+        const b = legs[(k + 1) % legs.length]!;
+        laps += Math.hypot(b.x - a.x, b.z - a.z);
+      }
+      // Отлучка короче дела по построению: кольцо, на которое уходит
+      // больше `CRAFT_REST` хода, — уже прогулка, и такая попытка бракуется.
+      if (laps / DWELLER_SPEED > CRAFT_REST) continue;
+      path = legs;
+      stops = ends.map((v) => v % legs.length);
+      length = laps;
+    }
+
+    mask[idx(loc.size, home.x, home.z)] = 1;
+    out.push({
+      look,
+      path,
+      stops,
+      // Стоянки на углах — обычные, дома — долгая: отлучка, а не прогулка.
+      cycle: length / DWELLER_SPEED + (stops.length - 1) * DWELLER_STAND + CRAFT_REST,
+      rest: CRAFT_REST,
+    });
   }
 
   /**
@@ -543,10 +614,13 @@ export interface Dweller extends Marcher {
  */
 export function dwellersAt(g: Garrison, t: number): Dweller[] {
   const folk = g.yard.map((w) => walkYard(w, t));
-  // Стоящие неподвижны и в разведении тоже: сдвинуть торговца значило бы
-  // увести точку обмена (§13.5), а кузнеца и охотника — оторвать от места,
-  // закрытого для чужих обходов. Обходят их — как и всякого, кто стоит.
-  keepApart(folk, { fixed: (i) => STANDING_LOOKS.has(folk[i]!.look) });
+  // Торговец неподвижен и в разведении: сдвинуть его значило бы увести
+  // точку обмена (§13.5). Ремесленник податлив всегда, даже когда стоит
+  // у дела: «неподвижен, пока стоит» здесь пробовалось и рвало соседям
+  // непрерывность шага — жёсткость, включающаяся на полпути, отдаёт
+  // весь накопленный сдвиг одним кадром. Толкают его всё равно редко:
+  // клетка дела закрыта для чужих обходов.
+  keepApart(folk, { fixed: (i) => folk[i]!.look === 'торговец' });
   return folk;
 }
 
@@ -568,10 +642,13 @@ function walkYard(w: YardWalk, t: number): Dweller {
     left -= walk;
     const next = (i + 1) % w.path.length;
     if (stops.has(next)) {
-      if (left < DWELLER_STAND) {
+      // Дома ремесленник стоит дольше, чем на углу: стоянка на `path[0]` —
+      // это его дело, а не передышка обхода.
+      const pause = next === 0 ? (w.rest ?? DWELLER_STAND) : DWELLER_STAND;
+      if (left < pause) {
         return { x: to.x, z: to.z, facing, walking: false, look: w.look };
       }
-      left -= DWELLER_STAND;
+      left -= pause;
     }
   }
   // Сюда не приходят: сумма отрезков и стоянок и есть цикл. Но вернуть

@@ -26,7 +26,8 @@ import {
   ARCHER_SPEED,
   DWELLER_SPEED,
   DWELLER_STAND,
-  STANDING_LOOKS,
+  CRAFT_LOOKS,
+  CRAFT_REST,
   PATROL_SPEED,
   SQUAD,
   archerAt,
@@ -439,12 +440,12 @@ describe('Гарнизон: стрелок на стене', () => {
 describe('Замок: жильцы двора', () => {
   test('жильцы есть, и двор ими не забит', () => {
     for (const { site, g } of guards) {
-      const walking = g.yard.filter((w) => w.path.length > 1);
-      const standing = g.yard.filter((w) => w.path.length === 1);
+      const strollers = g.yard.filter((w) => w.look === 'поселенец');
+      const craftsmen = g.yard.filter((w) => CRAFT_LOOKS.has(w.look));
       assert.ok(g.yard.length >= 2, `сид ${site.loc.seed}: двор пуст`);
-      assert.ok(walking.length <= 4, `сид ${site.loc.seed}: гуляющих ${walking.length} — это толпа`);
-      // Стоящих не больше трёх: торговец (§13.5) и два ремесленника (§6.1.13).
-      assert.ok(standing.length <= 3, `сид ${site.loc.seed}: стоящих ${standing.length}`);
+      assert.ok(strollers.length <= 4, `сид ${site.loc.seed}: гуляющих ${strollers.length} — это толпа`);
+      // Ремесленников не больше двух: кузнец и охотник, по месту у дела на каждого.
+      assert.ok(craftsmen.length <= 2, `сид ${site.loc.seed}: ремесленников ${craftsmen.length}`);
       let free = 0;
       for (let z = 0; z < site.loc.size; z++) {
         for (let x = 0; x < site.loc.size; x++) {
@@ -456,11 +457,12 @@ describe('Замок: жильцы двора', () => {
        * порогом в двоих: на самом тесном дворе порог плотность перебивает.
        * Порог сохранён потому, что двор без жильцов не выполняет обещания
        * карточки, а двое на два десятка клеток — всё ещё двор, а не толпа.
-       * Мерится он по гуляющим: стоящий у края клеток обхода не ест.
+       * Мерится он по поселенцам: торговец стоит, а отлучка ремесленника —
+       * короткое кольцо у своего угла, а не полноценный обход.
        */
       assert.ok(
-        free / Math.max(1, walking.length) >= 10,
-        `сид ${site.loc.seed}: ${free} свободных клеток двора на ${walking.length} гуляющих`,
+        free / Math.max(1, strollers.length) >= 10,
+        `сид ${site.loc.seed}: ${free} свободных клеток двора на ${strollers.length} гуляющих`,
       );
     }
   });
@@ -468,10 +470,13 @@ describe('Замок: жильцы двора', () => {
   test('обход замкнут, лежит во дворе и не идёт сквозь занятое', () => {
     for (const { site, g } of guards) {
       for (const w of g.yard) {
-        // Обход из одной клетки бывает только у стоящих: торговец на лавке
-        // (§13.5), кузнец и охотник у края двора (§6.1.13).
+        // Обход из одной клетки бывает у торговца (§13.5) — и у ремесленника,
+        // чьё кольцо отлучки не замкнулось: тогда он просто стоит у дела.
         if (w.path.length === 1) {
-          assert.ok(STANDING_LOOKS.has(w.look), `сид ${site.loc.seed}: гуляющий «${w.look}» встал`);
+          assert.ok(
+            w.look === 'торговец' || CRAFT_LOOKS.has(w.look),
+            `сид ${site.loc.seed}: гуляющий «${w.look}» встал`,
+          );
           if (w.look === 'торговец') {
             assert.ok(site.trader !== null, `сид ${site.loc.seed}: стоящий торговец без лавки`);
             assert.deepEqual(w.path[0], site.trader, `сид ${site.loc.seed}: стоит не на лавке`);
@@ -564,6 +569,35 @@ describe('Замок: жильцы двора', () => {
         assert.ok(
           stood > DWELLER_STAND,
           `сид ${site.loc.seed}: жилец ${i} за круг ни разу не постоял`,
+        );
+      }
+    }
+  });
+
+  /**
+   * Ремесленник — при деле, а не на прогулке: круг у него — отлучка,
+   * и большую часть цикла он стоит на своей клетке. Иначе кузнец с молотом
+   * читался бы четвёртым поселенцем, и облик перестал бы что-то значить.
+   */
+  test('отлучка ремесленника короче его дела', () => {
+    for (const { site, g } of guards) {
+      for (let i = 0; i < g.yard.length; i++) {
+        const w = g.yard[i]!;
+        if (!CRAFT_LOOKS.has(w.look)) continue;
+        assert.equal(w.rest, CRAFT_REST, `сид ${site.loc.seed}: у «${w.look}» нет долгой стоянки`);
+        let stood = 0;
+        for (let t = 0; t < w.cycle; t += TICK) {
+          if (!dwellersAt(g, t)[i]!.walking) stood += TICK;
+        }
+        assert.ok(
+          stood >= w.cycle / 2,
+          `сид ${site.loc.seed}: «${w.look}» стоит ${stood.toFixed(1)} с из ${w.cycle.toFixed(1)}`,
+        );
+        // Дома он стоит на своей клетке — той, от которой идёт отлучка.
+        const man = dwellersAt(g, w.cycle - 0.1)[i]!;
+        assert.ok(
+          Math.hypot(man.x - w.path[0]!.x, man.z - w.path[0]!.z) < 1e-6,
+          `сид ${site.loc.seed}: «${w.look}» в конце цикла не у дела`,
         );
       }
     }
