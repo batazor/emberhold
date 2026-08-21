@@ -64,11 +64,15 @@ describe('Срабатывание', () => {
   const raidWith = (consumables: ('bandage' | 'ration' | 'smoke')[], tier: 1 | 2 = 1) =>
     createRaid({ seed: 5, tier, kitchenLevel: 3, storageLevel: 2, consumables });
 
-  test('§21.1 — повязка срабатывает сама на последней ране', () => {
+  test('§21.1 — повязка срабатывает сама на четверти здоровья', () => {
     const raid = raidWith(['bandage']);
-    raid.hero.wounds = 1;
+    // Четверть здоровья — та же граница, на которой HUD красит число красным:
+    // «плохо» в правилах и «плохо» на экране обязаны значить одно.
+    raid.hero.hp = Math.floor(raid.hero.hpMax / 4);
+    const before = raid.hero.hp;
     stepRaid(raid, TICK, true, 5);
-    assert.equal(raid.hero.wounds, 2, 'рана возвращена');
+    assert.ok(raid.hero.hp > before, 'здоровье возвращено');
+    assert.ok(raid.hero.hp <= raid.hero.hpMax, 'и не выше потолка');
     assert.deepEqual(raid.fired, ['bandage']);
     assert.equal(raid.consumables.length, 0, 'расходник истрачен');
   });
@@ -83,7 +87,7 @@ describe('Срабатывание', () => {
 
   test('§21 — повязка страхует ошибку, а не воскрешает', () => {
     const raid = raidWith(['bandage']);
-    raid.hero.wounds = 0;
+    for (const f of raid.party) f.hp = 0;
     stepRaid(raid, TICK, true, 5);
     assert.equal(raid.status, 'failed');
     assert.deepEqual(raid.fired, [], 'повязка не тратится на труп');
@@ -106,10 +110,10 @@ describe('Срабатывание', () => {
 
   test('§21 — без расходников ничего не срабатывает', () => {
     const raid = raidWith([]);
-    raid.hero.wounds = 1;
+    raid.hero.hp = 1;
     setSupply(raid, 0);
     stepRaid(raid, TICK, true, 5);
     assert.deepEqual(raid.fired, []);
-    assert.equal(raid.hero.wounds, 1);
+    assert.equal(raid.hero.hp, 1);
   });
 });

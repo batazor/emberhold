@@ -1,6 +1,6 @@
 import { TIER_NAME, TIER_RISK } from '../sim/config';
 import { CONSUMABLES } from '../sim/consumables';
-import { HERO_CLASSES, SKILLS } from '../sim/heroes';
+import { SKILLS } from '../sim/heroes';
 import { atRisk, backSteps } from '../sim/raid';
 import type { RaidState } from '../sim/raid';
 import type { Reveal } from '../sim/onboarding';
@@ -8,7 +8,7 @@ import type { Reveal } from '../sim/onboarding';
 /**
  * §6: UI — DOM поверх канваса, не внутри сцены.
  * §11.2: ставка показывается числом «12 из 19», а не процентом.
- * §11.3: здоровье — раны, а не полоска.
+ * §11.3: здоровье — полоса очков; правило «раны, а не полоска» отменено там же.
  */
 export interface HudCallbacks {
   onRotate(steps: number): void;
@@ -42,8 +42,6 @@ export class Hud {
   /** Подсказка онбординга. Живёт, пока кадр не сменится, — в отличие от
    *  реплик вылазки, которые гаснут через пару секунд. */
   private sticky = '';
-  /** Число сегментов ран рисуется по классу героя: у Рыцаря их четыре. */
-  private woundSlots = 0;
 
   constructor(parent: HTMLElement, private readonly cb: HudCallbacks) {
     this.root = document.createElement('div');
@@ -55,8 +53,8 @@ export class Hud {
           <div class="bar" data-row="food"><i id="h-food-bar"></i></div>
           <span class="num" id="h-food" data-row="food">0</span>
 
-          <span class="lbl" data-row="wounds">Раны</span>
-          <div class="bar segmented" id="h-wounds" data-row="wounds"></div>
+          <span class="lbl" data-row="wounds">Здоровье</span>
+          <div class="bar" id="h-wounds" data-row="wounds"><i></i></div>
           <span class="num" id="h-wounds-num" data-row="wounds">0</span>
 
           <span class="lbl" data-row="bag">Рюкзак</span>
@@ -139,11 +137,6 @@ export class Hud {
 
   sync(state: RaidState, dt: number): void {
     const tier = state.loc.tier;
-    const maxWounds = HERO_CLASSES[state.loadout.cls].wounds;
-    if (this.woundSlots !== maxWounds) {
-      this.wounds.innerHTML = Array.from({ length: maxWounds }, () => '<i></i>').join('');
-      this.woundSlots = maxWounds;
-    }
 
     // Кнопка не исчезает после применения, а гаснет: исчезнувшая читается
     // как поломка, а гаснущая — как «уже потратил» (§11.7 — отката нет).
@@ -167,14 +160,16 @@ export class Hud {
     this.foodBar.className = left <= 0.2 ? 'bad' : left <= 0.5 ? 'warn' : 'good';
     this.food.textContent = String(Math.ceil(food));
 
-    // Раны — сегменты, а не сплошная полоса: §11.3 требует, чтобы каждая
-    // потеря читалась мгновенно, а не как сдвиг шкалы.
-    const segments = this.wounds.children;
-    for (let i = 0; i < segments.length; i++) {
-      (segments[i] as HTMLElement).className = i < state.hero.wounds ? 'on' : '';
-    }
-    this.woundsNum.textContent = `${state.hero.wounds} / ${maxWounds}`;
-    this.woundsNum.className = `num${state.hero.wounds <= 1 ? ' bad' : ''}`;
+    // §11.3 — здоровье полосой. Сегментами оно было, пока считалось целыми
+    // ранами; на шкале сегмент перестал что-либо значить, а полоса читается
+    // тем же взглядом, что и провиант рядом.
+    const hp = Math.max(0, state.hero.hp);
+    const hpMax = Math.max(1, state.hero.hpMax);
+    (this.wounds.firstElementChild as HTMLElement).style.width = `${(hp / hpMax) * 100}%`;
+    this.woundsNum.textContent = `${Math.ceil(hp)} / ${hpMax}`;
+    // Красным — четверть: та же граница, на которой срабатывает повязка (§21.2),
+    // чтобы «плохо» на экране и «плохо» в правилах значили одно.
+    this.woundsNum.className = `num${hp <= hpMax / 4 ? ' bad' : ''}`;
 
     this.bagBar.style.width = `${(state.bagTotal / state.capacity) * 100}%`;
     this.bag.textContent = `${state.bagTotal} / ${state.capacity}`;
@@ -198,7 +193,8 @@ export class Hud {
     // держит четыре строки из §11, и пятая превратила бы её в приборную
     // доску; нижняя же означает ровно то же самое — «что я взял с собой,
     // и оно тратится само». Сегментами, а не числом: §11.2 требует, чтобы
-    // игрок считал штуки, и раны уже считаются так же.
+    // игрок считал штуки, а здоровье с §11.3 считается полосой и такой
+    // поддержки больше не даёт.
     const key = `${state.consumables.join(',')}|${state.fired.join(',')}|${state.arrows}/${state.arrowsMax}`;
     if (key !== this.slotsKey) {
       this.slotsKey = key;

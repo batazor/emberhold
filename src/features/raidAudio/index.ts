@@ -61,7 +61,7 @@ export function createRaidEar(sink: Sink = AUDIO): RaidEar {
 
   const reset = (state: RaidState): void => {
     heard.steps = state.steps;
-    heard.wounds = state.hero.wounds;
+    heard.wounds = state.hero.hp;
     heard.bag = state.bagTotal;
     heard.enemyHp = enemyHpOf(state);
     heard.alive = aliveOf(state);
@@ -82,7 +82,7 @@ export function createRaidEar(sink: Sink = AUDIO): RaidEar {
       // разом. §18.3 — попадание не громче ранения, и подавно не поверх смерти.
       if (enemyHp < heard.enemyHp && alive === heard.alive) sink.play('hit');
       if (alive < heard.alive) sink.play('kill');
-      if (state.hero.wounds < heard.wounds) sink.play('wound');
+      if (state.hero.hp < heard.wounds) sink.play('wound');
       if (state.bagTotal > heard.bag) sink.play('chest');
       const ticks = foodTicksOf(state);
       if (ticks > heard.ticks) sink.play('tick');

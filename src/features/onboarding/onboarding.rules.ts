@@ -95,10 +95,10 @@ describe('Раскадровка: вылазка ведёт кадры', () => {
     const s = stand('approach');
     const raid = firstRaid();
     raid.inFight = true;
-    const before = raid.hero.wounds;
+    const before = raid.hero.hp;
     s.director.drive(raid);
     assert.equal(s.shakes(), 1, 'рана прошла незамеченной');
-    assert.equal(raid.hero.wounds, before - 1);
+    assert.ok(raid.hero.hp < before, 'здоровье не убыло');
     assert.equal(s.director.step, 'wound');
     // Кадр сменился, но даже вернувшись на него, второй раны не будет.
     s.director.set('approach');
@@ -165,7 +165,7 @@ describe('Раскадровка: перезапуск вылазки', () => {
     const raid = firstRaid();
     s.director.enterRaid(raid);
     // Не скриптовая — просто получил в бою.
-    raid.hero.wounds -= 1;
+    raid.hero.hp -= 1;
     s.director.drive(raid);
     assert.equal(s.director.step, 'wound');
     assert.equal(s.shakes(), 0, 'настоящая рана тряхнула экран как скриптовая');

@@ -1,12 +1,14 @@
+import { HERO_HP } from './balance';
 import { kitchenFood, storageCapacity } from './camp';
 import {
   ENEMY_WAKE_SHARE,
   FOOD_COST,
   HERO_REACH,
   ARROWS_PER_CONTAINER,
-  MIN_PIERCE_SHARE,
-  PIERCE_STEP,
-  PROJECTILE_HIT,
+  BANDAGE_HEAL,
+  HUNGER_BITE,
+  MIN_DAMAGE,
+  MIN_DAMAGE_SHARE,
   RANGED_MELEE_PENALTY,
   HERO_SPEED,
   TIER_RISK,
@@ -48,7 +50,6 @@ import type {
   EnemyKind,
   GameLocation,
   Fighter,
-  Projectile,
   RaidState,
   RaidStatus,
   Tier,
@@ -186,7 +187,8 @@ export function createRaid(opts: RaidOptions): RaidState {
       prevX: loc.evac.x,
       prevZ: loc.evac.z,
       facing: 0,
-      wounds: who.wounds + mods.wounds,
+      hp: HERO_HP + who.hp + mods.wounds,
+      hpMax: HERO_HP + who.hp + mods.wounds,
       cooldown: 0,
       arrows: quiverOf,
       arrowsMax: quiverOf,
@@ -205,7 +207,8 @@ export function createRaid(opts: RaidOptions): RaidState {
     prevZ: loc.evac.z,
     facing: 0,
     // Раны — от класса (§11.7) плюс броня (§14).
-    wounds: loadout.wounds + mods.wounds,
+    hp: HERO_HP + loadout.hp + mods.wounds,
+    hpMax: HERO_HP + loadout.hp + mods.wounds,
     cooldown: 0,
     arrows: quiver,
     arrowsMax: quiver,
@@ -258,7 +261,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     smokeUntil: 0,
     lastHitBy: null,
     lastWoundFrom: null,
-    woundsTaken: 0,
+    damageTaken: 0,
     fights: 0,
     joined: 0,
     kills: 0,
@@ -529,87 +532,19 @@ function stepMovement(state: RaidState, dt: number): void {
 }
 
 /**
- * §11.3 — сколько ран стоит удар этого противника по этому герою.
+ * §11.3 — урон. Одна формула в обе стороны, как раздел её и записал.
  *
- * Защита не отменяет удар, а делит пробой: часть проходит всегда
- * (MIN_PIERCE_SHARE), поэтому неуязвимости не существует по построению.
- * Раны при этом остаются целыми — меняется не их дробность, а их число.
- */
-export function woundsPerHit(attack: number, defense: number): number {
-  const pierce = Math.max(attack * MIN_PIERCE_SHARE, attack - defense / 2);
-  return 1 + Math.floor(Math.max(0, pierce - 1) / PIERCE_STEP);
-}
-
-/**
- * §11.3 — полёт снарядов. Идёт **до** боя, чтобы выстрел, сделанный в этом
- * тике, не долетал в этом же: иначе дальний бой отличался бы от ближнего
- * только словом, а фора, за которую игрок уходит с линии, не существовала бы.
+ * Работать так она стала только со шкалой: пока здоровье считалось целыми
+ * ранами, «минус половина Защиты» вырождалось — при любой Защите удар стоил
+ * ровно одной раны, и характеристика не делала ничего. Половину работы
+ * над боем занял обход этого вырождения порогами; со шкалой порогов
+ * не нужно, и Защита смягчает удар плавно.
  *
- * Снаряд кончается ровно тремя способами, и все три обязаны быть достижимы:
- * попал, врезался в камень, дошёл до точки прицеливания и никого там не нашёл.
- * Третий — и есть промах: цель ушла, пока он летел.
+ * MIN_DAMAGE держит нижнюю границу: неуязвимости не существует
+ * по построению, а не по настройке.
  */
-function stepProjectiles(state: RaidState, dt: number): void {
-  const { loc, hero } = state;
-  if (state.projectiles.length === 0) return;
-
-  const alive: Projectile[] = [];
-  for (const p of state.projectiles) {
-    p.prevX = p.x;
-    p.prevZ = p.z;
-
-    const toAimX = p.aimX - p.x;
-    const toAimZ = p.aimZ - p.z;
-    const left = Math.hypot(toAimX, toAimZ);
-    const move = p.speed * dt;
-
-    // Дошёл до точки прицеливания и никого не задел — промах.
-    if (left <= move) {
-      continue;
-    }
-    p.x += (toAimX / left) * move;
-    p.z += (toAimZ / left) * move;
-
-    // Камень останавливает снаряд там же, где перекрывает видимость:
-    // одна и та же сетка, иначе выстрел «сквозь стену» вернулся бы
-    // с другой стороны.
-    const cell = idx(loc.size, Math.round(p.x), Math.round(p.z));
-    if (loc.blocked[cell]) continue;
-
-    if (p.from === 'enemy') {
-      if (Math.hypot(hero.x - p.x, hero.z - p.z) <= PROJECTILE_HIT) {
-        // §11.7 «Заслон» — удар отражается целиком, но снаряд всё равно
-        // прилетает: игрок должен видеть, что его отбили, а не что мимо.
-        if (skillActive(state, 'guard')) {
-          state.events.push('Заслон держит');
-        } else {
-          const took = woundsPerHit(p.power, state.loadout.defense + state.mods.defense);
-          hero.wounds -= took;
-          state.woundsTaken += took;
-          state.lastHitBy = p.kind;
-          state.lastWoundFrom = 'enemy';
-          state.events.push(`${p.kind === null ? 'Выстрел' : ENEMY_STATS[p.kind].name} бьёт`);
-        }
-        continue;
-      }
-    } else {
-      const target = loc.enemies.find((e) => e.id === p.targetId);
-      if (target !== undefined && target.hp > 0
-        && Math.hypot(target.x - p.x, target.z - p.z) <= PROJECTILE_HIT) {
-        target.hp -= p.power;
-        if (target.hp <= 0) {
-          target.awake = false;
-          state.kills += 1;
-          state.events.push(`${ENEMY_STATS[target.kind].name} падёт`);
-        }
-        continue;
-      }
-    }
-
-    alive.push(p);
-  }
-  state.projectiles = alive;
-}
+export const damageOf = (attack: number, defense: number): number =>
+  Math.max(MIN_DAMAGE, attack * MIN_DAMAGE_SHARE, attack - defense / 2);
 
 function stepContact(state: RaidState, dt: number, vision: number): void {
   const { hero, loc } = state;
@@ -687,9 +622,15 @@ function stepConsumables(state: RaidState): void {
 
   // Повязка — на последней ране, до того как её снимут. Иначе она лечила бы
   // труп, а §21 обещает страховку от ошибки, а не воскрешение.
-  if (hero.wounds === 1 && state.consumables.includes('bandage')) {
+  // §21.2 — повязка страхует ошибку маршрута. Срабатывает на четверти
+  // здоровья: «последней раны», по которой она срабатывала раньше,
+  // на шкале не существует.
+  // §21.2 — «страхует ошибку, а не воскрешает»: на нуле она не срабатывает.
+  // С целыми ранами это выходило само (условие было «ровно одна рана»),
+  // на шкале ноль попадает в «четверть и ниже», и правило надо назвать.
+  if (hero.hp > 0 && hero.hp <= hero.hpMax / 4 && state.consumables.includes('bandage')) {
     fireConsumable(state, 'bandage');
-    hero.wounds += 1;
+    hero.hp = Math.min(hero.hpMax, hero.hp + BANDAGE_HEAL);
   }
 
   if (anyStarving(state) && state.consumables.includes('ration')) {
@@ -775,13 +716,13 @@ const anyStarving = (state: RaidState): boolean => state.party.some((f) => f.foo
  * лежит.
  */
 export function standing(state: RaidState): Fighter[] {
-  return state.party.filter((f) => f.wounds > 0);
+  return state.party.filter((f) => f.hp > 0);
 }
 
 /** Передать ведение живому. Возвращает, остался ли кто-то на ногах. */
 function reelect(state: RaidState): boolean {
-  if (state.hero.wounds > 0) return true;
-  const next = state.party.findIndex((f) => f.wounds > 0);
+  if (state.hero.hp > 0) return true;
+  const next = state.party.findIndex((f) => f.hp > 0);
   if (next < 0) return false;
   state.active = next;
   state.hero = state.party[next]!;
@@ -831,7 +772,7 @@ function openBattle(state: RaidState): void {
    * Порог тот же, что у пробуждения противника (§15): кого видно, тот и в бою.
    */
   const near = state.party.filter(
-    (f) => f.wounds > 0
+    (f) => f.hp > 0
       && engaged.some((e) => Math.hypot(e.x - f.x, e.z - f.z) <= JOIN_RANGE),
   );
   // Ведущий в бою всегда: контакт завязался на нём, и оставить его снаружи
@@ -847,11 +788,11 @@ function openBattle(state: RaidState): void {
       id: unitOf(f),
       x: f.x,
       z: f.z,
-      wounds: f.wounds,
+      hp: f.hp,
       speed: HERO_SPEED * f.loadout.speedMul,
       reach: HERO_REACH,
       ranged: f.loadout.ranged && f.arrows > 0,
-      attack: f.loadout.attack,
+      attack: f.loadout.attack + f.mods.attack,
       defense: f.loadout.defense + f.mods.defense,
     })),
     engaged.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z, hp: e.hp })),
@@ -883,7 +824,7 @@ function closeBattle(state: RaidState): void {
     if (u.side === 'hero') {
       const f = state.party.find((p) => unitOf(p) === u.id);
       if (f === undefined) continue;
-      f.wounds = u.hp;
+      f.hp = u.hp;
       f.prevX = f.x;
       f.prevZ = f.z;
       f.x = world.x;
@@ -994,10 +935,10 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
   if (!ok) return false;
 
   if (heroUnit !== undefined && heroUnit.hp < woundsBefore) {
-    state.woundsTaken += woundsBefore - heroUnit.hp;
+    state.damageTaken += woundsBefore - heroUnit.hp;
     state.lastWoundFrom = 'enemy';
     if (unit.side === 'enemy') state.lastHitBy = unit.kind;
-    state.hero.wounds = heroUnit.hp;
+    state.hero.hp = heroUnit.hp;
   }
 
   for (const e of battle.events) state.events.push(e);
@@ -1036,7 +977,7 @@ function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): numb
   }
   // Защита берётся у того, кого бьют, а не у стороны: трое бойцов держат
   // удар по-разному, и это и есть смысл характеристики.
-  return woundsPerHit(from.attack, to.defense);
+  return damageOf(from.attack, to.defense);
 }
 
 export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge: number): void {
@@ -1049,7 +990,7 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
     let guard = 0;
     while (stepBattle(state) && guard++ < 64) { /* доигрываем чужие ходы */ }
     if (!reelect(state)) {
-      for (const f of state.party) f.wounds = 0;
+      for (const f of state.party) f.hp = 0;
       state.status = 'failed';
       state.path = [];
     }
@@ -1066,9 +1007,6 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   const vision = visionRadius(knowledge, night, true) + state.mods.vision + state.visionAdd;
   stepMovement(state, dt);
   if (state.status !== 'running') return;
-  // Снаряды двигаются до боя: выстрел, сделанный в этом тике, не долетает
-  // в этом же. Иначе дальний бой отличался бы от ближнего только словом.
-  stepProjectiles(state, dt);
   // Вне боя остаётся только завязка: разбудить и подойти. Сам бой считает
   // поле (§11.3), и считать его дважды нельзя.
   stepContact(state, dt, vision);
@@ -1080,8 +1018,8 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
     state.starve += dt;
     if (state.starve >= 6) {
       state.starve = 0;
-      state.hero.wounds -= 1;
-      state.woundsTaken += 1;
+      state.hero.hp -= HUNGER_BITE;
+      state.damageTaken += HUNGER_BITE;
       state.lastWoundFrom = 'hunger';
       state.events.push('Голод');
     }
@@ -1090,7 +1028,7 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   stepConsumables(state);
 
   if (!reelect(state)) {
-    for (const f of state.party) f.wounds = 0;
+    for (const f of state.party) f.hp = 0;
     state.status = 'failed';
     state.path = [];
   }
@@ -1120,7 +1058,7 @@ export interface RaidResult {
    * доевшего провиант.
    */
   readonly cause: RaidCause;
-  readonly woundsTaken: number;
+  readonly damageTaken: number;
   readonly fights: number;
   readonly kills: number;
   /** Кто нанёс последний удар. null — вылазка кончилась не боем. */
@@ -1193,7 +1131,7 @@ export function raidResult(state: RaidState): RaidResult {
     durationSec: state.elapsed,
     fired: [...state.fired],
     cause: raidCause(state),
-    woundsTaken: state.woundsTaken,
+    damageTaken: state.damageTaken,
     fights: state.fights,
     kills: state.kills,
     lastHitBy: raidCause(state) === 'combat' ? state.lastHitBy : null,

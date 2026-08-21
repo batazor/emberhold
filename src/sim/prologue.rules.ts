@@ -324,9 +324,9 @@ describe('Пролог: кадр кончается собранным дере�
   test('голод в прологе раны не грызёт: нуль провианта — повод отдохнуть', () => {
     const state = prologue(4);
     setSupply(state, 0);
-    const wounds = state.hero.wounds;
+    const wounds = state.hero.hp;
     for (let i = 0; i < 60 * 30; i++) stepRaid(state, 1 / 60, false, 0);
-    assert.equal(state.hero.wounds, wounds, 'пролог начал отнимать раны');
+    assert.equal(state.hero.hp, wounds, 'пролог начал отнимать раны');
     assert.equal(state.status, 'running', 'пролог кончился голодом');
   });
 

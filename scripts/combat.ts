@@ -23,7 +23,8 @@ import { emptyGear } from '../src/sim/gear';
 import type { GearState } from '../src/sim/gear';
 import { CLASS_ORDER, HERO_CLASSES, createHero, loadout } from '../src/sim/heroes';
 import type { HeroClassId, HeroLoadout } from '../src/sim/heroes';
-import { commandMove, createRaid, stepRaid, woundsPerHit } from '../src/sim/raid';
+import { POLICIES, botBattlePlan } from '../src/sim/bot';
+import { commandBattle, commandMove, createRaid, damageOf, inBattle, stepRaid } from '../src/sim/raid';
 import { distanceField } from '../src/sim/grid';
 import type { EnemyKind, GameLocation } from '../src/sim/types';
 
@@ -72,8 +73,8 @@ interface Duel {
   readonly ttk: number | null;
   /** Ударов героя до падения. */
   readonly swings: number;
-  /** Ран, снятых с героя за дуэль. */
-  readonly wounds: number;
+  /** Урона, снятого с героя за дуэль. */
+  readonly damage: number;
   /** Выжил ли герой. */
   readonly won: boolean;
 }
@@ -100,7 +101,7 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
   });
 
   const enemy = state.loc.enemies[0]!;
-  const startWounds = state.hero.wounds;
+  const startHp = state.hero.hp;
   let swings = 0;
   let before = enemy.hp;
   let t = 0;
@@ -110,7 +111,15 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
     // далеко именно затем, чтобы до него шли, и неподвижный герой мерил бы
     // не бой, а собственную неподвижность. Лучник по дороге стреляет —
     // и это ровно то, чем он отличается.
-    if (state.path.length === 0) commandMove(state, { x: Math.round(enemy.x), z: Math.round(enemy.z) });
+    // §11.3 — бой пошаговый, и стенд обязан в нём ходить теми же правилами,
+    // что бот. Иначе дуэль мерила бы не бой, а неподвижность героя.
+    if (inBattle(state)) {
+      if (!commandBattle(state, botBattlePlan(state, POLICIES.cautious))) {
+        commandBattle(state, { kind: 'wait' });
+      }
+    } else if (state.path.length === 0) {
+      commandMove(state, { x: Math.round(enemy.x), z: Math.round(enemy.z) });
+    }
     stepRaid(state, TICK, false, hero.knowledge);
     if (enemy.hp < before) {
       swings += 1;
@@ -122,7 +131,7 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
   return {
     ttk: enemy.hp <= 0 ? t : null,
     swings,
-    wounds: startWounds - state.hero.wounds,
+    damage: startHp - state.hero.hp,
     won: enemy.hp <= 0 && state.status === 'running',
   };
 }
@@ -148,14 +157,14 @@ for (const level of [0, 3, 5]) {
     const def = HERO_CLASSES[cls];
     const cells = KINDS.map((k) => {
       const d = duel(cls, gear, k);
-      return `${secs(d.ttk)}/${String(d.wounds)}р`.padEnd(13);
+      return `${secs(d.ttk)}/${d.damage.toFixed(0)}`.padEnd(13);
     });
     console.log(
       `${def.name.padEnd(10)} ${String(def.base.attack).padStart(5)} ${String(def.base.defense).padStart(6)} │ ` +
         cells.join(''),
     );
   }
-  console.log('  (время до падения противника / ран снято с героя)\n');
+  console.log('  (время до падения противника / урона снято с героя)\n');
 }
 
 /**
@@ -166,7 +175,7 @@ for (const level of [0, 3, 5]) {
  * Таблица показывает сам порог, поэтому вопрос «где начинает окупаться щит»
  * получает ответ числом, а не подбором.
  */
-console.log('══ пробой: ран за удар при разной Защите ══');
+console.log('══ пробой: урона за удар при разной Защите ══');
 {
   const defenses = [0, 2, 3, 6, 9, 12, 16];
   console.log('противник      Атака │ ' + defenses.map((d) => `З${d}`.padStart(4)).join(''));
@@ -174,18 +183,18 @@ console.log('══ пробой: ран за удар при разной За�
     const a = ENEMY_STATS[k].attack;
     console.log(
       `${ENEMY_STATS[k].name.padEnd(14)}${String(a).padStart(5)} │ ` +
-        defenses.map((d) => String(woundsPerHit(a, d)).padStart(4)).join(''),
+        defenses.map((d) => String(damageOf(a, d)).padStart(4)).join(''),
     );
   }
   const flat = KINDS.every((k) => {
     const a = ENEMY_STATS[k].attack;
-    return defenses.every((d) => woundsPerHit(a, d) === woundsPerHit(a, 0));
+    return defenses.every((d) => damageOf(a, d) === damageOf(a, 0));
   });
   console.log(
     flat
-      ? '\n⚠ ЗАЩИТА НИЧЕГО НЕ ДЕЛИТ: строки плоские. Пока каждый удар стоит одной\n' +
-          '  раны, делить нечего, и характеристика остаётся числом в панели.'
-      : '\n✓ Порог существует: есть Защита, которая снимает вторую рану.',
+      ? '\n⚠ ЗАЩИТА НИЧЕГО НЕ ДЕЛИТ: строки плоские, и характеристика остаётся\n' +
+          '  числом в панели героя.'
+      : '\n✓ Защита смягчает удар, и плавно: шкале пороги не нужны.',
   );
   console.log('');
 }
@@ -230,12 +239,12 @@ console.log('вариант    │ ' + KINDS.map((k) => ENEMY_STATS[k].name.padE
 for (const [label, got] of rows) {
   console.log(
     `${label.padEnd(10)} │ ` +
-      got.map((d) => `${secs(d.ttk)}/${String(d.wounds)}р`.padEnd(13)).join(''),
+      got.map((d) => `${secs(d.ttk)}/${d.damage.toFixed(0)}`.padEnd(13)).join(''),
   );
 }
 
 const same = (a: Duel[], b: Duel[]): boolean =>
-  a.every((d, i) => d.ttk === b[i]!.ttk && d.wounds === b[i]!.wounds);
+  a.every((d, i) => d.ttk === b[i]!.ttk && d.damage === b[i]!.damage);
 
 const attackDead = same(base, rows[1]![1]);
 const defenseDead = same(base, rows[2]![1]) && same(base, rows[3]![1]);
@@ -244,8 +253,7 @@ console.log('');
 if (attackDead && defenseDead) {
   console.log(
     '⚠ АТАКА И ЗАЩИТА В БОЙ НЕ ВХОДЯТ: три строки совпали.\n' +
-      '  Удар стоит одной раны кем угодно и по кому угодно, а числа в панели\n' +
-      '  героя — украшение. Это и есть то, что заменяет §11.3.',
+      '  Числа в панели героя — украшение, и §11.3 не выполнен.',
   );
 } else {
   if (attackDead) console.log('⚠ Атака не меняет бой: строка «Атака +3» совпала с исходной.');

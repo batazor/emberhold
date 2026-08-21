@@ -108,9 +108,9 @@ describe('Звук вылазки (§18.3)', () => {
   test('рана героя звучит, лечение — нет', () => {
     const raid = raidWithEnemies();
     const { ear, heard } = listen(raid);
-    raid.hero.wounds -= 1;
+    raid.hero.hp -= 1;
     ear.hear(raid);
-    raid.hero.wounds += 1;
+    raid.hero.hp += 1;
     ear.hear(raid);
     assert.deepEqual(heard, ['wound']);
   });

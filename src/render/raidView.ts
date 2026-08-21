@@ -1375,7 +1375,7 @@ export class RaidView {
       const mate = this.mates[i]!;
       // Ведущий рисуется отдельно, поэтому остальные идут со сдвигом.
       const f = state.party[i + 1];
-      if (f === undefined || f.wounds <= 0) {
+      if (f === undefined || f.hp <= 0) {
         mate.visible = false;
         continue;
       }
@@ -1415,7 +1415,7 @@ export class RaidView {
       const m = new THREE.Matrix4();
       for (let i = 0; i < state.party.length && n < 8; i++) {
         const f = state.party[i]!;
-        if (f.wounds <= 0) continue;
+        if (f.hp <= 0) continue;
         const to = spots[i]!;
         if (Math.hypot(to.x - f.x, to.z - f.z) < 0.05) continue;
         m.makeTranslation(to.x, 0.06, to.z).multiply(flat);
@@ -1535,7 +1535,7 @@ export class RaidView {
       // приёмом, что и звук (§18.3). Удар ловится скачком отката вверх: вниз
       // он тикает сам, вверх прыгает ровно в момент удара.
       const struck = state.hero.cooldown > this.heroWas.cooldown + 0.01;
-      const hurt = state.hero.wounds < this.heroWas.wounds;
+      const hurt = state.hero.hp < this.heroWas.wounds;
 
       // §17.1 — урон не клип, а вспышка 150 мс поверх текущего. У героя раны
       // считаны штуками (§11.3), и каждая обязана быть замечена.
@@ -1571,7 +1571,7 @@ export class RaidView {
         this.heroRig.setMaterial(this.heroFlash > 0 ? this.hurtFlash : this.blocking);
       }
 
-      this.heroWas = { wounds: state.hero.wounds, cooldown: state.hero.cooldown };
+      this.heroWas = { wounds: state.hero.hp, cooldown: state.hero.cooldown };
     }
 
     /**

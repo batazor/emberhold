@@ -13,8 +13,9 @@ export const FOOD_COST = {
   container: 5,
 } as const;
 
-/** §11.3 — здоровье героя это раны, а не полоска. */
-export const HERO_WOUNDS = 3;
+/** §11.3 — здоровье героя очками. Правило «раны, а не полоска» отменено
+ *  там же: вторая шкала стоила механики, которую нельзя объяснить строкой. */
+export const HERO_HP = 20;
 
 /**
  * Модель баланса яруса. Числа не назначаются руками, а выводятся из описания
@@ -67,10 +68,22 @@ export const WOUND_COST: Record<RaidEnemyKind, number> = {
  *   противник», это дистанция, которую нечем закрыть.
  */
 export const ENCOUNTER_WOUND: Record<RaidEnemyKind, number> = {
-  minion: 0.47,
-  warrior: 0.47,
-  mage: 1.55,
+  minion: 2.98,
+  warrior: 5.13,
+  mage: 6.17,
 };
+
+/**
+ * Сколько врагов приходится на одну достижимую находку.
+ *
+ * Величина про плотность, а не про сложность: она отвечает, сколько тел
+ * помещается на карте, не превращая её в толпу. Прежние 0,8 держали ярус 3
+ * на трёх противниках при карте 20×20 — и держали жёстче бюджета: замер
+ * поднимал ω до 4,6, а число врагов не менялось. Сложность настраивается
+ * бюджетом (ω), и потолок обязан быть выше него, иначе рычаг модели
+ * не подключён.
+ */
+export const ROOM_PER_FIND = 1.6;
 
 /* ---------- вход ---------- */
 
@@ -137,7 +150,7 @@ export function deriveTier(spec: TierSpec): TierNumbers {
   // до бюджета ран, простые скелеты — сколько нужно давления на провиант.
   // Бюджет считается ценой присутствия, а не дуэли: иначе непреследующий
   // маг съедает вдвое больше бюджета, чем стоит на деле.
-  const woundPoints = spec.woundBudget * HERO_WOUNDS;
+  const woundPoints = spec.woundBudget * HERO_HP;
   const roster: RaidEnemyKind[] = [];
   let spent = 0;
   const afford = (kind: RaidEnemyKind): boolean => spent + ENCOUNTER_WOUND[kind] <= woundPoints;
@@ -149,9 +162,10 @@ export function deriveTier(spec: TierSpec): TierNumbers {
   /**
    * §15 — у каждого яруса свой ведущий тип, а не «кто влез в бюджет».
    * Жадный набор по цене ставил трёх воинов там, где раздел просит одного
-   * и стаю скелетов: цена встречи под пошаговым боем у скелета и воина
-   * сравнялась (0,47 против 0,47), и «дороже» перестало значить «реже».
-   * Роль назначает раздел, бюджет только ограничивает число.
+   * и стаю скелетов. На шкале hp цены снова разошлись (3,0 против 11,1),
+   * и бюджет один справился бы — но правило остаётся: роль назначает
+   * раздел, бюджет только ограничивает число. Совпадение цен было поводом
+   * завести правило, а не его причиной.
    */
   const lead: RaidEnemyKind | null =
     spec.size >= 18 ? 'mage' : spec.size >= 12 ? 'warrior' : null;
@@ -174,8 +188,12 @@ export function deriveTier(spec: TierSpec): TierNumbers {
    * почти весь запас ран, и замер показал 34% провалов, все боевые.
    *
    * Верхняя граница по числу остаётся: она про отрисовку, а не про раны.
+   * Но именно она, а не бюджет, оказалась связывающей на шкале hp: замер
+   * поднимал ω с 0,33 до 4,6 и выше 2,0 не менял ни числа врагов, ни доли
+   * провалов ни на одном ярусе. Множитель поднят с 0,8 до 1,6 — см.
+   * ROOM_PER_FIND.
    */
-  const room = Math.max(1, Math.round(reachable * 0.8));
+  const room = Math.max(1, Math.round(reachable * ROOM_PER_FIND));
   while (roster.length < room && afford('minion')) put('minion');
 
   const woundsTaken = spent;
@@ -197,7 +215,7 @@ export function deriveTier(spec: TierSpec): TierNumbers {
       fullTourImpossible: fullTour > food,
       // Забег обязан переживаться: если ожидаемые раны дотягивают до потолка,
       // провал становится не риском, а расписанием.
-      survivable: woundsTaken < HERO_WOUNDS - 0.5,
+      survivable: woundsTaken < HERO_HP - 0.5,
     },
   };
 }
@@ -240,10 +258,10 @@ export function indifferenceBag(gain: number, failChance: number, risk: number):
  * (насколько опасен бой). Ярус 0 обучающий — там щедрость намеренно высокая.
  */
 export const TIER_SPEC: Record<Tier, TierSpec> = {
-  0: { size: 8, containers: 3, generosity: 0.9, capacityRatio: 1.5, woundBudget: 0.33, depthValue: 1.4, risk: 0, base: 2 },
+  0: { size: 8, containers: 3, generosity: 0.9, capacityRatio: 1.5, woundBudget: 0.4, depthValue: 1.4, risk: 0, base: 2 },
   1: { size: 12, containers: 5, generosity: 0.5, capacityRatio: 1.7, woundBudget: 0.5, depthValue: 1.8, risk: 0.3, base: 2 },
-  2: { size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.63, depthValue: 2.6, risk: 0.6, base: 3 },
-  3: { size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.83, depthValue: 3.5, risk: 1, base: 3 },
+  2: { size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.75, depthValue: 2.6, risk: 0.6, base: 3 },
+  3: { size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.9, depthValue: 3.5, risk: 1, base: 3 },
 };
 
 /**
@@ -251,7 +269,12 @@ export const TIER_SPEC: Record<Tier, TierSpec> = {
  * монотонными и почти независимыми — это и есть условие пригодности модели:
  *
  * λ  1.0 → рюкзак связывает в 98% забегов; 2.0 → провиант в 73%
- * ω  0.33 → 1% провалов; 0.67 → 22%; 1.0 → 44%
+ * ω  на шкале hp (§11.3) кривая снята заново и оказалась ступенчатой:
+ *    ярус 1 идёт 0,8 → 10% и 1,0 → 61%, потому что шаг бюджета — это целый
+ *    скелет, а один скелет на карте 12×12 стоит полусотни процентов успеха.
+ *    Выше 2,0 кривая упирается в ROOM_PER_FIND и не движется вовсе.
+ *    Бюджет теперь больше единицы: доля здоровья меньше единицы означает
+ *    ярус, который нельзя не пережить, — герой входит в вылазку целым
  * θ  двигает запас и вместе с ним добычу, не трогая двух остальных
  *
  * Поэтому ярус задаётся описанием сложности, а не четвёркой чисел,

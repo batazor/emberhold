@@ -840,7 +840,7 @@ function finishRaidForHero(
   const name = HERO_CLASSES[hero.cls].name;
   const outcome = applyRaidOutcome(
     hero,
-    state.hero.wounds,
+    state.hero.hp,
     carried,
     state.loc.tier,
     evacuated,
@@ -2161,13 +2161,13 @@ startLoop({
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
-      const woundsBefore = raid.hero.wounds;
+      const woundsBefore = raid.hero.hp;
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
       // Рана обязана быть замечена телом, а не только глазом. Кадр 3
       // онбординга завёл эту тряску ради первой раны; со сменой модели боя
       // (§11.3) удар стал стоить разного числа ран, и молчать про них
       // за пределами раскадровки перестало быть допустимо.
-      if (raid.hero.wounds < woundsBefore) shake();
+      if (raid.hero.hp < woundsBefore) shake();
       if (sayNext !== null) {
         raid.events.push(sayNext);
         sayNext = null;
@@ -2264,7 +2264,7 @@ startLoop({
           durationSec: Math.round(result.durationSec),
           cause: result.cause,
           lastHitBy: result.lastHitBy,
-          woundsTaken: result.woundsTaken,
+          damageTaken: result.damageTaken,
           fights: result.fights,
           kills: result.kills,
         });
