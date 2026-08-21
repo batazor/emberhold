@@ -16,12 +16,12 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import * as THREE from 'three';
 import { CLASS_ORDER } from '../sim/heroes';
-import type { EnemyKind } from '../sim/types';
+import type { RaidEnemyKind } from '../sim/types';
 import { enemyParts, heroParts } from './models';
 import { Rigged } from './rigged';
 import type { RiggedParts } from './rigged';
 
-const ENEMY_KINDS: readonly EnemyKind[] = ['minion', 'warrior', 'mage'];
+const ENEMY_KINDS: readonly RaidEnemyKind[] = ['minion', 'warrior', 'mage'];
 
 /** Сколько единиц набора вершине позволено разойтись с поставленной моделью. */
 const EXACT = 1e-4;

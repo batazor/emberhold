@@ -1,4 +1,4 @@
-import type { EnemyKind, Tier } from './types';
+import type { RaidEnemyKind, Tier } from './types';
 
 /**
  * Базовые стоимости живут здесь, а не в config: модель на них опирается,
@@ -41,7 +41,7 @@ export const DETOUR = 1.15;
  *
  * Для модели эти числа не годятся, и это важный урок: дуэль не равна вылазке.
  */
-export const WOUND_COST: Record<EnemyKind, number> = {
+export const WOUND_COST: Record<RaidEnemyKind, number> = {
   minion: 0,
   warrior: 1,
   mage: 2,
@@ -59,7 +59,7 @@ export const WOUND_COST: Record<EnemyKind, number> = {
  *
  * Простой скелет в дуэли стоит ноль, но в стае добивает раненого: 0,06.
  */
-export const ENCOUNTER_WOUND: Record<EnemyKind, number> = {
+export const ENCOUNTER_WOUND: Record<RaidEnemyKind, number> = {
   minion: 0.06,
   warrior: 0.73,
   mage: 0.85,
@@ -92,7 +92,7 @@ export interface TierNumbers {
   readonly food: number;
   readonly capacity: number;
   readonly containers: number;
-  readonly roster: readonly EnemyKind[];
+  readonly roster: readonly RaidEnemyKind[];
   readonly geometry: { depth: number; hop: number; deepAndBack: number; fullTour: number };
   readonly expected: { haul: number; reachable: number; woundsTaken: number };
   readonly checks: { deepReachable: boolean; fullTourImpossible: boolean; survivable: boolean };
@@ -131,7 +131,7 @@ export function deriveTier(spec: TierSpec): TierNumbers {
   // Бюджет считается ценой присутствия, а не дуэли: иначе непреследующий
   // маг съедает вдвое больше бюджета, чем стоит на деле.
   const woundPoints = spec.woundBudget * HERO_WOUNDS;
-  const roster: EnemyKind[] = [];
+  const roster: RaidEnemyKind[] = [];
   let spent = 0;
   while (spent + ENCOUNTER_WOUND.mage <= woundPoints && spec.size >= 18) {
     roster.push('mage');
@@ -254,7 +254,7 @@ export const TIER_CONTAINERS: Record<Tier, number> = {
   0: TIER_SPEC[0].containers, 1: TIER_SPEC[1].containers,
   2: TIER_SPEC[2].containers, 3: TIER_SPEC[3].containers,
 };
-export const TIER_ROSTER: Record<Tier, readonly EnemyKind[]> = {
+export const TIER_ROSTER: Record<Tier, readonly RaidEnemyKind[]> = {
   0: derived[0].roster, 1: derived[1].roster, 2: derived[2].roster, 3: derived[3].roster,
 };
 /** Запас провианта, который модель считает правильным для яруса. */

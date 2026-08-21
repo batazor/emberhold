@@ -6,9 +6,12 @@ import { BUILDING_ORDER, builtBuildings, campArea } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import type { Gust } from './cursorWind';
 import { FluffyGrass } from './fluffyGrass';
-import { forestGeometry, forestMaterial } from './forest';
-import type { ForestModelName } from './forest';
+import { forestMaterial } from './forest';
+import { WOODS, forest as forestTree, treeGeometry, type Tree } from './woods';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
+import { fenceGeometry, graveyardMaterial } from './graveyard';
+import type { GraveyardPartModelName } from './graveyard';
+import type { FencePiece } from '../sim/fence';
 import type { CastlePartModelName } from './castle';
 import { CASTLE_CELL, type Piece, type Spot } from '../sim/castle';
 import { PALETTE } from './palette';
@@ -39,13 +42,8 @@ const VILLAGER_SCALE = 0.62;
  * они делают видимым то, что уже сказано. Растут они только за площадью
  * лагеря, поэтому рост Жилья читается ещё и как отступающий лес.
  */
-const CAMP_TREES: readonly ForestModelName[] = [
-  'Tree_1_A_Color1',
-  'Tree_2_B_Color1',
-  'Tree_4_A_Color1',
-  'Tree_Bare_2_B_Color1',
-];
-const CAMP_ROCKS: readonly ForestModelName[] = ['Rock_1_G_Color1', 'Rock_3_H_Color1'];
+const CAMP_TREES = WOODS;
+const CAMP_ROCKS: readonly Tree[] = [forestTree('Rock_1_G_Color1'), forestTree('Rock_3_H_Color1')];
 
 /** Уровень земли вокруг площадки: луг из buildMeadow, на нём же стоит лес. */
 const MEADOW_Y = -0.02;
@@ -128,7 +126,7 @@ export class CampView {
     for (const child of [...this.forest.children]) child.removeFromParent();
     this.forestMat ??= this.track(forestMaterial());
 
-    const models = [...CAMP_TREES, ...CAMP_ROCKS];
+    const models: readonly Tree[] = [...CAMP_TREES, ...CAMP_ROCKS];
     const spots: number[][] = models.map(() => []);
 
     for (let z = -FOREST_DEPTH; z < 10 + FOREST_DEPTH; z++) {
@@ -150,7 +148,7 @@ export class CampView {
       if (list.length === 0) continue;
       const tree = m < CAMP_TREES.length;
       const mesh = new THREE.InstancedMesh(
-        forestGeometry(models[m]!, 1),
+        treeGeometry(models[m]!, 1),
         this.forestMat,
         list.length / 2,
       );
@@ -407,13 +405,15 @@ export class CampView {
   /** Призрак мазка: плоские пятна под пальцем, пока стену ведут. */
   private readonly ghost = new THREE.Group();
   private wallSignature = '';
+  private readonly fences = new THREE.Group();
+  private fenceSignature = '';
 
   /**
    * Мировая точка клетки стены. Клетка стены — квадрат `CASTLE_CELL` клеток
    * лагеря, и ноль детали стоит в его середине; поэтому к углу прибавляется
    * половина клетки лагеря, а не половина клетки стены.
    */
-  private static at(spot: Spot): { x: number; z: number } {
+  private static at(spot: { x: number; z: number }): { x: number; z: number } {
     return { x: spot.x * CASTLE_CELL + 0.5, z: spot.z * CASTLE_CELL + 0.5 };
   }
 
@@ -459,6 +459,52 @@ export class CampView {
         mesh.setMatrixAt(i, dummy.matrix);
       }
       this.walls.add(mesh);
+    }
+  }
+
+  /**
+   * Перестроить ограду (§6.1.7). Тот же способ, что у стены, и та же подпись
+   * против лишних пересборок; разница одна и она в координате: пролёт ограды
+   * стоит **между** клетками, и `x` у него бывает половинным. Формула места
+   * от этого не меняется — она и так переводит клетку стены в клетки лагеря
+   * умножением, — и это единственная причина, по которой рендер ограды
+   * не завёл своей арифметики.
+   */
+  setFences(pieces: readonly FencePiece[]): void {
+    const signature = pieces.map((p) => `${p.model}${p.x},${p.z},${p.turn}`).join('|');
+    if (signature === this.fenceSignature) return;
+    this.fenceSignature = signature;
+
+    this.fences.clear();
+    if (this.fences.parent === null) this.group.add(this.fences);
+    if (pieces.length === 0) return;
+
+    const byModel = new Map<string, FencePiece[]>();
+    for (const piece of pieces) {
+      const list = byModel.get(piece.model) ?? [];
+      list.push(piece);
+      byModel.set(piece.model, list);
+    }
+
+    const mat = this.track(graveyardMaterial());
+    const dummy = new THREE.Object3D();
+    for (const [model, list] of byModel) {
+      const mesh = new THREE.InstancedMesh(
+        fenceGeometry(model as GraveyardPartModelName),
+        mat,
+        list.length,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i++) {
+        const piece = list[i]!;
+        const at = CampView.at(piece);
+        dummy.position.set(at.x, MEADOW_Y, at.z);
+        dummy.rotation.set(0, (piece.turn * Math.PI) / 2, 0);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      this.fences.add(mesh);
     }
   }
 

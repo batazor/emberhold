@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
 import type { HeroClassId } from '../sim/heroes';
-import type { EnemyKind } from '../sim/types';
+import type { EnemyKind, RaidEnemyKind } from '../sim/types';
 import { adventurerGeometry, adventurerParts } from './adventurers';
 import type { AdventurerModelName } from './adventurers.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import type { RiggedParts } from './rigged';
+import { graveyardGeometry } from './graveyard';
 import { skeletonGeometry, skeletonParts } from './skeleton';
 
 /**
@@ -338,10 +339,21 @@ const HERO_SHAPES: Record<HeroClassId, () => Piece[]> = {
  * скелет — 0,72 клетки против 1,3 у героя: мелкий он и на вид; воин 0,95,
  * маг 1,0, и за габарит тела его выносит посох, а не рост.
  */
+/**
+ * Рост привидения. Стоит отдельным числом, потому что нужен раньше таблицы
+ * ростов: неподвижная модель собирается выше по файлу, а разъехаться этим
+ * двум нельзя — иначе одно и то же привидение будет разного размера
+ * на странице артбука и в локации.
+ */
+const GHOST_HEIGHT = 0.62;
+
 const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
   minion: () => skeletonGeometry('Skeleton_Minion', 0.72),
   warrior: () => skeletonGeometry('Skeleton_Warrior', 0.95, 'Skeleton_Axe'),
   mage: () => skeletonGeometry('Skeleton_Mage', 1, 'Skeleton_Staff'),
+  // Привидение — из набора кладбища (§6.1.7), и скелета у него нет: и здесь,
+  // и в вылазке это одна и та же неподвижная модель.
+  ghost: () => graveyardGeometry('character-ghost', GHOST_HEIGHT),
   // Те же числа, что в ENEMY_HEIGHT ниже: неподвижная версия обязана стоять
   // ровно там же, где стоит подвижная.
 };
@@ -408,15 +420,20 @@ export const ENEMY_HEIGHT: Record<EnemyKind, number> = {
   minion: 0.72,
   warrior: 0.95,
   mage: 1,
+  // Привидение мельче простого скелета: в наборе это тряпка с руками
+  // 0,79 в ширину при 0,66 в высоту, и вытягивать её до роста скелета
+  // значило бы рисовать другую модель.
+  ghost: GHOST_HEIGHT,
 };
 
-const ENEMY_PARTS: Record<EnemyKind, () => RiggedParts> = {
+const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {
   minion: () => skeletonParts('Skeleton_Minion', ENEMY_HEIGHT.minion),
   warrior: () => skeletonParts('Skeleton_Warrior', ENEMY_HEIGHT.warrior, 'Skeleton_Axe'),
   mage: () => skeletonParts('Skeleton_Mage', ENEMY_HEIGHT.mage, 'Skeleton_Staff'),
 };
 
-export const enemyParts = (kind: EnemyKind): RiggedParts => ENEMY_PARTS[kind]();
+/** Скелет есть только у ярусных: привидение набора не скиновано вовсе. */
+export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind]();
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
 export function heroParts(cls: HeroClassId): RiggedParts | null {

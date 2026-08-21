@@ -21,14 +21,18 @@
  * Что стройка сделала с лагерем, показывает `CampView`.
  */
 import {
+  FENCE_COST,
   WALL_COST,
   WALL_SECONDS,
   WALL_TOOLS,
+  fenceMaterial,
+  fenceResource,
   wallCount,
   wallProgress,
   type CampWalls,
   type WallTool,
 } from '../sim/campWalls';
+import { FENCE } from '../sim/fence';
 import { TOWER_MAX } from '../sim/castle';
 
 export interface BuildPanelCallbacks {
@@ -36,6 +40,8 @@ export interface BuildPanelCallbacks {
   onTool(tool: WallTool | null): void;
   /** Закрыть панель и выйти из режима стройки. */
   onDone(): void;
+  /** Тап по уже выбранной карточке ограды — следующий материал. */
+  onCycleFence(): void;
 }
 
 /**
@@ -45,6 +51,10 @@ export interface BuildPanelCallbacks {
  */
 const CARD: Record<WallTool, { readonly title: string; readonly gesture: string }> = {
   'стена': { title: 'Стена', gesture: 'Ведите линию по земле' },
+  // Материал перебирается повторным тапом по карточке — тем же жестом,
+  // каким башня растёт ярусом. Второго органа управления под четыре
+  // материала панель не заводит: она и так называет жест, а не эффект.
+  'ограда': { title: 'Ограда', gesture: 'Ведите линию · тап по карточке — другой материал' },
   'башня': { title: 'Башня', gesture: `Тап по клетке · ещё тап — ярус выше, до ${TOWER_MAX}` },
   'ворота': { title: 'Ворота', gesture: 'Тап по середине прямого участка' },
   'лестница': { title: 'Лестница', gesture: 'Тап по клетке у стены изнутри' },
@@ -52,11 +62,14 @@ const CARD: Record<WallTool, { readonly title: string; readonly gesture: string 
 };
 
 /** Счёт показывают четыре карточки из пяти: сносу считать нечего. */
-const COUNTED: readonly WallTool[] = ['стена', 'башня', 'ворота', 'лестница'];
+const COUNTED: readonly WallTool[] = ['стена', 'ограда', 'башня', 'ворота', 'лестница'];
 
 interface Card {
   readonly box: HTMLElement;
   readonly count: HTMLElement;
+  /** Цена: у ограды она меняется вместе с материалом, у остальных постоянна. */
+  readonly price: HTMLElement;
+  readonly name: HTMLElement;
   readonly button: HTMLButtonElement;
 }
 
@@ -134,10 +147,19 @@ export class BuildPanel {
     bottom.append(count, price);
 
     button.append(name, gesture, bottom);
-    button.addEventListener('click', () => this.select(this.tool === tool ? null : tool));
+    button.addEventListener('click', () => {
+      // Ограда — единственная карточка, у которой повторный тап не снимает
+      // выбор, а перебирает материал: снять её можно «Готово» или другой
+      // карточкой, а четыре материала иначе некуда положить.
+      if (tool === 'ограда' && this.tool === tool) {
+        this.cb.onCycleFence();
+        return;
+      }
+      this.select(this.tool === tool ? null : tool);
+    });
     box.appendChild(button);
 
-    this.cards.set(tool, { box, count, button });
+    this.cards.set(tool, { box, count, price, name, button });
     return box;
   }
 
@@ -181,6 +203,20 @@ export class BuildPanel {
     } else {
       this.bar.style.display = 'none';
       this.timer.textContent = '';
+    }
+
+    // Ограда называет свой материал именем карточки, а ресурс — ценой:
+    // «1 камня» на дощатой ограде было бы прямой ложью про то, чем платят.
+    const fence = this.cards.get('ограда');
+    if (fence !== undefined) {
+      const material = fenceMaterial(walls);
+      fence.name.textContent = `Ограда: ${FENCE[material].title.toLowerCase()}`;
+      const back = fenceResource(material) === 'wood' ? 'дерева' : 'камня';
+      // Цена ограды дробная (§6.1.7), и назвать её «1 за клетку» значило бы
+      // соврать вчетверо. Карточка говорит, за сколько клеток берут единицу;
+      // сколько выйдет за этот мазок, считается под карточками по ходу пальца.
+      const per = Math.round(1 / FENCE_COST[material].perCell);
+      fence.price.textContent = `1 ${back} за ${per} кл. · ${WALL_SECONDS['ограда']} с/кл.`;
     }
 
     const count = wallCount(walls);

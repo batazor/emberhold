@@ -24,7 +24,16 @@ import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
 import { CASTLE_SCALE, castleGeometry } from './castle';
 import { PARTS, STAIRS, TOWER, TOWER_MAX, WALK, WALL_TOP, towerHeight } from '../sim/castle';
 import { ELEVATION } from './scene';
-import { CASTLE_SLOT_ORDER, FOREST_SLOT_ORDER, MATERIAL, SKELETON_SLOT_ORDER } from './palette';
+import {
+  CASTLE_SLOT_ORDER,
+  FOREST_SLOT_ORDER,
+  GRAVEYARD_SLOT_ORDER,
+  MATERIAL,
+  SKELETON_SLOT_ORDER,
+} from './palette';
+import { GRAVEYARD_SLOTS } from './graveyard.data';
+import { FENCE_SCALE, fenceGeometry } from './graveyard';
+import { FENCE, FENCE_MATERIALS } from '../sim/fence';
 import { SKELETON_SLOTS } from './skeleton.data';
 
 /**
@@ -212,6 +221,67 @@ describe('Артбук: замок', () => {
       `башня ${TOWER_MAX + 1} уровня прячет ${hides(TOWER_MAX + 1).toFixed(1)} — потолок занижен`,
     );
     assert.ok(hides(1) < YARD_MIN, 'первый уровень уже закрывает самый малый двор');
+  });
+
+  test('слоты кладбища не разошлись с палитрой артбука', () => {
+    assert.deepEqual([...GRAVEYARD_SLOTS], [...GRAVEYARD_SLOT_ORDER]);
+    for (const name of GRAVEYARD_SLOTS) {
+      assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  /**
+   * Ограда — не дешёвая стена, а другая вещь, и разницу видно ростом.
+   * Стена замка обязана быть выше головы (правило выше), ограда — **ниже**:
+   * через неё видно, и ровно этим она отличается. Оба числа меряются
+   * у геометрии, а не берутся из документа: модель может смениться,
+   * и правило обязано спорить с новой.
+   */
+  test('через ограду видно: она ниже стены и не выше человека намного', () => {
+    const hero = heroGeometry('ranger');
+    hero.computeBoundingBox();
+    const tall = hero.boundingBox!.max.y - hero.boundingBox!.min.y;
+    hero.dispose();
+
+    const wall = WALL_TOP * CASTLE_SCALE;
+    for (const material of FENCE_MATERIALS) {
+      for (const name of FENCE[material].spans) {
+        const geo = fenceGeometry(name as Parameters<typeof fenceGeometry>[0]);
+        geo.computeBoundingBox();
+        const top = geo.boundingBox!.max.y;
+        assert.ok(top < wall, `${name}: ${top.toFixed(2)} — это стена, а не ограда`);
+        assert.ok(
+          top < tall * 1.35,
+          `${name}: ${top.toFixed(2)} при герое ${tall.toFixed(2)} — через неё уже не видно`,
+        );
+        assert.ok(
+          top > tall * 0.7,
+          `${name}: ${top.toFixed(2)} при герое ${tall.toFixed(2)} — это бордюр, а не ограда`,
+        );
+      }
+    }
+  });
+
+  test('пролёт ограды приходит в клетку локации, а не в единицы набора', () => {
+    const geo = fenceGeometry('stone-wall');
+    geo.computeBoundingBox();
+    const box = geo.boundingBox!;
+    assert.ok(
+      Math.abs(box.max.x - box.min.x - FENCE_SCALE) < 0.02,
+      `пролёт шириной ${(box.max.x - box.min.x).toFixed(2)} при клетке ${FENCE_SCALE}`,
+    );
+    assert.ok(Math.abs(box.min.y) < 0.02, 'основание ограды не на нуле');
+  });
+
+  test('готовое кладбище укладывается в свой потолок — килобайты', () => {
+    const source = readFileSync(new URL('./graveyard.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    // Потолок посчитан, а не выбран: это всё, что взято сейчас, округлённое
+    // вверх до десятка. Набор закрывает сразу четыре задачи — ограды, лес,
+    // кладбище и противника, — и потому вдвое тяжелее замка; упереться в этот
+    // потолок можно один раз, за ним решение брать из набора больше.
+    assert.ok(kb <= 60, `набор кладбища: ${kb} КБ gzip > 60 КБ`);
   });
 
   test('готовый замок укладывается в свой потолок — килобайты', () => {
