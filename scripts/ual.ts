@@ -243,6 +243,92 @@ console.log(
     ` (${Math.round(bytes / 1024 / clips.length)} КБ на клип)`,
 );
 
+/* ---------- ретаргет ---------- */
+
+/**
+ * Rig_Medium_UAL.glb — те же клипы, пересаженные на наш риг Blender'ом
+ * (scripts/retarget_ual.py). Проверок три, и все — замером, не глазами:
+ * имена костей теперь обязаны совпадать все, скорость цикла на нашем
+ * скелете обязана остаться скоростью источника (риг уже в масштабе игры,
+ * пересчёта нет), петля обязана остаться петлёй.
+ */
+const RETARGET = 'gltf/Rig_Medium_UAL.glb';
+
+interface Retargeted {
+  readonly name: string;
+  readonly duration: number;
+  readonly slide: number;
+  readonly loop: number;
+  readonly drift: number;
+  readonly bytes: number;
+}
+
+const measureRetarget = (): Retargeted[] | undefined => {
+  let rt: ReturnType<typeof readGlb>;
+  try {
+    rt = readGlb(join(ROOT, PACK, RETARGET));
+  } catch {
+    return undefined;
+  }
+  const names = new Map<string, number>();
+  rt.json.nodes.forEach((n, i) => {
+    if (n.name !== undefined) names.set(n.name, i);
+  });
+  const rtBones = (rt.json.skins?.[0]?.joints ?? []).map((j) => rt.json.nodes[j]!.name ?? '?');
+  const missing = ours.filter((b) => !rtBones.includes(b));
+  console.log(
+    `\nретаргет: ${RETARGET} — костей ${rtBones.length}, совпадают с нашим ригом ` +
+      `${ours.length - missing.length} из ${ours.length}` +
+      (missing.length > 0 ? `; НЕ хватает: ${missing.join(', ')}` : ' — все'),
+  );
+  const rtToes = ['toes.l', 'toes.r'].map((n) => names.get(n)).filter((n): n is number => n !== undefined);
+  const rtJoints = rt.json.skins?.[0]?.joints ?? [];
+  const rtRoot = names.get('root') ?? -1;
+  return (rt.json.animations ?? [])
+    .filter((a) => a.name !== 'A_TPose')
+    .map((anim) => {
+      const pose = new Posed(rt, anim);
+      return {
+        name: anim.name,
+        duration: round(pose.duration, 3),
+        slide: round(measureSlide(pose, rtToes), 3),
+        loop: round(measureLoop(pose, rtJoints), 4),
+        drift: round(rtRoot < 0 ? 0 : measureDrift(pose, rtRoot), 3),
+        bytes: bytesOf(rt, anim),
+      };
+    });
+};
+
+const retargeted = measureRetarget();
+if (retargeted === undefined) {
+  console.log('\nретаргет: файла нет — scripts/retarget_ual.py его ещё не собирал');
+} else {
+  const byName = new Map(clips.map((c) => [c.name, c]));
+  console.log('циклы хода на нашем риге (тайла/с — без пересчёта, риг в масштабе игры):');
+  console.log('клип                       длит.  тайл/с  у источника  расхождение');
+  for (const c of retargeted.filter((c) => c.slide >= STILL && c.loop <= OPEN)) {
+    const original = byName.get(c.name);
+    const was = original === undefined ? 0 : original.slide * scale;
+    const diff = was === 0 ? 0 : (c.slide - was) / was;
+    console.log(
+      `${c.name.padEnd(25)} ${c.duration.toFixed(2).padStart(6)} ${c.slide.toFixed(2).padStart(7)}` +
+        ` ${was.toFixed(2).padStart(12)} ${(diff * 100).toFixed(0).padStart(10)}%`,
+    );
+  }
+  const brokenLoop = retargeted.filter((c) => {
+    const original = byName.get(c.name);
+    return original !== undefined && original.loop <= OPEN && c.loop > OPEN;
+  });
+  console.log(
+    `петли, разомкнувшиеся при переносе: ${brokenLoop.length}` +
+      (brokenLoop.length > 0 ? ` — ${brokenLoop.map((c) => `${c.name} ${c.loop}`).join(', ')}` : ''),
+  );
+  const rtDrift = retargeted.filter((c) => c.drift > 0.01);
+  console.log(`сдвигают корень: ${rtDrift.length}${rtDrift.length > 0 ? ' — ' + rtDrift.map((c) => c.name).join(', ') : ''}`);
+  const rtBytes = retargeted.reduce((s, c) => s + c.bytes, 0);
+  console.log(`дорожки: ${Math.round(rtBytes / 1024)} КБ (${Math.round(rtBytes / 1024 / retargeted.length)} КБ на клип)`);
+}
+
 /* ---------- каталог ---------- */
 
 if (!process.argv.includes('--write')) {
@@ -266,6 +352,10 @@ if (!process.argv.includes('--write')) {
     },
     ourRig: { file: OUR_CHARACTER, joints: ours.length, matched },
     clips: clips.map((c) => ({ ...c })),
+    retarget:
+      retargeted === undefined
+        ? undefined
+        : { file: RETARGET, clips: retargeted },
   };
   const out = join(PACK, 'catalog.json');
   writeFileSync(join(ROOT, out), JSON.stringify(catalog) + '\n', 'utf8');

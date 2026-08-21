@@ -271,9 +271,12 @@
       <code>thigh_r</code>), наш Rig_Medium — 23 в конвенции KayKit (<code>hips</code>,
       <code>upperarm.l</code>, <code>upperleg.r</code>). Совпадает <b><span id="ualMatched">…</span></b> —
       <span id="ualMatchList">…</span>.</p>
-    <p class="lede fail">По именам клипы не ложатся: сегодня это библиотека движений
-      и справочник скоростей, а не замена набору KayKit. Дорога в игру у него одна —
-      ретаргет, и это отдельное решение, которого никто не принимал.</p>
+    <p>По именам клипы не ложатся — поэтому в наборе лежит третий файл,
+      <code>Rig_Medium_UAL.glb</code>: те же клипы, пересаженные на наш риг
+      Blender'ом (<code>scripts/retarget_ual.py</code>, перенос дельт вращений
+      от рест-позы к рест-позе — обе, по счастью, T-позы). После переноса
+      совпадают <b><span id="rtMatched">…</span></b> имён костей, и клипы
+      ложатся на всех персонажей, как клипы KayKit.</p>
   </div>
   <table id="ualCats"><thead><tr>
     <th>Категория</th><th class="num">Клипов</th><th class="num">Секунд</th>
@@ -284,6 +287,11 @@
     <th class="num">Тайла/с</th><th class="num">Темп к 1,67</th><th class="num">Корень _RM, ед./с</th>
   </tr></thead><tbody></tbody></table>
   <p class="note" id="ualSpeedNote"></p>
+  <table id="rtSpeeds"><thead><tr>
+    <th>Цикл после ретаргета</th><th class="num">Тайла/с на нашем риге</th>
+    <th class="num">У источника</th><th class="num">Расхождение</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="rtNote"></p>
   <div class="guard">
     <div class="key">
       <h3>Бег попадает в константу почти сам</h3>
@@ -303,6 +311,14 @@
         на клип</b> сырых float против <span id="kayKb">…</span> КБ у KayKit. В бандл набор
         не едет, как и всё в <code>assets/</code> (§6.1.2), — но и после ретаргета
         клип похудеет лишь вместе с костями.</p>
+    </div>
+    <div>
+      <h3>Что ретаргет теряет</h3>
+      <p>Переносятся вращения и таз; у UAL же дорожки translation лежат на всех
+        65 костях, и там, где шаг зашит в сдвиги ног, он пропадает:
+        <code>Crouch_Fwd</code>, <code>Push</code> и <code>Swim_Fwd</code> после
+        переноса топчутся на месте. Игре эти механики не нужны; ходьбе, бегу
+        и бою вращений хватает — расхождение в таблице выше.</p>
     </div>
     <div>
       <h3>Корень чист, правда о скорости — в _RM</h3>
@@ -1167,6 +1183,29 @@ try{
     ': петля замкнута, земля едет. Скорости приведены к игре множителем ×' +
     num(ual.scale, 3) + ' — манекен набора ростом ' + num(ual.rig.height) +
     ' против ' + num(ual.heroHeight) + ' у героя.';
+
+  if(ual.retarget !== undefined){
+    const byName = new Map(ual.clips.map((c) => [c.name, c]));
+    document.getElementById('rtMatched').textContent =
+      ual.ourRig.joints + ' из ' + ual.ourRig.joints;
+    const rt = document.querySelector('#rtSpeeds tbody');
+    const rows = ual.retarget.clips.filter((c) => c.slide >= ual.still && c.loop <= ual.open);
+    for(const c of rows){
+      const original = byName.get(c.name);
+      const was = original === undefined ? 0 : original.slide * ual.scale;
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono">' + c.name + '</td><td class="num">' + num(c.slide) +
+        '</td><td class="num">' + num(was) + '</td><td class="num">' +
+        (was > 0 ? Math.round((c.slide - was) / was * 100) + '%' : '—') + '</td>';
+      rt.appendChild(tr);
+    }
+    const rtClips = ual.retarget.clips;
+    const kb = Math.round(rtClips.reduce((s, c) => s + c.bytes, 0) / 1024 / rtClips.length);
+    document.getElementById('rtNote').textContent =
+      'Rig_Medium_UAL.glb: ' + clipsOf(rtClips.length) + ' на 23 костях, ' + kb +
+      ' КБ дорожек на клип. Скорости — без пересчёта: риг уже в масштабе игры. ' +
+      'Петель, разомкнувшихся при переносе, нет; корень не сдвинул ни один клип.';
+  }
 
   const jog = ual.clips.find((c) => c.name === 'Jog_Fwd_Loop');
   if(jog !== undefined){
