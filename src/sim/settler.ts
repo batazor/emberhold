@@ -104,6 +104,13 @@ export const giftWeight = (gift: Gift): number =>
 export interface Settler {
   readonly name: string;
   readonly look: DwellerLook;
+  /**
+   * Сид, из которого он выведен. Хранится вместе с ним, потому что лицо
+   * (`ui/avatar.ts`) выводится из того же сида: без него человек, вошедший
+   * в лагерь, получил бы там другое лицо, чем то, с которым сидел
+   * на прогалине.
+   */
+  readonly seed: number;
   /** Имя, подставленное игроку в поле: принять тапом или поправить. */
   readonly offeredName: string;
 }
@@ -122,7 +129,7 @@ export function generateSettler(seed: number): Settler {
   const name = pick(rng, NAMES);
   const look = pick(rng, DWELLER_LOOKS);
   const rest = NAMES.filter((n) => n !== name);
-  return { name, look, offeredName: rest[randInt(rng, rest.length)]! };
+  return { name, look, seed, offeredName: rest[randInt(rng, rest.length)]! };
 }
 
 /** Шаги знакомства. Кадров три, и четвёртого не бывает. */

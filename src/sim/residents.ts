@@ -48,6 +48,8 @@ import type { ResourceKind, Resources } from './resources';
 export interface Resident {
   readonly name: string;
   readonly look: DwellerLook;
+  /** Сид лица (`ui/avatar.ts`): с каким пришёл, с таким и живёт. */
+  readonly seed: number;
   /** Что он о себе сказал при знакомстве: этим выбрано, чем он занят
    *  в лагере (`RESIDENT_WORK`). */
   readonly answer: SelfAnswer;
@@ -84,6 +86,16 @@ export const dwellers = (camp: CampState): number => 1 + camp.residents.length;
 
 /** Скольким не хватает крыши. Это и есть текст задания. */
 export const homeless = (camp: CampState): number => Math.max(0, dwellers(camp) - roofs(camp));
+
+/**
+ * Кому именно не хватает крыши. Крыши занимают по старшинству: герой живёт
+ * в палатке из пролога, дальше приглашённые в порядке прихода, — значит
+ * без крыши остаются последние пришедшие, и первый из них тот, чьё лицо
+ * стоит в задании. Число (`homeless`) говорит «скольким», а задание
+ * показывает человека: «кому-то негде спать» — это не задание, а сводка.
+ */
+export const homelessFolk = (camp: CampState): readonly Resident[] =>
+  camp.residents.slice(camp.tents.length * TENT_ROOM);
 
 export type TentBlock = 'ok' | 'nobody' | 'resources' | 'area';
 

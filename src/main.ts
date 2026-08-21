@@ -157,7 +157,7 @@ import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { TitleView } from './render/titleView';
 import { CampHud } from './ui/campHud';
-import { RosterPanel } from './ui/rosterPanel';
+import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
 import { CampPrompt } from './ui/campPrompt';
@@ -171,7 +171,7 @@ import { mulberry32 } from './core/rng';
 import { DraftScreen } from './ui/draftScreen';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
-import { installFan } from './features/fan';
+import { FanControl, installFan } from './features/fan';
 import type { FanPerson } from './features/fan';
 import { bindCampInput } from './features/campInput';
 import { createDirector } from './features/onboarding';
@@ -607,18 +607,17 @@ function finishWall(result: StartBlock, subject?: string): boolean {
   return true;
 }
 
-const rosterPanel = new RosterPanel(campHud.slot, {
-  onSelect: (index) => {
-    const hero = roster.heroes[index];
-    if (hero === undefined) return;
-    const block = raidBlock(hero);
-    if (block !== 'ok') {
-      campHud.notify(refusal(HERO_CLASSES[hero.cls].name, RAID_REASON[block]));
-      return;
-    }
-    selectHero(roster, index);
-    persist();
-  },
+/**
+ * Отряд у большого пальца (§11.8). Веер заменил список: кем идти — вопрос,
+ * который задают каждый заход в лагерь, а список отвечал на него двумя
+ * касаниями через лист. Лицо под пальцем отвечает одним.
+ *
+ * **Карточка показывает выбранного, а не ведущего.** Тапнуть по лечащемуся
+ * можно, повести им — нет; иначе «сколько ему ещё лечиться» негде прочитать.
+ */
+let shownHero = roster.active;
+
+const heroCard = new HeroCard(app, {
   onTrain: (index) => {
     const hero = roster.heroes[index];
     if (hero === undefined) return;
@@ -629,6 +628,41 @@ const rosterPanel = new RosterPanel(campHud.slot, {
     }
     startTraining(roster, hero, clock.now(), camp.levels.yard);
     track({ t: 'train_start', at: clock.now(), cls: hero.cls, level: hero.level });
+    persist();
+  },
+});
+
+const heroFan = new FanControl({
+  parent: app,
+  reserve: () => campHud.bands(),
+  // Лица берутся из отряда, а не хранятся: состав растёт с Жильём (§11.8),
+  // и второй список героев рядом с первым разошёлся бы с ним молча.
+  people: () =>
+    roster.heroes.map((hero): FanPerson => {
+      const block = raidBlock(hero);
+      return {
+        name: HERO_CLASSES[hero.cls].name,
+        kind: 'герой',
+        look: hero.cls,
+        seed: hero.id,
+        state: hero.status,
+        busy: block !== 'ok',
+        asking: false,
+      };
+    }),
+  onPick: (index) => {
+    const hero = roster.heroes[index];
+    if (hero === undefined) return;
+    // Карточка открывается на любом, даже на том, кем сейчас не пойти.
+    shownHero = index;
+    const block = raidBlock(hero);
+    if (block !== 'ok') {
+      campHud.notify(refusal(HERO_CLASSES[hero.cls].name, RAID_REASON[block]));
+      heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard);
+      return;
+    }
+    selectHero(roster, index);
+    heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard);
     persist();
   },
 });
@@ -938,7 +972,7 @@ function finishRaidForHero(
     // не поставил, строка обязана остаться про время, а не про постройку.
     const where = camp.levels.infirmary > 0 ? `${BUILDINGS.infirmary.name}: ` : 'в строю через ';
     campHud.notify(
-      `${name} ранен — ${where}${RosterPanel.healText(outcome.wounds, camp.levels.infirmary)}`,
+      `${name} ранен — ${where}${HeroCard.healText(outcome.wounds, camp.levels.infirmary)}`,
     );
   }
 }
@@ -972,7 +1006,8 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   const panels = panelsFor(scene, quiet);
   hud.setVisible(panels.hud);
   campHud.setVisible(panels.campHud);
-  rosterPanel.setVisible(panels.roster);
+  heroCard.setVisible(panels.roster);
+  heroFan.setVisible(panels.roster);
   statsPanel.setVisible(panels.stats);
   startScreen.setVisible(panels.startScreen);
   campPrompt.setVisible(panels.campPrompt);
@@ -2261,7 +2296,12 @@ if (debugCamp !== null) {
     // Гость из ниоткуда: проверять палатки, каждый раз проходя знакомство,
     // — не проверка. Имя раздаётся по счёту, потому что повтор не принимается.
     гость: (answer: 'строим' | 'ходим' = 'строим') => {
-      admit(camp, { name: `Гость ${camp.residents.length + 1}`, look: 'поселенец', answer });
+      admit(camp, {
+        name: `Гость ${camp.residents.length + 1}`,
+        look: 'поселенец',
+        seed: camp.residents.length + 1,
+        answer,
+      });
       persist();
       return homeless(camp);
     },
@@ -2430,7 +2470,14 @@ if (debugParams.has('встреча')) {
       // знакомство за ценой значило бы отменять само знакомство
       // (`residents.ts`). Нехватка крыши станет заданием, а не отказом.
       if (meetSettler !== null && meet.answer !== null) {
-        admit(camp, { name: meetSettler.name, look: meetSettler.look, answer: meet.answer });
+        // Сид приходит вместе с человеком: с каким лицом сидел на прогалине,
+        // с таким и войдёт в лагерь.
+        admit(camp, {
+          name: meetSettler.name,
+          look: meetSettler.look,
+          seed: meetSettler.seed,
+          answer: meet.answer,
+        });
         persist();
       }
       play('build');
@@ -2519,6 +2566,10 @@ if (debugParams.has('веер')) {
   // читаются только на настоящем кадре. Сам веер экран забирает — промах
   // по контролу обязан быть промахом по контролу, а не попаданием в лагерь.
   toCamp();
+  // Игровой веер на время сцены убирается: два веера на экране — это
+  // не замер, а спор двух дуг за один палец.
+  heroFan.setVisible(false);
+  heroCard.setVisible(false);
   const guests = (n: number): FanPerson[] => {
     const out: FanPerson[] = [];
     for (let i = 0; i < n; i++) {
@@ -2762,7 +2813,12 @@ startLoop({
     // лагерь про героев не знает, и сказать ему может только тот, кто знает
     // обоих.
     campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
-    rosterPanel.sync(roster, now, camp.levels.yard);
+    // Ведущий отмечен на лице, а карточка держит того, кого выбрали.
+    heroFan.picked = roster.active;
+    if (shownHero >= roster.heroes.length) shownHero = roster.active;
+    heroFan.draw();
+    heroCard.setBottom(campHud.bands().bottom + 6);
+    heroCard.sync(roster, shownHero, now, camp.levels.yard);
   },
 
   render: (alpha) => {
