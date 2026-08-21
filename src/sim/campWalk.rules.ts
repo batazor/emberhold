@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { campArea, createCamp, type CampState } from './camp';
 import { CAMP_SPEED, campBlocked, campStart, commandCampMove, createCampHero, stepCampHero } from './campWalk';
-import { emptyWalls, raiseWall, type WallSite } from './campWalls';
+import { emptyWalls, raiseWall, toggleGate, type WallSite } from './campWalls';
 import { idx } from './grid';
 
 const bigCamp = (): CampState => {
@@ -95,16 +95,30 @@ describe('Лагерь: по нему ходят', () => {
     );
   });
 
-  test('ворота — не дыра в стене: проход считается по клеткам, а не по виду', () => {
-    // Ворота в лагере рисуются аркой, но клетка под ними остаётся стеной:
-    // отдельного прохода в симуляции нет, и правило это фиксирует, чтобы
-    // расхождение «видно проезд, а пройти нельзя» не осталось незамеченным.
+  test('через ворота проходят, и без них та же стена не пускает', () => {
+    // Ради этого ворота и ставят: стена без прохода запирает двор наглухо,
+    // и арка на ней была бы украшением.
     const camp = bigCamp();
     const area = campArea(camp.levels.hq);
-    raiseWall(camp.walls!, siteOf(camp), [{ x: 1, z: 1 }]);
-    camp.walls!.gates.push('1:1');
-    const blocked = campBlocked(camp);
-    assert.equal(blocked[idx(area, 2, 2)], 1, 'клетка ворот перестала быть стеной');
+    const grid = Math.floor(area / 2);
+    const row = Array.from({ length: grid }, (_, x) => ({ x, z: 3 }));
+    raiseWall(camp.walls!, siteOf(camp), row);
+    const behind = { x: area - 1, z: area - 1 };
+
+    // Глухая стена: за неё не пройти.
+    const shut = createCampHero(camp);
+    commandCampMove(camp, shut, behind);
+    walkOut(camp, shut);
+    assert.ok(Math.round(shut.z) < 6, 'глухая стена пропустила');
+
+    // Те же клетки, но с воротами в середине — проходит.
+    assert.ok(toggleGate(camp.walls!, { x: 2, z: 3 }), 'ворота не встали на прямой участок');
+    const open = createCampHero(camp);
+    assert.equal(campBlocked(camp)[idx(area, 4, 6)], 0, 'клетка ворот осталась стеной');
+    assert.ok(commandCampMove(camp, open, behind), 'пути через ворота нет');
+    walkOut(camp, open);
+    assert.equal(Math.round(open.z), behind.z, 'через ворота не прошёл');
+    assert.equal(Math.round(open.x), behind.x, 'через ворота не прошёл');
   });
 
   test('за площадь лагеря не выйти', () => {

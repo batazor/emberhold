@@ -18,7 +18,7 @@
  * игрока не тому, что его ждёт дальше.
  */
 import { BUILDING_ORDER, campArea, type CampState } from './camp';
-import { wallAt } from './campWalls';
+import { walkBlocked } from './campWalls';
 import { findPath, nearestWalkable } from './pathfinding';
 import { idx } from './grid';
 import type { Cell } from './types';
@@ -64,7 +64,8 @@ export function campBlocked(camp: CampState): Uint8Array {
   const walls = camp.walls;
   if (walls != null) {
     for (let z = 0; z < area; z++) {
-      for (let x = 0; x < area; x++) if (wallAt(walls, x, z)) blocked[idx(area, x, z)] = 1;
+      // Ворота из занятости выпадают: клетка под аркой — проход, а не стена.
+      for (let x = 0; x < area; x++) if (walkBlocked(walls, x, z)) blocked[idx(area, x, z)] = 1;
     }
   }
   return blocked;
