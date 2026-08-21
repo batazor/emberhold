@@ -48,6 +48,12 @@ const CAMP_ROCKS: readonly Tree[] = [forestTree('Rock_1_G_Color1'), forestTree('
 /** Уровень земли вокруг площадки: луг из buildMeadow, на нём же стоит лес. */
 const MEADOW_Y = -0.02;
 
+/** Рост валуна (§13.4) в клетках: герою по колено — то же число, что
+ *  в вылазке (`raidView.ts`), иначе это два разных камня. */
+const STONE_HEIGHT = 0.42;
+/** Сколько секунд камень оседает после замаха. */
+const STONE_SHAKE = 0.18;
+
 
 /** Насколько далеко за поляну уходит лес, в клетках. */
 const FOREST_DEPTH = 5;
@@ -73,6 +79,13 @@ export class CampView {
   private readonly fire = new Fire();
   private area = 6;
   private builtLevels = '';
+  /** Валуны лагеря (§13.4): по мешу на камень — их единицы, и каждый дрожит
+   *  от удара и исчезает поодиночке. */
+  private readonly stones = new Map<number, THREE.Mesh>();
+  private readonly stoneHits = new Map<number, number>();
+  private stoneMat: THREE.MeshLambertMaterial | null = null;
+  /** Пятно работы под валуном. Заводится в первый же замах, а не на входе. */
+  private workMark: THREE.Mesh | null = null;
 
   /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
   private readonly blocking = this.track(blockingMaterial());
@@ -83,6 +96,7 @@ export class CampView {
     this.buildHero();
     this.group.add(this.fire.group);
     this.rebuildBuildings();
+    this.buildStones();
   }
 
   private track<T extends THREE.BufferGeometry | THREE.Material>(x: T): T {
@@ -340,6 +354,99 @@ export class CampView {
     this.builtLevels = '';
     this.rebuildBuildings();
     this.rebuildHero();
+    this.buildStones();
+  }
+
+  /* ---------- валуны (§13.4) ---------- */
+
+  /**
+   * Камни на площадке. Порода та же, что у леса вокруг, и это то же решение,
+   * что в вылазке: валун обязан читаться частью места, а не предметом,
+   * который сюда принесли.
+   *
+   * Рисуются все, включая те, что лежат за нынешней кромкой площади:
+   * площадь растёт с Жильём (§20.4), и камень за кромкой — не ошибка,
+   * а тот, до которого лагерь ещё не дорос. Пока он в лесу, до него просто
+   * не доходят.
+   */
+  private buildStones(): void {
+    for (const mesh of this.stones.values()) mesh.removeFromParent();
+    this.stones.clear();
+    this.stoneHits.clear();
+    this.stoneMat ??= this.track(forestMaterial());
+    for (const stone of this.camp.stones) {
+      if (stone.taken) continue;
+      const n = noise(stone.x * 3.1, stone.z * 7.7);
+      const model = CAMP_ROCKS[Math.floor(n * CAMP_ROCKS.length) % CAMP_ROCKS.length]!;
+      // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
+      const mesh = new THREE.Mesh(treeGeometry(model, STONE_HEIGHT * (0.85 + n * 0.4)), this.stoneMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.position.set(stone.x + (n - 0.5) * 0.2, MEADOW_Y - 0.02, stone.z + (n - 0.5) * 0.16);
+      mesh.rotation.y = n * 6.28;
+      this.group.add(mesh);
+      this.stones.set(stone.id, mesh);
+    }
+  }
+
+  /** Замах пришёлся в валун: камень оседает под ударом. */
+  hitStone(id: number): void {
+    if (this.stones.has(id)) this.stoneHits.set(id, 0);
+  }
+
+  /** Валун разбит: камень уходит из кадра совсем. */
+  takeStone(id: number): void {
+    const mesh = this.stones.get(id);
+    if (mesh === undefined) return;
+    mesh.removeFromParent();
+    this.stones.delete(id);
+    this.stoneHits.delete(id);
+  }
+
+  /** Работа кайлом: пятно под валуном растёт вместе с ней. */
+  showWork(x: number, z: number, share: number): void {
+    if (this.workMark === null) {
+      this.workMark = new THREE.Mesh(
+        this.track(new THREE.CircleGeometry(0.44, 20)),
+        this.track(
+          new THREE.MeshBasicMaterial({
+            color: PALETTE.siteOk,
+            transparent: true,
+            opacity: 0.4,
+            depthWrite: false,
+            fog: false,
+          }),
+        ),
+      );
+      this.workMark.rotation.x = -Math.PI / 2;
+      this.group.add(this.workMark);
+    }
+    this.workMark.visible = true;
+    this.workMark.position.set(x, 0.06, z);
+    this.workMark.scale.setScalar(Math.max(0.08, share));
+  }
+
+  hideWork(): void {
+    if (this.workMark !== null) this.workMark.visible = false;
+  }
+
+  /** Дрожь валуна — кадрами, как и в вылазке. */
+  private syncStones(dt: number): void {
+    for (const [id, t] of [...this.stoneHits]) {
+      const mesh = this.stones.get(id);
+      if (mesh === undefined) {
+        this.stoneHits.delete(id);
+        continue;
+      }
+      const next = t + dt;
+      if (next >= STONE_SHAKE) {
+        this.stoneHits.delete(id);
+        mesh.position.y = MEADOW_Y - 0.02;
+        continue;
+      }
+      this.stoneHits.set(id, next);
+      mesh.position.y = MEADOW_Y - 0.02 - Math.sin((next / STONE_SHAKE) * Math.PI) * 0.06;
+    }
   }
 
   /** Порыв от курсора; null — ветра нет (render/cursorWind.ts). */
@@ -352,8 +459,9 @@ export class CampView {
     this.meadow?.setTilt(x, z, strength);
   }
 
-  update(_dt: number, now: number, day = 1): void {
+  update(dt: number, now: number, day = 1): void {
     this.rebuildBuildings();
+    this.syncStones(dt);
     this.meadow?.update(now / 1000);
     // Трава FluffyGrass сама себе освещение, поэтому время суток ей
     // передаётся числом: иначе вечерний лагерь стоит в полуденной траве.
@@ -582,6 +690,9 @@ export class CampView {
     for (const mesh of this.forest.children) {
       if (mesh instanceof THREE.InstancedMesh) mesh.dispose();
     }
+    for (const mesh of this.stones.values()) mesh.removeFromParent();
+    this.stones.clear();
+    this.stoneHits.clear();
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
     this.buildings.clear();

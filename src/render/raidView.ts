@@ -119,6 +119,14 @@ const BUILDING_SCALE = 0.55;
 const CONTAINER_HEIGHT = 0.52;
 
 /**
+ * Рост валуна (§13.4) в клетках локации: герою по колено. Выше — и камень
+ * стал бы стеной, которую почему-то можно обойти; ниже — щебнем, по которому
+ * не бьют. Пенёк просеки ровно такой же (0,42), и это не совпадение: обе
+ * вещи занимают место на полу, но не в силуэте локации.
+ */
+const STONE_HEIGHT = 0.42;
+
+/**
  * Замеры клипов (`npm run clips`, каталог набора анимаций) — по ним клип
  * подгоняется под механику, а не наоборот.
  *
@@ -230,11 +238,16 @@ export class RaidView {
   private readonly shaken = new Map<number, number>();
   /** Падающие стволы. `regrow` — кромка: на её место встаёт следующее дерево. */
   private readonly falling: { key: number; t: number; regrow: boolean }[] = [];
-  /** Пятно работы под деревом. Заводится в первую же рубку, а не на входе:
-   *  в вылазке его не будет никогда. */
-  private chopMark: THREE.Mesh | null = null;
-  /** Рубит ли герой прямо сейчас — этим он и отличается от стоящего. */
-  private chopping = false;
+  /** Пятно работы под тем, по чему бьют. Заводится в первый же замах,
+   *  а не на входе: в вылазке без валунов его не будет никогда. */
+  private workMark: THREE.Mesh | null = null;
+  /** Работает ли герой прямо сейчас — этим он и отличается от стоящего. */
+  private working = false;
+  /** Валуны (§13.4): по одному мешу на камень — их единицы, и меш на каждый
+   *  дешевле, чем поиск экземпляра в общем буфере на каждый удар. */
+  private readonly stoneMeshes = new Map<number, THREE.Mesh>();
+  /** Валуны, дрожащие после замаха, и сколько они уже дрожат. */
+  private readonly stoneHits = new Map<number, number>();
   /**
    * Гарнизон замка (§6.1.6): отряд на тропе и стрелок на стене. Считает их
    * симуляция — здесь только тела, повороты и клипы. Часы свои и с нуля:
@@ -274,6 +287,7 @@ export class RaidView {
     if (this.grave !== null) this.buildGraveyard(this.grave);
     if (flavor !== 'glade') this.buildEvac();
     this.buildContainers();
+    this.buildStones();
     this.buildEnemies();
     this.buildHero();
     this.buildMarker();
@@ -515,9 +529,9 @@ export class RaidView {
   }
 
   /** Работа топором: пятно под деревом растёт вместе с ней. 0 — работы нет. */
-  showChop(x: number, z: number, share: number): void {
-    if (this.chopMark === null) {
-      this.chopMark = new THREE.Mesh(
+  showWork(x: number, z: number, share: number): void {
+    if (this.workMark === null) {
+      this.workMark = new THREE.Mesh(
         this.track(new THREE.CircleGeometry(0.44, 20)),
         this.track(
           new THREE.MeshBasicMaterial({
@@ -529,20 +543,20 @@ export class RaidView {
           }),
         ),
       );
-      this.chopMark.rotation.x = -Math.PI / 2;
-      this.group.add(this.chopMark);
+      this.workMark.rotation.x = -Math.PI / 2;
+      this.group.add(this.workMark);
     }
-    this.chopMark.visible = true;
-    this.chopMark.position.set(x, 0.06, z);
-    this.chopMark.scale.setScalar(Math.max(0.08, share));
-    // Пятно и клип — одно состояние: пока пятно растёт, герой машет топором,
+    this.workMark.visible = true;
+    this.workMark.position.set(x, 0.06, z);
+    this.workMark.scale.setScalar(Math.max(0.08, share));
+    // Пятно и клип — одно состояние: пока пятно растёт, герой машет,
     // а не стоит в покое рядом с работающим индикатором.
-    this.chopping = true;
+    this.working = true;
   }
 
-  hideChop(): void {
-    if (this.chopMark !== null) this.chopMark.visible = false;
-    this.chopping = false;
+  hideWork(): void {
+    if (this.workMark !== null) this.workMark.visible = false;
+    this.working = false;
   }
 
   /** Дрожь после замаха и падение — оба живут кадрами, а не тиками симуляции. */
@@ -976,6 +990,79 @@ export class RaidView {
   }
 
   /**
+   * Валуны (§13.4) — те же камни набора, из которых сложена стена вылазки
+   * (§6.1.1), но ростом по колено. Это решение, а не экономия на моделях:
+   * камень на полу обязан читаться как отколовшийся от стены, а не как
+   * предмет чужого происхождения. У замка и в лагере стены из камня нет,
+   * и там та же порода говорит другое — из этого стену и сложили.
+   *
+   * Меш на валун, а не общий буфер: их единицы, зато каждый дрожит от удара
+   * и исчезает поодиночке, а искать экземпляр в общем буфере пришлось бы
+   * на каждом замахе.
+   */
+  private buildStones(): void {
+    if (this.loc.stones.length === 0) return;
+    const mat = this.track(forestMaterial());
+    for (const stone of this.loc.stones) {
+      if (stone.taken) continue;
+      // Порода и разворот выведены из координаты — тот же приём, что у стены:
+      // локация обязана совпадать сама с собой между заходами.
+      const t = ((Math.sin(stone.x * 3.1 + stone.z * 7.7) * 1000) % 1 + 1) % 1;
+      const model = RAID_ROCKS[Math.floor(t * RAID_ROCKS.length) % RAID_ROCKS.length]!;
+      const mesh = new THREE.Mesh(
+        // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
+        treeGeometry({ set: 'forest', model }, STONE_HEIGHT * (0.85 + t * 0.4)),
+        mat,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.position.set(stone.x + (t - 0.5) * 0.2, -0.04, stone.z + (t - 0.5) * 0.16);
+      mesh.rotation.y = t * 6.28;
+      this.group.add(mesh);
+      this.stoneMeshes.set(stone.id, mesh);
+    }
+  }
+
+  /**
+   * Замах пришёлся в валун: камень вздрагивает. Как и у дерева, это
+   * единственное, чем рендер отвечает на удар до конца работы, — без дрожи
+   * десять замахов читаются как зависание.
+   */
+  hitStone(id: number): void {
+    this.heroRig?.replay();
+    if (this.stoneMeshes.has(id)) this.stoneHits.set(id, 0);
+  }
+
+  /** Валун разбит: камень уходит из кадра совсем. */
+  takeStone(id: number): void {
+    const mesh = this.stoneMeshes.get(id);
+    if (mesh === undefined) return;
+    mesh.removeFromParent();
+    this.stoneMeshes.delete(id);
+    this.stoneHits.delete(id);
+  }
+
+  /** Дрожь валуна — кадрами, как и у дерева. */
+  private syncStones(dt: number): void {
+    for (const [id, t] of [...this.stoneHits]) {
+      const mesh = this.stoneMeshes.get(id);
+      if (mesh === undefined) {
+        this.stoneHits.delete(id);
+        continue;
+      }
+      const next = t + dt;
+      if (next >= SHAKE_SECONDS) {
+        this.stoneHits.delete(id);
+        mesh.position.y = -0.04;
+        continue;
+      }
+      this.stoneHits.set(id, next);
+      // Камень не кивает, как крона, а оседает: удар идёт вниз, а не вбок.
+      mesh.position.y = -0.04 - Math.sin((next / SHAKE_SECONDS) * Math.PI) * 0.06;
+    }
+  }
+
+  /**
    * Противники — три скелета набора KayKit Skeletons (§6.1.3, каталог —
    * `enemyart.html`). Различаются силуэтом раньше, чем цветом: за пределами
    * фонаря цвет пропадает первым, и разводят их снаряжение и рост,
@@ -1162,7 +1249,7 @@ export class RaidView {
       if (heroWalking) this.heroRig.play('ходьба', rateFor(HERO_SPEED, this.heroRig.root.scale.y));
       // Рубка — тот же клип удара, растянутый под замах (§13.3): топор
       // обязан входить в ствол ровно тогда, когда стучит звук.
-      else if (this.chopping) this.heroRig.play('удар', STRIKE / SWING_SECONDS);
+      else if (this.working) this.heroRig.play('удар', STRIKE / SWING_SECONDS);
       else this.heroRig.play('покой');
     }
 
@@ -1239,6 +1326,7 @@ export class RaidView {
     }
 
     this.syncTrees(dt);
+    this.syncStones(dt);
     this.syncGarrison(dt);
     this.syncGrass(hx, hz, time);
 
@@ -1306,5 +1394,7 @@ export class RaidView {
     this.disposables = [];
     this.enemyViews.clear();
     this.containerMeshes.clear();
+    this.stoneMeshes.clear();
+    this.stoneHits.clear();
   }
 }
