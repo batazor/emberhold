@@ -65,6 +65,9 @@ export class CampView {
   private readonly buildings = new Map<BuildingId, THREE.Group>();
   private readonly disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
   private hero!: THREE.Mesh;
+  /** Где герой стоит: мировые координаты, их ведёт симуляция. */
+  private heroAt = { x: 0, z: 0 };
+  private heroFacing = 0;
   private site: THREE.Mesh | null = null;
   /** Свет костра. Один на лагерь: горит тот огонь, что стоит у кухни. */
   private readonly fire = new Fire();
@@ -343,8 +346,10 @@ export class CampView {
     // передаётся числом: иначе вечерний лагерь стоит в полуденной траве.
     this.meadow?.setLight(0.35 + day * 0.65);
 
-    const hqPos = this.camp.layout.hq;
-    this.hero.position.set(hqPos.x + 1.9, 0.55, hqPos.z + 0.5);
+    // Герой стоит там, куда пришёл. Раньше он каждый кадр возвращался
+    // к Жилью — и лагерь был единственным местом игры, где не ходят.
+    this.hero.position.set(this.heroAt.x, 0.55, this.heroAt.z);
+    this.hero.rotation.y = this.heroFacing;
 
     this.syncSite(now);
     this.syncFire(now, day);
@@ -489,6 +494,13 @@ export class CampView {
 
   hideWallGhost(): void {
     this.ghost.clear();
+  }
+
+  /** Куда пришёл герой. Клетка — то же, что и в вылазке, плюс полклетки. */
+  setHero(x: number, z: number, facing: number): void {
+    this.heroAt.x = x;
+    this.heroAt.z = z;
+    this.heroFacing = facing;
   }
 
   get center(): { x: number; z: number } {
