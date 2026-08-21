@@ -634,7 +634,9 @@ const onboarding = createDirector(loaded.onboarding, {
   },
 });
 
-/** Кадр 3: экран коротко дёргается. Рана обязана быть замечена телом. */
+/** Экран коротко дёргается на ране. Заведено кадром 3 онбординга, теперь
+ *  зовётся на каждой ране вылазки: §11.3 считает раны штуками, и каждая
+ *  обязана быть замечена телом, а не только глазом. */
 function shake(): void {
   const canvas = rig.renderer.domElement;
   canvas.classList.remove('shake');
@@ -1560,7 +1562,13 @@ startLoop({
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
+      const woundsBefore = raid.hero.wounds;
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
+      // Рана обязана быть замечена телом, а не только глазом. Кадр 3
+      // онбординга завёл эту тряску ради первой раны; со сменой модели боя
+      // (§11.3) удар стал стоить разного числа ран, и молчать про них
+      // за пределами раскадровки перестало быть допустимо.
+      if (raid.hero.wounds < woundsBefore) shake();
       if (sayNext !== null) {
         raid.events.push(sayNext);
         sayNext = null;

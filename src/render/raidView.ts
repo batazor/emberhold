@@ -107,6 +107,23 @@ const rateFor = (speed: number, scale: number): number =>
 const walkRate = (kind: EnemyKind, scale: number): number =>
   rateFor(ENEMY_STATS[kind].speed, scale);
 
+/**
+ * §17.6 — весь удар героя обязан уложиться в половину интервала атаки,
+ * иначе два удара подряд накладываются друг на друга.
+ */
+const HERO_SWING_SECONDS = 0.6;
+
+/**
+ * §17.6 отводит падению 680 мс, клип набора длится 800. Растягиваем клип,
+ * а не правим раздел: смерть не должна тормозить темп, и это решение
+ * механики, а не длина чужого клипа.
+ */
+const FALL_RATE = 0.8 / 0.68;
+
+/** §17.1 — вспышка урона. Короче не заметят, длиннее сольётся со следующим
+ *  ударом. Не клип: она ложится поверх того, что герой делает сейчас. */
+const FLASH_SECONDS = 0.15;
+
 /** Сколько ствол дрожит после замаха (§13.3). Короче клипа удара: дрожь —
  *  ответ на удар, а не отдельное событие. */
 const SHAKE_SECONDS = 0.32;
@@ -136,6 +153,8 @@ interface EnemyView {
   hp: number;
   /** Одиночный клип доигрывает до конца и только потом отпускает состояние. */
   busy: boolean;
+  /** Секунды, оставшиеся вспышке урона (§17.1). */
+  flash: number;
 }
 
 export class RaidView {
@@ -145,6 +164,18 @@ export class RaidView {
   private hero!: THREE.Group;
   /** Есть у класса с моделью набора; у примитивных классов остаётся null. */
   private heroRig: Rigged | null = null;
+  /**
+   * Что герой делал на прошлом кадре. Симуляция боевых событий не рассылает —
+   * звук их тоже вычитает из состояния (§18.3), — поэтому и рендер сравнивает
+   * состояние с прошлым кадром, а не ждёт уведомления.
+   */
+  private heroWas = { wounds: 0, cooldown: 0 };
+  /** Одиночный клип героя доигрывает до конца и только потом отпускает
+   *  состояние. Удар, прерванный шагом на середине замаха, читается как
+   *  рывок, а не как удар (§17.1). */
+  private heroBusy = false;
+  /** Секунды, оставшиеся вспышке урона (§17.1). */
+  private heroFlash = 0;
   private marker!: THREE.Mesh;
   /** Точка тапа из кадра 1 онбординга: единственная подсказка, которая
    *  показывает жест вместо того, чтобы называть его словами. */
@@ -179,6 +210,20 @@ export class RaidView {
 
   /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
   private readonly blocking = this.track(blockingMaterial());
+  /**
+   * §17.1 — вспышка урона. Цветом, а не яркостью, разводится с телеграфом:
+   * красное `PALETTE.telegraph` значит «сейчас ударят», белый иней —
+   * «уже ударили». Две вещи, которые игрок обязан различать мгновенно,
+   * одинаковым цветом разной силы не различаются.
+   */
+  private readonly hurtFlash = this.track(
+    new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      flatShading: true,
+      emissive: PALETTE.hurt,
+      emissiveIntensity: 1.6,
+    }),
+  );
 
   constructor(
     private readonly loc: GameLocation,
@@ -343,7 +388,10 @@ export class RaidView {
    */
   hitTree(x: number, z: number): void {
     // Топор вошёл в ствол — с этого мгновения идёт следующий замах.
-    this.heroRig?.replay();
+    // Только если герой действительно рубит: с приходом боевого удара
+    // безусловный replay перезапускал бы боевой замах на каждом стуке
+    // по дереву, и удар по противнику не доигрывал бы никогда.
+    if (this.chopping) this.heroRig?.replay();
     const key = idx(this.loc.size, x, z);
     if (!this.trees.has(key)) return;
     this.shaken.set(key, 0);
@@ -693,6 +741,7 @@ export class RaidView {
         lifeRoot,
         facing: 0,
         hp: e.hp,
+        flash: 0,
         busy: false,
       });
     }
@@ -828,11 +877,48 @@ export class RaidView {
       this.hero.children[0]!.position.y = 0.6 + (heroWalking ? Math.sin(time / 90) * 0.04 : 0);
     } else {
       this.heroRig.update(dt);
-      if (heroWalking) this.heroRig.play('ходьба', rateFor(HERO_SPEED, this.heroRig.root.scale.y));
-      // Рубка — тот же клип удара, растянутый под замах (§13.3): топор
-      // обязан входить в ствол ровно тогда, когда стучит звук.
-      else if (this.chopping) this.heroRig.play('удар', STRIKE / SWING_SECONDS);
-      else this.heroRig.play('покой');
+
+      // Бой событий не рассылает, и рендер вычитает их из состояния — тем же
+      // приёмом, что и звук (§18.3). Удар ловится скачком отката вверх: вниз
+      // он тикает сам, вверх прыгает ровно в момент удара.
+      const struck = state.hero.cooldown > this.heroWas.cooldown + 0.01;
+      const hurt = state.hero.wounds < this.heroWas.wounds;
+
+      // §17.1 — урон не клип, а вспышка 150 мс поверх текущего. У героя раны
+      // считаны штуками (§11.3), и каждая обязана быть замечена.
+      if (hurt) this.heroFlash = FLASH_SECONDS;
+
+      if (this.heroBusy && this.heroRig.finished) this.heroBusy = false;
+
+      if (state.status === 'failed') {
+        // Падение держится до конца кадра: смерть — единственное состояние,
+        // из которого не выходят.
+        if (this.heroRig.state !== 'падение') this.heroRig.play('падение', FALL_RATE);
+      } else if (struck && !this.chopping) {
+        // Удар растягивается так, чтобы уложиться в §17.6: 600 мс при
+        // интервале 1,2 с. Иначе два удара подряд накладываются друг на друга.
+        this.heroRig.play('удар', STRIKE / HERO_SWING_SECONDS);
+        this.heroRig.replay();
+        this.heroBusy = true;
+      } else if (hurt && !this.heroBusy) {
+        // Клип урона — только когда герой не в замахе: удар, оплаченный
+        // откатом, не должен визуально отменяться.
+        this.heroRig.play('урон');
+        this.heroBusy = true;
+      } else if (!this.heroBusy) {
+        if (heroWalking) this.heroRig.play('ходьба', rateFor(HERO_SPEED, this.heroRig.root.scale.y));
+        // Рубка — тот же клип удара, растянутый под замах (§13.3): топор
+        // обязан входить в ствол ровно тогда, когда стучит звук.
+        else if (this.chopping) this.heroRig.play('удар', STRIKE / SWING_SECONDS);
+        else this.heroRig.play('покой');
+      }
+
+      if (this.heroFlash > 0) {
+        this.heroFlash = Math.max(0, this.heroFlash - dt);
+        this.heroRig.setMaterial(this.heroFlash > 0 ? this.hurtFlash : this.blocking);
+      }
+
+      this.heroWas = { wounds: state.hero.wounds, cooldown: state.hero.cooldown };
     }
 
     for (const e of this.loc.enemies) {
@@ -857,7 +943,13 @@ export class RaidView {
       const ez = lerp(e.prevZ, e.z, alpha);
       const walking = e.x !== e.prevX || e.z !== e.prevZ;
       view.rig.root.position.set(ex, 0, ez);
-      view.rig.setMaterial(e.telegraph > 0 ? view.hot : view.base);
+      // Порядок важен: вспышка попадания перебивает телеграф. Замах длится
+      // четверть секунды и дольше, вспышка — 150 мс, и если телеграф выиграет,
+      // попадание в момент чужого замаха станет невидимым.
+      view.flash = Math.max(0, view.flash - dt);
+      view.rig.setMaterial(
+        view.flash > 0 ? this.hurtFlash : e.telegraph > 0 ? view.hot : view.base,
+      );
 
       // Спящий смотрит, куда стоял; проснувшийся — на героя. Разворот тот же,
       // что у героя (§17.2): за кадр, а не мгновенно.
@@ -876,6 +968,10 @@ export class RaidView {
       if (e.hp < view.hp) {
         view.rig.play('урон');
         view.busy = true;
+        // §17.1 — клип урона показывает, что попали; вспышка показывает,
+        // что попали именно сейчас. У мага пять ран, и без неё «попал»
+        // от «не достал» на пяти сантиметрах экрана не отличить.
+        view.flash = FLASH_SECONDS;
       } else if (e.telegraph > 0 && view.rig.state !== 'удар') {
         view.rig.play('удар', ATTACK_RATE[e.kind]);
         view.busy = true;
