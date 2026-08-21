@@ -319,22 +319,37 @@ export class WorldMap {
         ctx.stroke();
       }
 
-      // Замок — квадрат, вылазка — круг. Форма, а не цвет: цвет на карте уже
-      // занят богатством, и второй смысл в него не влезает.
+      // Замок — квадрат, кладбище — крест, вылазка — круг. Форма, а не цвет:
+      // цвет на карте уже занят богатством, и второй смысл в него не влезает.
       ctx.beginPath();
       if (node.kind === 'замок') ctx.rect(x - r, y - r, r * 2, r * 2);
-      else ctx.arc(x, y, r, 0, Math.PI * 2);
+      else if (node.kind === 'кладбище') {
+        ctx.moveTo(x - r * 0.42, y - r);
+        ctx.lineTo(x + r * 0.42, y - r);
+        ctx.lineTo(x + r * 0.42, y - r * 0.3);
+        ctx.lineTo(x + r, y - r * 0.3);
+        ctx.lineTo(x + r, y + r * 0.12);
+        ctx.lineTo(x + r * 0.42, y + r * 0.12);
+        ctx.lineTo(x + r * 0.42, y + r);
+        ctx.lineTo(x - r * 0.42, y + r);
+        ctx.lineTo(x - r * 0.42, y + r * 0.12);
+        ctx.lineTo(x - r, y + r * 0.12);
+        ctx.lineTo(x - r, y - r * 0.3);
+        ctx.lineTo(x - r * 0.42, y - r * 0.3);
+        ctx.closePath();
+      } else ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(11, 10, 9, 0.85)';
       ctx.fill();
       // Толщина кольца — ярус: цена места видна раньше подписи. У замка
       // яруса нет, и кольцо у него тонкое всегда.
-      ctx.lineWidth = node.kind === 'замок' ? 1.4 : 1 + node.tier * 0.9;
-      ctx.strokeStyle = node.kind === 'замок' ? '#c8a24a' : color;
+      const walk = node.kind !== 'вылазка';
+      ctx.lineWidth = walk ? 1.4 : 1 + node.tier * 0.9;
+      ctx.strokeStyle = node.kind === 'замок' ? '#c8a24a' : node.kind === 'кладбище' ? '#9fb6d8' : color;
       ctx.stroke();
 
       // Выработанная — крест. Цифру «0 из 3» на карте не прочитать, а решение
       // «сюда не иду» принимается взглядом.
-      if (node.kind !== 'замок' && (state?.rich ?? RICH_MAX) === 0) {
+      if (!walk && (state?.rich ?? RICH_MAX) === 0) {
         ctx.beginPath();
         ctx.moveTo(x - r * 0.5, y - r * 0.5);
         ctx.lineTo(x + r * 0.5, y + r * 0.5);
@@ -344,7 +359,7 @@ export class WorldMap {
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
-      const clan = node.kind === 'замок' ? null : state?.clan ?? null;
+      const clan = walk ? null : state?.clan ?? null;
       if (clan !== null) {
         ctx.fillStyle = CLANS[clan % CLANS.length]!.color;
         ctx.fillRect(x + r * 0.95, y - r * 1.35, r * 0.62, r * 0.62);
@@ -395,6 +410,10 @@ export class WorldMap {
     const node = this.node();
     if (node.kind === 'замок') {
       this.paintKeepCard(node);
+      return;
+    }
+    if (node.kind === 'кладбище') {
+      this.paintGraveCard(node);
       return;
     }
     const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0, event: null };
@@ -455,6 +474,21 @@ export class WorldMap {
    * когда-нибудь они заполнятся сами. Вместо этого сказано прямо, что здесь
    * есть сейчас: постройка, по которой можно ходить.
    */
+  /**
+   * Кладбище (§6.1.7). Карточка отличается от замковой одной строкой —
+   * «кто здесь», — и эта строка обязана быть честной: привидения там есть,
+   * и игрок узнаёт об этом до входа, а не внутри.
+   */
+  private paintGraveCard(node: WorldNode): void {
+    this.card.innerHTML =
+      `<div class="t"><b>${node.name}</b><i>прогулка</i></div>` +
+      '<div class="line"><span>Что там</span><b>ограда, могилы, склеп</b></div>' +
+      '<div class="line"><span>Добыча</span><b>нет</b></div>' +
+      '<div class="line"><span>Кто здесь</span><b class="bad">привидения</b></div>';
+    this.note.textContent = 'Прогулка: добычи нет. Привидение медленнее вас — от него можно уйти.';
+    this.go.textContent = 'Пойти';
+  }
+
   private paintKeepCard(node: WorldNode): void {
     this.card.innerHTML =
       `<div class="t"><b>${node.name}</b><i>постройка</i></div>` +

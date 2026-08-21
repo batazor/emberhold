@@ -36,13 +36,21 @@ import {
   type Piece,
   type Spot,
 } from './castle';
+import {
+  FENCE_MATERIALS,
+  buildFence,
+  type FenceMaterial,
+  type FencePiece,
+} from './fence';
 import { canAfford, spend, type Resources } from './resources';
 import { mulberry32 } from '../core/rng';
 
 /** Что можно поставить. Карточки панели стройки — ровно этот список. */
-export type WallTool = 'стена' | 'башня' | 'ворота' | 'лестница' | 'снос';
+export type WallTool = 'стена' | 'ограда' | 'башня' | 'ворота' | 'лестница' | 'снос';
 
-export const WALL_TOOLS: readonly WallTool[] = ['стена', 'башня', 'ворота', 'лестница', 'снос'];
+export const WALL_TOOLS: readonly WallTool[] = [
+  'стена', 'ограда', 'башня', 'ворота', 'лестница', 'снос',
+];
 
 /**
  * Состояние стен лагеря. Хранится клетками, а не деталями: деталь — вывод,
@@ -52,6 +60,15 @@ export const WALL_TOOLS: readonly WallTool[] = ['стена', 'башня', 'в�
 export interface CampWalls {
   /** Клетки стены: ключ `keyOf`. */
   cells: string[];
+  /**
+   * Клетки ограды (§6.1.7). Отдельным списком, а не пометкой на клетке стены:
+   * ограда и стена — разные постройки, и в одной клетке им тесно. Старые
+   * сохранения этого поля не знают, поэтому везде читается через `fenceCells`.
+   */
+  fences?: string[];
+  /** Материал ограды, общий на весь лагерь: четыре ограды рядом читались бы
+   *  не оградой, а забором из того, что было. */
+  fence?: FenceMaterial;
   /** Клетки с башнями и их ярусы. */
   towers: Record<string, number>;
   /** Клетки с воротами. */
@@ -83,7 +100,29 @@ export interface CampWallsWork {
   work: WallWork | null;
 }
 
-export const emptyWalls = (): CampWalls => ({ cells: [], towers: {}, gates: [], stairs: {}, work: null });
+export const emptyWalls = (): CampWalls => ({
+  cells: [],
+  fences: [],
+  fence: 'дерево',
+  towers: {},
+  gates: [],
+  stairs: {},
+  work: null,
+});
+
+/** Клетки ограды — с оглядкой на сохранения, которые их не знают. */
+export const fenceCells = (walls: CampWalls): string[] => (walls.fences ??= []);
+
+/** Материал ограды. По умолчанию дерево: оно дешевле всех и его добывают. */
+export const fenceMaterial = (walls: CampWalls): FenceMaterial => walls.fence ?? 'дерево';
+
+/** Следующий материал по кругу: карточка ограды перебирает их тапом. */
+export function cycleFence(walls: CampWalls): FenceMaterial {
+  const at = FENCE_MATERIALS.indexOf(fenceMaterial(walls));
+  const next = FENCE_MATERIALS[(at + 1) % FENCE_MATERIALS.length]!;
+  walls.fence = next;
+  return next;
+}
 
 /**
  * Цена в камне. Выведена из замера (`npm run measure`), а не назначена.
@@ -100,10 +139,60 @@ export const emptyWalls = (): CampWalls => ({ cells: [], towers: {}, gates: [], 
  */
 export const WALL_COST: Record<Exclude<WallTool, 'снос'>, number> = {
   'стена': 1,
+  /**
+   * У ограды своя цена, `FENCE_COST`: она берётся не целой единицей за клетку,
+   * и ресурс у неё зависит от материала. Это поле оставлено ради формы
+   * таблицы и в счёт не идёт.
+   */
+  'ограда': 1,
   'башня': 2,
   'ворота': 3,
   'лестница': 1,
 };
+
+/**
+ * Цена клетки ограды — **измерена, а не назначена** (`npm run fence`).
+ *
+ * Вопрос был такой: все четыре материала загораживают одинаково, разница
+ * между ними — облик и ресурс. Значит выбор материала обязан быть выбором
+ * облика, а не выбором цены: если один дешевле, три других становятся
+ * украшением панели. Сравнивать в единицах ресурса при этом нельзя — камень
+ * и дерево добываются по-разному и стоят игроку разного времени.
+ *
+ * Замер приводит всё к секунде игрока. Заход яруса 0 идёт 10,2 с и выносит
+ * 4,1 камня и 1,7 дерева; находка стоит 1,8 с; доли в таблице добычи (§13) —
+ * 0,70 камня и 0,30 дерева. Отсюда **камень 2,5 с за единицу, дерево 5,9 с**
+ * (рубка §13.3 дороже — 8,0 с, и потому в цену не идёт: игрок берёт дешёвое).
+ * Дерево дороже камня в 2,33 раза.
+ *
+ * Первая версия этого файла брала по единице за клетку с любого материала,
+ * и замер это отменил: дощатое кольцо выходило 46,8 с против 20,1 с у
+ * каменного — разброс 57%. Дощатая ограда была не дешёвым материалом,
+ * а мёртвым.
+ *
+ * Из пяти перебранных пар только одна удержала оба условия — материалы
+ * в пределах 15% друг от друга и кольцо дешевле стенного: **единица дерева
+ * на четыре клетки, единица камня на две**. Кольцо при Жилье ур. 1 (восемь
+ * клеток) выходит 11,7 с дощатой против 10,0 с каменной, разброс 14%,
+ * и это 0,58 кольца стены.
+ *
+ * Проверяет обе величины `campWalls.rules.ts`, и проверяет по той же
+ * таблице добычи, а не по переписанным сюда числам.
+ */
+export const FENCE_COST: Readonly<Record<FenceMaterial, { readonly resource: 'wood' | 'stone'; readonly perCell: number }>> = {
+  'дерево': { resource: 'wood', perCell: 0.25 },
+  'ковка': { resource: 'stone', perCell: 0.5 },
+  'кирпич': { resource: 'stone', perCell: 0.5 },
+  'камень': { resource: 'stone', perCell: 0.5 },
+};
+
+/** Чем платят за ограду. Дерево у дощатой, камень у остальных трёх. */
+export const fenceResource = (material: FenceMaterial): 'wood' | 'stone' =>
+  FENCE_COST[material].resource;
+
+/** Сколько стоит мазок ограды. Округление вверх — на мазок, а не на клетку. */
+export const fenceAmount = (material: FenceMaterial, cells: number): number =>
+  cells <= 0 ? 0 : Math.ceil(cells * FENCE_COST[material].perCell);
 
 /**
  * Сколько идёт стройка, в секундах на клетку. Та же мерка, что у цены:
@@ -116,15 +205,31 @@ export const WALL_COST: Record<Exclude<WallTool, 'снос'>, number> = {
  */
 export const WALL_SECONDS: Record<Exclude<WallTool, 'снос'>, number> = {
   'стена': 20,
+  /**
+   * Время идёт за ценой — той же связкой, какой §6.1.6 связало их у стены
+   * («стоит примерно как улучшение и строится примерно столько же»).
+   * Кольцо ограды стоит 0,58 кольца стены, клетка стены — 20 с, отсюда
+   * 11,7 с, округлённые до читаемой пятёрки. Считает это `npm run fence`.
+   */
+  'ограда': 10,
   'башня': 60,
   'ворота': 60,
   'лестница': 20,
 };
 
-/** Цена мазка или постройки — в камне и ни в чём другом. */
-export const wallPrice = (tool: Exclude<WallTool, 'снос'>, cells: number): Partial<Resources> => ({
-  stone: WALL_COST[tool] * Math.max(1, cells),
-});
+/**
+ * Цена мазка или постройки. В камне у всего, кроме дощатой ограды: она одна
+ * платится деревом, и материал приходит сюда именно за этим.
+ */
+export const wallPrice = (
+  tool: Exclude<WallTool, 'снос'>,
+  cells: number,
+  material: FenceMaterial = 'дерево',
+): Partial<Resources> => {
+  if (tool !== 'ограда') return { stone: WALL_COST[tool] * Math.max(1, cells) };
+  const amount = fenceAmount(material, cells);
+  return fenceResource(material) === 'wood' ? { wood: amount } : { stone: amount };
+};
 
 /** Сколько идёт стройка целиком. */
 export const wallSeconds = (tool: Exclude<WallTool, 'снос'>, cells: number): number =>
@@ -193,7 +298,9 @@ export interface WallSite {
  */
 export function wallAt(walls: CampWalls, x: number, z: number): boolean {
   const key = keyOf(wallSpotOf(x, z));
-  return walls.cells.includes(key) || walls.stairs[key] !== undefined;
+  return walls.cells.includes(key)
+    || fenceCells(walls).includes(key)
+    || walls.stairs[key] !== undefined;
 }
 
 /**
@@ -216,6 +323,20 @@ export function wallBlock(site: WallSite, spot: Spot): WallBlock {
   const grid = wallGrid(site.area);
   if (spot.x < 0 || spot.z < 0 || spot.x >= grid || spot.z >= grid) return 'вне площади';
   if (onBuilding(spot, site.layout, site.levels)) return 'занято зданием';
+  return 'ok';
+}
+
+/**
+ * Можно ли поставить ограду. Всё то же, что у стены, плюс одно: **ограда
+ * не встаёт на стену и стена не встаёт на ограду**. Обе занимают клетку
+ * целиком, и вложить одну в другую значило бы получить постройку,
+ * которой в наборе нет.
+ */
+export function fenceBlock(walls: CampWalls, site: WallSite, spot: Spot): WallBlock {
+  const why = wallBlock(site, spot);
+  if (why !== 'ok') return why;
+  const key = keyOf(spot);
+  if (walls.cells.includes(key) || walls.stairs[key] !== undefined) return 'занято зданием';
   return 'ok';
 }
 
@@ -311,12 +432,22 @@ export function strokeCells(path: readonly Spot[]): Spot[] {
   return out;
 }
 
-/** Клетки мазка, которые действительно встанут: без занятых и без повторов. */
-export function strokeFit(walls: CampWalls, site: WallSite, path: readonly Spot[]): Spot[] {
-  const set = new Set(walls.cells);
+/**
+ * Клетки мазка, которые действительно встанут: без занятых и без повторов.
+ * `tool` различает стену и ограду: занятость у них общая, а вставать одна
+ * в клетку другой не имеет права.
+ */
+export function strokeFit(
+  walls: CampWalls,
+  site: WallSite,
+  path: readonly Spot[],
+  tool: 'стена' | 'ограда' = 'стена',
+): Spot[] {
+  const set = new Set([...walls.cells, ...fenceCells(walls)]);
   const out: Spot[] = [];
   for (const spot of strokeCells(path)) {
-    if (wallBlock(site, spot) !== 'ok') continue;
+    const why = tool === 'ограда' ? fenceBlock(walls, site, spot) : wallBlock(site, spot);
+    if (why !== 'ok') continue;
     if (set.has(keyOf(spot))) continue;
     set.add(keyOf(spot));
     out.push(spot);
@@ -355,7 +486,7 @@ export function startWall(
 ): StartBlock {
   if (busy || walls.work != null) return 'слот занят';
   if (cells.length === 0) return 'вне площади';
-  const price = wallPrice(tool, cells.length);
+  const price = wallPrice(tool, cells.length, fenceMaterial(walls));
   if (!canAfford(resources, price)) return 'не хватает камня';
   spend(resources, price);
   walls.work = {
@@ -402,6 +533,9 @@ export function completeWallIfDue(walls: CampWalls, now: number): WallWork | nul
   const spots = work.cells.map(parseKey);
   if (work.tool === 'стена') {
     for (const spot of spots) if (!walls.cells.includes(keyOf(spot))) walls.cells.push(keyOf(spot));
+  } else if (work.tool === 'ограда') {
+    const cells = fenceCells(walls);
+    for (const spot of spots) if (!cells.includes(keyOf(spot))) cells.push(keyOf(spot));
   } else if (work.tool === 'башня') {
     const spot = spots[0]!;
     if (!walls.cells.includes(keyOf(spot))) walls.cells.push(keyOf(spot));
@@ -498,6 +632,21 @@ export function razeWall(walls: CampWalls, spot: Spot, resources?: Resources): b
     if (walls.gates.includes(key)) resources.stone += WALL_COST['ворота'];
     if (walls.stairs[key] !== undefined) resources.stone += WALL_COST['лестница'];
     if (walls.cells.includes(key)) resources.stone += WALL_COST['стена'];
+    if (fenceCells(walls).includes(key)) {
+      /**
+       * Возврат за ограду — **предельный**, а не поклеточный, и это не
+       * придирка: цена дробная (единица дерева на четыре клетки), а ресурс
+       * целый. Клетка возвращает разницу между ценой всей ограды до сноса
+       * и после: мазок в четыре клетки стоил единицу — и вернёт единицу,
+       * сколько бы клеток его ни сносили по одной.
+       *
+       * Поклеточный возврат по округлённой вверх цене был бы дырой ровно
+       * вчетверо: построил мазком, снёс по клетке, заработал.
+       */
+      const material = fenceMaterial(walls);
+      const had = fenceCells(walls).length;
+      resources[fenceResource(material)] += fenceAmount(material, had) - fenceAmount(material, had - 1);
+    }
   }
   return razeAt(walls, spot);
 }
@@ -506,8 +655,11 @@ export function razeWall(walls: CampWalls, spot: Spot, resources?: Resources): b
 function razeAt(walls: CampWalls, spot: Spot): boolean {
   const key = keyOf(spot);
   const at = walls.cells.indexOf(key);
-  const had = at >= 0 || walls.stairs[key] !== undefined;
+  const fences = fenceCells(walls);
+  const fenceAt = fences.indexOf(key);
+  const had = at >= 0 || fenceAt >= 0 || walls.stairs[key] !== undefined;
   if (at >= 0) walls.cells.splice(at, 1);
+  if (fenceAt >= 0) fences.splice(fenceAt, 1);
   delete walls.towers[key];
   delete walls.stairs[key];
   const gate = walls.gates.indexOf(key);
@@ -547,10 +699,27 @@ export function wallPieces(walls: CampWalls): Piece[] {
   return out;
 }
 
+/**
+ * Детали ограды лагеря. Тот же конструктор, что обносит кладбище: клетки →
+ * отрезки между соседними → панель на отрезок. Второй копии правил нет.
+ *
+ * Сид фиксирован по той же причине, что у стены: две одинаковые ограды
+ * обязаны выглядеть одинаково, иначе достроенная клетка перекрашивала бы
+ * половину уже стоящего.
+ */
+export function fencePieces(walls: CampWalls): FencePiece[] {
+  const cells = fenceCells(walls).map(parseKey);
+  if (cells.length === 0) return [];
+  return buildFence(cells, fenceMaterial(walls), { rng: mulberry32(1) });
+}
+
 /** Сколько чего стоит в лагере — для панели стройки. */
-export function wallCount(walls: CampWalls): Record<'стена' | 'башня' | 'ворота' | 'лестница', number> {
+export function wallCount(
+  walls: CampWalls,
+): Record<'стена' | 'ограда' | 'башня' | 'ворота' | 'лестница', number> {
   return {
     'стена': walls.cells.length - Object.keys(walls.towers).length - walls.gates.length,
+    'ограда': fenceCells(walls).length,
     'башня': Object.keys(walls.towers).length,
     'ворота': walls.gates.length,
     'лестница': Object.keys(walls.stairs).length,

@@ -85,6 +85,9 @@ import {
   emptyWalls,
   gateBlock,
   nextTowerLevel,
+  cycleFence,
+  fenceMaterial,
+  fencePieces,
   razeWall,
   stairsBlock,
   startTower,
@@ -98,7 +101,9 @@ import {
   type WallTool,
 } from './sim/campWalls';
 import type { Spot } from './sim/castle';
+import { FENCE } from './sim/fence';
 import { generateCastleSite } from './sim/castleSite';
+import { generateGraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
@@ -355,6 +360,14 @@ const buildPanel = new BuildPanel({
     campView.hideWallGhost();
     persist();
   },
+  // Материал ограды перебирается тапом по уже выбранной карточке: он общий
+  // на весь лагерь, поэтому меняет и то, что уже стоит.
+  onCycleFence: () => {
+    const material = cycleFence(wallsOf());
+    refreshWalls();
+    campHud.notify(`Ограда: ${FENCE[material].title.toLowerCase()}`);
+    persist();
+  },
 });
 campHud.slot.appendChild(buildPanel.root);
 
@@ -391,6 +404,7 @@ function openWalls(): void {
 /** Перерисовать стены и обновить счётчики панели. */
 function refreshWalls(): void {
   campView.setWalls(wallPieces(wallsOf()));
+  campView.setFences(fencePieces(wallsOf()));
   buildPanel.update(wallsOf(), clock.now());
 }
 
@@ -403,30 +417,33 @@ function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
   // Слот один на лагерь: стена и улучшение здания спорят за одно и то же.
   const busy = camp.construction !== null;
 
-  if (buildTool === 'стена') {
+  if (buildTool === 'стена' || buildTool === 'ограда') {
+    const tool = buildTool;
     if (stroke === null) stroke = [];
     const last = stroke[stroke.length - 1];
     if (last === undefined || last.x !== spot.x || last.z !== spot.z) stroke.push(spot);
     if (!finished) {
       // Призрак ведётся по тем же клеткам, которые встанут: показывать одно,
       // а строить другое — худший вид обмана в стройке.
-      const fit = new Set(strokeFit(walls, site, stroke).map((s) => `${s.x}:${s.z}`));
+      const fit = new Set(strokeFit(walls, site, stroke, tool).map((s) => `${s.x}:${s.z}`));
       campView.showWallGhost(stroke.map((s) => ({ spot: s, ok: fit.has(`${s.x}:${s.z}`) })));
       // Счёт ведётся вместе с мазком: цену игрок обязан видеть до того,
       // как отпустит палец, а не после.
-      const price = wallPrice('стена', fit.size).stone ?? 0;
-      const minutes = Math.round(wallSeconds('стена', fit.size) / 6) / 10;
+      const material = fenceMaterial(walls);
+      const cost = wallPrice(tool, fit.size, material);
+      const paid = cost.wood !== undefined ? `${cost.wood} дерева` : `${cost.stone ?? 0} камня`;
+      const minutes = Math.round(wallSeconds(tool, fit.size) / 6) / 10;
       buildPanel.setNote(
         fit.size === 0
-          ? 'Здесь стене не встать'
-          : `${fit.size} кл. · ${price} камня · ${minutes} мин`,
+          ? `Здесь ${tool === 'ограда' ? 'ограде' : 'стене'} не встать`
+          : `${fit.size} кл. · ${paid} · ${minutes} мин`,
       );
       return true;
     }
-    const cells = strokeFit(walls, site, stroke);
+    const cells = strokeFit(walls, site, stroke, tool);
     stroke = null;
     campView.hideWallGhost();
-    return finishWall(startWall(walls, camp.resources, 'стена', cells, clock.now(), busy));
+    return finishWall(startWall(walls, camp.resources, tool, cells, clock.now(), busy));
   }
 
   if (!finished) return true;
@@ -809,6 +826,9 @@ function toRaid(node: number): boolean {
   // Замок (§6.1.6) — не вылазка: там нечего добывать и не с кем драться,
   // и заход в него не тратит ни богатство места, ни героя.
   if (place.kind === 'замок') return toCastle(node, nodeSeed(day, node));
+  // Кладбище (§6.1.7) — та же прогулка, но населённая: добычи нет,
+  // а привидения есть.
+  if (place.kind === 'кладбище') return toGraveyard(node, nodeSeed(day, node));
   const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
@@ -887,6 +907,42 @@ function toRaid(node: number): boolean {
  * это постройка, а не сделка, и провиант в ней ничего не решает. Выход
  * открыт сразу — уйти можно в любой момент, потому что уходить не от чего.
  */
+function toGraveyard(node: number, seed: number): boolean {
+  const hero = heroForRaid() ?? roster.heroes[0]!;
+  chop = null;
+  const site = generateGraveSite(seed);
+  raidNode = node;
+  // Раны здесь получить можно, а вот занимать героя незачем: добычи нет,
+  // и заход не обязан снимать с ротации того, кто просто сходил посмотреть.
+  raidHero = null;
+  raidView?.dispose();
+  raid = createRaid({
+    seed,
+    tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
+    loc: site.loc,
+    evacOpen: true,
+    containerFood: 0,
+    hunger: false,
+  });
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site);
+  hud.setGrass(grassPerTile);
+  rig.world.add(raidView.group);
+  campView.group.visible = false;
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  // Ниже, чем в замке: ограда не прячет участок, и подниматься над ней,
+  // чтобы заглянуть внутрь, не нужно — через неё и так видно.
+  rig.setZoom(22, true);
+  // Сумерки: кладбище стоит на поверхности, но не полдень же на нём.
+  rig.night = 0.45;
+  resultShown = false;
+  ear.reset(raid);
+  showScene('raid', 0);
+  return true;
+}
+
 function toCastle(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
@@ -1253,9 +1309,10 @@ function toCamp(): void {
   // Лагерь — вечер, а не полдень: тёплый свет и длинные тени читаются лучше
   // на плоском затенении, чем прямое солнце.
   rig.night = 0.22;
-  // Стены, построенные игроком, — часть лагеря: они встают вместе с ним,
-  // а не по открытию панели.
+  // Стены и ограды, построенные игроком, — часть лагеря: они встают вместе
+  // с ним, а не по открытию панели.
   campView.setWalls(wallPieces(wallsOf()));
+  campView.setFences(fencePieces(wallsOf()));
   campHero = createCampHero(camp);
   campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
   showScene('camp');

@@ -25,14 +25,16 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-resources/resource_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kenney-castle-kit/glb/*.glb` — 76 моделей: стены, углы, башни, ворота, мосты, лестницы, знамёна, осадные машины | [kenney.nl/assets/castle-kit](https://kenney.nl/assets/castle-kit), версия 2.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-castle-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
+| `kenney-graveyard-kit/glb/*.glb` — 91 модель: ограды, склепы, могилы, надгробия, хвоя, пеньки, тыквы, утварь, пятеро существ | [kenney.nl/assets/graveyard-kit](https://kenney.nl/assets/graveyard-kit), версия 5.0 | CC0 1.0 | Kenney Vleugels |
+| `kenney-graveyard-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
-`kenney-rpg-audio/License.txt` и `kenney-castle-kit/License.txt` — файлы
-лицензий как они пришли в архивах,
-без правок.
+`kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`
+и `kenney-graveyard-kit/License.txt` — файлы лицензий как они пришли
+в архивах, без правок.
 
 ## Apache 2.0 и что она требует
 
@@ -150,6 +152,23 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 же звуков подряд — и два ярлыка `.url`. Формат оставлен как пришёл, `.ogg`;
 в игру такие файлы поедут перегнанными в `.m4a`, потому что Safari научился
 Ogg Vorbis только в 18.4, а §18.5 отдельно оговаривает iOS.
+
+## Из кладбища едут двадцать шесть
+
+`kenney-graveyard-kit/` измерен целиком, а в бандл поехали 26 моделей из 91 —
+6877 треугольников, 51 КБ gzip в `src/render/graveyard.data.ts` (§6.1.7):
+двенадцать деталей четырёх оград, четыре хвойные породы, два пенька, семь
+предметов кладбища и привидение. Остальные 65 лежат здесь источником: реестру
+это всё равно — файлы в репозитории есть, значит запись обязана быть, — но при
+чтении «чужие ассеты в игре» считать нужно двадцать шесть.
+
+Из архива взято не всё: `.fbx` и `.obj` выброшены целиком — обмер и запекание
+идут по `.glb`, а второй и третий формат тех же моделей это только вес.
+По той же причине нет папки `Previews` с девяноста картинками и обзорных
+`Preview.png` / `Sample.png`. Атлас лежит один раз, в корне набора.
+
+Каталог набора — `graveart.html` (только на dev-сервере: страница читает
+файлы отсюда).
 
 ## Чего здесь нет и почему
 

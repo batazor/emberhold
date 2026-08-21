@@ -13,6 +13,7 @@
     "verify": "tsx scripts/baseline.ts",
     "baseline": "tsx scripts/baseline.ts --write",
     "measure": "tsx scripts/measure.ts",
+    "fence": "tsx scripts/fence.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
     "audio": "tsx scripts/audio.ts",

@@ -711,7 +711,128 @@ const CASTLE: Pack = {
   data: { file: 'src/render/castle.data.ts', prefix: 'CASTLE', type: 'CastlePart' },
 };
 
-const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE];
+/**
+ * Категория кладбища — по первому слову имени файла набора. Разделитель тот же
+ * дефис, что у замка: набор от того же автора и назван по тем же правилам.
+ */
+const GRAVEYARD_CATEGORIES: Record<string, string> = {
+  fence: 'Ограды', iron: 'Ограды', brick: 'Ограды', stone: 'Ограды', border: 'Ограды',
+  grave: 'Могилы', gravestone: 'Могилы', cross: 'Могилы', coffin: 'Могилы',
+  crypt: 'Склепы',
+  pine: 'Деревья', trunk: 'Деревья',
+  character: 'Существа',
+  altar: 'Обряд', candle: 'Обряд', urn: 'Обряд', detail: 'Обряд', fire: 'Обряд',
+  lantern: 'Свет', lightpost: 'Свет',
+  pillar: 'Столбы', column: 'Столбы',
+  bench: 'Утварь', shovel: 'Утварь', hay: 'Утварь', pumpkin: 'Утварь', debris: 'Утварь',
+  rocks: 'Ландшафт', road: 'Ландшафт',
+};
+
+/**
+ * Седьмой набор — кладбище (§6.1.7), второй от Kenney и второй модульный.
+ * Атлас расчерчен так же, как у замка: восемь колонок на четыре ряда,
+ * в клетке вертикальный градиент. Отличий от замка два, и оба меняют окна.
+ *
+ * Первое. Главный материал здесь не песчаник, а холодный камень — тон
+ * 228–240°, насыщенность 4–28%. Это ровно тот серый, которым артбук красит
+ * камень и соль, и впервые чужой набор попадает в него без натяжки.
+ *
+ * Второе. У набора есть цвета, которых не бывает у материала: сиреневый,
+ * лиловый и розовый столбцы атласа — это цветовые варианты, а не породы.
+ * Куда они лягут, решает замер: слота под них не заводится, пока не видно,
+ * какие модели их задевают.
+ */
+const GRAVEYARD: Pack = {
+  id: 'graveyard',
+  title: 'Kenney Graveyard Kit 5.0',
+  dir: 'assets/kenney-graveyard-kit',
+  atlas: 'colormap.png',
+  sources: ['glb'],
+  ramps: [
+    // Огонь свечей, фонарей и прорезанных тыкв — единственная клетка атласа,
+    // которая светится. От дерева её отделяет не тон (оба оранжевые,
+    // окна по тону перекрываются), а насыщенность: 0,61–0,81 против 0,48–0,54
+    // у самого яркого дерева. Поэтому огонь меряется первым, и порядок здесь
+    // решает — ровно как золото раньше дерева у подземелья.
+    { id: 'flame', title: 'огонь', slots: ['пламя', 'латунь'], hue: [26, 60], sat: [0.6, 1] },
+    // Дерево оград, скамей, гробов и осенней хвои. Осенняя хвоя набора лежит
+    // в той же клетке, что тыквы, и оранжевой листвы в палитре нет: она
+    // уходит в дерево — тот же ответ, каким сукно знамён ушло в камень.
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома'], hue: [8, 60], sat: [0.3, 1] },
+    // Кирпич кладки — единственное алое набора, и ступень ему одна:
+    // алый в палитре один, краска бочек (§6.1.5).
+    { id: 'brick', title: 'кирпич', slots: ['краска-алая'], hue: [330, 8], sat: [0.3, 1] },
+    // Зелень. Ею же покрашены ковка и фонарные столбы: набор красит хвою
+    // и крашеное железо одной клеткой атласа, и окном по цвету их не развести.
+    { id: 'moss', title: 'зелень', slots: ['хвоя-тень', 'хвоя', 'мох', 'трава'], hue: [90, 190], sat: [0.25, 1] },
+    // Камень — главный материал набора: почти половина его треугольников.
+    // Ступеней восемь, и это не щедрость: холодный камень занимает четыре
+    // клетки атласа, от белой простыни привидения до чёрной ткани.
+    {
+      id: 'stone', title: 'камень',
+      slots: ['камень-тень', 'камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет', 'иней'],
+      hue: [0, 360], sat: [0, 0.3],
+    },
+  ],
+  slots: [
+    'камень-тень', 'камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет', 'иней',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома',
+    'хвоя-тень', 'хвоя', 'мох', 'трава',
+    'пламя', 'латунь',
+    'краска-алая',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  /** Восемь колонок на четыре ряда — так расчерчена картинка набора. */
+  grid: { cols: 8, rows: 4 },
+  /** Клетка набора — единица, как у замка. Объявлено; остальное меряется. */
+  modular: { cell: 1 },
+  /** Порог серого опущен: холодный камень набора и есть его главный материал. */
+  grey: 0.005,
+  categoryOf: (name) => GRAVEYARD_CATEGORIES[name.split('-')[0]!] ?? 'Прочее',
+  /**
+   * Взятое в игру — словарь конструктора оград, лес и наполнение кладбища.
+   * Список не выбирался на глаз: ограды — ровно те детали, которые
+   * конструктор умеет поставить на каждую форму стыка (`src/sim/fence.ts`),
+   * и что список с ним не разошёлся, проверяет `fence.rules.ts`.
+   *
+   * Ковка взята одной семьёй — той, что с каменным цоколем: у неё в наборе
+   * есть и пролёт, и столб, и створка. Ковка без цоколя не взята не потому,
+   * что хуже, а потому, что рядом с цокольной читалась бы как та же ограда,
+   * просевшая в землю.
+   *
+   * **Угловых дуг не взято ни одной**, и это главное, что решил обмер.
+   * Деталь ограды — панель на линии, а не блок в клетку: пролёт ставится
+   * на отрезок между центрами соседних клеток, и в угловой клетке два
+   * отрезка смыкаются сами. Три дуги набора решают задачу, которой
+   * у конструктора нет, и стоили бы 1190 треугольников у каждого игрока.
+   *
+   * Не взято: склепы, фонари, тыквы, сено, утварь и четверо существ
+   * из пяти. Кладбище — локация без наполнения (§4), и всё это ждёт того же
+   * дня, что и наполнение замка.
+   */
+  adopted: [
+    // Ограда: дерево. Столб — на изломе.
+    'fence', 'fence-damaged', 'fence-gate', 'border-pillar',
+    // Ограда: ковка на цоколе — два пролёта и проезд.
+    'iron-fence-border', 'iron-fence-border-column', 'iron-fence-border-gate',
+    // Ограда: кирпич. Створки в наборе нет, и проезд — это проём.
+    'brick-wall', 'brick-wall-end',
+    // Ограда: камень.
+    'stone-wall', 'stone-wall-damaged', 'stone-wall-column',
+    // Лес: хвоя, осенняя хвоя и два пенька.
+    'pine', 'pine-crooked', 'pine-fall', 'pine-fall-crooked',
+    'trunk', 'trunk-long',
+    // Кладбище: могила, надгробия, крест, склеп, гроб.
+    'grave', 'gravestone-cross', 'gravestone-round', 'gravestone-bevel',
+    'cross', 'crypt', 'coffin',
+    // Единственный противник локации (§15).
+    'character-ghost',
+  ],
+  data: { file: 'src/render/graveyard.data.ts', prefix: 'GRAVEYARD', type: 'GraveyardPart' },
+};
+
+const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD];
 
 /* ---------- png ---------- */
 
@@ -1657,6 +1778,17 @@ interface Deck {
   readonly deck: number | null;
   /** Рёбра клетки в порядке −x, +x, −z, +z: `true` — ход продолжается. */
   readonly open: readonly boolean[];
+  /**
+   * Те же рёбра, но про другую модульность: `true` — деталь **пересекает**
+   * это ребро, то есть её линия уходит к соседу.
+   *
+   * Заведено седьмым набором (§6.1.7) и меряется у всех модульных: чем набор
+   * модулен, теперь не объявляется, а видно из замера. У замка деталь — блок
+   * в клетку, она подпирает все четыре ребра и не пересекает ни одного;
+   * у кладбища деталь — панель, она стоит на линии и пересекает ровно те
+   * рёбра, между которыми эта линия идёт.
+   */
+  readonly rim: readonly boolean[];
 }
 
 /**
@@ -1726,7 +1858,9 @@ function deckOf(mesh: Mesh, cell: number): Deck {
   const map = reliefOf(mesh, cell);
   let top = -Infinity;
   for (const y of map) if (y > top) top = y;
-  if (!Number.isFinite(top)) return { top: 0, deck: null, open: [false, false, false, false] };
+  if (!Number.isFinite(top)) {
+    return { top: 0, deck: null, open: [false, false, false, false], rim: [false, false, false, false] };
+  }
 
   // Мода высот в полосе под верхом — это и есть площадка. Голосуют отсчёты:
   // у прямой стены ход занимает две трети клетки, скаты зубцов — остальное.
@@ -1745,9 +1879,10 @@ function deckOf(mesh: Mesh, cell: number): Deck {
     }
   }
 
+  const at = (gx: number, gz: number): number => map[gz * RELIEF + gx]!;
+
   const open = [false, false, false, false];
   if (deck !== null) {
-    const at = (gx: number, gz: number): number => map[gz * RELIEF + gx]!;
     const side = (pick: (i: number) => number): boolean => {
       let walk = 0;
       let filled = 0;
@@ -1764,7 +1899,28 @@ function deckOf(mesh: Mesh, cell: number): Deck {
     open[2] = side((i) => at(i, 0));
     open[3] = side((i) => at(i, RELIEF - 1));
   }
-  return { top: Math.round(top * 100) / 100, deck, open };
+
+  /**
+   * Пересекает ли деталь ребро клетки. Считается по крайней линии отсчётов:
+   * панель выходит на ребро торцом, и занимает там столько, какова её
+   * толщина, — единицы отсчётов из шестнадцати. Стена, которая вдоль
+   * этого ребра лежит, занимает всю линию, и пересечением это не считается:
+   * иначе кладка, прижатая к краю клетки, звалась бы уходящей к соседу
+   * во все стороны сразу.
+   */
+  const crosses = (pick: (i: number) => number): boolean => {
+    let filled = 0;
+    for (let i = 0; i < RELIEF; i++) if (Number.isFinite(pick(i))) filled++;
+    return filled > 0 && filled * 2 <= RELIEF;
+  };
+  const rim = [
+    crosses((i) => at(0, i)),
+    crosses((i) => at(RELIEF - 1, i)),
+    crosses((i) => at(i, 0)),
+    crosses((i) => at(i, RELIEF - 1)),
+  ];
+
+  return { top: Math.round(top * 100) / 100, deck, open, rim };
 }
 
 function makeSampler(pack: Pack, atlases: readonly Image[], usage: Usage | undefined): Sampler {
@@ -2218,7 +2374,9 @@ function writeCatalog(
       ...(m.skinned > 0 ? { skinned: m.skinned } : {}),
       // Рельеф детали модульного набора: высота хода поверху и рёбра клетки,
       // через которые ход продолжается к соседу.
-      ...(decks === undefined ? {} : { deck: decks.get(m.name)!.deck, open: decks.get(m.name)!.open }),
+      ...(decks === undefined
+        ? {}
+        : { deck: decks.get(m.name)!.deck, open: decks.get(m.name)!.open, rim: decks.get(m.name)!.rim }),
       ...(Object.keys(m.attach).length === 0
         ? {}
         : { attach: Object.fromEntries(
@@ -2289,7 +2447,7 @@ function report(pack: Pack, write: boolean): void {
   // и «открытое ребро» у них ничего не значит.
   const decks = pack.modular === undefined
     ? undefined
-    : new Map(meshes.map((m) => [m.name, deckOf(m.mesh, pack.modular!.cell)]));
+: new Map(meshes.map((m) => [m.name, deckOf(m.mesh, pack.modular!.cell)]));
   const slots = pack.slots;
 
 
@@ -2373,6 +2531,30 @@ function report(pack: Pack, write: boolean): void {
     console.log('  рёбра под соседа (−x +x −z +z):');
     for (const [key, names] of [...byOpen].sort((a, b) => b[1].length - a[1].length)) {
       console.log(`    ${key}  ${(SHAPE[key] ?? '?').padEnd(15)} ${names.join(', ')}`);
+    }
+
+    // Вторая модульность: деталь не блок в клетку, а панель на линии.
+    // Печатается тем же способом, и по тому, какая из двух таблиц у набора
+    // непустая, видно, чем набор модулен.
+    const LINE: Record<string, string> = {
+      '1100': 'прямая вдоль x', '0011': 'прямая вдоль z',
+      '1010': 'угол −x→−z', '1001': 'угол −x→+z', '0110': 'угол +x→−z', '0101': 'угол +x→+z',
+      '1000': 'торец в −x', '0100': 'торец в +x', '0010': 'торец в −z', '0001': 'торец в +z',
+      '1110': 'тройник без +z', '1101': 'тройник без −z', '1011': 'тройник без +x', '0111': 'тройник без −x',
+      '1111': 'перекрёсток', '0000': 'линии нет',
+    };
+    const byRim = new Map<string, string[]>();
+    for (const [name, d] of decks) {
+      const key = d.rim.map((o) => (o ? '1' : '0')).join('');
+      byRim.set(key, [...(byRim.get(key) ?? []), name]);
+    }
+    console.log('  линия детали — какие рёбра она пересекает (−x +x −z +z):');
+    for (const [key, names] of [...byRim].sort((a, b) => b[1].length - a[1].length)) {
+      if (key === '0000') {
+        console.log(`    0000  линии нет       ${names.length} моделей`);
+        continue;
+      }
+      console.log(`    ${key}  ${(LINE[key] ?? '?').padEnd(15)} ${names.join(', ')}`);
     }
   }
 
