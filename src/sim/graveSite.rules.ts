@@ -26,6 +26,21 @@ import { distanceField, idx } from './grid';
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
 const sites = SEEDS.map(generateGraveSite);
 
+/** Свободных клеток внутри ограды — та же величина, из которой выводится
+ *  число привидений. Считается здесь заново: правило, читающее ту же
+ *  переменную, что и код, проверяет опечатку, а не решение. */
+function freeYardTiles(site: (typeof sites)[number]): number {
+  const { loc } = site;
+  const span = loc.size - 2 * (WOOD + FIELD);
+  let free = 0;
+  for (let z = site.at.z; z < site.at.z + span; z++) {
+    for (let x = site.at.x; x < site.at.x + span; x++) {
+      if (loc.blocked[idx(loc.size, x, z)] === 0) free++;
+    }
+  }
+  return free;
+}
+
 describe('Кладбище на карте: по нему ходят', () => {
   test('каждая свободная клетка достижима от выхода', () => {
     for (const site of sites) {
@@ -107,10 +122,26 @@ describe('Кладбище: что в нём есть и чего нет', () =>
     for (const site of sites) assert.equal(site.loc.containers.length, 0);
   });
 
-  test('привидения есть, их немного, и все они внутри ограды', () => {
+  /**
+   * Проверяется **плотность, а не счёт**. Счёт пережил бы правку размера
+   * молча: на вдвое большем участке те же четыре привидения — пустой двор,
+   * и правило, написанное числом, об этом не скажет. Инвариант же верен
+   * при любом размере участка и переживёт следующую правку.
+   */
+  test('привидения есть, участок ими не забит, и все они внутри ограды', () => {
     for (const site of sites) {
       const { loc } = site;
-      assert.ok(loc.enemies.length >= 2 && loc.enemies.length <= 4, `сид ${loc.seed}: ${loc.enemies.length}`);
+      assert.ok(loc.enemies.length >= 2, `сид ${loc.seed}: участок пуст`);
+      assert.ok(
+        loc.enemies.length <= 6,
+        `сид ${loc.seed}: привидений ${loc.enemies.length} — это уже бой, а не прогулка`,
+      );
+      const free = freeYardTiles(site);
+      assert.ok(
+        free / loc.enemies.length >= 20,
+        `сид ${loc.seed}: ${free} свободных клеток на ${loc.enemies.length} привидений — ` +
+          'участок забит, и уйти шагом уже не выйдет',
+      );
       for (const e of loc.enemies) {
         assert.equal(e.kind, 'ghost', `сид ${loc.seed}: на кладбище не привидение`);
         // Внутри ограды — значит дальше от края, чем лес, поле и сама ограда.

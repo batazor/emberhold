@@ -21,6 +21,7 @@
  */
 import { distanceField, idx } from './grid';
 import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
+import { createFolk, type Folk } from './castleFolk';
 import type { Cell, GameLocation } from './types';
 
 /** Поле между лесом и стеной: место, где замок видно целиком. */
@@ -43,6 +44,30 @@ export interface CastleSite {
   readonly trees: readonly Spot[];
   /** Ворота в клетках локации — сюда приходят снаружи. */
   readonly gate: Cell;
+  /**
+   * Кто здесь живёт (`castleFolk.ts`). Список лежит на площадке, а не
+   * в `loc`: жители не противники и не добыча, и вылазка про них не знает.
+   */
+  readonly folk: readonly Folk[];
+}
+
+/**
+ * Стоит ли клетка во дворе — внутри кольца стен. Нужна не генерации,
+ * а кадру: стена в две клетки высотой при камере в 30° прячет за собой
+ * около четырёх с половиной клеток земли (`ELEVATION` в `render/scene.ts`
+ * экспортируется ровно ради таких замеров), и замер по ста двадцати сидам
+ * дал **четверть двора, на которой герой скрыт целиком**, и ещё треть,
+ * на которой скрыт наполовину. Пока во дворе было пусто, это ничего
+ * не значило; с жителями (§6.1.6.1) кадр обязан показывать двор.
+ *
+ * Функция здесь, а не в рендере, по общему правилу: считается это чистыми
+ * данными и проверяется без браузера.
+ */
+export function inYard(site: { at: Spot; castle: Castle }, cell: Cell): boolean {
+  const px = Math.floor((cell.x - site.at.x) / CASTLE_CELL);
+  const pz = Math.floor((cell.z - site.at.z) / CASTLE_CELL);
+  if (px < 0 || pz < 0) return false;
+  return site.castle.yard.some((s) => s.x === px && s.z === pz);
 }
 
 /** Клетка локации, в которую попадает деталь плана. */
@@ -128,5 +153,8 @@ export function generateCastleSite(seed: number): CastleSite {
     enemies: [],
     backSteps: distanceField(size, blocked, evac),
   };
-  return { loc, castle, at, trees, gate };
+  // Жители — последними: им нужен готовый двор со всеми занятыми клетками,
+  // иначе обход пройдёт сквозь донжон.
+  const folk = createFolk(seed, castle, at, size, blocked);
+  return { loc, castle, at, trees, gate, folk };
 }

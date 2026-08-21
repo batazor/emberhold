@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
+import type { FolkLook } from '../sim/castleFolk';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind, RaidEnemyKind } from '../sim/types';
 import { adventurerGeometry, adventurerParts } from './adventurers';
@@ -434,6 +435,33 @@ const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {
 
 /** Скелет есть только у ярусных: привидение набора не скиновано вовсе. */
 export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind]();
+
+/**
+ * Жители замка (§6.1.6). Три облика набора, и различает их снаряжение,
+ * а не порода — то же правило, каким различаются скелеты (§15): силуэт
+ * читается раньше цвета.
+ *
+ * Предмет у всех троих правый: набор отдаёт узел `handslot.r` и только его,
+ * поэтому щита в левой руке у рыцаря быть не может, и он взял меч. Это
+ * ответ набора, а не выбор снаряжения: числами жители не описаны вовсе.
+ */
+const FOLK_MODELS: Record<FolkLook, readonly [AdventurerModelName, AdventurerModelName]> = {
+  рыцарь: ['Knight', 'sword_1handed'],
+  маг: ['Mage', 'staff'],
+  плут: ['Rogue', 'dagger'],
+};
+
+/**
+ * Житель ростом с героя: они одной породы, и разный рост читался бы как
+ * разная порода. Берётся у примитива героя по той же причине, что и у самого
+ * героя, — чтобы два записанных порознь роста не разъехались молча.
+ */
+export const folkHeight = (): number => heroHeight('ranger');
+
+export const folkParts = (look: FolkLook): RiggedParts => {
+  const [model, held] = FOLK_MODELS[look];
+  return adventurerParts(model, folkHeight(), held);
+};
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
 export function heroParts(cls: HeroClassId): RiggedParts | null {

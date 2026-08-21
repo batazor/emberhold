@@ -70,6 +70,7 @@ import {
 } from './sim/logging';
 import type { Chop, ChopBlock } from './sim/logging';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
+import { stepFolk } from './sim/castleFolk';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
@@ -106,7 +107,7 @@ import {
 } from './sim/campWalls';
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
-import { generateCastleSite } from './sim/castleSite';
+import { generateCastleSite, type CastleSite } from './sim/castleSite';
 import { generateGraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
@@ -166,6 +167,12 @@ let raidHero: HeroState | null = null;
  *  в него же — пока в нём есть что брать. */
 let raidNode = 0;
 let raidView: RaidView | null = null;
+/**
+ * Площадка замка, пока она на экране (§6.1.6). Держится отдельно от `raid`
+ * потому же, почему жители не лежат в `GameLocation`: шаг вылазки про них
+ * не знает и знать не должен, а ходить они всё-таки обязаны.
+ */
+let keep: CastleSite | null = null;
 /**
  * Идёт пролог. Отдельного режима у него нет: поляна ходится теми же
  * правилами, что вылазка, и отличается тем, чем кадр кончается — не
@@ -883,6 +890,9 @@ function toRaid(node: number): boolean {
   // которую мир хранит (§4): кланы и восстановление считаются функцией.
   camp.visits.push({ node, shift: shiftAt(now) });
   persist();
+  // Ни в вылазке, ни на поляне жителей нет: площадка замка снимается,
+  // иначе её обитатели продолжали бы ходить за кадром.
+  keep = null;
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
@@ -915,6 +925,7 @@ function toGraveyard(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateGraveSite(seed);
+  keep = null;
   raidNode = node;
   // Раны здесь получить можно, а вот занимать героя незачем: добычи нет,
   // и заход не обязан снимать с ротации того, кто просто сходил посмотреть.
@@ -936,9 +947,11 @@ function toGraveyard(node: number, seed: number): boolean {
   rig.world.add(raidView.group);
   campView.group.visible = false;
   rig.lookAt(raid.hero.x, raid.hero.z, true);
-  // Ниже, чем в замке: ограда не прячет участок, и подниматься над ней,
-  // чтобы заглянуть внутрь, не нужно — через неё и так видно.
-  rig.setZoom(22, true);
+  // Столько же, сколько в замке, и по той же причине: участок дорос до его
+  // мерки (§6.1.7), и с прежнего кадра в 22 у крупного кладбища ограда
+  // уходила за край. Высота тут ни при чём — ограда по-прежнему не прячет
+  // участок, через неё видно; кадру нужна ширина, а не подъём.
+  rig.setZoom(26, true);
   // Сумерки: кладбище стоит на поверхности, но не полдень же на нём.
   rig.night = 0.45;
   resultShown = false;
@@ -951,6 +964,7 @@ function toCastle(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateCastleSite(seed);
+  keep = site;
   raidNode = node;
   // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
   // прогулка не обязана снимать его с лечения.
@@ -1260,6 +1274,9 @@ function toGlade(): void {
     // их рубят, а по краю рубят сколько угодно.
     logging: true,
   });
+  // Ни в вылазке, ни на поляне жителей нет: площадка замка снимается,
+  // иначе её обитатели продолжали бы ходить за кадром.
+  keep = null;
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade');
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
@@ -1699,6 +1716,53 @@ if (debugCamp !== null) {
   };
 }
 
+/**
+ * Прогулочные точки по адресу (§6.1.6, §6.1.7). Замок и кладбище выпадают
+ * на карте по одному-три в день, и ждать нужного сида, чтобы посмотреть
+ * крупный участок или как ходят жители, — не проверка, а лотерея.
+ *
+ * `?castle` и `?grave` — точка сегодняшнего дня.
+ * `?castle=СИД`, `?grave=СИД` — та же точка с назначенным сидом: размер
+ *   участка, материал ограды и обходы жителей выводятся из него, и повторить
+ *   увиденное можно ровно этим числом.
+ *
+ * Сцена собирается из нуля, мимо карты: `toCastle`/`toGraveyard` не трогают
+ * ни сохранение, ни заходы (§4), поэтому накопить состояние между заходами
+ * здесь нечем — в отличие от `?camp`, где это пришлось разбирать отдельно.
+ */
+for (const [param, open] of [['castle', toCastle], ['grave', toGraveyard]] as const) {
+  const arg = debugParams.get(param);
+  if (arg === null) continue;
+  const kind = param === 'castle' ? 'замок' : 'кладбище';
+  const place = today.find((n) => n.kind === kind);
+  const seed = arg === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(arg);
+  // Заставка минуется, и убрать её надо руками — ровно та же причина, по
+  // которой `leaveTitle` заведён для `?tier`: забытая заставка остаётся
+  // в сцене со своим туманом, своей травой и своей камерой.
+  leaveTitle();
+  open(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
+  // Ручка к состоянию сцены — та же, что у `?camp`: кадр показывает, что
+  // жители стоят на своих местах, но «ходят ли они и куда» глазом
+  // не измеришь. Живёт только вместе с отладочным адресом.
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    режим: () => mode,
+    raid: () => raid,
+    site: () => keep,
+    folk: () => keep?.folk ?? [],
+    // Куда каждый идёт и сколько ему до угла: обход — список клеток,
+    // и читать его глазами по одной клетке бессмысленно.
+    routes: () => (keep?.folk ?? []).map((f) => ({
+      кто: f.look,
+      где: [+f.x.toFixed(2), +f.z.toFixed(2)],
+      обход: f.route.length,
+      идёт_к: f.route[f.at],
+      стоит: +f.wait.toFixed(2),
+    })),
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+  };
+}
+
 if (debugParams.has('bench')) {
   installBench({
     rig,
@@ -1737,6 +1801,9 @@ startLoop({
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
+      // Жители замка идут своим шагом и в шаг вылазки не входят: они
+      // не участвуют ни в бое, ни в провианте, ни в пути назад.
+      if (keep !== null) stepFolk(keep.folk, dt);
       if (sayNext !== null) {
         raid.events.push(sayNext);
         sayNext = null;

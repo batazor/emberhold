@@ -380,7 +380,11 @@ export class WorldMap {
 
       // §11.6 — что здесь сегодня. Глиф в левом верху: нутро занято крестом,
       // правый верх флагом клана.
-      const event = node.kind === 'замок' ? null : state?.event ?? null;
+      // Какому месту событие полагается, решает мир (`world.ts`), а не карта:
+      // прогулочные точки приходят с пустым событием сами. Прежде здесь
+      // стояло своё перечисление исключений, и оно разошлось с миром —
+      // замок из него выпадал, а кладбище нет.
+      const event = state?.event ?? null;
       if (event !== null) drawEventGlyph(ctx, event, x, y, r, w, h);
 
       ctx.restore();
@@ -397,7 +401,9 @@ export class WorldMap {
     // вылазке «ровно одно место» обязано значить ровно одно, иначе игрок
     // уходит гулять по стенам вместо того, ради чего кадр заведён.
     if (this.only !== null) return node.id === this.only ? 'ok' : 'onb';
-    if (node.kind === 'замок') return 'ok';
+    // Кухня запирает глубину, а глубины нет ни у замка, ни у кладбища:
+    // ставки там нет, добычи там нет, и провианту нечего ограничивать.
+    if (node.kind !== 'вылазка') return 'ok';
     if (this.camp !== null && tierBlock(this.camp, node.tier) !== 'ok') return 'kitchen';
     return 'ok';
   }

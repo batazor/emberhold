@@ -31,10 +31,21 @@ export const FIELD = 3;
 /** Толщина леса по краю локации. Лес и здесь держит границу локации. */
 export const WOOD = 3;
 
-/** Сколько привидений населяют участок. Меньше двух — пусто, больше четырёх —
- *  прогулка превращается в бой, которого локация не обещала. */
+/**
+ * Сколько привидений населяют участок. Число не назначается, а выводится
+ * из площади: участок вырос вдвое (§6.1.7), и прежние «два-четыре» на любом
+ * размере читались бы на большом участке как пустой двор, а на малом — как
+ * толпа. Считается плотность, потолок остаётся тем же обещанием: **больше
+ * шести, и прогулка превращается в бой, которого локация не обещала.**
+ *
+ * Делитель подобран так, чтобы новый разброс сторон (6–9 клеток набора)
+ * давал полный размах от двух привидений до шести: свободных клеток внутри
+ * ограды выходит от полусотни до полутора сотен.
+ */
 const GHOSTS_MIN = 2;
-const GHOSTS_MAX = 4;
+const GHOSTS_MAX = 6;
+/** Свободных клеток участка на одно привидение. */
+const GHOST_TILES = 28;
 
 /** Надгробия. Первое — насыпь без камня: по ней ходят, остальные обходят. */
 const MOUND = 'grave';
@@ -89,8 +100,11 @@ function ringOf(w: number, d: number): Spot[] {
  */
 export function generateGraveSite(seed: number): GraveSite {
   const rng: Rng = mulberry32(seed);
-  const w = 4 + randInt(rng, 3);
-  const d = 4 + randInt(rng, 3);
+  // Стороны участка — в том же разбросе, что стороны замка (`castle.ts`):
+  // кладбище и замок это две прогулки, и мерить их разной меркой значит
+  // обещать разное там, где обещание одно — «сюда можно сходить посмотреть».
+  const w = 6 + randInt(rng, 4);
+  const d = 6 + randInt(rng, 4);
   const material = FENCE_MATERIALS[randInt(rng, FENCE_MATERIALS.length)]!;
 
   const plan = Math.max(w, d) * FENCE_CELL;
@@ -215,7 +229,11 @@ export function generateGraveSite(seed: number): GraveSite {
    * ближайшее к ней надгробие — и волна считается заново. Убирать, а не
    * двигать: надгробие стоит в ряду, и сдвинутое оно выпадет из ряда.
    */
-  for (let pass = 0; pass < 8; pass++) {
+  // Проходов ровно столько, сколько отметок: за проход убирается не больше
+  // одной, и большее число ничего не чинит. Константы здесь стоять не может —
+  // участок вырос, надгробий стало вчетверо больше, и восьми проходов ему
+  // уже не хватило бы.
+  for (let pass = 0; pass <= marks.length; pass++) {
     const reach = distanceField(size, blocked, evac);
     let stuck = -1;
     for (let i = 0; i < size * size; i++) {
@@ -248,7 +266,10 @@ export function generateGraveSite(seed: number): GraveSite {
     }
   }
   const enemies: Enemy[] = [];
-  const count = Math.min(open.length, GHOSTS_MIN + randInt(rng, GHOSTS_MAX - GHOSTS_MIN + 1));
+  const count = Math.min(
+    open.length,
+    Math.max(GHOSTS_MIN, Math.min(GHOSTS_MAX, Math.round(open.length / GHOST_TILES))),
+  );
   for (let i = 0; i < count; i++) {
     const cell = open.splice(randInt(rng, open.length), 1)[0];
     if (cell === undefined) break;
