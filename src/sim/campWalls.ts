@@ -175,16 +175,27 @@ export interface WallSite {
 }
 
 /**
- * Занята ли **клетка лагеря** стеной. Обратная сторона `onBuilding`: стена
- * не встаёт на здание, и здание не встаёт на стену — иначе стена не стена,
- * а рисунок на земле.
- *
- * Лестница считается занятой наравне со стеной: по ней поднимаются,
- * и здание поверх неё отрезало бы ход.
+ * Стоит ли на **клетке лагеря** хоть что-то из построенного. Ворота считаются
+ * стоящими: арка — постройка, и второй раз на неё ничего не встаёт.
  */
 export function wallAt(walls: CampWalls, x: number, z: number): boolean {
   const key = keyOf(wallSpotOf(x, z));
   return walls.cells.includes(key) || walls.stairs[key] !== undefined;
+}
+
+/**
+ * Закрыта ли **клетка лагеря** для ходьбы. Отличается от `wallAt` ровно
+ * воротами: **ворота — проход**, ради этого их и ставят. Стена без ворот
+ * запирает двор наглухо, и тогда ворота были бы украшением на стене.
+ *
+ * Лестница закрыта: по ней поднимаются на стену, а подниматься в плоской
+ * сетке некуда — пока это просто постройка.
+ */
+export function walkBlocked(walls: CampWalls, x: number, z: number): boolean {
+  const key = keyOf(wallSpotOf(x, z));
+  if (walls.stairs[key] !== undefined) return true;
+  if (walls.gates.includes(key)) return false;
+  return walls.cells.includes(key);
 }
 
 /** Можно ли поставить стену в эту клетку. */
