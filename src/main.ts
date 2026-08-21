@@ -61,6 +61,7 @@ import {
   gladeCapacity,
   gladeFood,
   nearCamp,
+  packGlade,
   restTick,
   CAMP_WOOD,
   KITCHEN_WOOD,
@@ -1599,9 +1600,26 @@ function stepGladeCamp(dt: number): void {
  * места, которое сам и разбил.
  */
 function endGlade(): void {
-  if (raid !== null) adoptGladeLayout(camp, raid.loc.size, PITCH_ORDER, pitched);
+  // Кадр не меняется: то, что на экране в момент третьего бревна, — это
+  // и есть лагерь. Палатка и костёр на своих клетках (якорь), лес — тот же
+  // лес поляны со срубленным срубленным (снимок в сейве), камера, зум
+  // и свет остаются как стояли. Меняется подпись кадра, а не кадр.
+  const held = raid === null
+    ? null
+    : { x: raid.hero.x, z: raid.hero.z, zoom: rig.zoomLevel, night: rig.night };
+  if (raid !== null) {
+    adoptGladeLayout(camp, raid.loc.size, PITCH_ORDER, pitched);
+    camp.glade = packGlade(raid.loc);
+  }
   onboarding.set('world');
   toCamp();
+  if (held !== null) {
+    const c = campView.center;
+    campInput.hold(held.x - c.x, held.z - c.z);
+    rig.lookAt(held.x, held.z, true);
+    rig.setZoom(held.zoom, true);
+    rig.night = held.night;
+  }
 }
 
 /**

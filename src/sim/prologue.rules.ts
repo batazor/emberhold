@@ -20,6 +20,8 @@ import {
   TENT_WOOD,
   UPGRADE_WOOD,
   adoptGladeLayout,
+  packGlade,
+  unpackGlade,
   firstGladeCell,
   gladeCapacity,
   gladeFood,
@@ -483,6 +485,18 @@ describe('Пролог: поляна становится лагерем', () =>
   const world = (camp: ReturnType<typeof createCamp>, id: (typeof PITCH)[number]) => ({
     x: (camp.origin?.x ?? 0) + camp.layout[id].x,
     z: (camp.origin?.z ?? 0) + camp.layout[id].z,
+  });
+
+  test('снимок поляны переживает сейв клетка в клетку — и срубленное срублено', () => {
+    const loc = generateGlade(7);
+    // Срубленные в прологе деревья: снимок берётся с живой поляны, не с сида.
+    const felled = [...loc.blocked].findIndex((b, i) => b === 1 && i > loc.size);
+    loc.blocked[felled] = 0;
+    const back = unpackGlade(packGlade(loc));
+    assert.equal(back.length, loc.blocked.length, 'размер сошёлся');
+    for (let i = 0; i < back.length; i++) {
+      assert.equal(back[i], loc.blocked[i] ? 1 : 0, `клетка ${i}`);
+    }
   });
 
   test('палатка и костёр остаются на своих клетках поляны', () => {

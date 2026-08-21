@@ -298,6 +298,36 @@ export function restTick(acc: number, dt: number, state: RaidState): number {
   return left;
 }
 
+/**
+ * Поляна в сейве (§16.1): размер и занятые клетки на момент конца пролога,
+ * срубленное срублено. Лагерь рисует из них тот же лес, что видел игрок:
+ * кадр конца пролога не меняется — меняется только подпись под ним.
+ * Шестнадцатеричная строка, четыре клетки в символе: 24×24 — 144 символа.
+ */
+export interface GladeSnapshot {
+  size: number;
+  cells: string;
+}
+
+export function packGlade(loc: GameLocation): GladeSnapshot {
+  let out = '';
+  for (let i = 0; i < loc.size * loc.size; i += 4) {
+    let n = 0;
+    for (let b = 0; b < 4; b++) n |= (loc.blocked[i + b] ? 1 : 0) << b;
+    out += n.toString(16);
+  }
+  return { size: loc.size, cells: out };
+}
+
+export function unpackGlade(g: GladeSnapshot): Uint8Array {
+  const cells = new Uint8Array(g.size * g.size);
+  for (let i = 0; i < cells.length; i += 4) {
+    const n = parseInt(g.cells[i >> 2] ?? '0', 16);
+    for (let b = 0; b < 4 && i + b < cells.length; b++) cells[i + b] = (n >> b) & 1;
+  }
+  return cells;
+}
+
 /** Почему сюда нельзя поставить здание. 'ok' — можно. */
 export type SiteBlock = 'ok' | 'tree' | 'busy' | 'hero';
 

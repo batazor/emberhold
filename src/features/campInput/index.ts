@@ -78,6 +78,11 @@ export interface CampInput {
   readonly pan: { readonly x: number; readonly z: number };
   /** Вернуть камеру в центр площадки. */
   reset(): void;
+  /**
+   * Оставить камеру там, где она стоит: смещение от центра задаётся снаружи.
+   * Нужен концу пролога — лагерь открывается без рывка камеры, кадр тот же.
+   */
+  hold(x: number, z: number): void;
 }
 
 /** Сколько можно отъехать от края площадки, в клетках. */
@@ -203,6 +208,11 @@ export function bindCampInput(hooks: CampInputHooks): CampInput {
     reset(): void {
       pan.x = 0;
       pan.z = 0;
+    },
+    hold(x: number, z: number): void {
+      pan.x = x;
+      pan.z = z;
+      clampPan();
     },
   };
 }
