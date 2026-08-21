@@ -1101,7 +1101,7 @@
     if(!rows) return;
     var failed = false, timers = [], t0 = 0;
 
-    var LOOT = [ { i:'◆', n:'соль', v:34 }, { i:'▲', n:'дерево', v:12 }, { i:'■', n:'железо', v:4 } ];
+    var LOOT = [ { i:'◆', n:'камень', v:34 }, { i:'▲', n:'дерево', v:12 }, { i:'■', n:'железо', v:4 } ];
 
     function stop(){ timers.forEach(clearTimeout); timers = []; }
     function at(ms, fn){ timers.push(setTimeout(fn, ms)); }
