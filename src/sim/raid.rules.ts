@@ -28,9 +28,9 @@ describe('Вылазка', () => {
     assert.equal(raid.capacity, storageCapacity(2));
   });
 
-  test('§11.1 — путь назад считается от эвакуации', () => {
+  test('§11.1 — путь назад считается от выхода', () => {
     const raid = createRaid({ seed: 7, tier: 2, kitchenLevel: 3, storageLevel: 2 });
-    assert.equal(backSteps(raid), 0, 'на точке эвакуации путь назад нулевой');
+    assert.equal(backSteps(raid), 0, 'на точке выхода путь назад нулевой');
     const far = raid.loc.containers[0];
     assert.ok(far !== undefined);
     assert.equal(commandMove(raid, far), true, 'до контейнера есть путь');
@@ -56,7 +56,7 @@ describe('Вылазка', () => {
     assert.equal(atRisk(raid), 5, '7 × 0.6 = 4.2 → 5');
   });
 
-  test('провал теряет долю рюкзака, эвакуация — ничего', () => {
+  test('провал теряет долю рюкзака, возвращение — ничего', () => {
     const raid = createRaid({ seed: 3, tier: 3, kitchenLevel: 3, storageLevel: 2 });
     raid.bag = { stone: 6, wood: 0, iron: 3, crystal: 1 };
     raid.bagTotal = 10;

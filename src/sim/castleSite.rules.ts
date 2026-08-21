@@ -91,14 +91,10 @@ describe('Замок на карте: по нему ходят', () => {
  * показать. Проверяется поэтому здесь, без браузера.
  */
 describe('Замок на карте: где кончается двор', () => {
-  test('обходы жителей лежат во дворе, а выход — нет', () => {
+  test('выход двором не считается', () => {
     for (const site of sites) {
-      for (const f of site.folk) {
-        for (const c of f.route) {
-          assert.ok(inYard(site, c), `сид ${site.loc.seed}: клетка обхода ${c.x},${c.z} не во дворе`);
-        }
-      }
       assert.ok(!inYard(site, site.loc.evac), `сид ${site.loc.seed}: выход посчитан двором`);
+      assert.ok(!inYard(site, site.gate), `сид ${site.loc.seed}: ворота посчитаны двором`);
     }
   });
 

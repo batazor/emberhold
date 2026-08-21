@@ -12,7 +12,7 @@
  *    героя вдвое, а не вровень с ним.
  * 3. Вокруг — поле, вокруг поля — лес. Лес держит границу локации: рамка
  *    и так не вскрывается никогда, и честнее, когда её видно деревьями.
- * 4. Эвакуация — снаружи, перед воротами. Войти в замок можно только через
+ * 4. Выход — снаружи, перед воротами. Войти в замок можно только через
  *    них, и это не декорация: проверяется волной по проходимым клеткам.
  *
  * Занятость клетки берётся у деталей, а не назначается: стена, башня
@@ -21,7 +21,6 @@
  */
 import { distanceField, idx } from './grid';
 import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
-import { createFolk, type Folk } from './castleFolk';
 import type { Cell, GameLocation } from './types';
 
 /** Поле между лесом и стеной: место, где замок видно целиком. */
@@ -44,11 +43,6 @@ export interface CastleSite {
   readonly trees: readonly Spot[];
   /** Ворота в клетках локации — сюда приходят снаружи. */
   readonly gate: Cell;
-  /**
-   * Кто здесь живёт (`castleFolk.ts`). Список лежит на площадке, а не
-   * в `loc`: жители не противники и не добыча, и вылазка про них не знает.
-   */
-  readonly folk: readonly Folk[];
 }
 
 /**
@@ -124,7 +118,7 @@ export function generateCastleSite(seed: number): CastleSite {
     : spotAt({ at }, gatePiece);
 
   /**
-   * Эвакуация — снаружи, напротив ворот. Наружу смотрит та сторона ворот,
+   * Выход — снаружи, напротив ворот. Наружу смотрит та сторона ворот,
    * с которой нет двора: двор известен планом, и гадать не приходится.
    */
   const yard = new Set(castle.yard.map((s) => `${s.x}:${s.z}`));
@@ -153,8 +147,5 @@ export function generateCastleSite(seed: number): CastleSite {
     enemies: [],
     backSteps: distanceField(size, blocked, evac),
   };
-  // Жители — последними: им нужен готовый двор со всеми занятыми клетками,
-  // иначе обход пройдёт сквозь донжон.
-  const folk = createFolk(seed, castle, at, size, blocked);
-  return { loc, castle, at, trees, gate, folk };
+  return { loc, castle, at, trees, gate };
 }

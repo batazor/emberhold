@@ -51,6 +51,50 @@ const GHOST_TILES = 28;
 const MOUND = 'grave';
 const STONES = ['gravestone-cross', 'gravestone-round', 'gravestone-bevel', 'cross'] as const;
 
+/**
+ * Кто лежит и чем известен — **из слов, которые в игре уже есть**, и ни одного
+ * сверх них.
+ *
+ * §0.1 запрещает сочинять собственные имена: мир получит язык тогда, когда
+ * под него появятся решения. Личных имён у героев игры нет вовсе — есть
+ * классы (§11.7), фракции карты (§4) и механики, которые игрок уже прошёл
+ * руками. Из них эпитафия и собирается: «Носильщик Пепельного Обоза. Донёс
+ * рюкзак до самого выхода».
+ *
+ * Отсюда правило, которое стоит записать раньше первой эпитафии: **на камне
+ * не может стоять того, чего нет в игре**. Не «Ярл Одноглазый, победивший
+ * дракона», а класс, фракция и дело, которое игрок узнаёт, потому что делал
+ * его сам. Кладбище так рассказывает не выдуманный мир, а прошедшие вылазки.
+ */
+const WHO: readonly string[] = [
+  'Следопыт', 'Ратник', 'Носильщик',
+  'Копатель', 'Возчик', 'Сторож',
+];
+
+/** Фракции — те же рабочие подписи, что на карте мира (§4). */
+const FROM: readonly string[] = [
+  'Вольной Артели', 'Пепельного Обоза', 'Тихих Копателей', 'Клана Отвала',
+];
+
+/**
+ * Чем известен. Каждое дело — механика, которую игрок либо уже прошёл,
+ * либо пройдёт: провиант, ставка, возвращение, рубка, рюкзак, ярусы, раны.
+ */
+const DEED: readonly string[] = [
+  'Донёс рюкзак до самого выхода',
+  'Ушёл с одной раной и полным коробом',
+  'Считал шаги назад и ни разу не ошибся',
+  'Сводил лес под лагерь в одиночку',
+  'Не бросил добычу, и потому не вернулся',
+  'Дошёл до дна и повернул на полпути обратно',
+  'Знал, где обойти, и обходил',
+  'Провианта взял впритык. Впритык и хватило',
+  'Ходил на третий ярус как на подступы',
+  'Ставил стены, пока другие носили камень',
+  'Отдал последний провиант и остался',
+  'Ушёл за кристаллом. Кристалл принесли без него',
+];
+
 /** Отметка на участке: модель, клетка локации и четверть поворота. */
 export interface GraveMark {
   readonly model: string;
@@ -59,6 +103,61 @@ export interface GraveMark {
   readonly turn: number;
   /** Занимает ли клетку. Насыпь не занимает: через могилу переступают. */
   readonly solid: boolean;
+  /**
+   * Что написано на камне. `null` — насыпь без камня: писать не на чем,
+   * и это не пропуск, а разница между могилой и надгробием.
+   */
+  readonly epitaph: string | null;
+}
+
+/**
+ * Насколько близко надо подойти, чтобы прочитать камень. Полторы клетки:
+ * это длина руки героя (§15 — досягаемость 0,9–1,6), и надпись появляется
+ * тогда же, когда игрок мог бы её коснуться, а не когда прошёл мимо.
+ */
+export const EPITAPH_REACH = 1.5;
+
+/**
+ * Что герой читает на этом шаге. `null` — либо рядом нет камня, либо это
+ * тот же камень, что и на прошлом шаге: надпись всплывает **один раз
+ * на подход**, а не шестьдесят раз в секунду. Отойдя и вернувшись, её
+ * прочтут снова — камень никуда не делся.
+ *
+ * Функция чистая: `last` приходит снаружи и наружу же возвращается новым.
+ * Ни участок, ни вылазка от чтения не меняются — кладбище остаётся прогулкой.
+ */
+export function readEpitaph(
+  site: { readonly marks: readonly GraveMark[] },
+  x: number,
+  z: number,
+  last: string | null,
+): { readonly say: string | null; readonly last: string | null } {
+  const text = epitaphAt(site, x, z)?.epitaph ?? null;
+  if (text === last) return { say: null, last };
+  return { say: text, last: text };
+}
+
+/**
+ * Эпитафия ближайшего камня, до которого дотянулись. `null` — рядом нет
+ * ничего, на чём написано. Читается по шагу героя и ничего не меняет
+ * в состоянии: кладбище остаётся прогулкой.
+ */
+export function epitaphAt(
+  site: { readonly marks: readonly GraveMark[] },
+  x: number,
+  z: number,
+): GraveMark | null {
+  let best: GraveMark | null = null;
+  let near = EPITAPH_REACH * EPITAPH_REACH;
+  for (const mark of site.marks) {
+    if (mark.epitaph === null) continue;
+    const d = (mark.x - x) ** 2 + (mark.z - z) ** 2;
+    if (d < near) {
+      near = d;
+      best = mark;
+    }
+  }
+  return best;
 }
 
 export interface GraveSite {
@@ -84,6 +183,18 @@ export const spotAt = (site: { at: Spot }, plan: { x: number; z: number }): Cell
   z: Math.round(site.at.z + plan.z * FENCE_CELL),
 });
 
+/**
+ * Строка на камень. Склеп — единственная постройка участка, и лежит в нём
+ * не один: у него надпись про всех сразу, а не про одного.
+ */
+function writeEpitaph(rng: Rng, crypt = false): string {
+  const who = WHO[randInt(rng, WHO.length)]!;
+  const from = FROM[randInt(rng, FROM.length)]!;
+  const deed = DEED[randInt(rng, DEED.length)]!;
+  if (crypt) return `Склеп ${from}. Здесь те, кто не дошёл до выхода`;
+  return `Здесь ${who.toLowerCase()} ${from}. ${deed}`;
+}
+
 /** Периметр участка по часовой стрелке — цепь, из которой строится ограда. */
 function ringOf(w: number, d: number): Spot[] {
   const out: Spot[] = [];
@@ -100,9 +211,18 @@ function ringOf(w: number, d: number): Spot[] {
  */
 export function generateGraveSite(seed: number): GraveSite {
   const rng: Rng = mulberry32(seed);
-  // Стороны участка — в том же разбросе, что стороны замка (`castle.ts`):
-  // кладбище и замок это две прогулки, и мерить их разной меркой значит
-  // обещать разное там, где обещание одно — «сюда можно сходить посмотреть».
+  /**
+   * Стороны участка — в том же разбросе, что стороны замка (`castle.ts`):
+   * кладбище и замок это две прогулки, и мерить их разной меркой значит
+   * обещать разное там, где обещание одно — «сюда можно сходить посмотреть».
+   *
+   * Нижняя граница при этом ещё и вынужденная, и поймало её правило чтения:
+   * на участке 4×4 ряды могил дают две-три клетки, половина из которых
+   * уходит в насыпи, — и на всё кладбище оставался один читаемый камень.
+   * Мерка записана и проверяется: **не меньше трёх надписей на участок**,
+   * иначе это не кладбище, а одна могила с оградой. Нынешняя шестёрка
+   * снизу перекрывает её с запасом.
+   */
   const w = 6 + randInt(rng, 4);
   const d = 6 + randInt(rng, 4);
   const material = FENCE_MATERIALS[randInt(rng, FENCE_MATERIALS.length)]!;
@@ -181,7 +301,8 @@ export function generateGraveSite(seed: number): GraveSite {
       const roll = rng();
       if (roll < 0.22) continue; // пустое место в ряду: кладбище не склад
       if (roll < 0.55) {
-        marks.push({ model: MOUND, x, z, turn: randInt(rng, 2) * 2, solid: false });
+        // Насыпь без камня: писать не на чем, и надписи у неё нет.
+        marks.push({ model: MOUND, x, z, turn: randInt(rng, 2) * 2, solid: false, epitaph: null });
         continue;
       }
       marks.push({
@@ -190,6 +311,7 @@ export function generateGraveSite(seed: number): GraveSite {
         z,
         turn: randInt(rng, 4),
         solid: true,
+        epitaph: writeEpitaph(rng),
       });
       block(x, z);
     }
@@ -201,14 +323,31 @@ export function generateGraveSite(seed: number): GraveSite {
     x: gate.x < at.x + (w * FENCE_CELL) / 2 ? yard.x1 - 1 : yard.x0 + 1,
     z: gate.z < at.z + (d * FENCE_CELL) / 2 ? yard.z1 - 1 : yard.z0 + 1,
   };
-  marks.push({ model: 'crypt', x: far.x, z: far.z, turn: randInt(rng, 4), solid: true });
+  // Склеп встаёт на своё место, а не поверх чужого: ряд могил мог дотянуться
+  // до дальнего угла, и две отметки в одной клетке — это и двойная геометрия,
+  // и два камня, читающиеся с одного шага. Поймало это правило чтения.
+  const lid: Cell = { x: far.x + (far.x > yard.x0 ? -1 : 1), z: far.z };
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const at = marks[i]!;
+    const clash = (at.x === far.x && at.z === far.z) || (at.x === lid.x && at.z === lid.z);
+    if (!clash) continue;
+    marks.splice(i, 1);
+    blocked[idx(size, at.x, at.z)] = 0;
+  }
+  marks.push({
+    model: 'crypt',
+    x: far.x,
+    z: far.z,
+    turn: randInt(rng, 4),
+    solid: true,
+    epitaph: writeEpitaph(rng, true),
+  });
   block(far.x, far.z);
   // Гроб у склепа: он тут и объясняет, зачем склеп открыт.
-  const lid: Cell = { x: far.x + (far.x > yard.x0 ? -1 : 1), z: far.z };
-  marks.push({ model: 'coffin', x: lid.x, z: lid.z, turn: randInt(rng, 4), solid: false });
+  marks.push({ model: 'coffin', x: lid.x, z: lid.z, turn: randInt(rng, 4), solid: false, epitaph: null });
 
   /**
-   * Эвакуация — снаружи, перед воротами. Сторона выбирается та, с которой
+   * Выход — снаружи, перед воротами. Сторона выбирается та, с которой
    * нет участка: внутрь ограды точка выхода не встаёт никогда.
    */
   const outX = gateSpot.x === 0 ? -1 : gateSpot.x === w - 1 ? 1 : 0;

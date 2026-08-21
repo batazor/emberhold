@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
-import type { FolkLook } from '../sim/castleFolk';
+import type { DwellerLook } from '../sim/garrison';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind, RaidEnemyKind } from '../sim/types';
-import { adventurerGeometry, adventurerParts } from './adventurers';
+import { adventurerGeometry, adventurerHeld, adventurerParts } from './adventurers';
+import type { Held } from './adventurers';
+import { WEAPONS_MODELS } from './weapons.data';
+import { weaponOf } from './weapons';
+import { WEAPONS_PALETTE } from './palette';
 import type { AdventurerModelName } from './adventurers.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
@@ -394,20 +398,35 @@ function heroHeight(cls: HeroClassId): number {
 }
 
 /**
- * Что у героя в руке. Оружие §14 зовётся «Кайло»; кирки в наборе нет, поэтому
- * взят одноручный топор — ближайшее по чтению. Это замена палке примитива:
- * уровень предмета из Мастерской моделью пока не читается, и когда начнёт,
- * здесь появится не строка, а таблица.
+ * Что у героя в руке. Раньше здесь стояла строка — одноручный топор из набора
+ * персонажей, один на все уровни; комментарий рядом обещал таблицу, когда
+ * уровень предмета начнёт читаться моделью. Набор оружия (§6.1.8) это и есть.
+ *
+ * Классов с моделью пока один, поэтому таблица одномерная: уровень оружия §14
+ * выбирает ступень лестницы, а класс — держит ли он её вообще. Появится второй
+ * класс с моделью набора — здесь появится второй ключ, а не второй способ.
  */
-const HERO_HELD: Partial<Record<HeroClassId, AdventurerModelName>> = {
-  ranger: 'axe_1handed',
+const HERO_ARMED: Partial<Record<HeroClassId, true>> = {
+  ranger: true,
 };
 
-export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
+/**
+ * Предмет в руке по уровню оружия. Уровень 0 — «не выковано»: в руке остаётся
+ * деревянный клинок набора, потому что пустая рука в бою читается как ошибка
+ * рисовальщика, а не как «Мастерская не построена».
+ */
+const heldOf = (cls: HeroClassId, weapon: number): Held | undefined => {
+  if (HERO_ARMED[cls] !== true) return undefined;
+  const name = weaponOf(weapon);
+  return { name, model: WEAPONS_MODELS[name], palette: WEAPONS_PALETTE };
+};
+
+/** §14 — уровень оружия из Мастерской. 0 — слот пуст, ковки ещё не было. */
+export const heroGeometry = (cls: HeroClassId, weapon = 0): THREE.BufferGeometry => {
   const model = HERO_MODELS[cls];
   return model === undefined
     ? merge(HERO_SHAPES[cls]())
-    : adventurerGeometry(model, heroHeight(cls), HERO_HELD[cls]);
+    : adventurerGeometry(model, heroHeight(cls), heldOf(cls, weapon));
 };
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
@@ -437,37 +456,61 @@ const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {
 export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind]();
 
 /**
- * Жители замка (§6.1.6). Три облика набора, и различает их снаряжение,
- * а не порода — то же правило, каким различаются скелеты (§15): силуэт
- * читается раньше цвета.
+ * Жильцы двора (§6.1.6.1). Гарнизон стережёт, а живёт в замке кто-то ещё,
+ * и отличить одно от другого можно только силуэтом — тем же правилом, каким
+ * различаются скелеты (§15) и сам гарнизон: снаряжение, а не порода.
  *
- * Предмет у всех троих правый: набор отдаёт узел `handslot.r` и только его,
- * поэтому щита в левой руке у рыцаря быть не может, и он взял меч. Это
- * ответ набора, а не выбор снаряжения: числами жители не описаны вовсе.
+ * Предмет у обоих правый: набор отдаёт узел `handslot.r` и только его,
+ * поэтому щита в левой руке не бывает ни у кого. Это ответ набора, а не
+ * выбор снаряжения: числами жильцы не описаны вовсе.
  */
-const FOLK_MODELS: Record<FolkLook, readonly [AdventurerModelName, AdventurerModelName]> = {
-  рыцарь: ['Knight', 'sword_1handed'],
+const DWELLER_MODEL: Record<DwellerLook, readonly [AdventurerModelName, AdventurerModelName]> = {
   маг: ['Mage', 'staff'],
   плут: ['Rogue', 'dagger'],
 };
 
-/**
- * Житель ростом с героя: они одной породы, и разный рост читался бы как
- * разная порода. Берётся у примитива героя по той же причине, что и у самого
- * героя, — чтобы два записанных порознь роста не разъехались молча.
- */
-export const folkHeight = (): number => heroHeight('ranger');
-
-export const folkParts = (look: FolkLook): RiggedParts => {
-  const [model, held] = FOLK_MODELS[look];
-  return adventurerParts(model, folkHeight(), held);
+export const dwellerParts = (look: DwellerLook): RiggedParts => {
+  const [model, held] = DWELLER_MODEL[look];
+  // Рост берётся у героя по той же причине, что у гарнизона: жильцы и герой —
+  // люди одного мира, и разный рост читался бы не «другой человек»,
+  // а «другой масштаб сцены».
+  return adventurerParts(model, heroHeight(GUARD_LIKE), adventurerHeld(held));
 };
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
-export function heroParts(cls: HeroClassId): RiggedParts | null {
+export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {
   const model = HERO_MODELS[cls];
   return model === undefined
     ? null
-    : adventurerParts(model, heroHeight(cls), HERO_HELD[cls]);
+    : adventurerParts(model, heroHeight(cls), heldOf(cls, weapon));
 }
 
+
+/**
+ * Гарнизон замка (§6.1.6) — рыцарь набора: тот, что по периметру, и тот,
+ * что на стене. Персонаж один на обоих, а отличает их предмет в руке —
+ * ровно то же правило, каким набор различает своих скелетов (§6.1.3):
+ * силуэт делает снаряжение, а не порода.
+ *
+ * Рост берётся у героя, а не назначается своим числом. Гарнизон и герой —
+ * люди одного мира, и разный рост читался бы не «другой человек», а «другой
+ * масштаб сцены»; вдобавок мерка героя снята с примитива, который он заменил,
+ * и второе записанное число разошлось бы с ней молча.
+ */
+const GUARD_MODEL: AdventurerModelName = 'Knight';
+
+/** Класс, у которого рост измерен: единственный, кому набор уже вписан. */
+const GUARD_LIKE: HeroClassId = 'ranger';
+
+/** Кто в гарнизоне: обходящий периметр и стоящий на стене. */
+export type GuardKind = 'дозор' | 'стрелок';
+
+const GUARD_HELD: Record<GuardKind, AdventurerModelName> = {
+  'дозор': 'sword_1handed',
+  'стрелок': 'bow_withString',
+};
+
+export const guardHeight = (): number => heroHeight(GUARD_LIKE);
+
+export const guardParts = (kind: GuardKind): RiggedParts =>
+  adventurerParts(GUARD_MODEL, heroHeight(GUARD_LIKE), adventurerHeld(GUARD_HELD[kind]));
