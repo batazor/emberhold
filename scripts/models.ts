@@ -310,7 +310,11 @@ const RIG = {
     // и герой наконец бежит, а не семенит ускоренным шагом.
     { file: 'assets/quaternius-ual/gltf/Rig_Medium_UAL.glb', clip: 'Jog_Fwd_Loop', as: 'ходьба' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatMelee.glb', clip: 'Melee_1H_Attack_Chop', as: 'удар' },
-    { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Hit_A', as: 'урон' },
+    // Урон — тоже из UAL: спека даёт вспышке 150 мс, Hit_A тянет отдачу
+    // 0,67 с, Hit_Chest — 0,33 (npm run ual). Удар остаётся KayKit не
+    // по привычке: замах Sword_Attack 0,38 с меньше телеграфа привидения
+    // и мага (0,5), Punch — меньше любого; Chop с замахом 0,58 годится всем.
+    { file: 'assets/quaternius-ual/gltf/Rig_Medium_UAL.glb', clip: 'Hit_Chest', as: 'урон' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Death_A', as: 'падение' },
     // §14.3 — у дальнего боя не было замаха вовсе. Клипы выбраны не на глаз:
     // npm run clips печатает, какой годится какому актору по таймингу,

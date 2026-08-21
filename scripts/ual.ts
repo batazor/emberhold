@@ -261,6 +261,8 @@ interface Retargeted {
   readonly loop: number;
   readonly drift: number;
   readonly bytes: number;
+  readonly strike: number;
+  readonly peak: number;
 }
 
 const measureRetarget = (): Retargeted[] | undefined => {
@@ -282,12 +284,18 @@ const measureRetarget = (): Retargeted[] | undefined => {
       (missing.length > 0 ? `; НЕ хватает: ${missing.join(', ')}` : ' — все'),
   );
   const rtToes = ['toes.l', 'toes.r'].map((n) => names.get(n)).filter((n): n is number => n !== undefined);
+  // Конечности нашего рига — те же, что у clips.ts: удар ищется и в кисти,
+  // и в оружейном слоте, и в стопе.
+  const rtLimbs = ['handslot.r', 'handslot.l', 'foot.r', 'foot.l']
+    .map((n) => names.get(n))
+    .filter((n): n is number => n !== undefined);
   const rtJoints = rt.json.skins?.[0]?.joints ?? [];
   const rtRoot = names.get('root') ?? -1;
   return (rt.json.animations ?? [])
     .filter((a) => a.name !== 'A_TPose')
     .map((anim) => {
       const pose = new Posed(rt, anim);
+      const strike = measureStrike(pose, rtLimbs);
       return {
         name: anim.name,
         duration: round(pose.duration, 3),
@@ -295,6 +303,8 @@ const measureRetarget = (): Retargeted[] | undefined => {
         loop: round(measureLoop(pose, rtJoints), 4),
         drift: round(rtRoot < 0 ? 0 : measureDrift(pose, rtRoot), 3),
         bytes: bytesOf(rt, anim),
+        strike: round(strike.at, 3),
+        peak: round(strike.peak, 2),
       };
     });
 };
