@@ -23,6 +23,7 @@ import { ONB_HINT } from '../sim/onboarding';
 import { dayAt, firstRaidNode } from '../sim/world';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
+import { TENT_COST, TENT_REASON, homeless, tentBlock } from '../sim/residents';
 import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
 import { WorldMap } from './worldMap';
@@ -59,6 +60,8 @@ export interface CampCallbacks {
   onBuyArrows(): void;
   /** §14.2 — что в левой руке: фонарь или щит. Бесплатно и мгновенно. */
   onOffhand(offhand: Offhand): void;
+  /** Поставить палатку жильцу (`sim/residents.ts`). */
+  onTent(): void;
 }
 
 const BLOCK_TEXT: Record<string, string> = {
@@ -131,6 +134,9 @@ export class CampHud {
   private readonly map: WorldMap;
   private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
   private readonly banner: HTMLElement;
+  private readonly task: HTMLElement;
+  private readonly taskWhy: HTMLElement;
+  private readonly taskButton: HTMLButtonElement;
 
   private readonly sheet: HTMLElement;
   private readonly sheetTitle: HTMLElement;
@@ -183,6 +189,23 @@ export class CampHud {
 
     this.banner = document.createElement('div');
     this.banner.className = 'hint';
+
+    /* ---------- задание ---------- */
+    // Строка, а не уведомление. Уведомление гаснет через четыре секунды,
+    // а «кому-то негде спать» не перестаёт быть правдой оттого, что игрок
+    // отвернулся: пока задание открыто, оно обязано быть на экране.
+    //
+    // И не карточка здания: палатка зданием не является (`residents.ts`),
+    // а прятать задание за кнопку нижней строки значило бы прятать
+    // единственное, что лагерь сейчас просит.
+    this.task = document.createElement('div');
+    this.task.className = 'panel task';
+    this.task.style.display = 'none';
+    this.taskWhy = document.createElement('span');
+    this.taskWhy.className = 'why';
+    this.taskButton = document.createElement('button');
+    this.taskButton.addEventListener('click', () => this.cb.onTent());
+    this.task.append(this.taskWhy, this.taskButton);
 
     // Пустая середина — это и есть лагерь. Клики сквозь неё уходят на сцену,
     // иначе тап по зданию не дошёл бы до канваса.
@@ -305,7 +328,7 @@ export class CampHud {
       this.makeBarButton('В мир', 'tiers', true),
     );
 
-    this.root.append(res, this.banner, space, this.sheet, this.bar);
+    this.root.append(res, this.banner, this.task, space, this.sheet, this.bar);
     parent.appendChild(this.root);
     this.close();
   }
@@ -455,9 +478,33 @@ export class CampHud {
 
     this.line.tick(dt);
 
+    this.syncTask(camp);
+
     this.last = { camp, now };
     this.paintOpen();
     this.applyOnboarding();
+  }
+
+  /**
+   * Строка задания. Красится в общем `sync`, а не в `paintOpen`: она видна
+   * всегда, а не в открытом разделе, — в этом и смысл задания.
+   *
+   * Кнопка не гаснет молча. Когда палатку поставить нельзя, причина стоит
+   * рядом словом — то же правило, что у `siteBlock` (§16.1) и у погасших
+   * точек карты (§16.2): отказ обязан называть, чего не хватает.
+   */
+  private syncTask(camp: CampState): void {
+    const need = homeless(camp);
+    this.task.style.display = need === 0 ? 'none' : 'flex';
+    if (need === 0) return;
+    this.taskWhy.textContent = need === 1 ? 'Гостю негде спать' : `Без крыши: ${need}`;
+    const block = tentBlock(camp);
+    this.taskButton.textContent = `Палатка · ${this.costLine(0, TENT_COST)}`;
+    this.taskButton.disabled = block !== 'ok';
+    // Название причины дописывается к поводу, а не заменяет его: игрок
+    // должен видеть и что просят, и почему нельзя, — одно без другого
+    // это либо задание без выхода, либо отказ без повода.
+    if (block !== 'ok') this.taskWhy.textContent += ` · ${TENT_REASON[block]}`;
   }
 
   /**
@@ -717,8 +764,13 @@ export class CampHud {
     }`;
   }
 
-  private costLine(level: number): string {
-    const cost = BUILD_COST[level];
+  /**
+   * Цена строкой. Второй довод — готовая цена: у палатки её нет в лестнице
+   * `BUILD_COST`, а строка обязана выглядеть той же, что у зданий, — иначе
+   * два ценника в одном лагере читаются двумя разными валютами.
+   */
+  private costLine(level: number, ready?: Partial<Resources>): string {
+    const cost = ready ?? BUILD_COST[level];
     if (cost === undefined) return '';
     return (Object.entries(cost) as [ResourceKind, number][])
       .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { buildingGeometry, heroGeometry } from './models';
+import { buildingGeometry, heroGeometry, residentGeometry } from './models';
 import { Fire } from './fire';
 import { BUILDING_ORDER, builtBuildings, campArea } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
@@ -55,6 +55,13 @@ const STONE_HEIGHT = 0.42;
 const STONE_SHAKE = 0.18;
 
 
+/**
+ * Во сколько палатка меньше здания. Не подобрано на глаз: след палатки 1×1,
+ * след здания 2×2, и половина — это ровно то же отношение, каким они
+ * считаются в симуляции.
+ */
+const TENT_LOOK = 0.5;
+
 /** Насколько далеко за поляну уходит лес, в клетках. */
 const FOREST_DEPTH = 5;
 /** Полоса между поляной и первым деревом: иначе лес закрывает крайние здания. */
@@ -67,6 +74,10 @@ const noise = (x: number, z: number): number =>
 export class CampView {
   readonly group = new THREE.Group();
   private readonly buildings = new Map<BuildingId, THREE.Group>();
+  /** Палатки жильцов: без имени, потому что различать их нечем и незачем —
+   *  тап по палатке ничего не открывает. */
+  private readonly tents: THREE.Group[] = [];
+  private readonly folk: THREE.Mesh[] = [];
   private readonly disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
   private hero!: THREE.Mesh;
   /** Уровень оружия, которым собран клинок в руке: ниже он же и сверяется. */
@@ -313,13 +324,22 @@ export class CampView {
       const p = this.camp.layout[id];
       return `${id}${this.camp.levels[id]}@${p.x},${p.z}`;
     }).join('|');
+    // Палатки входят в подпись наравне со зданиями и по той же причине:
+    // поставленная и не нарисованная палатка — это оплаченное и невидимое.
+    const withTents =
+      `${signature}|т${this.camp.tents.map((t) => `${t.x},${t.z}`).join(';')}` +
+      `|ж${this.camp.residents.map((r) => r.look).join(';')}`;
     const area = campArea(this.camp.levels.hq);
-    if (signature === this.builtLevels && area === this.area) return;
-    this.builtLevels = signature;
+    if (withTents === this.builtLevels && area === this.area) return;
+    this.builtLevels = withTents;
     this.area = area;
 
     for (const [, g] of this.buildings) g.removeFromParent();
     this.buildings.clear();
+    for (const g of this.tents) g.removeFromParent();
+    this.tents.length = 0;
+    for (const m of this.folk) m.removeFromParent();
+    this.folk.length = 0;
 
     // Уровень 0 — это пустое место, а не здание нулевого размера: Мастерская
     // до Жилья ур. 2 не рисуется вовсе.
@@ -330,6 +350,51 @@ export class CampView {
       this.group.add(g);
       this.buildings.set(id, g);
     }
+
+    // Палатки жильцов (`sim/residents.ts`). Модель — то же Жильё первого
+    // уровня: палатка и есть Жильё, только чужая, и рисовать её другим
+    // мешем значило бы сказать, что это другое жильё. Меньше она потому,
+    // что след у неё 1×1 против 2×2 у зданий, — размер здесь не украшение,
+    // а то же число, которым считается место.
+    for (const t of this.camp.tents) {
+      const g = this.makeBuilding('hq', 1);
+      g.scale.setScalar(TENT_LOOK);
+      g.position.set(t.x + 0.5, 0, t.z + 0.5);
+      this.group.add(g);
+      this.tents.push(g);
+    }
+
+    /*
+     * Жильцы. Каждый стоит у своей палатки — той, что под тем же номером:
+     * палатка вмещает одного (`residents.ts`), и номер — это всё, чем они
+     * связаны.
+     *
+     * У кого палатки ещё нет, тот стоит **у костра**. Это не запасное место,
+     * а то же задание, сказанное картинкой: пока крыши нет, человек в лагере
+     * есть, и видно, что ему негде. Если Кухни почему-то не оказалось,
+     * он встаёт у Жилья — пустого места в лагере не бывает.
+     */
+    const fire = this.camp.levels.kitchen > 0 ? this.camp.layout.kitchen : this.camp.layout.hq;
+    this.camp.residents.forEach((r, i) => {
+      const tent = this.camp.tents[i];
+      const mesh = new THREE.Mesh(this.track(residentGeometry(r.look)), this.blocking);
+      mesh.castShadow = true;
+      mesh.scale.setScalar(VILLAGER_SCALE);
+      // Шаг в сторону от следа: стоящий ровно в центре клетки палатки
+      // оказывается внутри неё, и снаружи это читается пропавшим жильцом.
+      // Обе точки лежат **за** следом, а не в нём. У костра это особенно
+      // важно: след Кухни 2×2, и шаг в 1,6 клетки оставлял жильца внутри
+      // него — сегодня это сходит с рук только потому, что костёр низкий,
+      // а на выросшей Кухне он оказался бы в стене.
+      const at = tent === undefined
+        ? { x: fire.x + 1, z: fire.z + 2.6 }
+        : { x: tent.x + 0.5, z: tent.z + 1.1 };
+      mesh.position.set(at.x, 0.55, at.z);
+      // Лицом к костру: люди в лагере смотрят на огонь, а не в лес.
+      mesh.rotation.y = Math.atan2(fire.x + 1 - at.x, fire.z + 1 - at.z);
+      this.group.add(mesh);
+      this.folk.push(mesh);
+    });
 
     // Земля показывает ровно текущую площадь: рост Жилья виден как рост лагеря.
     const dummy = new THREE.Object3D();
