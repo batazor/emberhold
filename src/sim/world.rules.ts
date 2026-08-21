@@ -94,12 +94,50 @@ describe('Мир: карта локаций', () => {
     assert.deepEqual([...tiers].sort(), [0, 1, 2, 3], 'за два месяца встречаются все ярусы');
     // Дни, где рядом только дорогие места, обязаны быть возможны: постоянного
     // соотношения ярусов нет намеренно.
+    //
+    // Считаются **вылазки**, а не все точки. Ярус есть у каждой записи, но
+    // значит он что-то только у вылазки: замок и кладбище стоят нулевыми
+    // потому, что ставки у них нет вовсе, и складывать их с дешёвыми
+    // вылазками — считать одно другим.
     let lopsided = 0;
     for (let day = DAY0; day < DAY0 + 200; day++) {
-      const cheap = regionAt(day).nodes.filter((n) => n.tier === 0).length;
+      const cheap = regionAt(day).nodes.filter((n) => n.kind === 'вылазка' && n.tier === 0).length;
       if (cheap <= 2) lopsided++;
     }
     assert.ok(lopsided > 0, 'нулевой ярус всегда представлен поровну — это расписание');
+  });
+
+  /**
+   * Особые точки раньше добавлялись по одной и **пропадали молча**: клетка
+   * бралась из колоды по `cells[nodes.length]`, а в людный день колода
+   * кончалась, и `undefined` тихо отменял точку. Правило написано ровно
+   * на это: раздача обещает и замок, и кладбище каждый день, и обещание
+   * не должно зависеть от того, сколько выпало вылазок.
+   */
+  test('§4 — особые точки выпадают каждый день и не пропадают в людный', () => {
+    for (let day = DAY0; day < DAY0 + 200; day++) {
+      const nodes = regionAt(day).nodes;
+      for (const kind of ['замок', 'кладбище'] as const) {
+        const count = nodes.filter((n) => n.kind === kind).length;
+        assert.ok(count >= 1, `день ${day}: ${kind} не выпал вовсе`);
+        assert.ok(count <= 3, `день ${day}: ${kind} выпал ${count} раз`);
+      }
+      // Раздача вылазок не тронута особыми точками: их число прежнее.
+      const raids = nodes.filter((n) => n.kind === 'вылазка').length;
+      assert.ok(raids >= 16 && raids <= 22, `день ${day}: вылазок ${raids}`);
+    }
+  });
+
+  test('§4 — числа особых точек день на день не приходятся', () => {
+    const seen = new Set<string>();
+    for (let day = DAY0; day < DAY0 + 200; day++) {
+      const nodes = regionAt(day).nodes;
+      const keeps = nodes.filter((n) => n.kind === 'замок').length;
+      const graves = nodes.filter((n) => n.kind === 'кладбище').length;
+      seen.add(`${keeps}:${graves}`);
+    }
+    // Одна пара на двести дней означала бы, что разброс объявлен, но не выпал.
+    assert.ok(seen.size >= 6, `за двести дней сочетаний ${seen.size}`);
   });
 
   test('§4 — день держит форму: сид точки не меняется до утра', () => {
@@ -179,7 +217,11 @@ describe('Мир: карта локаций', () => {
           }
         }
         const world = worldAt(t, visits);
-        const count = nodes.filter((n) => world[n.id]!.rich >= 2).length;
+        // Богатство считается по вылазкам: прогулочная точка стоит полной
+        // и не тратится никогда, потому что тратить в ней нечего. Три
+        // «богатых» кладбища вместо трёх богатых вылазок прошли бы правило,
+        // не дав игроку ровно того, ради чего оно написано.
+        const count = nodes.filter((n) => n.kind === 'вылазка' && world[n.id]!.rich >= 2).length;
         if (count < worst.count) worst = { shift: s, count };
       }
       assert.ok(

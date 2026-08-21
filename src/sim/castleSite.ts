@@ -66,6 +66,25 @@ export function atTrader(site: CastleSite, x: number, z: number): boolean {
   return (t.x - x) ** 2 + (t.z - z) ** 2 <= TRADER_REACH * TRADER_REACH;
 }
 
+/**
+ * Стоит ли клетка во дворе — внутри кольца стен. Нужна не генерации,
+ * а кадру: стена в две клетки высотой при камере в 30° прячет за собой
+ * около четырёх с половиной клеток земли (`ELEVATION` в `render/scene.ts`
+ * экспортируется ровно ради таких замеров), и замер по ста двадцати сидам
+ * дал **четверть двора, на которой герой скрыт целиком**, и ещё треть,
+ * на которой скрыт наполовину. Пока во дворе было пусто, это ничего
+ * не значило; с жителями (§6.1.6.1) кадр обязан показывать двор.
+ *
+ * Функция здесь, а не в рендере, по общему правилу: считается это чистыми
+ * данными и проверяется без браузера.
+ */
+export function inYard(site: { at: Spot; castle: Castle }, cell: Cell): boolean {
+  const px = Math.floor((cell.x - site.at.x) / CASTLE_CELL);
+  const pz = Math.floor((cell.z - site.at.z) / CASTLE_CELL);
+  if (px < 0 || pz < 0) return false;
+  return site.castle.yard.some((s) => s.x === px && s.z === pz);
+}
+
 /** Клетка локации, в которую попадает деталь плана. */
 export const spotAt = (site: { at: Spot }, piece: { x: number; z: number }): Cell => ({
   x: site.at.x + piece.x * CASTLE_CELL,

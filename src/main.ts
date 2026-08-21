@@ -129,7 +129,7 @@ import {
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
-import { archerAt, garrisonOf, patrolAt } from './sim/garrison';
+import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import { trade } from './sim/trade';
 import type { OfferId } from './sim/trade';
@@ -1991,8 +1991,52 @@ if (debugParams.has('castle')) {
     garrison: () => (castleNow === null ? null : garrisonOf(castleNow)),
     patrol: (t = 0) => (castleNow === null ? null : patrolAt(garrisonOf(castleNow), t)),
     archer: (t = 0) => (castleNow === null ? null : archerAt(garrisonOf(castleNow), t)),
+    // Жильцы двора (§6.1.6.1). Печатается то, чего не видно глазом: кто где
+    // сейчас, идёт ли и какой длины у него круг — обход в клетках читать
+    // по одной клетке бессмысленно.
+    жильцы: (t = 0) => {
+      if (castleNow === null) return null;
+      const g = garrisonOf(castleNow);
+      return dwellersAt(g, t).map((d, i) => ({
+        кто: d.look,
+        где: [+d.x.toFixed(2), +d.z.toFixed(2)],
+        идёт: d.walking,
+        круг: +(g.yard[i]?.cycle ?? 0).toFixed(1),
+      }));
+    },
     смена: (t: number) => raidView?.setWatch(t),
+    // Герой и тап по клетке: прозрачность стен (§6.1.6.1) включается тем,
+    // что он вошёл во двор, и без ручки к нему сцена этого не показывает —
+    // до ворот пришлось бы идти пешком.
+    raid: () => raid,
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
     rig,
+  };
+}
+
+/**
+ * `?grave` — кладбище сегодняшнего региона сразу, `?grave=СИД` — с назначенным
+ * сидом. Участок вырос до мерки замка (§6.1.7.1), и размер, материал ограды
+ * и расстановка могил выводятся из сида: чтобы посмотреть на крупное
+ * кладбище, ждать нужной точки на карте — не проверка, а лотерея.
+ */
+const debugGrave = debugParams.get('grave');
+if (debugGrave !== null) {
+  const place = today.find((n) => n.kind === 'кладбище');
+  const seed = debugGrave === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(debugGrave);
+  leaveTitle();
+  toGraveyard(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    site: () => graveSite,
+    // Размер участка и население — те два числа, ради которых сцена и заведена.
+    участок: () => (graveSite === null ? null : {
+      локация: graveSite.loc.size,
+      привидений: graveSite.loc.enemies.length,
+      надгробий: graveSite.marks.length,
+      материал: graveSite.material,
+    }),
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
 }
 

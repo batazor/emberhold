@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CASTLE_CELL } from './castle';
-import { FIELD, TRADER_REACH, WOOD, atTrader, generateCastleSite, spotAt } from './castleSite';
+import { FIELD, TRADER_REACH, WOOD, atTrader, generateCastleSite, inYard, spotAt } from './castleSite';
 import { distanceField, idx } from './grid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
@@ -80,6 +80,43 @@ describe('Замок на карте: по нему ходят', () => {
           && Math.abs(c.z - site.loc.evac.z) < CASTLE_CELL);
       assert.ok(!inYard, `сид ${site.loc.seed}: выход оказался внутри стен`);
       assert.equal(site.loc.blocked[idx(site.loc.size, site.loc.evac.x, site.loc.evac.z)], 0);
+    }
+  });
+});
+
+/**
+ * `inYard` — не удобство, а орган кадра: по нему решается, гасить ли стены,
+ * пока герой внутри (§6.1.6.1). Ошибись он в любую сторону, и замок либо
+ * стоит прозрачным всё время, либо прячет героя ровно тогда, когда его надо
+ * показать. Проверяется поэтому здесь, без браузера.
+ */
+describe('Замок на карте: где кончается двор', () => {
+  test('выход двором не считается', () => {
+    for (const site of sites) {
+      assert.ok(!inYard(site, site.loc.evac), `сид ${site.loc.seed}: выход посчитан двором`);
+      assert.ok(!inYard(site, site.gate), `сид ${site.loc.seed}: ворота посчитаны двором`);
+    }
+  });
+
+  test('лес и поле двором не считаются', () => {
+    for (const site of sites) {
+      const edge = { x: 0, z: 0 };
+      assert.ok(!inYard(site, edge), `сид ${site.loc.seed}: угол локации посчитан двором`);
+      // Клетка поля: между лесом и стеной, двором быть не может по построению.
+      assert.ok(
+        !inYard(site, { x: WOOD, z: WOOD + 1 }),
+        `сид ${site.loc.seed}: клетка поля посчитана двором`,
+      );
+    }
+  });
+
+  test('двор непуст: иначе гасить стены было бы не для кого', () => {
+    for (const site of sites) {
+      let inside = 0;
+      for (let z = 0; z < site.loc.size; z++) {
+        for (let x = 0; x < site.loc.size; x++) if (inYard(site, { x, z })) inside++;
+      }
+      assert.ok(inside >= 16, `сид ${site.loc.seed}: во дворе ${inside} клеток`);
     }
   });
 });
