@@ -57,6 +57,10 @@ export const storageCapacity = (level: number): number => 11 + 4 * level;
 /** §20.4 — площадь растёт с Жильём: 6×6 на ур. 1 … 10×10 на ур. 5. */
 export const campArea = (hqLevel: number): number => Math.min(10, 5 + hqLevel);
 
+/** Якорь площадки одним правилом: нет якоря — нулевой (старый сейв, отладка). */
+export const campOrigin = (camp: Pick<CampState, 'origin'>): { x: number; z: number } =>
+  camp.origin ?? { x: 0, z: 0 };
+
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   hq: {
     id: 'hq',
@@ -201,6 +205,14 @@ export interface CampState {
   /** Уровень 0 = здания ещё нет в лагере. Такое возможно только у Мастерской. */
   levels: Record<BuildingId, number>;
   layout: Record<BuildingId, { x: number; z: number }>;
+  /**
+   * Якорь площадки на поляне пролога (§16.1): клетка поляны, в которой стоит
+   * клетка (0,0) площади. Лагерь стоит там, где игрок разбил палатку, а не
+   * в отдельном месте: перенос в свой мир читался бы как второй лагерь.
+   * Поле необязательное: старые сейвы и отладочные сцены живут в нулевом
+   * якоре — их площадка сама себе координаты.
+   */
+  origin?: { x: number; z: number };
   resources: Resources;
   /** §20.1 — один слот. Это и делает вопрос «что дальше» настоящим выбором. */
   construction: Construction | null;

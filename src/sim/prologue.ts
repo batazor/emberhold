@@ -19,7 +19,7 @@
  * содержимым локации, а не правилами движения по ней.
  */
 import { mulberry32 } from '../core/rng';
-import { campArea, moveBuilding } from './camp';
+import { BUILDING_ORDER, campArea, moveBuilding } from './camp';
 import type { BuildingId, CampState } from './camp';
 import { distanceField, idx } from './grid';
 import { setSupply } from './raid';
@@ -324,12 +324,16 @@ export function siteBlock(
 }
 
 /**
- * Перенос раскладки поляны в лагерь. Поляна 24×24, площадь лагеря при Жилье
- * ур. 2 — 7×7 (§20.4), поэтому клетки пересчитываются долями, а не сдвигом.
+ * Перенос раскладки поляны в лагерь. Клетки не пересчитываются: где игрок
+ * разбил палатку, там она и стоит — площадь лагеря (§20.4) подъезжает под
+ * постройки якорем (`camp.origin`), а не постройки под площадь. Прежний
+ * пересчёт долями (24 → 7) сохранял взаимное расположение, но уносил лагерь
+ * в другое место, и открывшийся кадр читался как чужой — тестовый — лагерь.
  *
- * След здания 2×2, и после пересчёта два следа могут наложиться: тогда костёр
- * отходит на ближайшее свободное место. Расползаться ему есть куда — площадь
- * даёт девять посадок на два здания.
+ * Якорь ищется так, чтобы площадь накрыла все следы 2×2 и осталась в кромке
+ * поляны. Если поставленное разнесено шире площади, площадь держит палатку
+ * (первое здание порядка), а не влезшее отходит на ближайшее свободное место
+ * внутри — расползаться есть куда.
  */
 export function adoptGladeLayout(
   camp: CampState,
@@ -337,26 +341,69 @@ export function adoptGladeLayout(
   order: readonly BuildingId[],
   pitched: readonly Cell[],
 ): void {
+  if (pitched.length === 0) return;
   const area = campArea(camp.levels.hq);
-  const last = area - 2;
-  const scale = (n: number): number =>
-    Math.max(0, Math.min(last, Math.round((n / (gladeSize - 1)) * last)));
+  const anchor = (axis: 'x' | 'z'): number => {
+    const values = pitched.map((c) => c[axis]);
+    // Окно якорей, из которых площадь видит все следы целиком.
+    let lo = Math.max(...values) + 2 - area;
+    let hi = Math.min(...values);
+    // Окна нет — площадь держит палатку: остальным найдётся место внутри.
+    if (lo > hi) {
+      lo = pitched[0]![axis] + 2 - area;
+      hi = pitched[0]![axis];
+    }
+    // Середина окна: стройке потом расти во все стороны, а не упираться в край.
+    const mid = Math.round((lo + hi) / 2);
+    return Math.max(0, Math.min(gladeSize - area, Math.max(lo, Math.min(hi, mid))));
+  };
+  const origin = { x: anchor('x'), z: anchor('z') };
+  camp.origin = origin;
 
-  order.forEach((id, i) => {
-    const cell = pitched[i];
-    if (cell === undefined) return;
-    const x = scale(cell.x);
-    const z = scale(cell.z);
-    // moveBuilding сам знает и про площадь, и про чужие следы, и отказывает
-    // причиной, а не молча: если место занято, ищем ближайшее свободное.
-    if (moveBuilding(camp, id, x, z)) return;
+  const spiral = (place: (x: number, z: number) => boolean, x: number, z: number): void => {
     for (let r = 1; r <= area; r++) {
       for (let dz = -r; dz <= r; dz++) {
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-          if (moveBuilding(camp, id, x + dx, z + dz)) return;
+          if (place(x + dx, z + dz)) return;
         }
       }
     }
+  };
+
+  // Сначала — выбранное игроком, клетка в клетку и без суда moveBuilding:
+  // чужие следы здесь — раскладка по умолчанию, и она не может отменять
+  // выбор игрока. Кто примят площадью — подвинется следом.
+  const placed: { x: number; z: number }[] = [];
+  const freeOfPlaced = (x: number, z: number): boolean =>
+    placed.every((p) => Math.abs(p.x - x) >= 2 || Math.abs(p.z - z) >= 2);
+  order.forEach((id, i) => {
+    const cell = pitched[i];
+    if (cell === undefined) return;
+    const put = (x: number, z: number): boolean => {
+      if (x < 0 || z < 0 || x + 2 > area || z + 2 > area || !freeOfPlaced(x, z)) return false;
+      camp.layout[id] = { x, z };
+      placed.push({ x, z });
+      return true;
+    };
+    const x = cell.x - origin.x;
+    const z = cell.z - origin.z;
+    if (put(x, z)) return;
+    // Не влезло (разнесено шире площади или встык к палатке) — ближайшее
+    // свободное место от края площади, а не от точки за её пределами:
+    // спираль вокруг далёкой клетки не пересекает площадь вовсе.
+    const cx = Math.max(0, Math.min(area - 2, x));
+    const cz = Math.max(0, Math.min(area - 2, z));
+    if (!put(cx, cz)) spiral(put, cx, cz);
   });
+
+  // Теперь построенное вне порядка: раскладка по умолчанию уступает место
+  // выбранному. moveBuilding сам знает и про площадь, и про чужие следы —
+  // стоящий на своём и никому не мешающий остаётся, остальные отходят.
+  for (const other of BUILDING_ORDER) {
+    if (order.includes(other) || camp.levels[other] <= 0) continue;
+    const p = camp.layout[other];
+    if (moveBuilding(camp, other, p.x, p.z)) continue;
+    spiral((x, z) => moveBuilding(camp, other, x, z), p.x, p.z);
+  }
 }

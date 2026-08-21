@@ -17,6 +17,7 @@ import {
   BUILDINGS,
   BUILD_SECONDS,
   campArea,
+  campOrigin,
   completeIfDue,
   craftGear,
   buyArrows,
@@ -517,8 +518,10 @@ function refreshWalls(): void {
 }
 
 /** Тап или мазок по земле в режиме стройки. Возвращает: жест обработан. */
-function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
+function buildAt(ground: { x: number; z: number }, finished: boolean): boolean {
   if (buildTool === null) return false;
+  // Мазок приходит в мире — стена считается в клетках площадки (§16.1).
+  const hit = campLocal(ground);
   const walls = wallsOf();
   const site = wallSite();
   const spot = wallSpotOf(Math.round(hit.x), Math.round(hit.z));
@@ -796,8 +799,17 @@ function buy(id: ConsumableId): boolean {
   return true;
 }
 
+/**
+ * Кадры, открытые отладочным адресом, в сейв не пишут. Тестовый лагерь,
+ * записанный поверх настоящего, при следующем входе читается как «меня
+ * перенесло в чужой лагерь» — второй лагерь существует чисто для тестов
+ * и границу сохранения не пересекает.
+ */
+const DEBUG_SCENE_PARAMS = ['tier', 'node', 'camp', 'castle', 'grave', 'встреча'] as const;
+const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
+
 function persist(): void {
-  if (wiped) return;
+  if (wiped || debugScene) return;
   save(camp, roster, clock.watermark, onboarding.step);
 }
 
@@ -1735,9 +1747,17 @@ const campInput = bindCampInput({
   },
 });
 
+/** Тап приходит в мире, лагерь считает в клетках площадки: якорь (§16.1)
+ *  вычитается один раз на входе, дальше все координаты — местные. */
+function campLocal(p: { x: number; z: number }): { x: number; z: number } {
+  const o = campOrigin(camp);
+  return { x: p.x - o.x, z: p.z - o.z };
+}
+
 function campTap(clientX: number, clientY: number): void {
-  const hit = rig.screenToGround(clientX, clientY);
-  if (hit === null) return;
+  const ground = rig.screenToGround(clientX, clientY);
+  if (ground === null) return;
+  const hit = campLocal(ground);
   // Любой тап бросает кайло: игрок занялся чем-то другим. Тап по тому же
   // валуну начнёт работу заново — с нуля, а не с середины, и это честно:
   // отойти и вернуться значит начать сначала.
@@ -1761,7 +1781,8 @@ function campTap(clientX: number, clientY: number): void {
 
   // Ярус выбирается раньше здания: тап по верху стены над следом здания
   // иначе открыл бы карточку постройки, которая под стеной.
-  const up = rig.screenToGround(clientX, clientY, undefined, WALK * CASTLE_CELL);
+  const lifted = rig.screenToGround(clientX, clientY, undefined, WALK * CASTLE_CELL);
+  const up = lifted === null ? null : campLocal(lifted);
   const nav = campNav(camp);
   if (up !== null) {
     const spot = wallSpotOf(Math.round(up.x), Math.round(up.z));

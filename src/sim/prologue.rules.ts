@@ -465,8 +465,10 @@ describe('Пролог: механику не называют словом ра
 });
 
 /*
- * Раскладку выбирает игрок, и она обязана пережить конец пролога: лагерь,
- * показавший раскладку по умолчанию, обесценил бы единственный выбор кадра.
+ * Раскладку выбирает игрок, и она обязана пережить конец пролога клетка
+ * в клетку: лагерь, уехавший в другое место или показавший раскладку
+ * по умолчанию, читается как чужой — «второй лагерь» существует только
+ * в отладочных сценах.
  */
 describe('Пролог: поляна становится лагерем', () => {
   const PITCH = ['hq', 'kitchen'] as const;
@@ -477,45 +479,58 @@ describe('Пролог: поляна становится лагерем', () =>
     { x: kitchen[0], z: kitchen[1] },
   ];
 
-  test('оба здания въезжают в площадь лагеря', () => {
+  /** Где здание стоит на поляне после переноса: якорь плюс клетка площади. */
+  const world = (camp: ReturnType<typeof createCamp>, id: (typeof PITCH)[number]) => ({
+    x: (camp.origin?.x ?? 0) + camp.layout[id].x,
+    z: (camp.origin?.z ?? 0) + camp.layout[id].z,
+  });
+
+  test('палатка и костёр остаются на своих клетках поляны', () => {
     const camp = createCamp();
     camp.levels.hq = 2;
     camp.levels.forge = 0;
-    adoptGladeLayout(camp, 24, PITCH, pitchedAt([4, 4], [19, 19]));
+    const pitched = pitchedAt([11, 14], [14, 13]);
+    adoptGladeLayout(camp, 24, PITCH, pitched);
+    assert.deepEqual(world(camp, 'hq'), pitched[0], 'палатка не сдвинулась');
+    assert.deepEqual(world(camp, 'kitchen'), pitched[1], 'костёр не сдвинулся');
     const area = campArea(camp.levels.hq);
     for (const id of PITCH) {
       const p = camp.layout[id];
-      assert.ok(p.x >= 0 && p.z >= 0, `${id}: не за краем`);
-      assert.ok(p.x + 2 <= area && p.z + 2 <= area, `${id}: след 2×2 внутри площади`);
+      assert.ok(p.x >= 0 && p.z >= 0 && p.x + 2 <= area && p.z + 2 <= area, `${id}: след внутри площади`);
     }
   });
 
   test('следы не налезают друг на друга даже из соседних клеток поляны', () => {
-    // Худший случай: игрок поставил костёр вплотную к палатке. После пересчёта
-    // 24 → 7 обе клетки схлопнулись бы в одну, и здания встали бы одно в другое.
+    // Худший случай: игрок поставил костёр вплотную к палатке. Следы 2×2
+    // пересекаются — палатка держит свою клетку, костёр отходит на соседнюю.
     const camp = createCamp();
     camp.levels.hq = 2;
     adoptGladeLayout(camp, 24, PITCH, pitchedAt([11, 11], [12, 11]));
+    assert.deepEqual(world(camp, 'hq'), { x: 11, z: 11 }, 'палатка не сдвинулась');
     const a = camp.layout.hq;
     const b = camp.layout.kitchen;
     assert.ok(Math.abs(a.x - b.x) >= 2 || Math.abs(a.z - b.z) >= 2, 'следы разошлись');
   });
 
-  test('взаимное расположение сохраняется: что было севернее, севернее и осталось', () => {
+  test('разнесённое шире площади: палатка не движется, костёр подъезжает внутрь', () => {
     const camp = createCamp();
     camp.levels.hq = 2;
     adoptGladeLayout(camp, 24, PITCH, pitchedAt([4, 4], [18, 18]));
-    assert.ok(camp.layout.hq.x <= camp.layout.kitchen.x, 'палатка осталась западнее');
-    assert.ok(camp.layout.hq.z <= camp.layout.kitchen.z, 'палатка осталась севернее');
+    assert.deepEqual(world(camp, 'hq'), { x: 4, z: 4 }, 'палатка не сдвинулась');
+    const area = campArea(camp.levels.hq);
+    const p = camp.layout.kitchen;
+    assert.ok(p.x >= 0 && p.z >= 0 && p.x + 2 <= area && p.z + 2 <= area, 'костёр внутри площади');
   });
 
-  test('любой угол поляны укладывается в лагерь', () => {
+  test('любой угол поляны укладывается в лагерь, палатка — клетка в клетку', () => {
     const area = campArea(2);
-    for (const hq of [[1, 1], [22, 1], [1, 22], [22, 22], [12, 12]] as [number, number][]) {
-      for (const kit of [[1, 1], [22, 22], [12, 1]] as [number, number][]) {
+    for (const hq of [[1, 1], [21, 1], [1, 21], [21, 21], [12, 12]] as [number, number][]) {
+      for (const kit of [[1, 1], [21, 21], [12, 1]] as [number, number][]) {
+        if (hq[0] === kit[0] && hq[1] === kit[1]) continue;
         const camp = createCamp();
         camp.levels.hq = 2;
         adoptGladeLayout(camp, 24, PITCH, pitchedAt(hq, kit));
+        assert.deepEqual(world(camp, 'hq'), { x: hq[0], z: hq[1] }, `палатка из ${hq} не сдвинулась`);
         for (const id of PITCH) {
           const p = camp.layout[id];
           assert.ok(
@@ -523,6 +538,8 @@ describe('Пролог: поляна становится лагерем', () =>
             `${id} из ${hq} / ${kit} уехал за площадь: ${p.x},${p.z}`,
           );
         }
+        const o = camp.origin!;
+        assert.ok(o.x >= 0 && o.z >= 0 && o.x + area <= 24, `якорь в кромке поляны: ${o.x},${o.z}`);
         const a = camp.layout.hq;
         const b = camp.layout.kitchen;
         assert.ok(

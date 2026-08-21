@@ -5,7 +5,7 @@ import { Rigged } from './rigged';
 import { CAMP_SPEED } from '../sim/campWalk';
 import type { HeroClassId } from '../sim/heroes';
 import { Fire } from './fire';
-import { BUILDING_ORDER, builtBuildings, campArea } from '../sim/camp';
+import { BUILDING_ORDER, builtBuildings, campArea, campOrigin } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import type { Gust } from './cursorWind';
 import { FluffyGrass } from './fluffyGrass';
@@ -139,6 +139,7 @@ export class CampView {
   private readonly blocking = this.track(blockingMaterial());
 
   constructor(private camp: CampState) {
+    this.moveToOrigin();
     this.buildGround();
     this.buildMeadow();
     this.buildHero();
@@ -496,6 +497,7 @@ export class CampView {
 
   setCamp(camp: CampState): void {
     this.camp = camp;
+    this.moveToOrigin();
     this.builtLevels = '';
     this.rebuildBuildings();
     this.rebuildHero();
@@ -840,7 +842,18 @@ export class CampView {
   }
 
   get center(): { x: number; z: number } {
-    return { x: this.area / 2, z: this.area / 2 };
+    const o = campOrigin(this.camp);
+    return { x: o.x + this.area / 2, z: o.z + this.area / 2 };
+  }
+
+  /**
+   * Площадка стоит на якоре (§16.1): вся сцена лагеря живёт в клетках
+   * площади, и якорь применяется один раз — сдвигом группы, а не правкой
+   * каждой координаты. Центр и тапы пересчитывает тот, кто ходит в мир.
+   */
+  private moveToOrigin(): void {
+    const o = campOrigin(this.camp);
+    this.group.position.set(o.x, 0, o.z);
   }
 
   dispose(): void {
