@@ -39,7 +39,7 @@ const METRICS: readonly { key: string; kind: Kind; label: string }[] = [
   // §22.6 — без состава провалов мастер слеп к бою: правка, перенёсшая
   // провалы из провианта в бой при той же доле, прошла бы незамеченной.
   { key: 'combatFailShare', kind: 'доля', label: 'из них в бою' },
-  { key: 'avgWoundsTaken', kind: 'среднее', label: 'ран за вылазку' },
+  { key: 'avgDamageTaken', kind: 'среднее', label: 'урона за вылазку' },
   { key: 'avgFights', kind: 'среднее', label: 'стычек за вылазку' },
   { key: 'avgDepthShare', kind: 'доля', label: 'глубина выхода' },
   { key: 'buyOfferRate', kind: 'доля', label: 'покупка доступна' },
@@ -65,7 +65,7 @@ function measure(): Record<string, number> {
   return {
     failRate: pick((r) => r.summary.failRate),
     combatFailShare: pick((r) => r.summary.combatFailShare),
-    avgWoundsTaken: pick((r) => r.summary.avgWoundsTaken),
+    avgDamageTaken: pick((r) => r.summary.avgDamageTaken),
     avgFights: pick((r) => r.summary.avgFights),
     avgDepthShare: pick((r) => r.summary.avgDepthShare),
     buyOfferRate: pick((r) => r.summary.buyOfferRate),

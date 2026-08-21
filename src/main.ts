@@ -43,7 +43,7 @@ import {
   syncRoster,
   trainBlock,
 } from './sim/heroes';
-import type { HeroState, Roster } from './sim/heroes';
+import type { HeroClassId, HeroLoadout, HeroState, Roster } from './sim/heroes';
 import { ONB_HINT, firstTapCell, grantLevelOffBooks, reveal } from './sim/onboarding';
 import type { OnbStep } from './sim/onboarding';
 import {
@@ -840,7 +840,7 @@ function finishRaidForHero(
   const name = HERO_CLASSES[hero.cls].name;
   const outcome = applyRaidOutcome(
     hero,
-    state.hero.wounds,
+    state.hero.hp,
     carried,
     state.loc.tier,
     evacuated,
@@ -915,6 +915,21 @@ function safestNode(now: number): number {
  * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
  * карточкой карты — сюда приходит уже принятое решение.
  */
+/**
+ * §11.7 — кто идёт следом за ведущим. Все, кто на ногах и свободен: §11.8
+ * отменил ротацию как выбор, и «оставить кого-то дома» перестало быть
+ * решением — раненые и без того лечатся, а остальные выходят вместе.
+ */
+function followersOf(lead: HeroState): HeroLoadout[] {
+  return roster.heroes
+    .filter((h) => h.id !== lead.id && h.wounds === 0 && h.status === 'ready')
+    .map((h) => loadout(h));
+}
+
+/** Классы тех, кто идёт следом: вид рисует их теми же моделями. */
+const mateClasses = (r: RaidState): HeroClassId[] =>
+  r.party.slice(1).map((f) => f.loadout.cls);
+
 function toRaid(node: number): boolean {
   // Место и его богатство берутся на момент входа, а не на момент открытия
   // панели: панель могла провисеть полчаса, а смена мира — сорок минут.
@@ -972,6 +987,7 @@ function toRaid(node: number): boolean {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     // §14 — снаряжение складывается поверх класса: класс отвечает «кем идём»,
     // снаряжение — «с чем». Левая рука отдельно: §14.2 — это выбор перед
     // выходом, а не уровень предмета, и перекладывается он бесплатно.
@@ -994,7 +1010,7 @@ function toRaid(node: number): boolean {
   // которую мир хранит (§4): кланы и восстановление считаются функцией.
   camp.visits.push({ node, shift: shiftAt(now) });
   persist();
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1070,12 +1086,13 @@ function toGraveyard(node: number, seed: number): boolean {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     loc: site.loc,
     evacOpen: true,
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1110,12 +1127,13 @@ function toCastle(node: number, seed: number): boolean {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     loc: site.loc,
     evacOpen: true,
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1441,6 +1459,7 @@ function toGlade(): void {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     loc: generateGlade(seed),
     food: gladeFood(),
     // Сумка пролога — своя, как и провиант: Склада ещё нет (`prologue.ts`).
@@ -2184,13 +2203,13 @@ startLoop({
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
-      const woundsBefore = raid.hero.wounds;
+      const woundsBefore = raid.hero.hp;
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
       // Рана обязана быть замечена телом, а не только глазом. Кадр 3
       // онбординга завёл эту тряску ради первой раны; со сменой модели боя
       // (§11.3) удар стал стоить разного числа ран, и молчать про них
       // за пределами раскадровки перестало быть допустимо.
-      if (raid.hero.wounds < woundsBefore) shake();
+      if (raid.hero.hp < woundsBefore) shake();
       if (sayNext !== null) {
         raid.events.push(sayNext);
         sayNext = null;
@@ -2287,7 +2306,7 @@ startLoop({
           durationSec: Math.round(result.durationSec),
           cause: result.cause,
           lastHitBy: result.lastHitBy,
-          woundsTaken: result.woundsTaken,
+          damageTaken: result.damageTaken,
           fights: result.fights,
           kills: result.kills,
         });

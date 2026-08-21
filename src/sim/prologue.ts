@@ -22,6 +22,7 @@ import { mulberry32 } from '../core/rng';
 import { campArea, moveBuilding } from './camp';
 import type { BuildingId, CampState } from './camp';
 import { distanceField, idx } from './grid';
+import { setSupply } from './raid';
 import type { Cell, Container, GameLocation, RaidState } from './types';
 
 /**
@@ -292,7 +293,7 @@ export function restTick(acc: number, dt: number, state: RaidState): number {
   let left = acc + dt;
   while (left >= REST_EVERY) {
     left -= REST_EVERY;
-    state.food = Math.min(state.foodMax, state.food + REST_FOOD);
+    setSupply(state, Math.min(state.foodMax, state.food + REST_FOOD));
   }
   return left;
 }

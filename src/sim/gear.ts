@@ -41,7 +41,7 @@ export const GEAR: Record<GearSlot, GearDef> = {
   weapon: {
     slot: 'weapon',
     name: 'Кайло',
-    effect: (l) => `Удар быстрее на ${Math.round((1 - weaponInterval(l)) * 100)}%`,
+    effect: (l) => `Атака +${weaponAttack(l)}`,
     tradeoff: 'Тяжёлое: рюкзак −1',
   },
   armor: {
@@ -96,10 +96,29 @@ export const OFFHAND: Record<Offhand, GearDef> = {
 
 /* ---------- эффекты слотов ---------- */
 
-/** Множитель интервала удара: ур. 5 бьёт на 35% быстрее. */
-export const weaponInterval = (level: number): number => (level <= 0 ? 1 : 1 - 0.07 * level);
+/**
+ * §11.3 — прибавка к Атаке от уровня оружия.
+ *
+ * Прежде уровень покупал темп: удар приходил чаще, и это был честный способ
+ * не множить урон, пока бой шёл в реальном времени. Пошаговый бой отменил
+ * темп как величину — за раунд боец бьёт ровно раз, — и прибавка к интервалу
+ * перестала кем-либо читаться: `npx tsx scripts/combat.ts` показал ур. 3
+ * и ур. 5 строкой в строку. Слот обещал в панели «Удар быстрее на 21%»
+ * и не делал ничего.
+ *
+ * Поэтому уровень покупает Атаку. Прибавка целая и плоская: §11.2 требует,
+ * чтобы игрок считал штуки, а множитель к тому же вернул бы «снаряжение
+ * множит урон», против которого построена §14.
+ */
+export const weaponAttack = (level: number): number => Math.max(0, level);
 
-/** §11.3 — раны, а не полоска, поэтому броня даёт целые раны и редко. */
+/**
+ * Прибавка к здоровью от брони. Растёт порогами и скупо: слот покупает
+ * запас прочности, а не превращает Рыцаря во вторую полосу провианта.
+ * Название `armorWounds` осталось от целых ран (§11.3) — величина теперь
+ * в очках шкалы, и переименование её ждёт отдельной правки, потому что
+ * поле `GearMods.wounds` читают сейв и панель.
+ */
 export const armorWounds = (level: number): number => (level >= 4 ? 2 : level >= 2 ? 1 : 0);
 
 /** §14 — тяжёлая броня дороже в дороге. Порог, а не плавный рост:
@@ -189,7 +208,7 @@ export interface GearMods {
   readonly capacity: number;
   readonly wounds: number;
   readonly foodStep: number;
-  readonly attackInterval: number;
+  readonly attack: number;
   readonly vision: number;
   /** Множитель доли под угрозой. */
   readonly risk: number;
@@ -207,7 +226,7 @@ export const NO_MODS: GearMods = {
   capacity: 0,
   wounds: 0,
   foodStep: 1,
-  attackInterval: 1,
+  attack: 0,
   vision: 0,
   risk: 1,
   defense: 0,
@@ -228,7 +247,7 @@ export function gearMods(gear: GearState, offhand: Offhand = 'torch'): GearMods 
     // (§14.2), и два способа купить одно и то же в одном слоте не нужны.
     wounds: armorWounds(gear.armor),
     foodStep: armorFoodStep(gear.armor),
-    attackInterval: weaponInterval(gear.weapon),
+    attack: weaponAttack(gear.weapon),
     vision: shield ? 0 : torchVision(gear.torch),
     risk: 1 - ringRisk(gear.ring),
     defense: shield ? shieldDefense(gear.torch) : 0,

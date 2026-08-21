@@ -19,7 +19,7 @@ type End = Extract<TelemetryEvent, { t: 'raid_end' }>;
 const end = (over: Partial<End>): End => ({
   t: 'raid_end', at: 0, tier: 1, failed: false,
   maxBack: 0, locMaxBack: 20, carried: 0, lost: 0, steps: 0, foodLeft: 0, durationSec: 0,
-  cause: 'evacuated', lastHitBy: null, woundsTaken: 0, fights: 0, kills: 0,
+  cause: 'evacuated', lastHitBy: null, damageTaken: 0, fights: 0, kills: 0,
   ...over,
 });
 
@@ -55,10 +55,10 @@ describe('Телеметрия и экран возврата', () => {
   });
 
   test('§22.6 — успешная вылазка не попадает в атрибуцию боя', () => {
-    setEvents([end({ at: 0, failed: false, woundsTaken: 2, fights: 3, kills: 4 })]);
+    setEvents([end({ at: 0, failed: false, damageTaken: 2, fights: 3, kills: 4 })]);
     const s = summarize(events());
     assert.equal(s.combatFailShare, 0, 'провалов нет — доли не существует');
-    assert.equal(s.avgWoundsTaken, 2, 'раны считаются и у выживших: бой был');
+    assert.equal(s.avgDamageTaken, 2, 'раны считаются и у выживших: бой был');
     assert.equal(s.avgFights, 3);
   });
 

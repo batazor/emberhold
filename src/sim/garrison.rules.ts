@@ -28,11 +28,14 @@ import {
   DWELLER_STAND,
   PATROL_SPEED,
   SQUAD,
-  SQUAD_STEP,
   archerAt,
   dwellersAt,
   garrisonOf,
   patrolAt,
+  PATROL_SPREAD_MAX,
+  PATROL_STEP_MAX,
+  PATROL_WALK,
+  PATROL_STAND,
 } from './garrison';
 import { idx } from './grid';
 
@@ -83,36 +86,114 @@ describe('Гарнизон: отряд обходит периметр', () => {
     }
   });
 
-  test('отряд идёт колонной: соседи на своём интервале', () => {
+  /**
+   * Прежде здесь стояло «соседи на своём интервале»: колонна шла жёстко,
+   * и проверялось, что промежуток между соседями не уходит дальше половины
+   * от `SQUAD_STEP`. Такой отряд читался не караулом, а деталью механизма,
+   * и правило вместе с ним заменено на два числа: колонна **не рассыпается**
+   * и при этом **не идёт одной ногой**.
+   */
+  test('колонна не рассыпается: разброс держится в своих клетках', () => {
     for (const { site, g } of guards) {
-      for (let t = 0; t < 120; t += TICK) {
+      for (let t = 0; t < 300; t += TICK) {
         const men = patrolAt(g, t);
         assert.equal(men.length, SQUAD);
-        for (let i = 1; i < men.length; i++) {
-          const dx = men[i]!.x - men[i - 1]!.x;
-          const dz = men[i]!.z - men[i - 1]!.z;
-          const gap = Math.hypot(dx, dz);
-          // На углу колонна складывается, и по прямой между соседями
-          // становится меньше клеток, чем пройдено ногами. Меньше половины
-          // интервала не бывает: угол один, а шагов между соседями больше.
-          assert.ok(
-            gap > SQUAD_STEP * 0.5 && gap < SQUAD_STEP * 1.5,
-            `сид ${site.loc.seed}: интервал ${gap.toFixed(2)} при ${SQUAD_STEP}`,
-          );
+        for (let i = 0; i < men.length; i++) {
+          for (let j = i + 1; j < men.length; j++) {
+            const gap = Math.hypot(men[i]!.x - men[j]!.x, men[i]!.z - men[j]!.z);
+            assert.ok(
+              gap <= PATROL_SPREAD_MAX,
+              `сид ${site.loc.seed}: отряд растянулся на ${gap.toFixed(2)} при потолке ${PATROL_SPREAD_MAX}`,
+            );
+          }
         }
       }
     }
   });
 
-  test('обход замкнут: круг возвращает отряд туда же', () => {
+  test('каждый рыцарь и идёт, и стоит', () => {
+    const cycle = PATROL_WALK + PATROL_STAND;
     for (const { site, g } of guards) {
-      const lap = g.length / PATROL_SPEED;
-      const before = patrolAt(g, 3)[0]!;
-      const after = patrolAt(g, 3 + lap)[0]!;
-      assert.ok(
-        Math.hypot(before.x - after.x, before.z - after.z) < 1e-6,
-        `сид ${site.loc.seed}: круг не сошёлся`,
-      );
+      const walked = new Array(SQUAD).fill(0);
+      const stood = new Array(SQUAD).fill(0);
+      for (let t = 0; t < cycle * 2; t += TICK) {
+        patrolAt(g, t).forEach((man, i) => {
+          if (man.walking) walked[i]++;
+          else stood[i]++;
+        });
+      }
+      for (let i = 0; i < SQUAD; i++) {
+        assert.ok(walked[i] > 0, `сид ${site.loc.seed}: рыцарь ${i} не идёт вовсе`);
+        assert.ok(stood[i] > 0, `сид ${site.loc.seed}: рыцарь ${i} не стоит вовсе`);
+      }
+    }
+  });
+
+  /**
+   * Обгон — не украшение, а то, ради чего у каждого своя фаза. Стоящего
+   * обходит тот, кто сзади: стоянка стоит 3,9 клетки пути против интервала
+   * в 1,3. Проверяется по `along` — сколько рыцарь прошёл ногами: у обогнавшего
+   * число становится больше, чем у обойдённого.
+   *
+   * Требуется не «на каждом сиде», а «на большинстве»: фазы случайны, и сид,
+   * на котором четверо разошлись почти в такт, — законный сид, а не поломка.
+   */
+  test('задний обходит переднего, и не на одном сиде', () => {
+    let seen = 0;
+    for (const { g } of guards) {
+      const first = patrolAt(g, 0);
+      let swapped = false;
+      for (let t = TICK; t < 300 && !swapped; t += TICK) {
+        const men = patrolAt(g, t);
+        for (let i = 0; i < SQUAD && !swapped; i++) {
+          for (let j = i + 1; j < SQUAD; j++) {
+            const was = first[i]!.along - first[j]!.along;
+            const now = men[i]!.along - men[j]!.along;
+            if (was * now < 0) { swapped = true; break; }
+          }
+        }
+      }
+      if (swapped) seen++;
+    }
+    assert.ok(seen * 2 >= guards.length, `обгон виден только на ${seen} сидах из ${guards.length}`);
+  });
+
+  test('никто не пятится: пройденное ногами только растёт', () => {
+    for (const { site, g } of guards) {
+      let prev = patrolAt(g, 0);
+      for (let t = TICK; t < 200; t += TICK) {
+        const men = patrolAt(g, t);
+        for (let i = 0; i < SQUAD; i++) {
+          assert.ok(
+            men[i]!.along >= prev[i]!.along - 1e-9,
+            `сид ${site.loc.seed}: рыцарь ${i} сдал назад`,
+          );
+        }
+        prev = men;
+      }
+    }
+  });
+
+  /**
+   * Прежде проверялось, что через круг отряд стоит там же. С личным ходом
+   * это неверно и не должно быть верным: у каждого свои стоянки, и «круг»
+   * в секундах у них разный. Обещание, которое осталось, — тропа замкнута:
+   * рыцарь обходит все четыре угла и возвращается, а не упирается в конец
+   * списка точек.
+   */
+  test('тропа замкнута: рыцарь обходит все четыре угла', () => {
+    for (const { site, g } of guards) {
+      const lap = g.length / PATROL_SPEED * 1.6;
+      const near = g.route.map(() => false);
+      for (let t = 0; t < lap; t += TICK) {
+        const man = patrolAt(g, t)[0]!;
+        g.route.forEach((corner, k) => {
+          if (Math.hypot(man.x - corner.x, man.z - corner.z) < 1.6) near[k] = true;
+        });
+      }
+      near.forEach((hit, k) => {
+        assert.ok(hit, `сид ${site.loc.seed}: угол ${k} тропы не пройден за круг с запасом`);
+      });
     }
   });
 
@@ -151,7 +232,7 @@ describe('Гарнизон: отряд обходит периметр', () => {
         for (let i = 0; i < men.length; i++) {
           const step = Math.hypot(men[i]!.x - prev[i]!.x, men[i]!.z - prev[i]!.z);
           assert.ok(
-            step <= PATROL_SPEED * TICK + 1e-9,
+            step <= PATROL_SPEED * TICK * PATROL_STEP_MAX + 1e-9,
             `сид ${site.loc.seed}: рыцарь ${i} прошёл ${step.toFixed(3)} за ${TICK} с`,
           );
         }

@@ -168,7 +168,7 @@ export function playSession(seed: number): SessionResult {
       durationSec: Math.round(raid.durationSec),
       cause: raid.cause,
       lastHitBy: raid.lastHitBy,
-      woundsTaken: raid.woundsTaken,
+      damageTaken: raid.damageTaken,
       fights: raid.fights,
       kills: raid.kills,
     });

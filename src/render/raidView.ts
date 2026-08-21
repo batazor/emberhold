@@ -33,6 +33,7 @@ import { fireOf } from './models';
 import { Rigged } from './rigged';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
+import { followSpots } from '../sim/raid';
 import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
@@ -268,6 +269,19 @@ export class RaidView {
   private heroBusy = false;
   /** Секунды, оставшиеся вспышке урона (§17.1). */
   private heroFlash = 0;
+  /**
+   * §11.7 — остальные бойцы отряда. Ведущий рисуется отдельно (`hero`):
+   * у него своя анимация боя и своя вспышка, и сваливать его в общий список
+   * значило бы дублировать всё это на каждого.
+   */
+  private readonly mates: THREE.Group[] = [];
+  private readonly mateRigs: Rigged[] = [];
+  /**
+   * §11.7 — точки, куда встанет отряд. Показывают то же, что считает
+   * симуляция: место берётся у неё, а не рисуется приблизительно, — иначе
+   * точка обещает одно, а боец встаёт в другое.
+   */
+  private marks: THREE.InstancedMesh | null = null;
   /** §11.3 — гекс-сетка поля боя. Вне боя её нет. */
   private readonly hexGrid = new HexGrid();
   /**
@@ -359,6 +373,8 @@ export class RaidView {
     private readonly grave: GraveSite | null = null,
     /** §14 — уровень оружия: он выбирает клинок в руке (§6.1.8). */
     private readonly weapon = 0,
+    /** §11.7 — классы остальных бойцов отряда, в порядке цепочки. */
+    private readonly mateClasses: readonly HeroClassId[] = [],
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
@@ -836,7 +852,10 @@ export class RaidView {
       view.rig.root.position.set(man.x, 0, man.z);
       view.facing = RaidView.turnTo(view.facing, man.facing, dt);
       view.rig.root.rotation.y = view.facing;
-      view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+      // Рыцарь то идёт, то стоит: клип берётся у симуляции, а не назначается
+      // раз навсегда. Стоящий с клипом ходьбы шаркал бы на месте.
+      if (man.walking) view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+      else view.rig.play('покой', 1);
     }
 
     // Жильцы идут на тех же часах, что и гарнизон: одна локация — одно время,
@@ -1315,6 +1334,39 @@ export class RaidView {
     lantern.position.set(0.28, 0.7, 0.1);
     this.hero.add(body, lantern);
     this.group.add(this.hero);
+
+    // Остальные — те же модели своих классов, но без фонаря: свет в кадре
+    // один, и три источника читались бы как три костра.
+    for (const cls of this.mateClasses) {
+      const parts = heroParts(cls, this.weapon);
+      const mate = new THREE.Group();
+      if (parts === null) {
+        const mesh = new THREE.Mesh(this.track(heroGeometry(cls, this.weapon)), this.blocking);
+        mesh.castShadow = true;
+        mate.add(mesh);
+      } else {
+        const rig = new Rigged(parts, this.blocking);
+        this.mateRigs.push(rig);
+        mate.add(rig.root);
+      }
+      mate.visible = false;
+      this.mates.push(mate);
+      this.group.add(mate);
+    }
+
+    // Точки построения. Инстансинг: их столько же, сколько бойцов, и заводить
+    // меш на каждую значило бы платить вызовом отрисовки за точку.
+    const marks = new THREE.InstancedMesh(
+      this.track(new THREE.CircleGeometry(0.18, 16)),
+      this.track(new THREE.MeshBasicMaterial({
+        color: PALETTE.siteOk, transparent: true, opacity: 0.5, fog: false, depthTest: false,
+      })),
+      8,
+    );
+    marks.renderOrder = 3;
+    marks.count = 0;
+    this.marks = marks;
+    this.group.add(marks);
   }
 
   private buildMarker(): void {
@@ -1339,6 +1391,71 @@ export class RaidView {
     this.hintRing.rotation.x = -Math.PI / 2;
     this.hintRing.visible = false;
     this.group.add(this.hintRing);
+  }
+
+  /**
+   * §11.7 — остальные бойцы и точки, куда они встанут.
+   *
+   * Место точки берётся у симуляции (`followSpots`), а не рисуется рядом
+   * с ведущим: точка, обещающая одно, пока боец встаёт в другое, хуже
+   * отсутствующей — игрок перестаёт ей верить и считает клетки сам.
+   */
+  private syncParty(state: RaidState, alpha: number, dt: number): void {
+    const spots = followSpots(state);
+
+    for (let i = 0; i < this.mates.length; i++) {
+      const mate = this.mates[i]!;
+      // Ведущий рисуется отдельно, поэтому остальные идут со сдвигом.
+      const f = state.party[i + 1];
+      if (f === undefined || f.hp <= 0) {
+        mate.visible = false;
+        continue;
+      }
+      mate.visible = true;
+      const unit = state.battle?.units.find((u) => u.id === -1 - f.id);
+      const at = unit === undefined ? null : hexToWorld(unit.hex);
+      const x = at === null ? lerp(f.prevX, f.x, alpha) : lerp(mate.position.x, at.x, Math.min(1, dt * 9));
+      const z = at === null ? lerp(f.prevZ, f.z, alpha) : lerp(mate.position.z, at.z, Math.min(1, dt * 9));
+      mate.position.set(x, 0, z);
+
+      // Разворот тот же, что у ведущего (§17.2): за кадр, а не мгновенно.
+      let turn = f.facing - mate.rotation.y;
+      while (turn > Math.PI) turn -= Math.PI * 2;
+      while (turn < -Math.PI) turn += Math.PI * 2;
+      mate.rotation.y += turn * Math.min(1, dt * 8);
+
+      const rig = this.mateRigs[i];
+      if (rig !== undefined) {
+        rig.update(dt);
+        const walking = Math.hypot(f.x - f.prevX, f.z - f.prevZ) > 1e-4;
+        if (walking) rig.play('ходьба', rateFor(HERO_SPEED, rig.root.scale.y));
+        else rig.play('покой');
+      }
+    }
+
+    // Точки показываются только на ходу и только тем, кто ещё идёт: стоящий
+    // отряд в разметке не нуждается, и точка под ногами читается как мусор.
+    const marks = this.marks;
+    if (marks === null) return;
+    const moving = state.path.length > 0 && state.battle === null;
+    let n = 0;
+    if (moving) {
+      // Поворот кладётся в матрицу инстанса, а не на сам меш: у повёрнутой
+      // сетки сдвиг инстанса считался бы в её местных осях, и точки уехали бы
+      // вверх вместо пола.
+      const flat = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+      const m = new THREE.Matrix4();
+      for (let i = 0; i < state.party.length && n < 8; i++) {
+        const f = state.party[i]!;
+        if (f.hp <= 0) continue;
+        const to = spots[i]!;
+        if (Math.hypot(to.x - f.x, to.z - f.z) < 0.05) continue;
+        m.makeTranslation(to.x, 0.06, to.z).multiply(flat);
+        marks.setMatrixAt(n++, m);
+      }
+      marks.instanceMatrix.needsUpdate = true;
+    }
+    marks.count = n;
   }
 
   /**
@@ -1431,6 +1548,7 @@ export class RaidView {
     this.hero.position.set(hx, 0, hz);
 
     this.syncGrid(state);
+    this.syncParty(state, alpha, dt);
 
     let turn = hero.facing - this.hero.rotation.y;
     while (turn > Math.PI) turn -= Math.PI * 2;
@@ -1449,7 +1567,7 @@ export class RaidView {
       // приёмом, что и звук (§18.3). Удар ловится скачком отката вверх: вниз
       // он тикает сам, вверх прыгает ровно в момент удара.
       const struck = state.hero.cooldown > this.heroWas.cooldown + 0.01;
-      const hurt = state.hero.wounds < this.heroWas.wounds;
+      const hurt = state.hero.hp < this.heroWas.wounds;
 
       // §17.1 — урон не клип, а вспышка 150 мс поверх текущего. У героя раны
       // считаны штуками (§11.3), и каждая обязана быть замечена.
@@ -1485,7 +1603,7 @@ export class RaidView {
         this.heroRig.setMaterial(this.heroFlash > 0 ? this.hurtFlash : this.blocking);
       }
 
-      this.heroWas = { wounds: state.hero.wounds, cooldown: state.hero.cooldown };
+      this.heroWas = { wounds: state.hero.hp, cooldown: state.hero.cooldown };
     }
 
     /**

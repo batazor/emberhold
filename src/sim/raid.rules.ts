@@ -131,11 +131,11 @@ describe('Вылазка', () => {
           }
         }
         stepRaid(raid, TICK, false, 5);
-        if (!inBattle(raid) && (enemy.hp <= 0 || raid.hero.wounds <= 0)) break;
+        if (!inBattle(raid) && (enemy.hp <= 0 || raid.hero.hp <= 0)) break;
       }
       assert.equal(inBattle(raid), false, 'бой не кончился: очередь встала');
       assert.ok(
-        enemy.hp <= 0 || raid.hero.wounds <= 0,
+        enemy.hp <= 0 || raid.hero.hp <= 0,
         'бой кончился, но никто не пал — значит мерили не бой',
       );
     });

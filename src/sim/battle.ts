@@ -195,7 +195,7 @@ export function createBattle(
     id: number;
     x: number;
     z: number;
-    wounds: number;
+    hp: number;
     speed: number;
     reach: number;
     ranged: boolean;
@@ -214,7 +214,7 @@ export function createBattle(
       side: 'hero',
       kind: null,
       hex,
-      hp: p.wounds,
+      hp: p.hp,
       move: movePerTurn(p.speed),
       reach: reachInHexes(p.ranged ? HERO_RANGED_REACH : p.reach, p.ranged),
       ranged: p.ranged,

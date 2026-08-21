@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { HERO_WOUNDS, ENCOUNTER_WOUND } from './balance';
+import { HERO_HP, ENCOUNTER_WOUND } from './balance';
 import { HERO_REACH } from './config';
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { generateLocation } from './generate';
@@ -28,8 +28,8 @@ describe('Бой', () => {
     for (const [tier, roster] of Object.entries(TIER_ROSTER)) {
       const wounds = roster.reduce((sum, kind) => sum + ENCOUNTER_WOUND[kind], 0);
       assert.ok(
-        wounds < HERO_WOUNDS - 0.5,
-        `ярус ${tier}: ожидаемые ${wounds.toFixed(2)} ран при ${HERO_WOUNDS} у героя — ` +
+        wounds < HERO_HP - 0.5,
+        `ярус ${tier}: ожидаемые ${wounds.toFixed(2)} ран при ${HERO_HP} у героя — ` +
           'провал становится расписанием, а не риском',
       );
       // Верхняя граница по головам остаётся, но она про отрисовку:

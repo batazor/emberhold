@@ -1,5 +1,4 @@
-import { HERO_WOUNDS } from './balance';
-import { HERO_ATTACK_REF } from './config';
+import { HERO_HP } from './balance';
 
 /**
  * Этап 5 (§8): герои. Реализует §3, §11.7 и §11.8 и раскадровку `heroes.html`.
@@ -81,8 +80,14 @@ export interface HeroClassDef {
   readonly strong: string;
   readonly weak: string;
   readonly skill: SkillId;
-  /** §11.3 — здоровье это раны. У Рыцаря их четыре (§11.7). */
-  readonly wounds: number;
+  /**
+   * §11.3 — **прибавка** к базовому здоровью, а не здоровье целиком.
+   * Названо `hp`, а не `wounds`: пока поле называлось ранами, а хранило
+   * очки, `raid.ts` прибавлял к нему базу второй раз, и герой выходил
+   * в вылазку с сорока одним очком вместо двадцати одного. Опечатки такого
+   * рода не ловятся тестом на равенство — они ловятся именем.
+   */
+  readonly hp: number;
   /** Доля вместимости Склада: Лучник −25%, Бандит +30% (§11.7). */
   readonly bagMul: number;
   /** Доля скорости шага. Скорость — сильная сторона Лучника. */
@@ -123,7 +128,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     strong: 'обзор, скорость',
     weak: 'рюкзак −25%',
     skill: 'trail',
-    wounds: HERO_WOUNDS,
+    hp: 0,
     bagMul: 0.75,
     speedMul: 1.1,
     base: { attack: 4, defense: 3, knowledge: 10, might: 3 },
@@ -133,10 +138,12 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
   knight: {
     id: 'knight',
     name: 'Рыцарь',
-    strong: 'защита, 4 раны',
+    strong: 'защита, здоровье',
     weak: 'обзор −1',
     skill: 'guard',
-    wounds: HERO_WOUNDS + 1,
+    // Единственный класс с прибавкой. Треть базы — та же доля, какой
+    // прежде были четыре раны против трёх (§11.7).
+    hp: 7,
     bagMul: 1,
     speedMul: 1,
     base: { attack: 5, defense: 6, knowledge: 0, might: 4 },
@@ -149,7 +156,7 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     strong: 'рюкзак +30%, добыча',
     weak: 'защита',
     skill: 'forage',
-    wounds: HERO_WOUNDS,
+    hp: 0,
     bagMul: 1.3,
     speedMul: 1,
     base: { attack: 3, defense: 2, knowledge: 5, might: 5 },
@@ -276,6 +283,14 @@ export function stats(hero: HeroState): Stats {
 
 /* ---------- лечение ---------- */
 
+/**
+ * §11.8 — во сколько ран лагерь оценивает вернувшегося. Величина про
+ * расписание, а не про бой: в вылазке здоровье считается очками (§11.3),
+ * а лазарет переводит долю потерянного в три ступени. Три, потому что
+ * `HEAL_MAX` — ровно три шага по `HEAL_PER_WOUND`.
+ */
+export const MAX_WOUNDS = 3;
+
 /** §11.8 — 6 минут за рану, максимум 18. */
 export const HEAL_PER_WOUND = 6 * 60;
 export const HEAL_MAX = 18 * 60;
@@ -381,19 +396,29 @@ export interface RaidOutcome {
  * вылазки в расписание» — это правило отряда, и проверяться оно должно
  * без браузера.
  *
- * `woundsLeft` — сколько ран у героя осталось в конце вылазки (в локации они
- * считаются вниз от максимума класса).
+ * `hpLeft` — сколько здоровья у бойца осталось в конце вылазки.
+ *
+ * §11.8 меряет лечение ранами, и на шкале «рана» стала долей: сколько
+ * четвертей здоровья потеряно, столько ран и лечится. Так потолок в 18 минут
+ * сохраняется без пересчёта, а мелкая царапина не отправляет героя лечиться
+ * на шесть минут — раньше отправляла, потому что мельче раны ничего не было.
  */
 export function applyRaidOutcome(
   hero: HeroState,
-  woundsLeft: number,
+  hpLeft: number,
   carried: number,
   tier: number,
   evacuated: boolean,
   now: number,
 ): RaidOutcome {
-  const max = HERO_CLASSES[hero.cls].wounds;
-  hero.wounds = Math.min(max, Math.max(0, max - Math.max(0, woundsLeft)));
+  // Раны лечения — своя шкала лагеря, а не класса. Класс задаёт, сколько
+  // здоровья у бойца; сколько времени он потом чинится — вопрос §11.8,
+  // и три раны там значат «полностью разбит» для любого класса. Считать
+  // потолок ран от прибавки класса нельзя: у Лучника она нулевая,
+  // и он не лечился бы никогда.
+  const full = HERO_HP + HERO_CLASSES[hero.cls].hp;
+  const lost = Math.max(0, full - Math.max(0, hpLeft));
+  hero.wounds = Math.min(MAX_WOUNDS, Math.round((lost / full) * MAX_WOUNDS));
   hero.status = 'ready';
   hero.busyUntil = null;
   const levels = addXp(hero, raidXp(carried, tier, evacuated));
@@ -438,7 +463,8 @@ export function selectHero(roster: Roster, index: number): boolean {
 export interface HeroLoadout {
   readonly cls: HeroClassId;
   readonly level: number;
-  readonly wounds: number;
+  /** §11.3 — прибавка к базовому здоровью от класса. */
+  readonly hp: number;
   readonly knowledge: number;
   readonly bagMul: number;
   readonly speedMul: number;
@@ -460,7 +486,7 @@ export function loadout(hero: HeroState): HeroLoadout {
   return {
     cls: hero.cls,
     level: hero.level,
-    wounds: def.wounds,
+    hp: def.hp,
     knowledge: stats(hero).knowledge,
     bagMul: def.bagMul,
     speedMul: def.speedMul,
@@ -479,20 +505,22 @@ export function loadout(hero: HeroState): HeroLoadout {
 export const DEFAULT_LOADOUT: HeroLoadout = {
   cls: 'rogue',
   level: 1,
-  wounds: HERO_WOUNDS,
+  hp: 0,
   knowledge: 5,
   bagMul: 1,
   speedMul: 1,
   skill: 'forage',
   // Эталонные значения, а не значения класса: этим героем ходят золотой
-  // мастер и вся калибровка §20.3. Атака равна HP_PER_WOUND — тогда удар
-  // стоит ровно того же, что и у безымянного героя этапов 1–4.
+  // мастер и вся калибровка §20.3, и от него же считается весь бестиарий
+  // (§22.6): рядовой стоит четверти его здоровья, воин — половины.
+  // Мерить бестиарий Рыцарем нельзя — он крепче всех, и ярус, посильный
+  // ему, оказался бы стеной двум остальным.
   //
   // Защита — середина между классами (2, 3 и 6), а не ноль. Нулевая
   // означала бы героя, которого в игре не существует, и все замеры считали
   // бы худший случай как средний: §22.6 мерил цену встречи с воином
   // на бойце вовсе без Защиты и получал два провала из трёх на двух воинах.
-  attack: HERO_ATTACK_REF,
+  attack: 4,
   defense: 3,
   // Ближний: этим героем мерилась вся калибровка §20.3, и дальний бой
   // сделал бы её результаты несравнимыми с прежними.

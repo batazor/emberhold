@@ -60,7 +60,7 @@ function withEnemies(seed: number, kinds: readonly EnemyKind[]): RaidOptions {
  */
 const play = (opts: RaidOptions): { wounds: number; ok: boolean } => {
   const r = playRaid(opts, POLICIES.cautious, mulberry32(opts.seed));
-  return { wounds: r.woundsTaken, ok: r.status === 'evacuated' };
+  return { wounds: r.damageTaken, ok: r.status === 'evacuated' };
 };
 
 const KINDS = Object.keys(ENEMY_STATS) as EnemyKind[];
