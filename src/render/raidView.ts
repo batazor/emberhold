@@ -376,7 +376,36 @@ export class RaidView {
    * набора это `FENCE_SCALE` клеток локации, и внутренность — прямоугольник
    * между крайними её деталями.
    */
+  /**
+   * Клетки, на которых трава не растёт. Два хозяина: ограда кладбища и замок.
+   *
+   * У замка это не украшение кадра, а то же, чем земля отличается от поля:
+   * **двор — это утоптанная земля, а не луг.** Трава внутри стен читалась
+   * заброшенностью — как раз обратным тому, что говорят гарнизон и жильцы.
+   * Гасится не прямоугольник плана, а ровно то, что замок занимает: клетки
+   * двора и клетки, на которых стоят детали. Прямоугольником вышли бы лысины
+   * снаружи — у замков с вырезанными углами план не совпадает со следом.
+   */
   private bareCells(): ReadonlySet<number> {
+    const keep = this.keep;
+    if (keep !== null) {
+      const out = new Set<number>();
+      const mark = (px: number, pz: number): void => {
+        for (let dz = 0; dz < CASTLE_SCALE; dz++) {
+          for (let dx = 0; dx < CASTLE_SCALE; dx++) {
+            const x = keep.at.x + px * CASTLE_SCALE + dx;
+            const z = keep.at.z + pz * CASTLE_SCALE + dz;
+            if (x < 0 || z < 0 || x >= this.loc.size || z >= this.loc.size) continue;
+            out.add(idx(this.loc.size, x, z));
+          }
+        }
+      };
+      for (const spot of keep.castle.yard) mark(spot.x, spot.z);
+      // Только основание: ярусы башни и шапка ворот стоят выше нуля
+      // и на вопрос «что под ними на земле» не отвечают.
+      for (const piece of keep.castle.pieces) if (piece.y === 0) mark(piece.x, piece.z);
+      return out;
+    }
     const site = this.grave;
     if (site === null) return new Set();
     let x0 = Infinity;
