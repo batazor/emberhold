@@ -106,7 +106,8 @@ import {
 } from './sim/campWalls';
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
-import { generateCastleSite } from './sim/castleSite';
+import { generateCastleSite, type CastleSite } from './sim/castleSite';
+import { archerAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import type { GraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
@@ -904,6 +905,9 @@ function toRaid(node: number): boolean {
   return true;
 }
 
+/** Площадка последнего замка: ручка отладочной сцены `?castle`. */
+let castleNow: CastleSite | null = null;
+
 /**
  * Замок (§6.1.6). Собирается тем же `createRaid`, что вылазка и пролог:
  * ходьба, шаг и камера обязаны считаться одинаково везде, иначе прогулка
@@ -964,6 +968,9 @@ function toCastle(node: number, seed: number): boolean {
   chop = null;
   const site = generateCastleSite(seed);
   graveSite = null;
+  // Площадка запоминается только ради отладочной сцены ниже: гарнизон
+  // считается из неё, а игре она после сборки вида не нужна.
+  castleNow = site;
   raidNode = node;
   // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
   // прогулка не обязана снимать его с лечения.
@@ -1709,6 +1716,28 @@ if (debugCamp !== null) {
     nav: () => campNav(camp),
     tap: (x: number, z: number, level: 'земля' | 'верх' = 'земля') =>
       commandCampMove(camp, campHero, { x, z }, level),
+  };
+}
+
+/**
+ * `?castle` — замок сегодняшнего региона сразу, вместе с гарнизоном
+ * (§6.1.6). Смотреть на отряд и на смену стрелка, проходя до замка игру,
+ * нельзя: точка замка одна на день, и ждать её — не проверка.
+ *
+ * Ручка `камень` даёт то, чего не видно глазом: где отряд будет через
+ * минуту и когда стрелок выйдет на стену. `камень.смена(t)` переводит часы
+ * гарнизона — смена длится минуту, и высиживать её незачем.
+ */
+if (debugParams.has('castle')) {
+  const place = today.find((n) => n.kind === 'замок');
+  if (place !== undefined) toRaid(place.id);
+  (window as unknown as { камень: unknown }).камень = {
+    site: () => castleNow,
+    garrison: () => (castleNow === null ? null : garrisonOf(castleNow)),
+    patrol: (t = 0) => (castleNow === null ? null : patrolAt(garrisonOf(castleNow), t)),
+    archer: (t = 0) => (castleNow === null ? null : archerAt(garrisonOf(castleNow), t)),
+    смена: (t: number) => raidView?.setWatch(t),
+    rig,
   };
 }
 

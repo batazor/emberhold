@@ -1,12 +1,29 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { ENEMY_HEIGHT, buildingGeometry, enemyGeometry, enemyParts, heroGeometry, heroParts } from './models';
+import {
+  ENEMY_HEIGHT,
+  buildingGeometry,
+  enemyGeometry,
+  enemyParts,
+  guardParts,
+  heroGeometry,
+  heroParts,
+} from './models';
 import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
 import type { GraveyardPartModelName } from './graveyard';
 import type { CastlePartModelName } from './castle';
 import type { CastleSite } from '../sim/castleSite';
+import {
+  ARCHER_SPEED,
+  PATROL_SPEED,
+  SQUAD,
+  archerAt,
+  garrisonOf,
+  patrolAt,
+  type Garrison,
+} from '../sim/garrison';
 import type { GraveSite } from '../sim/graveSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
@@ -218,6 +235,16 @@ export class RaidView {
   private chopMark: THREE.Mesh | null = null;
   /** Рубит ли герой прямо сейчас — этим он и отличается от стоящего. */
   private chopping = false;
+  /**
+   * Гарнизон замка (§6.1.6): отряд на тропе и стрелок на стене. Считает их
+   * симуляция — здесь только тела, повороты и клипы. Часы свои и с нуля:
+   * `performance.now()` растёт от загрузки страницы, и на нём вторая ходка
+   * в замок начиналась бы с середины чужой смены.
+   */
+  private garrison: Garrison | null = null;
+  private readonly squad: { rig: Rigged; facing: number }[] = [];
+  private archer: { rig: Rigged; facing: number } | null = null;
+  private watch = 0;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
   /** Порыв от курсора. Считает его main — источник ветра один на игру. */
@@ -241,6 +268,7 @@ export class RaidView {
     this.buildGrass(grassPerTile);
     this.buildWalls();
     if (this.keep !== null) this.buildCastle(this.keep);
+    if (this.keep !== null) this.buildGarrison(this.keep);
     if (this.grave !== null) this.buildGraveyard(this.grave);
     if (flavor !== 'glade') this.buildEvac();
     this.buildContainers();
@@ -621,6 +649,89 @@ export class RaidView {
       }
       this.group.add(mesh);
     }
+  }
+
+  /**
+   * Гарнизон замка (§6.1.6): четверо в обходе и один на стене.
+   *
+   * Тел ставится пять, и все пять — сразу: скиннованный меш не инстансится,
+   * заводить и выбрасывать его в кадре дороже, чем держать погашенным.
+   * Стрелок поэтому не рождается и не умирает, а гаснет — снаружи это
+   * одно и то же, а в кадре разница в пяти вызовах отрисовки.
+   *
+   * Персонаж один на всех, а различает их предмет в руке: у обхода меч,
+   * у стрелка лук. Скелет при этом у каждого свой — иначе пятеро шагали бы
+   * в такт одной ногой.
+   */
+  private buildGarrison(site: CastleSite): void {
+    this.garrison = garrisonOf(site);
+    for (let i = 0; i < SQUAD; i++) {
+      const rig = new Rigged(guardParts('дозор'), this.blocking);
+      this.group.add(rig.root);
+      this.squad.push({ rig, facing: 0 });
+    }
+    // Стрелку выходить некуда — не заводим и тела: замок без единой
+    // проходимой клетки верха возможен только вместе с новым набором,
+    // но молча рисовать его стоящим в воздухе нельзя.
+    if (this.garrison.runs.length > 0) {
+      const rig = new Rigged(guardParts('стрелок'), this.blocking);
+      rig.root.visible = false;
+      this.group.add(rig.root);
+      this.archer = { rig, facing: 0 };
+    }
+  }
+
+  /**
+   * Гарнизон на кадре. Положение и направление приходят числами из
+   * симуляции, здесь остаётся то, что умеет только рендер: разворот за кадр,
+   * а не рывком (§17.2), и клип под скорость (§17.4).
+   */
+  private syncGarrison(dt: number): void {
+    if (this.garrison === null) return;
+    this.watch += dt;
+
+    const men = patrolAt(this.garrison, this.watch);
+    for (let i = 0; i < this.squad.length; i++) {
+      const view = this.squad[i]!;
+      const man = men[i]!;
+      view.rig.update(dt);
+      view.rig.root.position.set(man.x, 0, man.z);
+      view.facing = RaidView.turnTo(view.facing, man.facing, dt);
+      view.rig.root.rotation.y = view.facing;
+      view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+    }
+
+    if (this.archer === null) return;
+    const watchman = archerAt(this.garrison, this.watch);
+    this.archer.rig.root.visible = watchman !== null;
+    if (watchman === null) return;
+    this.archer.rig.update(dt);
+    this.archer.rig.root.position.set(watchman.x, watchman.y, watchman.z);
+    // Стрелок на стене разворачивается на месте — там, где ход поворачивает,
+    // и там, где он встал лицом наружу. Сглаживание то же, что у всех.
+    this.archer.facing = RaidView.turnTo(this.archer.facing, watchman.facing, dt);
+    this.archer.rig.root.rotation.y = this.archer.facing;
+    this.archer.rig.play(
+      watchman.walking ? 'ходьба' : 'покой',
+      watchman.walking ? rateFor(ARCHER_SPEED, this.archer.rig.root.scale.y) : 1,
+    );
+  }
+
+  /**
+   * Перевести часы гарнизона. Смена стрелка идёт минутами, и ждать её,
+   * чтобы посмотреть на неё, — не проверка, а высиживание: отладочная сцена
+   * (§6) отматывает часы и получает нужный кадр сразу.
+   */
+  setWatch(seconds: number): void {
+    this.watch = seconds;
+  }
+
+  /** Разворот за кадр, а не рывком (§17.2). Тот же счёт, что у героя. */
+  private static turnTo(facing: number, want: number, dt: number): number {
+    let spin = want - facing;
+    while (spin > Math.PI) spin -= Math.PI * 2;
+    while (spin < -Math.PI) spin += Math.PI * 2;
+    return facing + spin * Math.min(1, dt * 8);
   }
 
   /**
@@ -1126,6 +1237,7 @@ export class RaidView {
     }
 
     this.syncTrees(dt);
+    this.syncGarrison(dt);
     this.syncGrass(hx, hz, time);
 
     if (this.evacRing !== null) {
@@ -1182,6 +1294,10 @@ export class RaidView {
     });
     // Скелет у каждой особи свой, и три не освобождает его вместе с группой.
     for (const view of this.enemyViews.values()) view.rig.dispose();
+    for (const view of this.squad) view.rig.dispose();
+    this.squad.length = 0;
+    this.archer?.rig.dispose();
+    this.archer = null;
     this.heroRig?.dispose();
     this.heroRig = null;
     for (const d of this.disposables) d.dispose();
