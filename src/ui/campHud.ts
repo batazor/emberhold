@@ -60,6 +60,7 @@ const BLOCK_TEXT: Record<string, string> = {
   'hq-cap': 'Жильё не пускает выше',
   'slot-busy': 'Слот занят другой стройкой',
   resources: 'Не хватает ресурсов',
+  wall: 'Мешает стена',
 };
 
 const GEAR_BLOCK_TEXT: Record<string, string> = {

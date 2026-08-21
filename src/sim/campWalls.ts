@@ -174,6 +174,19 @@ export interface WallSite {
   readonly levels: Readonly<Record<string, number>>;
 }
 
+/**
+ * Занята ли **клетка лагеря** стеной. Обратная сторона `onBuilding`: стена
+ * не встаёт на здание, и здание не встаёт на стену — иначе стена не стена,
+ * а рисунок на земле.
+ *
+ * Лестница считается занятой наравне со стеной: по ней поднимаются,
+ * и здание поверх неё отрезало бы ход.
+ */
+export function wallAt(walls: CampWalls, x: number, z: number): boolean {
+  const key = keyOf(wallSpotOf(x, z));
+  return walls.cells.includes(key) || walls.stairs[key] !== undefined;
+}
+
 /** Можно ли поставить стену в эту клетку. */
 export function wallBlock(site: WallSite, spot: Spot): WallBlock {
   const grid = wallGrid(site.area);

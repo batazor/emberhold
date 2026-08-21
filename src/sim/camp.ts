@@ -6,7 +6,7 @@ import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, emptyGear } from './gear';
 import type { GearSlot, GearState } from './gear';
 import type { Tier } from './types';
 import type { Visit } from './world';
-import { emptyWalls, type CampWalls } from './campWalls';
+import { emptyWalls, wallAt, type CampWalls } from './campWalls';
 
 /**
  * Прототип v0 (§7): три здания плюс Мастерская. Лазарет и Плац ждут — они
@@ -433,6 +433,14 @@ export function moveBuilding(camp: CampState, id: BuildingId, x: number, z: numb
     if (camp.levels[other] <= 0) continue;
     const p = camp.layout[other];
     if (Math.abs(p.x - x) < 2 && Math.abs(p.z - z) < 2) return false;
+  }
+  // Стена закрывает путь и зданию тоже. Без этой проверки здание
+  // переставлялось бы сквозь стену, и стена переставала бы быть стеной.
+  const walls = camp.walls;
+  if (walls != null) {
+    for (let dz = 0; dz < 2; dz++) {
+      for (let dx = 0; dx < 2; dx++) if (wallAt(walls, x + dx, z + dz)) return false;
+    }
   }
   camp.layout[id] = { x, z };
   return true;

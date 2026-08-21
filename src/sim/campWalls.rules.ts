@@ -21,7 +21,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CASTLE_CELL, DIRS, TOWER_MAX, keyOf, type Spot } from './castle';
-import { BUILD_COST, BUILD_SECONDS, campArea, createCamp } from './camp';
+import { BUILD_COST, BUILD_SECONDS, campArea, createCamp, moveBuilding } from './camp';
 import { emptyResources, type Resources } from './resources';
 import {
   WALL_COST,
@@ -43,6 +43,7 @@ import {
   strokeCells,
   toggleGate,
   wallBlock,
+  wallAt,
   wallCount,
   wallGrid,
   wallPieces,
@@ -210,6 +211,44 @@ describe('Стройка стен: башня, ворота, лестница', 
     // на стену, то есть на клетку с меньшим z.
     const turned = DIRS[[2].map((d) => (d + stairs.turn) % 4)[0]!];
     assert.ok(turned !== undefined);
+  });
+});
+
+describe('Стена закрывает путь', () => {
+  test('здание не переставляется сквозь стену', () => {
+    const camp = createCamp();
+    camp.levels.hq = 5;
+    const site: WallSite = { area: campArea(5), layout: camp.layout, levels: camp.levels };
+    // Свободный угол площади: туда Склад переставился бы, если бы не стена.
+    const spot = { x: 3, z: 3 };
+    assert.ok(moveBuilding(camp, 'storage', 6, 6), 'без стены угол свободен');
+    camp.layout.storage = { x: 1, z: 4 };
+
+    raiseWall(camp.walls!, site, [spot]);
+    assert.ok(wallAt(camp.walls!, 6, 6), 'стена не заняла клетку лагеря');
+    assert.ok(!moveBuilding(camp, 'storage', 6, 6), 'здание прошло сквозь стену');
+    assert.deepEqual(camp.layout.storage, { x: 1, z: 4 }, 'здание всё-таки переехало');
+  });
+
+  test('стена и здание не встают друг на друга ни с какой стороны', () => {
+    const camp = createCamp();
+    camp.levels.hq = 5;
+    const site: WallSite = { area: campArea(5), layout: camp.layout, levels: camp.levels };
+    // Жильё стоит в 1,1 — это клетка стены 0,0: стена туда не встаёт.
+    assert.equal(wallBlock(site, { x: 0, z: 0 }), 'занято зданием');
+    // А там, где стена уже стоит, не встаёт здание.
+    raiseWall(camp.walls!, site, [{ x: 4, z: 4 }]);
+    assert.ok(!moveBuilding(camp, 'storage', 8, 8), 'здание встало на стену');
+  });
+
+  test('клетка стены закрывает все четыре клетки лагеря под собой', () => {
+    const walls = emptyWalls();
+    raiseWall(walls, bare(5), [{ x: 2, z: 2 }]);
+    for (const [x, z] of [[4, 4], [5, 4], [4, 5], [5, 5]]) {
+      assert.ok(wallAt(walls, x!, z!), `клетка ${x},${z} осталась открытой`);
+    }
+    assert.ok(!wallAt(walls, 6, 4), 'стена закрыла соседнюю клетку');
+    assert.ok(!wallAt(walls, 3, 4), 'стена закрыла соседнюю клетку');
   });
 });
 
