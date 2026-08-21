@@ -115,7 +115,7 @@ import { Hud } from './ui/hud';
 import { BattleHud } from './ui/battleHud';
 import { commandBattle, inBattle } from './sim/raid';
 import { current, moves, targets, unitAt } from './sim/battle';
-import { worldToHex, hexKey } from './sim/hex';
+import { worldToHex, hexKey, hexToWorld } from './sim/hex';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
 import { bindCampInput } from './features/campInput';
@@ -1471,6 +1471,12 @@ canvas.addEventListener('pointermove', (e) => {
     if (e.buttons !== 0 || stroke !== null) buildAt(hit, false);
     return;
   }
+  // §11.3 — в бою наведение показывает, куда можно шагнуть. На телефоне
+  // наведения нет, и подсветка там просто не появится: жест от этого
+  // не меняется, тап остаётся тапом.
+  if (mode === 'raid' && raid !== null && inBattle(raid)) raidView?.setHover(hit.x, hit.z);
+  else raidView?.clearHover();
+
   wind.point(hit.x, hit.z);
   // Лагерь замирает через 20 секунд без касаний. Мышь, ведомая по траве, —
   // такое же касание: на телефоне наведения нет, и батарею это не трогает.
@@ -1773,7 +1779,17 @@ startLoop({
       } else {
         battleHud.setVisible(false);
       }
-      rig.lookAt(raid.hero.x, raid.hero.z);
+      // §11.3 — в бою камера ведёт того, чей ход. Иначе игрок смотрит
+      // на героя, пока где-то за краем кадра ходит противник, и решение,
+      // ради которого бой сделан пошаговым, принимается вслепую.
+      if (raid.battle !== null) {
+        const acting = current(raid.battle);
+        const at = acting === undefined ? null : hexToWorld(acting.hex);
+        if (at !== null) rig.lookAt(at.x, at.z);
+        else rig.lookAt(raid.hero.x, raid.hero.z);
+      } else {
+        rig.lookAt(raid.hero.x, raid.hero.z);
+      }
       rig.update(
         dt,
         raid.hero.x,

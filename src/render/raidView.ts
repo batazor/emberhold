@@ -9,7 +9,7 @@ import { fireOf } from './models';
 import { Rigged } from './rigged';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
-import { hexToWorld } from '../sim/hex';
+import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
@@ -182,6 +182,12 @@ export class RaidView {
   private heroFlash = 0;
   /** §11.3 — гекс-сетка поля боя. Вне боя её нет. */
   private readonly hexGrid = new HexGrid();
+  /**
+   * Гекс под пальцем. Ведётся наведением, а не нажатием: на телефоне
+   * наведения нет, и там подсветка просто не появится — жест от этого
+   * не меняется, тап остаётся тапом.
+   */
+  private hoverHex: Hex | null = null;
   private marker!: THREE.Mesh;
   /** Точка тапа из кадра 1 онбординга: единственная подсказка, которая
    *  показывает жест вместо того, чтобы называть его словами. */
@@ -860,17 +866,31 @@ export class RaidView {
     // подсвечивать чужие возможности — значит просить игрока читать то,
     // на что он всё равно не влияет.
     if (unit.side !== 'hero') {
-      this.hexGrid.show({
-        move: [],
-        stand: [unit.hex],
-        target: [],
-      });
+      this.hexGrid.show({ move: [], stand: [unit.hex], target: [], hover: [] });
       return;
     }
     const { size, blocked } = this.loc;
     const move: Hex[] = [...moves(battle, size, blocked, unit).values()].map((s) => s.hex);
     const target: Hex[] = targets(battle, size, blocked, unit).map((u) => u.hex);
-    this.hexGrid.show({ move, stand: [unit.hex], target });
+    // Наведение показывается только там, куда можно: подсвеченный гекс,
+    // на который нельзя шагнуть, обещает ход, которого не будет.
+    const key = this.hoverHex === null ? null : `${this.hoverHex.q},${this.hoverHex.r}`;
+    const onTarget = target.some((h) => `${h.q},${h.r}` === key);
+    const canGo = move.some((h) => `${h.q},${h.r}` === key);
+    const hover = this.hoverHex !== null && (canGo || onTarget) ? [this.hoverHex] : [];
+    this.hexGrid.show({ move, stand: [unit.hex], target, hover });
+  }
+
+  /**
+   * Куда ведёт палец. Рендер только запоминает: что с этим делать, решает
+   * сетка, а можно ли туда — поле боя.
+   */
+  setHover(x: number, z: number): void {
+    this.hoverHex = worldToHex(x, z);
+  }
+
+  clearHover(): void {
+    this.hoverHex = null;
   }
 
   /** Подсветить клетку. Кольцо пульсирует, пока кадр не сменится: статичное
