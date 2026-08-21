@@ -21,9 +21,19 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CASTLE_CELL, DIRS, TOWER_MAX, keyOf, type Spot } from './castle';
-import { campArea, createCamp } from './camp';
+import { BUILD_COST, BUILD_SECONDS, campArea, createCamp } from './camp';
+import { emptyResources, type Resources } from './resources';
 import {
+  WALL_COST,
+  completeWallIfDue,
   cycleTower,
+  nextTowerLevel,
+  startTower,
+  startWall,
+  strokeFit,
+  wallPrice,
+  wallProgress,
+  wallSeconds,
   emptyWalls,
   gateBlock,
   putStairs,
@@ -112,11 +122,11 @@ describe('Стройка стен: жест', () => {
 });
 
 describe('Стройка стен: что панель не пускает', () => {
-  test('поле стены растёт со Штабом и не вылезает за площадь', () => {
+  test('поле стены растёт со Жильёом и не вылезает за площадь', () => {
     for (let hq = 1; hq <= 5; hq++) {
       const grid = wallGrid(campArea(hq));
-      assert.equal(grid, Math.floor(campArea(hq) / CASTLE_CELL), `Штаб ${hq}`);
-      assert.ok(grid * CASTLE_CELL <= campArea(hq), `Штаб ${hq}: поле стены шире площади`);
+      assert.equal(grid, Math.floor(campArea(hq) / CASTLE_CELL), `Жильё ${hq}`);
+      assert.ok(grid * CASTLE_CELL <= campArea(hq), `Жильё ${hq}: поле стены шире площади`);
       assert.equal(wallBlock(bare(hq), { x: grid, z: 0 }), 'вне площади');
       assert.equal(wallBlock(bare(hq), { x: -1, z: 0 }), 'вне площади');
     }
@@ -126,10 +136,10 @@ describe('Стройка стен: что панель не пускает', () 
     const site = siteOf(5);
     const before = JSON.parse(JSON.stringify(site.layout));
     const walls = emptyWalls();
-    // Штаб стоит в 1,1 — это клетка стены 0,0.
+    // Жильё стоит в 1,1 — это клетка стены 0,0.
     assert.equal(wallBlock(site, { x: 0, z: 0 }), 'занято зданием');
     raiseWall(walls, site, [{ x: 0, z: 0 }, { x: 4, z: 0 }]);
-    assert.ok(!walls.cells.includes(keyOf({ x: 0, z: 0 })), 'стена встала на Штаб');
+    assert.ok(!walls.cells.includes(keyOf({ x: 0, z: 0 })), 'стена встала на Жильё');
     assert.deepEqual(site.layout, before, 'здание сдвинулось от стройки');
   });
 
@@ -200,6 +210,121 @@ describe('Стройка стен: башня, ворота, лестница', 
     // на стену, то есть на клетку с меньшим z.
     const turned = DIRS[[2].map((d) => (d + stairs.turn) % 4)[0]!];
     assert.ok(turned !== undefined);
+  });
+});
+
+describe('Стройка стен: камень и время', () => {
+  const rich = (): Resources => ({ ...emptyResources(), stone: 100, wood: 100 });
+
+  /** Первое кольцо при Жилье ур. 1: поле 3×3, периметр — восемь клеток. */
+  const RING = 8;
+
+  test('кольцо стоит примерно как одно улучшение здания', () => {
+    // Мерка объявлена в `campWalls.ts` и проверяется здесь: если цена клетки
+    // поедет, правило скажет об этом раньше, чем игрок.
+    const ring = wallPrice('стена', RING).stone!;
+    const upgrade = BUILD_COST[2]!.stone!;
+    assert.ok(
+      ring >= upgrade && ring <= upgrade * 1.5,
+      `кольцо ${ring} камня против улучшения ${upgrade} — мерка разъехалась`,
+    );
+  });
+
+  test('кольцо строится примерно столько же, сколько идёт улучшение', () => {
+    const ring = wallSeconds('стена', RING);
+    const upgrade = BUILD_SECONDS[2]!;
+    assert.ok(
+      ring >= upgrade * 0.7 && ring <= upgrade * 1.3,
+      `кольцо ${ring} с против улучшения ${upgrade} с`,
+    );
+  });
+
+  test('камень списывается на входе, а не по готовности', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const res = rich();
+    const cells = strokeFit(walls, site, [{ x: 0, z: 0 }, { x: 3, z: 0 }]);
+    assert.equal(startWall(walls, res, 'стена', cells, 0, false), 'ok');
+    assert.equal(res.stone, 100 - WALL_COST['стена'] * cells.length, 'камень не списан');
+    // Пока таймер идёт, стены нет: ни в клетках, ни в деталях.
+    assert.equal(walls.cells.length, 0, 'стена встала до срока');
+    assert.equal(wallPieces(walls).length, 0);
+  });
+
+  test('стройка кончается в срок и ставит ровно то, за что уплачено', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const res = rich();
+    const cells = strokeFit(walls, site, [{ x: 0, z: 0 }, { x: 3, z: 0 }]);
+    startWall(walls, res, 'стена', cells, 1000, false);
+    assert.equal(completeWallIfDue(walls, 1000 + wallSeconds('стена', cells.length) - 1), null);
+    const done = completeWallIfDue(walls, 1000 + wallSeconds('стена', cells.length));
+    assert.ok(done !== null, 'стройка не кончилась в срок');
+    assert.equal(walls.cells.length, cells.length);
+    assert.equal(walls.work, null, 'слот не освободился');
+  });
+
+  test('слот один на лагерь: занят зданием — стена не начнётся, и наоборот', () => {
+    const walls = emptyWalls();
+    const res = rich();
+    assert.equal(
+      startWall(walls, res, 'стена', [{ x: 0, z: 0 }], 0, true),
+      'слот занят',
+      'стена полезла в занятый слот',
+    );
+    assert.equal(res.stone, 100, 'камень списан за отказ');
+    startWall(walls, res, 'стена', [{ x: 0, z: 0 }], 0, false);
+    assert.equal(
+      startWall(walls, res, 'стена', [{ x: 1, z: 0 }], 0, false),
+      'слот занят',
+      'две стройки стен разом',
+    );
+  });
+
+  test('без камня стройка не начинается и слот не занимает', () => {
+    const walls = emptyWalls();
+    const poor = emptyResources();
+    assert.equal(startWall(walls, poor, 'стена', [{ x: 0, z: 0 }], 0, false), 'не хватает камня');
+    assert.equal(walls.work, null, 'отказ занял слот');
+  });
+
+  test('башня дорожает ярусами, и следующий ярус известен заранее', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const res = rich();
+    const spot = { x: 2, z: 2 };
+    for (let level = 1; level <= TOWER_MAX; level++) {
+      assert.equal(nextTowerLevel(walls, spot), level);
+      assert.equal(startTower(walls, site, res, spot, 0, false), 'ok');
+      completeWallIfDue(walls, wallSeconds('башня', 1));
+      assert.equal(walls.towers[keyOf(spot)], level);
+    }
+    assert.equal(nextTowerLevel(walls, spot), null, 'после потолка башня не снимается');
+    const spent = 100 - res.stone;
+    assert.equal(spent, WALL_COST['башня'] * TOWER_MAX, `за три яруса списано ${spent}`);
+  });
+
+  test('снос возвращает камень, но не время', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    const res = rich();
+    const cells = strokeFit(walls, site, [{ x: 0, z: 0 }, { x: 2, z: 0 }]);
+    startWall(walls, res, 'стена', cells, 0, false);
+    completeWallIfDue(walls, wallSeconds('стена', cells.length));
+    const after = res.stone;
+    for (const spot of [...wallSpots(walls)]) razeWall(walls, spot, res);
+    assert.equal(res.stone, after + WALL_COST['стена'] * cells.length, 'камень не вернулся');
+    assert.equal(walls.cells.length, 0);
+  });
+
+  test('полоса готовности идёт от нуля к единице и не выходит за них', () => {
+    const walls = emptyWalls();
+    const res = rich();
+    startWall(walls, res, 'стена', [{ x: 0, z: 0 }], 100, false);
+    assert.equal(wallProgress(walls, 100), 0);
+    assert.ok(wallProgress(walls, 100 + WALL_COST['стена']) > 0);
+    assert.equal(wallProgress(walls, 100 + wallSeconds('стена', 1)), 1);
+    assert.equal(wallProgress(walls, 10_000), 1, 'полоса переполнилась');
   });
 });
 
