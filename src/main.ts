@@ -31,7 +31,7 @@ import {
   GEAR_REASON,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
+import { GEAR, OFFHAND, gearMods } from './sim/gear';
 import type { GearSlot } from './sim/gear';
 import { visionRadius } from './sim/config';
 import {
@@ -115,7 +115,6 @@ import { topWalkable } from './sim/campTop';
 import { CASTLE_CELL, WALK } from './sim/castle';
 import {
   completeWallIfDue,
-  cycleTower,
   emptyWalls,
   gateBlock,
   nextTowerLevel,
@@ -126,10 +125,7 @@ import {
   stairsBlock,
   startTower,
   startWall,
-  raiseWall,
   strokeFit,
-  toggleGate,
-  putStairs,
   wallPieces,
   wallPrice,
   wallSeconds,
@@ -178,7 +174,7 @@ import { createDirector } from './features/onboarding';
 import { MeetPanel } from './ui/meetPanel';
 import type { MeetPanelCallbacks } from './ui/meetPanel';
 import { advance, answerSelf, generateSettler, giftOf, setHeroName, startMeet } from './sim/settler';
-import { TENT_REASON, admit, buildTent, collectWork, homeless, roofs, tentBlock } from './sim/residents';
+import { TENT_REASON, admit, buildTent, collectWork, homeless, tentBlock } from './sim/residents';
 import type { DwellerLook } from './sim/garrison';
 import type { MeetState, SelfAnswer, Settler } from './sim/settler';
 import { panelsFor, soundFor } from './features/scene';
@@ -2141,132 +2137,6 @@ if (debugTier !== null || debugNode !== null) {
   };
 }
 
-/**
- * Отладочные сцены (§6: воспроизводимость). Кадр, который нужно посмотреть,
- * открывается сразу, а не проходом игры до него: чтобы проверить стену
- * в лагере, незачем играть пролог.
- *
- * `?camp` — лагерь как он есть.
- * `?camp=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
- *   Ровно та планировка, на которой видно все четыре ответа сразу — ход
- *   поверху, разрыв на башне, проезд под воротами и подъём.
- *
- * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
- * но открыть их можно лишь адресом, которого в игре нет.
- */
-const debugCamp = debugParams.get('camp');
-if (debugCamp !== null) {
-  if (debugCamp === 'walls') {
-    // Площадь по максимуму и полный карман камня: сцена заведена, чтобы
-    // смотреть стену, а не чтобы копить на неё. При Жилье ур. 1 кольцо
-    // занимает лагерь целиком, и смотреть внутри нечего.
-    // Сцена собирается с нуля каждый раз: `toCamp` сохраняет лагерь, и без
-    // сброса второй заход достраивал бы кольцо поверх прежнего.
-    camp.walls = emptyWalls();
-    camp.levels.hq = 5;
-    camp.levels.kitchen = 3;
-    camp.levels.storage = 3;
-    camp.resources.stone = 200;
-    camp.resources.wood = 200;
-    // Здания уводятся во двор: при раскладке по умолчанию они стоят по краю
-    // площади и кольцо не замыкается — стена на клетку здания не встаёт.
-    // Это не подгонка сцены, а то же, что пришлось бы сделать игроку.
-    // Координаты чётные: клетка стены — две клетки лагеря, и здание, стоящее
-    // не по этой сетке, съедает до четырёх её клеток вместо одной.
-    camp.layout.hq = { x: 2, z: 2 };
-    camp.layout.kitchen = { x: 6, z: 2 };
-    camp.layout.storage = { x: 2, z: 6 };
-    camp.layout.forge = { x: 6, z: 6 };
-    const walls = wallsOf();
-    const site = wallSite();
-    // Кольцо ставится мимо зданий: клетка стены — четыре клетки лагеря,
-    // и угол площади занят Жильём.
-    // Кольцо подаётся обходом, а не списком клеток: мазок соединяет соседние
-    // точки лесенкой, и зигзаг залил бы двор целиком.
-    const grid = Math.floor(campArea(camp.levels.hq) / CASTLE_CELL);
-    raiseWall(walls, site, [
-      { x: 0, z: 0 },
-      { x: grid - 1, z: 0 },
-      { x: grid - 1, z: grid - 1 },
-      { x: 0, z: grid - 1 },
-      { x: 0, z: 0 },
-    ]);
-    toggleGate(walls, { x: 1, z: grid - 1 });
-    cycleTower(walls, site, { x: grid - 1, z: 0 });
-    // Лестница ставится последней и на первую подходящую клетку: ей нужен
-    // и свободный двор, и сосед с готовым ходом, а где это совпало —
-    // зависит от того, куда встали здания.
-    const tops = topsOf();
-    for (let z = 1; z < grid - 1 && Object.keys(walls.stairs).length === 0; z++) {
-      for (let x = 1; x < grid - 1; x++) {
-        if (putStairs(walls, site, { x, z }, tops)) break;
-      }
-    }
-    persist();
-  }
-  toCamp();
-  // Ручка к состоянию сцены. Без неё отладочная сцена показывает кадр,
-  // но ответить на вопрос «а герой-то поднялся?» может только глаз.
-  // Живёт только вместе с отладочным адресом.
-  (window as unknown as { камень: unknown }).камень = {
-    camp,
-    hero: campHero,
-    rig,
-    nav: () => campNav(camp),
-    tap: (x: number, z: number, level: 'земля' | 'верх' = 'земля') =>
-      commandCampMove(camp, campHero, { x, z }, level),
-    // §14 и §6.1.8: уровень оружия меняет клинок в руке. Ковать ради проверки
-    // незачем — ручка ставит уровень и пересобирает вид тем же путём,
-    // которым он пересобирается после настоящей ковки.
-    оружие: (level: number) => {
-      camp.gear.weapon = Math.max(0, Math.min(MAX_ITEM_LEVEL, level | 0));
-      campView.setCamp(camp);
-      return camp.gear.weapon;
-    },
-    // Начатая добыча (§13.5). Отдаётся сама работа, а не снимок: отладочной
-    // сцене положено не только показывать состояние, но и двигать его —
-    // высиживать восемь секунд у камня незачем.
-    работа: () => campMine,
-    // Жильцы и палатки (`residents.ts`) числами: строка задания говорит,
-    // чего не хватает, но не говорит, кто в лагере и кто что ответил.
-    жильцы: () => ({
-      люди: camp.residents.map((r) => `${r.name} (${r.look}, ${r.answer})`),
-      крыш: roofs(camp),
-      'без крыши': homeless(camp),
-      палаток: camp.tents.length,
-      палатку: tentReason(camp),
-    }),
-    // Поставить палатку: цена списывается, место выбирается тем же правилом,
-    // что и в игре.
-    палатка: () => {
-      const spot = buildTent(camp);
-      if (spot === null) return tentReason(camp);
-      campView.setCamp(camp);
-      persist();
-      return spot;
-    },
-    // Один кадр интерфейса руками. Нужна, потому что вкладка в фоне
-    // не получает кадров вовсе (`document.hidden`), а строка задания
-    // красится в общем `sync`: без этой ручки её состояние из консоли
-    // не проверить, только глазом на переднем окне.
-    кадр: () => campHud.sync(camp, clock.now(), 0),
-    // Отлучка руками: ждать полчаса, чтобы посмотреть на прибавку, —
-    // не проверка. Кладёт ровно то же, что положила бы загрузка.
-    отлучка: (seconds: number) => {
-      const done = collectWork(camp, seconds);
-      campHud.sync(camp, clock.now(), 0);
-      persist();
-      return done.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`);
-    },
-    // Гость из ниоткуда: проверять палатки, каждый раз проходя знакомство,
-    // — не проверка. Имя раздаётся по счёту, потому что повтор не принимается.
-    гость: (answer: 'строим' | 'ходим' = 'строим') => {
-      admit(camp, { name: `Гость ${camp.residents.length + 1}`, look: 'поселенец', answer });
-      persist();
-      return homeless(camp);
-    },
-  };
-}
 
 /**
  * `?castle` — замок сегодняшнего региона сразу, вместе с гарнизоном
@@ -2336,12 +2206,6 @@ if (debugParams.has('castle')) {
  * отладочный, писать его в сохранение нечем и незачем — приглашение ещё
  * ничего не открывает, и палаток под жильцов не существует.
  */
-/** Причина словом — для отладочных ручек: они печатают строку, а не код. */
-const tentReason = (state: typeof camp): string => {
-  const why = tentBlock(state);
-  return why === 'ok' ? 'можно' : TENT_REASON[why];
-};
-
 let meetSettler: Settler | null = null;
 let meet: MeetState | null = null;
 
