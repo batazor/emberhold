@@ -29,14 +29,25 @@ interface TierStat {
   steps: number;
   seconds: number;
   depthShare: number;
+  /**
+   * §11.3 — глубина, на которой вылазка кончилась, отдельно у павших
+   * и у дошедших. Это и есть главная величина раздела: правило спрашивает,
+   * **где** приходит провал, а не чем он нанесён.
+   */
+  failDepth: number;
+  okDepth: number;
   foodLeft: number;
+  /** Чем нанесён провал. Больше не вердикт (§22.6), но читать полезно:
+   *  по нему видно, какую ручку крутить, когда глубина не сошлась. */
+  byFood: number;
+  byCombat: number;
+  byKind: Record<string, number>;
   /**
    * Что заход приносит в среднем — по всем вылазкам, а не по удачным.
    * У провальной `carriedTotal` уже за вычетом ставки §11.2, поэтому это
    * и есть цена яруса для игрока: «сколько стоит туда сходить».
    */
   haulAll: number;
-  byKind: Record<string, number>;
   /** Сколько камня принёс каждый заход, включая провальные. Нужно затем, что
    *  цену первого здания решает не средний игрок, а тот, кому её не хватило:
    *  среднее по 300 вылазкам такого игрока не показывает вовсе. */
@@ -53,8 +64,12 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     steps: 0,
     seconds: 0,
     depthShare: 0,
+    failDepth: 0,
+    okDepth: 0,
     foodLeft: 0,
     haulAll: 0,
+    byFood: 0,
+    byCombat: 0,
     byKind: {},
     stoneRuns: [],
   };
@@ -69,13 +84,23 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     stat.runs += 1;
     stat.steps += r.steps;
     stat.seconds += r.durationSec;
-    stat.depthShare += r.locMaxBack > 0 ? r.maxBack / r.locMaxBack : 0;
+    const depth = r.locMaxBack > 0 ? r.maxBack / r.locMaxBack : 0;
+    stat.depthShare += depth;
+    if (r.status === 'evacuated') stat.okDepth += depth;
+    else stat.failDepth += depth;
     stat.foodLeft += r.foodLeft;
-    // Кто нанёс последний удар. Вылазка знает это сама (§9), скрипт только
-    // складывает: прежнее правило «раны кончились раньше провианта» врало
-    // на стыке и знал его только этот файл.
-    if (r.status !== 'evacuated' && r.lastHitBy !== null) {
-      stat.byKind[r.lastHitBy] = (stat.byKind[r.lastHitBy] ?? 0) + 1;
+    if (r.status !== 'evacuated') {
+      // Причину больше не выводим здесь: её пишет сама вылазка по тому,
+      // откуда пришла последняя рана (§9). Прежнее правило «раны кончились
+      // раньше провианта» врало на стыке — голодного героя, добитого
+      // скелетом, оно относило к бою, а раненного в бою и доевшего
+      // провиант — к голоду. И, главное, знал причину только этот скрипт:
+      // живой игрок про свою смерть не рассказывал ничего.
+      if (r.cause === 'combat') {
+        stat.byCombat += 1;
+        const kind = r.lastHitBy ?? 'неизвестно';
+        stat.byKind[kind] = (stat.byKind[kind] ?? 0) + 1;
+      } else stat.byFood += 1;
     }
     // Провальный заход тоже считается: ставка §11.4 отнимает не всё, и вопрос
     // «хватит ли на Мастерскую» задаётся о любом возвращении, а не об удачном.
@@ -96,10 +121,10 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
  * его вторым числом означало мерить состояние, в котором игрока не бывает.
  *
  * Списанное разошлось на единицу: в таблице стояла Кухня 1 на ярусе 1, а гейт
- * требует второй. Стоило это провала лестницы добычи — ярус 1 выносил меньше
- * нулевого (4.5 против 5.2), и читалось это как «подниматься невыгодно», хотя
- * бот просто заходил в локацию вдвое большую с провиантом предыдущего яруса.
- * Комментарий рядом называл гейты «Кухня 2 на ярус 2», и это тоже неверно.
+ * требует второй. Стоило это лестницы добычи — ярус 1 выносил меньше нулевого,
+ * и читалось это как «подниматься невыгодно», хотя бот просто заходил
+ * в локацию вдвое большую с провиантом предыдущего яруса. Комментарий рядом
+ * называл гейты «Кухня 2 на ярус 2», и это тоже было неверно.
  *
  * Склад лестницей и остаётся: рюкзак гейтом не заперт, и его рост — часть
  * кривой §16, а не условие входа.
@@ -111,8 +136,8 @@ const PLAN: { tier: Tier; kitchen: number; storage: number }[] = ([0, 1, 2, 3] a
 const num = (x: number, d = 1): string => x.toFixed(d).padStart(6);
 
 console.log(`Замер: ${RUNS} вылазок на ярус, бот-осторожный, ночь\n`);
-console.log('ярус  Кухня/Склад   успех   добыча  в сред.   шагов   время   глубина');
-console.log('─'.repeat(66));
+console.log('ярус  Кухня/Склад   успех   добыча  в сред.   шагов   время   глубина  провиант');
+console.log('─'.repeat(74));
 
 const stats = PLAN.map(({ tier, kitchen, storage }) => {
   const s = measure(tier, kitchen, storage);
@@ -120,36 +145,33 @@ const stats = PLAN.map(({ tier, kitchen, storage }) => {
   console.log(
     `  ${tier}      ${kitchen} / ${storage}      ` +
       `${num((s.success / s.runs) * 100, 0)}% ${num(perSuccess)} ${num(s.haulAll / s.runs)}  ${num(s.steps / s.runs, 0)}  ` +
-      `${num(s.seconds / s.runs, 0)} с ${num((s.depthShare / s.runs) * 100, 0)}%`,
+      `${num(s.seconds / s.runs, 0)} с ${num((s.depthShare / s.runs) * 100, 0)}%  ${num(s.foodLeft / s.runs, 0)}`,
   );
   return s;
 });
 
-/**
- * Кто добивает. Прежде здесь стояла доля причин «провиант / бой» и цель §11.3
- * «провиант основной». Соотношение снято с действия: провиант перестал быть
- * осью сложности, и мерить его долю значило бы держать красный вердикт под
- * требованием, которое никто не собирается выполнять.
- *
- * Разбивка по противникам осталась: она отвечает на другой вопрос — не «чем
- * кончаются вылазки», а «кто именно их кончает», и на него ответ по-прежнему
- * нужен, потому что ярус набирается составом.
- */
-console.log('\nКто добивает');
-console.log('─'.repeat(66));
+// §22.6 — соотношение причин перестало быть целью: правило спрашивает,
+// где приходит провал, а не чем нанесён. Строка осталась диагностикой —
+// по ней видно, какую ручку крутить, когда глубина не сошлась.
+console.log('\nЧем нанесён провал (не цель — диагностика, §22.6)');
+console.log('─'.repeat(74));
 for (const s of stats) {
   const fails = s.runs - s.success;
   if (fails === 0) {
     console.log(`  ярус ${s.tier}: провалов нет`);
     continue;
   }
-  const by = Object.entries(s.byKind)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, n]) => `${ENEMY_STATS[k as keyof typeof ENEMY_STATS]?.name ?? k} ${n}`)
-    .join(' · ');
   console.log(
-    `  ярус ${s.tier}: провалов ${((fails / s.runs) * 100).toFixed(0)}%` +
-      (by === '' ? '' : ` — ${by}`),
+    `  ярус ${s.tier}: провалов ${((fails / s.runs) * 100).toFixed(0)}% ` +
+      `на глубине ${((s.failDepth / fails) * 100).toFixed(0)}% ` +
+      `(дошедший — ${((s.okDepth / Math.max(1, s.success)) * 100).toFixed(0)}%) — ` +
+      `провиант ${((s.byFood / fails) * 100).toFixed(0)}% · бой ${((s.byCombat / fails) * 100).toFixed(0)}%` +
+      (s.byCombat > 0
+        ? ` (${Object.entries(s.byKind)
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, n]) => `${ENEMY_STATS[k as keyof typeof ENEMY_STATS]?.name ?? k} ${n}`)
+            .join(' · ')})`
+        : ''),
   );
 }
 
@@ -200,7 +222,61 @@ console.log('─'.repeat(74));
   }
 
   /**
-   * 2. Подниматься обязано быть выгодно.
+   * 2. Провал приходит глубже середины локации (§11.3).
+   *
+   * Заменило прежнее «провиант 65 / бой 35». То было неверно поставленным
+   * вопросом: оно спрашивало, **чем** нанесён провал, а решает игрок
+   * не это. Пока бой шёл сам, «умер в бою» значило «умер от арифметики
+   * за кадром», и запрет был осмыслен; с пошаговым боем (§11.3) удар, блок,
+   * позиция и отрыв — решения, и умереть от собственного решения игре
+   * запрещать незачем.
+   *
+   * Что решает — **где** провал приходит. На глубине держится §22.5:
+   * игрок продолжает, пока ожидаемая ценность выше синицы в руке, и вся
+   * эта арифметика предполагает, что риск растёт с глубиной. Провал у входа
+   * отменяет решение «глубже или назад» целиком: не игрок выбирает, докуда
+   * дойти, а встреча выбирает за него.
+   *
+   * Два утверждения, оба про порядок величин:
+   *  — павший заходил глубже середины локации;
+   *  — и не мельче, чем дошедший, иначе риск с глубиной падает.
+   */
+  const HALF = 0.5;
+  const depth = stats
+    .map((s) => {
+      const fails = s.runs - s.success;
+      return {
+        tier: s.tier,
+        fails,
+        fail: fails > 0 ? s.failDepth / fails : NaN,
+        ok: s.success > 0 ? s.okDepth / s.success : NaN,
+      };
+    })
+    .filter((s) => s.fails > 0);
+
+  const shallow = depth.filter((s) => s.fail < HALF);
+  const inverted = depth.filter((s) => s.fail < s.ok - TOLERANCE);
+
+  if (shallow.length === 0 && inverted.length === 0) {
+    console.log('  ✓ Провал приходит глубже середины локации, и глубже возвращения (§11.3).');
+  }
+  for (const s of shallow) {
+    console.log(
+      `  ⚠ ЯРУС ${s.tier}: ПРОВАЛ ПРИХОДИТ У ВХОДА — ${(s.fail * 100).toFixed(0)}% глубины ` +
+        `при пороге ${(HALF * 100).toFixed(0)}%.\n` +
+        '    Решение «глубже или назад» (§22.5) принимает встреча, а не игрок.',
+    );
+  }
+  for (const s of inverted) {
+    console.log(
+      `  ⚠ ЯРУС ${s.tier}: РИСК ПАДАЕТ С ГЛУБИНОЙ — павший дошёл до ` +
+        `${(s.fail * 100).toFixed(0)}%, дошедший до ${(s.ok * 100).toFixed(0)}%.\n` +
+        '    Дальше — безопаснее, и вся ставка §11.2 обещает не то, что берёт.',
+    );
+  }
+
+  /**
+   * 3. Подниматься обязано быть выгодно.
    *
    * Ярус называет цену ставкой §11.2 — 0 / 30 / 60 / 100% добычи при провале, —
    * и продаёт за неё глубину. Сделка состоялась, если средний заход на ярусе
@@ -215,11 +291,11 @@ console.log('─'.repeat(74));
   const worth = stats
     .filter((s) => s.runs > 0)
     .map((s) => ({ tier: s.tier, avg: s.haulAll / s.runs }));
-  const bad = worth.filter((s, i) => i > 0 && s.avg <= worth[i - 1]!.avg);
-  if (bad.length === 0) {
+  const poor = worth.filter((s, i) => i > 0 && s.avg <= worth[i - 1]!.avg);
+  if (poor.length === 0) {
     console.log('  ✓ Подниматься выгодно: средний заход дорожает с ярусом.');
   } else {
-    for (const s of bad) {
+    for (const s of poor) {
       const prev = worth[worth.findIndex((x) => x.tier === s.tier) - 1]!;
       console.log(
         `  ⚠ ЯРУС ${s.tier} НЕ ОКУПАЕТ СТАВКУ: средний заход ${s.avg.toFixed(1)} ` +

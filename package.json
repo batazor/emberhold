@@ -17,13 +17,15 @@
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
     "hands": "tsx scripts/hands.ts",
+    "party": "tsx scripts/party.ts",
     "classes": "tsx scripts/classes.ts",
     "trade": "tsx scripts/trade.ts",
     "fence": "tsx scripts/fence.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
     "audio": "tsx scripts/audio.ts",
-    "play": "tsx scripts/play.ts"
+    "play": "tsx scripts/play.ts",
+    "tents": "tsx scripts/tents.ts"
   },
   "dependencies": {
     "three": "^0.180.0"

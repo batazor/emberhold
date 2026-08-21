@@ -73,8 +73,12 @@ export interface DraftEffect {
   readonly loot: number;
   /** Множитель пути назад. Меньше единицы — дорога домой короче. */
   readonly back: number;
-  /** Прибавка к ранам героя на эту вылазку. */
-  readonly wounds: number;
+  /**
+   * Прибавка к очкам жизни бойца на эту вылазку (§11.3 — здоровье шкала,
+   * а не раны). Названо очками, а не ранами, потому что ранами лагерь
+   * считает возвращение, а вылазка — нет.
+   */
+  readonly hp: number;
   /** Цена стычки в провианте. `null` — как есть (§11.1). */
   readonly fightFood: number | null;
 }
@@ -86,7 +90,7 @@ export const NO_DRAFT: DraftEffect = {
   risk: 0,
   loot: 1,
   back: 1,
-  wounds: 0,
+  hp: 0,
   fightFood: null,
 };
 
@@ -199,9 +203,9 @@ export const DRAFT: Record<DraftCardId, DraftCard> = {
   }),
   bandage: card({
     id: 'bandage', axis: 'fight', name: 'Повязки',
-    gives: '+1 рана в запасе', costs: '',
+    gives: '+4 очка жизни', costs: '',
     need: { building: 'infirmary', level: 3 }, tier: 0, weight: 10, risky: false,
-    effect: { wounds: 1 },
+    effect: { hp: 4 },
   }),
   whetstone: card({
     id: 'whetstone', axis: 'fight', name: 'Точило',

@@ -136,7 +136,7 @@ describe('Драфт сборов (§19)', () => {
       const e = effectOfCard(id);
       const moves =
         e.food !== 0 || e.bag !== 0 || e.vision !== 0 || e.risk !== 0 ||
-        e.loot !== 1 || e.back !== 1 || e.wounds !== 0 || e.fightFood !== null;
+        e.loot !== 1 || e.back !== 1 || e.hp !== 0 || e.fightFood !== null;
       assert.ok(moves, `${DRAFT[id].name} ничего не меняет`);
     }
   });
@@ -171,9 +171,9 @@ describe('Драфт сборов (§19)', () => {
       'Нетопырь даёт обзор',
     );
     assert.equal(
-      createRaid({ ...base, draft: 'bandage' }).hero.wounds,
-      plain.hero.wounds + 1,
-      'Повязки дают рану в запасе',
+      createRaid({ ...base, draft: 'bandage' }).hero.hpMax,
+      plain.hero.hpMax + 4,
+      'Повязки дают очки жизни',
     );
     assert.equal(
       createRaid({ ...base, draft: 'whetstone' }).fightFood,
@@ -195,6 +195,6 @@ describe('Драфт сборов (§19)', () => {
     assert.equal(none.capacity, plain.capacity);
     assert.equal(none.riskAdd, plain.riskAdd);
     assert.equal(none.backMul, 1);
-    assert.equal(none.hero.wounds, plain.hero.wounds);
+    assert.equal(none.hero.hpMax, plain.hero.hpMax);
   });
 });

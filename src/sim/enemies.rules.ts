@@ -4,11 +4,12 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { HERO_WOUNDS, ENCOUNTER_WOUND } from './balance';
+import { HERO_HP, ENCOUNTER_WOUND } from './balance';
 import { HERO_REACH } from './config';
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { generateLocation } from './generate';
 import { distanceField, idx } from './grid';
+import type { RaidEnemyKind, Tier } from './types';
 
 describe('Бой', () => {
   test('§15 — герой достаёт до каждого противника', () => {
@@ -22,14 +23,16 @@ describe('Бой', () => {
 
   test('§22 — бюджет ран, а не голов', () => {
     // Считать противников поштучно означает мерить не то. Но и дуэльная цена
-    // (скелет 0, воин 1, маг 2) не годится: обход врага — часть игры.
-    // Замер в настоящей вылазке даёт цену присутствия — 0,06 / 0,73 / 0,85.
-    // Маг стоит не два воина, а 1,15: его обходят чаще всех.
-    for (const [tier, roster] of Object.entries(TIER_ROSTER)) {
-      const wounds = roster.reduce((sum, kind) => sum + ENCOUNTER_WOUND[kind], 0);
+    // не годится: обход врага — часть игры, и непреследующего мага обходят
+    // чаще всех. Годится только цена присутствия из настоящей вылазки —
+    // и она своя у каждого яруса, потому что на большой карте того же врага
+    // встречают реже (§22.6).
+    for (const [key, roster] of Object.entries(TIER_ROSTER)) {
+      const tier = Number(key) as Tier;
+      const wounds = (roster as readonly RaidEnemyKind[]).reduce((sum, kind) => sum + ENCOUNTER_WOUND[tier][kind], 0);
       assert.ok(
-        wounds < HERO_WOUNDS - 0.5,
-        `ярус ${tier}: ожидаемые ${wounds.toFixed(2)} ран при ${HERO_WOUNDS} у героя — ` +
+        wounds < HERO_HP - 0.5,
+        `ярус ${tier}: ожидаемые ${wounds.toFixed(2)} ран при ${HERO_HP} у героя — ` +
           'провал становится расписанием, а не риском',
       );
       // Верхняя граница по головам остаётся, но она про отрисовку:

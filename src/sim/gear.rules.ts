@@ -16,12 +16,29 @@ import {
   suggestUpgrade,
   upgradeBlock,
 } from './camp';
-import { GEAR_COST, MAX_ITEM_LEVEL, emptyGear, gearMods } from './gear';
+import { GEAR_COST, MAX_ITEM_LEVEL, NO_MODS, emptyGear, gearMods } from './gear';
 import { atRisk, createRaid, raidResult } from './raid';
 import { load, save, wipe } from './save';
 import { createRoster } from './heroes';
 
 describe('Мастерская', () => {
+  test('§14.3 — «снаряжения нет» это снаряжение нулевого уровня, а не другое', () => {
+    /**
+     * `NO_MODS` была табличкой, набранной руками, и разошлась с `gearMods`
+     * ровно в одном поле — колчане. Стоило это класса: Лучник, вошедший
+     * без снаряжения, оказывался не стрелком, а худшим ближником игры,
+     * и `npm run classes` объявлял его вырожденным, меряя героя без лука.
+     *
+     * Второго источника правды больше нет, и это правило держит его снесённым.
+     */
+    assert.deepEqual(
+      NO_MODS,
+      gearMods(emptyGear()),
+      'NO_MODS разошлась со снаряжением нулевого уровня',
+    );
+    assert.ok(NO_MODS.arrows > 0, 'у невыкованного лука колчан не нулевой (§14.3)');
+  });
+
   test('§16 — закрыта до Жилья ур. 2 и говорит, чем закрыта', () => {
     const camp = createCamp();
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
@@ -124,11 +141,11 @@ describe('Снаряжение в вылазке', () => {
     assert.equal(withBag.capacity, bare.capacity + 3, 'сумка расширяет рюкзак');
 
     const armed = createRaid({ ...opts, gear: { ...emptyGear(), weapon: 2 } });
-    assert.ok(armed.mods.attackInterval < 1, 'оружие ускоряет удар');
+    assert.ok(armed.mods.attack > 0, 'оружие прибавляет Атаку');
     assert.equal(armed.capacity, bare.capacity - 1, '§14 — тяжёлое оружие стоит места');
 
     const armored = createRaid({ ...opts, gear: { ...emptyGear(), armor: 3 } });
-    assert.equal(armored.hero.wounds, bare.hero.wounds + 1, 'броня добавляет рану');
+    assert.equal(armored.hero.hp, bare.hero.hp + 1, 'броня добавляет рану');
     assert.ok(armored.mods.foodStep > 1, '§14 — тяжёлая броня дороже в дороге');
 
     const lit = createRaid({ ...opts, gear: { ...emptyGear(), torch: 4 } });
@@ -157,7 +174,7 @@ describe('Снаряжение в вылазке', () => {
     // броня провиантом на каждом шаге, щит обзором. Одинаковой ценой они бы
     // дублировали друг друга; разной — дают выбор.
     const both = gearMods({ ...emptyGear(), armor: 3, torch: 2 }, 'shield');
-    assert.equal(both.wounds, 1, 'раны — целиком за бронёй (§14.2)');
+    assert.equal(both.wounds, 1, 'прибавка к здоровью — целиком за бронёй (§14.2)');
     assert.ok(both.defense > 0, 'живучесть щита приходит Защитой, а не раной');
     assert.ok(both.foodStep > 1, 'платит только броня — шагом');
     assert.equal(both.vision, 0, 'и только щит — темнотой');

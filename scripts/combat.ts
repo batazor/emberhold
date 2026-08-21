@@ -2,7 +2,7 @@
  * Замер боя. Отвечает на вопрос, который §11.3 ставит, но сам проверить
  * не может: **делают ли Атака и Защита хоть что-нибудь.**
  *
- * До замены модели боя честный ответ — «нет»: удар стоит одной раны
+ * До замены модели боя честный ответ был «нет»: удар стоил одной раны
  * независимо от того, кто бьёт и кто получает, а Атака с Защитой лежат
  * в `heroes.ts` показанными, но не посчитанными. Скрипт написан до правки
  * намеренно, чтобы эта картинка была снята прибором, а не описана словами,
@@ -30,7 +30,7 @@ import {
   createRaid,
   inBattle,
   stepRaid,
-  woundsPerHit,
+  damageOf,
 } from '../src/sim/raid';
 import { distanceField } from '../src/sim/grid';
 import type { EnemyKind, GameLocation } from '../src/sim/types';
@@ -85,8 +85,8 @@ interface Duel {
   readonly rounds: number | null;
   /** Ударов героя до падения. */
   readonly swings: number;
-  /** Ран, снятых с героя за дуэль. */
-  readonly wounds: number;
+  /** Урона, снятого с героя за дуэль. */
+  readonly damage: number;
   /** Выжил ли герой. */
   readonly won: boolean;
 }
@@ -113,7 +113,7 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
   });
 
   const enemy = state.loc.enemies[0]!;
-  const startWounds = state.hero.wounds;
+  const startHp = state.hero.hp;
   let swings = 0;
   let rounds = 0;
   let t = 0;
@@ -167,10 +167,14 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
   return {
     rounds: fell ? Math.max(1, rounds) : null,
     swings,
-    wounds: startWounds - state.hero.wounds,
+    damage: startHp - state.hero.hp,
     won: fell && state.status === 'running',
   };
 }
+
+/** Урон печатается округлённым: `Атака − Защита/2` даёт дроби, и сырое
+ *  число из плавающей точки в таблице читается хуже, чем значит. */
+const num1 = (x: number): string => (Number.isInteger(x) ? String(x) : x.toFixed(1));
 
 const KINDS = Object.keys(ENEMY_STATS) as EnemyKind[];
 
@@ -193,25 +197,25 @@ for (const level of [0, 3, 5]) {
     const def = HERO_CLASSES[cls];
     const cells = KINDS.map((k) => {
       const d = duel(cls, gear, k);
-      return `${rnds(d.rounds)}/${String(d.wounds)}р`.padEnd(13);
+      return `${rnds(d.rounds)}/${d.damage.toFixed(0)}`.padEnd(13);
     });
     console.log(
       `${def.name.padEnd(10)} ${String(def.base.attack).padStart(5)} ${String(def.base.defense).padStart(6)} │ ` +
         cells.join(''),
     );
   }
-  console.log('  (раундов до падения противника / ран снято с героя)\n');
+  console.log('  (раундов до падения противника / урона снято с героя)\n');
 }
 
 /**
- * Пробой напрямую: сколько ран стоит удар каждого типа при каждой Защите.
+ * Урон напрямую: сколько очков стоит удар каждого типа при каждой Защите.
  *
  * Дуэль показывает итог, а он лумпяный — порог переходится не всегда, — и по
  * нему нельзя понять, Защита ли не работает или просто не дотянула до порога.
  * Таблица показывает сам порог, поэтому вопрос «где начинает окупаться щит»
  * получает ответ числом, а не подбором.
  */
-console.log('══ пробой: ран за удар при разной Защите ══');
+console.log('══ урон за удар при разной Защите ══');
 {
   const defenses = [0, 2, 3, 6, 9, 12, 16];
   console.log('противник      Атака │ ' + defenses.map((d) => `З${d}`.padStart(4)).join(''));
@@ -219,18 +223,18 @@ console.log('══ пробой: ран за удар при разной За�
     const a = ENEMY_STATS[k].attack;
     console.log(
       `${ENEMY_STATS[k].name.padEnd(14)}${String(a).padStart(5)} │ ` +
-        defenses.map((d) => String(woundsPerHit(a, d)).padStart(4)).join(''),
+        defenses.map((d) => num1(damageOf(a, d)).padStart(5)).join(''),
     );
   }
   const flat = KINDS.every((k) => {
     const a = ENEMY_STATS[k].attack;
-    return defenses.every((d) => woundsPerHit(a, d) === woundsPerHit(a, 0));
+    return defenses.every((d) => damageOf(a, d) === damageOf(a, 0));
   });
   console.log(
     flat
       ? '\n⚠ ЗАЩИТА НИЧЕГО НЕ ДЕЛИТ: строки плоские. Пока каждый удар стоит одной\n' +
           '  раны, делить нечего, и характеристика остаётся числом в панели.'
-      : '\n✓ Порог существует: есть Защита, которая снимает вторую рану.',
+      : '\n✓ Защита смягчает удар, и плавно: шкале пороги не нужны.',
   );
   console.log('');
 }
@@ -286,12 +290,12 @@ console.log('вариант    │ ' + KINDS.map((k) => ENEMY_STATS[k].name.padE
 for (const [label, got] of rows) {
   console.log(
     `${label.padEnd(10)} │ ` +
-      got.map((d) => `${rnds(d.rounds)}/${String(d.wounds)}р`.padEnd(13)).join(''),
+      got.map((d) => `${rnds(d.rounds)}/${d.damage.toFixed(0)}`.padEnd(13)).join(''),
   );
 }
 
 const same = (a: Duel[], b: Duel[]): boolean =>
-  a.every((d, i) => d.rounds === b[i]!.rounds && d.wounds === b[i]!.wounds);
+  a.every((d, i) => d.rounds === b[i]!.rounds && d.damage === b[i]!.damage);
 
 /**
  * Прибор обязан сначала доказать, что он вообще что-то измерил.
@@ -331,14 +335,14 @@ function verdict(): void {
 }
 
 const measuredSomething = rows.some(([, got]) =>
-  got.some((d) => d.rounds !== null || d.wounds > 0),
+  got.some((d) => d.rounds !== null || d.damage > 0),
 );
 
 if (measuredSomething) {
   verdict();
 } else {
   console.log(
-    '\n⛔ ПРИБОР НИЧЕГО НЕ ИЗМЕРИЛ: ни одна дуэль не кончилась и ни одна рана\n'
+    '\n⛔ ПРИБОР НИЧЕГО НЕ ИЗМЕРИЛ: ни одна дуэль не кончилась и ни одно очко\n'
     + '  не снята. Это поломка стенда, а не результат — сравнивать нечего,\n'
     + '  и вердикта здесь не будет. Смотреть надо, ведёт ли стенд бой вообще\n'
     + '  (§11.3: ход героя подаётся `commandBattle`, сам он не случается).',

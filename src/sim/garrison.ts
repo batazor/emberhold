@@ -46,6 +46,7 @@ import {
   type Piece,
   type Spot,
 } from './castle';
+import { keepApart } from './crowd';
 import { idx } from './grid';
 import { findPath } from './pathfinding';
 import type { Cell, GameLocation } from './types';
@@ -70,6 +71,76 @@ export const PATROL_SPEED = 1.5;
 /** Сколько рыцарей в отряде и на сколько клеток они растянуты в колонне. */
 export const SQUAD = 4;
 export const SQUAD_STEP = 1.3;
+
+/**
+ * Личный ход рыцаря. Отряд шёл одной скоростью и одним интервалом — четверо
+ * в ряд, как зубья одной шестерни, — и читался не караулом, а деталью
+ * механизма. Живым его делают три вещи, и все три считаются от времени,
+ * а не хранятся: **шаг со стоянками**, **своя полоса** и **обгон**.
+ *
+ * Стоянка и ход одинаковой длины у всех, а фаза у каждого своя. Это не
+ * мелочь, а условие: разная средняя скорость растащила бы колонну по всему
+ * периметру за пару кругов, и «отряд — это те, кто идёт вместе» перестало бы
+ * быть правдой. Одинаковая средняя при разных фазах держит их вместе
+ * и при этом даёт обгон: стоящего обходит тот, кто сзади.
+ *
+ * Замеренный разброс колонны — 7,6 клетки при периметре в семьдесят: интервал
+ * между крайними плюс то, что успевает пройти идущий, пока стоит соседний.
+ * Число снято по двум сотням сидов, а не выбрано; округлено вверх.
+ */
+export const PATROL_SPREAD_MAX = 7.8;
+
+export const PATROL_WALK = 9.5;
+export const PATROL_STAND = 2.6;
+
+/**
+ * Своя полоса и покачивание. Полоса — постоянный сдвиг вбок: без неё обгон
+ * означал бы проход сквозь товарища. Покачивание поверх неё — то, зачем оно
+ * и нужно: рыцарь идёт не по нитке.
+ *
+ * У угла и то и другое сходит на нет: тропа там поворачивает на прямой угол,
+ * и сдвиг вбок, повернувшись вместе с ней, дёрнул бы рыцаря на полклетки
+ * поперёк. `PATROL_SWAY_FADE` — на скольких клетках до угла ход выпрямляется.
+ */
+/**
+ * Полосы обхода: каждый рыцарь идёт по своему кольцу, а кольца разведены
+ * на ширину фигуры. Обгон при этом остаётся обгоном, а не проходом насквозь.
+ *
+ * Только наружу: внутрь до замка одна клетка, наружу поле свободно на три.
+ * Дальний идёт в 1,6 клетки от тропы — это ещё поле, а не лес.
+ */
+const PATROL_LANE_FIRST = 0.15;
+const PATROL_LANE_STEP = 0.47;
+
+/**
+ * Покачивание — свойство **тропы**, а не идущего: волна одна на всех, и её
+ * фаза берётся от места на тропе, а не от пройденного пути. Своя фаза
+ * у каждого съедала бы просвет между полосами ровно там, где он нужен, —
+ * в момент, когда двое поравнялись.
+ */
+const PATROL_SWAY = 0.16;
+const PATROL_SWAY_LEN = 8.0;
+/**
+ * На скольких клетках у угла направление сдвига поворачивается. Число не
+ * косметическое: чем короче поворот, тем большую дугу описывает внешняя
+ * полоса и тем заметнее рыцарь на ней разгоняется. На 1,6 клетки внешний
+ * шёл вдвое быстрее ходьбы, на 2,6 — в полтора раза.
+ */
+const PATROL_CORNER = 2.6;
+
+
+
+/**
+ * Потолок шага между кадрами, долями от `PATROL_SPEED`. Не единица: рыцарь
+ * идёт не по тропе, а по своей полосе, и на повороте внешняя полоса описывает
+ * дугу длиннее тропы — идущий по ней проходит за кадр больше. Число снято
+ * замером по сотне сидов, а не выбрано на глаз.
+ *
+ * Кадр, на котором рядом кто-то ближе `BODY`, этим потолком не мерится:
+ * там работает разведение (`sim/crowd.ts`), и его сдвиг — отдельное
+ * обещание с отдельной меркой. См. правило про непрерывность шага.
+ */
+export const PATROL_STEP_MAX = 1.6;
 
 /**
  * Скорость стрелка по стене, клеток локации в секунду. Он идёт по узкому
@@ -166,6 +237,8 @@ export interface Garrison {
   readonly length: number;
   /** По часовой стрелке или против — решает сид. */
   readonly way: 1 | -1;
+  /** Личный ход каждого рыцаря: фаза шага, полоса и фаза покачивания. */
+  readonly gait: readonly { readonly phase: number; readonly lane: number }[];
   /** Участки верха стены. Пусто — стрелку выходить некуда. */
   readonly runs: readonly Run[];
   /** Обходы жильцов двора. Пусто — двор не даёт замкнуть ни одного кольца. */
@@ -303,6 +376,14 @@ function yardWalks(
 
   const mask = new Uint8Array(loc.size * loc.size).fill(1);
   for (const t of tiles) mask[idx(loc.size, t.x, t.z)] = 0;
+  /**
+   * Клетка торговца закрыта для чужих обходов. Разведение тел (`sim/crowd.ts`)
+   * тут не помощник, а помеха: торговец неподвижен, и жилец, чей круг проложен
+   * прямо сквозь него, каждый заход отталкивался бы от него в сторону — на
+   * подходе в одну, на отходе в другую. Дорога, проложенная мимо, снимает
+   * вопрос там, где он возникает.
+   */
+  if (trader !== null) mask[idx(loc.size, trader.x, trader.z)] = 1;
 
   const rng = mulberry32(castle.seed ^ 0x5f0c);
   const count = Math.max(
@@ -336,29 +417,57 @@ function yardWalks(
     });
   }
 
-  for (let i = out.length; i < count; i++) {
-    const corners: Cell[] = [];
-    for (let c = 0; c < YARD_CORNERS; c++) {
-      let pick: Cell | null = null;
-      for (let tries = 0; tries < 24 && pick === null; tries++) {
-        const cand = tiles[randInt(rng, tiles.length)]!;
-        if (corners.every((s) => Math.hypot(s.x - cand.x, s.z - cand.z) >= apart)) pick = cand;
-      }
-      corners.push(pick ?? tiles[randInt(rng, tiles.length)]!);
-    }
+  /**
+   * Занятое чужими кругами. Круги разводятся по клеткам, а не по телам:
+   * двое, идущие навстречу по одной дорожке, расталкиваются каждый кадр,
+   * и направление толчка на встречном курсе разворачивается почти мгновенно —
+   * со стороны это дрожь, а не «разошлись». Дорожки, проложенные врозь,
+   * снимают вопрос там, где он возникает.
+   *
+   * Если врозь не вышло — двор тесен, — круг прокладывается по общей маске:
+   * пусть двое пересекаются и расходятся телами, чем двор останется пустым.
+   */
+  const taken = Uint8Array.from(mask);
 
-    const path: Cell[] = [corners[0]!];
-    const stops: number[] = [];
-    let broken = false;
-    for (let c = 0; c < corners.length; c++) {
-      const leg = findPath(loc.size, mask, corners[c]!, corners[(c + 1) % corners.length]!);
-      if (leg.length === 0) {
-        broken = true;
-        break;
+  for (let i = out.length; i < count; i++) {
+    // Углы выбираются с попытками: круг, проложенный врозь с чужими, находится
+    // не с первого набора углов, а жилец, потерянный из-за неудачного набора,
+    // оставил бы двор пустее обещанного.
+    let corners: Cell[] = [];
+    let path: Cell[] = [];
+    let stops: number[] = [];
+    let broken = true;
+    for (let attempt = 0; attempt < 8 && broken; attempt++) {
+      corners = [];
+      for (let c = 0; c < YARD_CORNERS; c++) {
+        let pick: Cell | null = null;
+        for (let tries = 0; tries < 24 && pick === null; tries++) {
+          const cand = tiles[randInt(rng, tiles.length)]!;
+          if (corners.every((s) => Math.hypot(s.x - cand.x, s.z - cand.z) >= apart)) pick = cand;
+        }
+        corners.push(pick ?? tiles[randInt(rng, tiles.length)]!);
       }
-      path.push(...leg);
-      // Угол — последняя клетка отрезка: дошёл до неё, значит обход повернул.
-      stops.push(path.length - 1);
+
+      // Сперва врозь с чужими кругами, и только если так не вышло —
+      // по общей маске: пусть двое пересекаются, чем двор останется пустым.
+      const boards = attempt < 6 ? [taken] : [taken, mask];
+      for (const board of boards) {
+        if (corners.some((c) => board[idx(loc.size, c.x, c.z)] !== 0)) continue;
+        path = [corners[0]!];
+        stops = [];
+        broken = false;
+        for (let c = 0; c < corners.length; c++) {
+          const leg = findPath(loc.size, board, corners[c]!, corners[(c + 1) % corners.length]!);
+          if (leg.length === 0) {
+            broken = true;
+            break;
+          }
+          path.push(...leg);
+          // Угол — последняя клетка отрезка: дошёл до неё, значит обход повернул.
+          stops.push(path.length - 1);
+        }
+        if (!broken) break;
+      }
     }
     // Кольцо кончается там же, где началось: последняя клетка совпадает
     // с первой, и держать её дважды незачем.
@@ -371,6 +480,7 @@ function yardWalks(
       const b = path[(k + 1) % path.length]!;
       length += Math.hypot(b.x - a.x, b.z - a.z);
     }
+    for (const c of path) taken[idx(loc.size, c.x, c.z)] = 1;
     const trimmed = stops.map((v) => v % path.length);
     out.push({
       look: DWELLER_LOOKS[i % DWELLER_LOOKS.length]!,
@@ -394,7 +504,11 @@ export interface Dweller extends Marcher {
  * раз их ни позвали и в каком угодно порядке.
  */
 export function dwellersAt(g: Garrison, t: number): Dweller[] {
-  return g.yard.map((w) => walkYard(w, t));
+  const folk = g.yard.map((w) => walkYard(w, t));
+  // Торговец неподвижен и в разведении тоже: сдвинуть его значило бы увести
+  // точку обмена (§13.5). Обходят его — как и всякого, кто стоит.
+  keepApart(folk, { fixed: (i) => folk[i]!.look === 'торговец' });
+  return folk;
 }
 
 function walkYard(w: YardWalk, t: number): Dweller {
@@ -450,11 +564,31 @@ export function garrisonOf(site: {
   ];
   const length = 2 * (x1 - x0) + 2 * (z1 - z0);
   const rng = mulberry32(castle.seed ^ 0x6c07);
+  // Раздача полос: перестановка номеров, а не их порядок.
+  const order = Array.from({ length: SQUAD }, (_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = randInt(rng, i + 1);
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
   return {
     seed: castle.seed,
     route,
     length,
     way: randInt(rng, 2) === 0 ? 1 : -1,
+    // Фаза шага у каждого своя, длины хода и стоянки — общие: разная средняя
+    // скорость растащила бы колонну по периметру. Полосы разведены по номеру
+    // в колонне и качнуты сидом: две одинаковые означали бы обгон насквозь.
+    gait: Array.from({ length: SQUAD }, (_, i) => ({
+      // Фаза мала намеренно. Она сдвигает не только момент стоянки, но
+      // и место: сдвиг на весь цикл — это четырнадцать клеток пути, и колонна
+      // расползлась бы на четверть периметра. Стоянки хватает, чтобы задний
+      // обошёл переднего (3,9 клетки против интервала в 1,3).
+      phase: rng() * PATROL_STAND,
+      // Полоса своя у каждого и разведена на ширину фигуры: обгон обязан
+      // быть обгоном, а не проходом насквозь. Кто в какой — решает сид,
+      // поэтому в двух заходах ближе к стене идут разные.
+      lane: -(PATROL_LANE_FIRST + order[i]! * PATROL_LANE_STEP),
+    })),
     runs: runsOf(castle, at),
     yard: yardWalks(castle, at, site.loc, site.trader ?? null),
   };
@@ -462,15 +596,31 @@ export function garrisonOf(site: {
 
 /* ---------- обход ---------- */
 
-/** Где идущий, прошедший `s` клеток от угла тропы, и куда он смотрит. */
+/** Где идущий и куда он смотрит. `walking` — идёт он или стоит на месте. */
 export interface Marcher {
   readonly x: number;
   readonly z: number;
   readonly facing: number;
+  readonly walking: boolean;
 }
 
-function alongRoute(g: Garrison, s: number): Marcher {
-  let left = ((s % g.length) + g.length) % g.length;
+/**
+ * Рыцарь отряда: тот же идущий плюс место на тропе. Жильцу двора это поле
+ * не нужно — у него не тропа, а свой обход, — поэтому оно здесь, а не выше.
+ */
+export interface Patrolman extends Marcher {
+  /** Сколько прошёл ногами от начала тропы. Растёт всегда, и по нему одному
+   *  видно, кто кого обошёл: у обогнавшего число больше. */
+  readonly along: number;
+}
+
+/**
+ * Точка тропы на расстоянии `s` от её начала, со сдвигом вбок `off`.
+ * `s` приводится по кругу, поэтому годится и отрицательное, и большее длины.
+ */
+function pointAt(g: Garrison, s: number, lane: number): { x: number; z: number } {
+  const s0 = ((s % g.length) + g.length) % g.length;
+  let left = s0;
   for (let i = 0; i < g.route.length; i++) {
     const from = g.route[i]!;
     const to = g.route[(i + 1) % g.route.length]!;
@@ -482,32 +632,96 @@ function alongRoute(g: Garrison, s: number): Marcher {
       continue;
     }
     const share = left / side;
+    // Волна считается от места на всей тропе, а не внутри отрезка: внутри
+    // отрезка она рвалась на каждом углу, и рыцарь дёргался на десятую клетки.
+    // Длина волны подгоняется так, чтобы она делила периметр нацело, — иначе
+    // разрыв просто переезжает в точку замыкания.
+    const waves = Math.max(1, Math.round(g.length / PATROL_SWAY_LEN));
+    const off = lane + PATROL_SWAY * Math.sin((2 * Math.PI * waves * s0) / g.length);
+
+    /**
+     * Направление сдвига у угла **поворачивается**, а не гаснет. Гашение
+     * сводило все полосы в одну ровно на повороте — там, где отряд как раз
+     * и сбивается в кучу. Поворот оставляет просвет: кольца остаются
+     * концентрическими, и на углу они скруглены, а не сомкнуты.
+     */
+    const nx = (a: { x: number; z: number }, b: { x: number; z: number }): [number, number] => {
+      const ux = Math.sign(b.x - a.x);
+      const uz = Math.sign(b.z - a.z);
+      return [-uz, ux];
+    };
+    const prev = g.route[(i - 1 + g.route.length) % g.route.length]!;
+    const next = g.route[(i + 2) % g.route.length]!;
+    let [ox, oz] = nx(from, to);
+    const head = Math.min(left, PATROL_CORNER) / PATROL_CORNER;
+    const tail = Math.min(side - left, PATROL_CORNER) / PATROL_CORNER;
+    if (head < 1) {
+      const [px, pz] = nx(prev, from);
+      const w = 0.5 + 0.5 * head;
+      ox = ox * w + px * (1 - w);
+      oz = oz * w + pz * (1 - w);
+    } else if (tail < 1) {
+      const [qx, qz] = nx(to, next);
+      const w = 0.5 + 0.5 * tail;
+      ox = ox * w + qx * (1 - w);
+      oz = oz * w + qz * (1 - w);
+    }
+    const len = Math.hypot(ox, oz) || 1;
     return {
-      x: from.x + dx * share,
-      z: from.z + dz * share,
-      // Умножение на `way` — не украшение. Обход идёт в обе стороны (сид
-      // выбирает какую), а маршрут записан один: против часовой. Лицо, снятое
-      // с отрезка маршрута, на половине сидов смотрело назад — отряд шёл
-      // спиной вперёд, и заметно это было только глазом, потому что путь
-      // и шаг при этом честные. Тот же множитель уже стоит у стрелка,
-      // который возвращается по своему участку.
-      facing: Math.atan2(Math.sign(dx) * g.way, Math.sign(dz) * g.way),
+      x: from.x + dx * share + (ox / len) * off,
+      z: from.z + dz * share + (oz / len) * off,
     };
   }
-  // Сюда не приходят: сумма сторон и есть длина. Но угол вернуть честнее,
-  // чем ничего.
-  return { x: g.route[0]!.x, z: g.route[0]!.z, facing: 0 };
+  return { x: g.route[0]!.x, z: g.route[0]!.z };
+}
+
+/**
+ * Сколько рыцарь `i` прошёл ногами к моменту `t` и идёт ли он сейчас.
+ * Ход и стоянка чередуются, длины у всех одни, фаза у каждого своя.
+ * Функция монотонна: назад никто не пятится ни на одном кадре.
+ */
+function walkedBy(g: Garrison, i: number, t: number): { u: number; walking: boolean } {
+  const cycle = PATROL_WALK + PATROL_STAND;
+  const at = t + g.gait[i]!.phase;
+  const laps = Math.floor(at / cycle);
+  const local = at - laps * cycle;
+  const walked = laps * PATROL_WALK + Math.min(local, PATROL_WALK);
+  return { u: PATROL_SPEED * walked - i * SQUAD_STEP, walking: local < PATROL_WALK };
 }
 
 /**
  * Отряд на момент `t` секунд от входа в локацию. Колонна, а не цепь по всему
  * периметру: отряд — это те, кто идёт вместе, и растянутый на четыре стороны
  * он читался бы четырьмя одиночками.
+ *
+ * Лицо берётся не у отрезка тропы, а у самого движения — разностью двух
+ * близких точек пути. Отрезок тропы врал дважды: при обходе против часовой
+ * весь отряд пятился, а со сдвигом вбок рыцарь смотрел бы прямо, вихляя
+ * поперёк. Разность честна в обоих случаях и стоит двух вызовов `pointAt`.
  */
-export function patrolAt(g: Garrison, t: number): Marcher[] {
-  const head = t * PATROL_SPEED * g.way;
-  const out: Marcher[] = [];
-  for (let i = 0; i < SQUAD; i++) out.push(alongRoute(g, head - i * SQUAD_STEP * g.way));
+export function patrolAt(g: Garrison, t: number): Patrolman[] {
+  // Окно взгляда — ровно шаг одного кадра вперёд. Симметричное окно на углу
+  // врало: оно смотрело в обе стороны поворота разом, а рыцарь за кадр
+  // проходит только одну из них.
+  const eps = PATROL_SPEED / 30;
+  const out: Patrolman[] = [];
+  for (let i = 0; i < SQUAD; i++) {
+    const { u, walking } = walkedBy(g, i, t);
+    const lane = g.gait[i]!.lane;
+    const here = pointAt(g, u * g.way, lane);
+    const ahead = pointAt(g, (u + eps) * g.way, lane);
+    out.push({
+      x: here.x,
+      z: here.z,
+      facing: Math.atan2(ahead.x - here.x, ahead.z - here.z),
+      walking,
+      along: u,
+    });
+  }
+  // Полосы разводят обход на прямой, но на углу кольца срезаются и просвет
+  // между ними сжимается. Остаток снимает расталкивание — сдвиг там малый,
+  // потому что основную работу уже сделали полосы.
+  keepApart(out);
   return out;
 }
 

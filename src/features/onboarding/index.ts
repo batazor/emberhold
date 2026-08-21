@@ -92,7 +92,7 @@ export function createDirector(from: OnbStep, hooks: OnboardingHooks): Director 
       if (isRaidStep(step)) {
         looted = 0;
         wounded = false;
-        startWounds = state.hero.wounds;
+        startWounds = state.hero.hp;
         stepAt = hooks.now();
       }
       hooks.show(step);
@@ -111,7 +111,7 @@ export function createDirector(from: OnbStep, hooks: OnboardingHooks): Director 
 
       const next = nextRaidStep(step, {
         moved: state.steps > 0,
-        wounded: wounded || state.hero.wounds < startWounds,
+        wounded: wounded || state.hero.hp < startWounds,
         looted,
         sinceStep: hooks.now() - stepAt,
       });

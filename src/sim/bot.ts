@@ -298,7 +298,7 @@ export function playRaid(
 
     // Раненый уходит. Это не оптимизация, а поведение: живой игрок с одной
     // раной не идёт за последним сундуком, он идёт к выходу.
-    const hurt = state.hero.wounds <= policy.retreatAt;
+    const hurt = state.hero.hp <= policy.retreatAt;
     const bagFull = state.bagTotal >= state.capacity * policy.bagStop;
     if (!bagFull && !hurt) {
       let bestScore = 0;

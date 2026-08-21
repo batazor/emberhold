@@ -1,3 +1,4 @@
+import { HUNGER_BITE } from './config';
 import type { BuildingId, CampState } from './camp';
 import { MAX_LEVEL } from './camp';
 import { findPath } from './pathfinding';
@@ -259,8 +260,11 @@ export function firstTapCell(loc: GameLocation, from: Cell): Cell | null {
 export function scriptWound(state: RaidState): boolean {
   if (state.status !== 'running') return false;
   if (!state.inFight) return false;
-  if (state.hero.wounds <= 1) return false;
-  state.hero.wounds -= 1;
+  // §16 — кадр обязан наступить, поэтому урон отнимается напрямую и мимо
+  // модели боя: с Защитой Рыцаря обычный скелет может не задеть его никогда,
+  // и раскадровка встала бы.
+  if (state.hero.hp <= HUNGER_BITE) return false;
+  state.hero.hp -= HUNGER_BITE;
   state.events.push('Скелет задел');
   return true;
 }

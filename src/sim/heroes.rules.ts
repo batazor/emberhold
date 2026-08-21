@@ -7,11 +7,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { TICK } from '../core/loop';
+import { HERO_HP } from './balance';
 import { createCamp } from './camp';
 import { visionRadius } from './config';
 import {
   CACHE_LOOT,
   HAUL_CAPACITY,
+  HERO_CLASSES,
+  MAX_WOUNDS,
   TRAIN_PER_LEVEL,
   addXp,
   applyRaidOutcome,
@@ -121,7 +124,7 @@ describe('Отряд', () => {
 
     assert.equal(archer.bagMul, 0.75, 'Лучник: рюкзак −25%');
     assert.equal(rogue.bagMul, 1.3, 'Бандит: рюкзак +30%');
-    assert.equal(knight.wounds, 4, 'Рыцарь: четыре раны');
+    assert.ok(knight.hp > archer.hp, 'Рыцарь крепче: прибавка к здоровью больше');
 
     // §11.4 — обзор = 3 + Знание/5. Рыцарь видит на тайл меньше базового.
     assert.equal(visionRadius(archer.knowledge, false, false), 5);
@@ -253,19 +256,22 @@ describe('Отряд', () => {
     assert.equal(backSteps(trail), backSteps(plain), 'сырая глубина та же');
   });
 
-  test('§3 — итог вылазки переносит раны в расписание', () => {
-    const hero = createHero('knight', 0); // четыре раны
-    // Вернулся с двумя оставшимися ранами из четырёх — значит, получил две.
-    const out = applyRaidOutcome(hero, 2, 9, 1, true, 1000);
-    assert.equal(out.wounds, 2);
+  test('§3 — итог вылазки переносит потери в расписание', () => {
+    const hero = createHero('knight', 0);
+    const full = HERO_HP + HERO_CLASSES.knight.hp;
+    // Вернулся с половиной здоровья: §11.8 меряет лечение ранами, и «рана»
+    // на шкале стала долей — половина потерь даёт половину ран класса.
+    const out = applyRaidOutcome(hero, Math.round(full / 2), 9, 1, true, 1000);
+    assert.ok(out.wounds > 0, 'потери перенеслись в расписание');
+    assert.ok(out.wounds < MAX_WOUNDS, 'и не все сразу');
     assert.equal(hero.status, 'healing', 'вернувшийся ранен и занят лечением');
-    assert.equal(out.healSec, healSeconds(2));
+    assert.equal(out.healSec, healSeconds(out.wounds));
     assert.ok(hero.xp > 0, 'опыт за вынесенное начислен');
 
     // Целый герой в лечение не уходит: иначе ротация включалась бы всегда
     // и превращалась в налог на игру, а не в решение.
     const whole = createHero('archer', 1);
-    const clean = applyRaidOutcome(whole, 3, 4, 0, true, 1000);
+    const clean = applyRaidOutcome(whole, HERO_HP + HERO_CLASSES.archer.hp, 4, 0, true, 1000);
     assert.equal(clean.wounds, 0);
     assert.equal(clean.healSec, 0);
     assert.equal(whole.status, 'ready');

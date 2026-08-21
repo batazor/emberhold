@@ -1,5 +1,6 @@
 import { mulberry32, randInt } from '../core/rng';
 import type { Rng } from '../core/rng';
+import { ENEMY_DEPTH_SHARE } from './balance';
 import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
@@ -282,6 +283,26 @@ export function generateLocation(
     return containers.some((c) => reach[idx(size, c.x, c.z)]! < 0);
   };
 
+  /**
+   * §11.3 — **риск обязан расти с глубиной**, и ставится это здесь, а не
+   * настраивается числами боя.
+   *
+   * Находки раскладывались полосами по глубине с самого начала, а противники
+   * брались из всей локации подряд — то есть с равной вероятностью вставали
+   * и у входа. Замер показал, чем это кончается: гибли на трети локации,
+   * возвращались с половины, дальше выходило безопаснее, чем ближе. Решение
+   * «глубже или назад» (§22.5) принимал не игрок, а встреча у входа —
+   * и вся ставка §11.2 обещала не то, что берёт.
+   *
+   * Поэтому противники берутся из глубокой части, как и находки. Мелкая
+   * часть остаётся дорогой внутрь: там игрок решает, идти ли дальше,
+   * а не отбивается.
+   *
+   * Доля назначена не на глаз — она подобрана `npm run measure` по вердикту
+   * §11.3 «провал глубже половины локации» и меняется вместе с ним.
+   */
+  const deep = open.slice(0, Math.max(1, Math.ceil(open.length * ENEMY_DEPTH_SHARE)));
+
   const enemies: Enemy[] = [];
   const roster = TIER_ROSTER[tier];
   const count = Math.max(0, Math.round(roster.length * enemyMul));
@@ -290,10 +311,13 @@ export function generateLocation(
     const stats = ENEMY_STATS[kind];
     // §15 — маг перекрывает маршрут, а не гонится. Значит его место
     // в узком проходе: там обход стоит шагов, а прорыв — ран.
-    const pool = kind === 'mage' && mageChokes.length > 0 ? mageChokes : open;
+    // Проходы для мага фильтруются по той же глубине: узкий проход у входа
+    // перекрывает не маршрут, а вход, и обходить его игроку ещё нечем.
+    const deepChokes = mageChokes.filter((c) => deep.includes(c));
+    const pool = kind === 'mage' && deepChokes.length > 0 ? deepChokes : deep;
     const cell =
       kind === 'mage'
-        ? takeFrom(pool, mageBlocksLoot) ?? takeFrom(open, mageBlocksLoot)
+        ? takeFrom(pool, mageBlocksLoot) ?? takeFrom(deep, mageBlocksLoot)
         : takeFrom(pool);
     if (cell === null) return;
     const x = cell % size;

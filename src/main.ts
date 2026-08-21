@@ -29,7 +29,7 @@ import {
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { GEAR, MAX_ITEM_LEVEL, OFFHAND, bowQuiver } from './sim/gear';
+import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
 import type { GearSlot } from './sim/gear';
 import { visionRadius } from './sim/config';
 import {
@@ -45,7 +45,7 @@ import {
   syncRoster,
   trainBlock,
 } from './sim/heroes';
-import type { HeroState, Roster } from './sim/heroes';
+import type { HeroClassId, HeroLoadout, HeroState, Roster } from './sim/heroes';
 import { HAND_SIZE, deal, draftReady } from './sim/draft';
 import type { DraftCardId } from './sim/draft';
 import { ONB_HINT, firstTapCell, grantLevelOffBooks, reveal } from './sim/onboarding';
@@ -164,6 +164,12 @@ import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
 import { bindCampInput } from './features/campInput';
 import { createDirector } from './features/onboarding';
+import { MeetPanel } from './ui/meetPanel';
+import type { MeetPanelCallbacks } from './ui/meetPanel';
+import { advance, answerSelf, generateSettler, giftOf, setHeroName, startMeet } from './sim/settler';
+import { TENT_REASON, admit, buildTent, collectWork, homeless, roofs, tentBlock } from './sim/residents';
+import type { DwellerLook } from './sim/garrison';
+import type { MeetState, SelfAnswer, Settler } from './sim/settler';
 import { panelsFor, soundFor } from './features/scene';
 import type { Scene } from './features/scene';
 import { createRaidEar } from './features/raidAudio';
@@ -184,10 +190,23 @@ const startedAt = clock.now();
 track({
   t: 'session_start',
   at: startedAt,
-  awaySec: loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark) : 0,
+  awaySec: startedAt - (loaded.watermark > 0 ? loaded.watermark : startedAt),
   timerLeftSec:
     camp.construction === null ? null : Math.max(0, camp.construction.endsAt - startedAt),
 });
+
+/**
+ * Жильцы работали, пока нас не было (`sim/residents.ts`). Считается от той
+ * же отметки, что и всё офлайновое, — стройка рядом заканчивается по ней же.
+ *
+ * Прибавка не молчит: она проговаривается строкой на входе в лагерь, потому
+ * что иначе ответ на вопрос знакомства меняет число, которого игрок
+ * не видел, — то есть не меняет ничего.
+ */
+const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark) : 0;
+const worked = collectWork(camp, awaySec);
+/** Сказать о наработанном один раз за сессию, а не на каждый вход в лагерь. */
+let workShown = false;
 
 const finishedOffline = completeIfDue(camp, startedAt); // стройка могла закончиться без нас
 if (finishedOffline !== null) {
@@ -400,24 +419,42 @@ const campHud = new CampHud(app, {
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
   onWalls: () => openWalls(),
-  // §14.2 — перекладка бесплатна и мгновенна, поэтому ни трат, ни таймера:
-  // всё, что тут происходит, это запись поля и строка игроку.
-  onSetOffhand: (offhand) => {
-    if (!setOffhand(camp, offhand)) return;
-    campHud.notify(`Левая рука: ${OFFHAND[offhand].name}`);
-    persist();
-  },
-  // §14.3 — пачка стрел. Отказ обязан быть слышен: молчащая кнопка читается
-  // как поломка, и это ровно то, чем колчан был до сих пор.
+  /**
+   * §14.3 — пачка стрел. Колчан наполняется только здесь: в вылазке стрелы
+   * тратятся, донесённое возвращается в лагерь, а взяться им больше неоткуда.
+   * До этой кнопки колчан начинался пустым и мог только убывать — Лучник
+   * всегда дрался со штрафом пустого колчана.
+   */
   onBuyArrows: () => {
-    const cap = bowQuiver(camp.gear.weapon);
+    const cap = gearMods(camp.gear, camp.offhand).arrows;
     if (!buyArrows(camp, cap)) {
-      campHud.notify(
-        camp.arrows >= cap ? 'Колчан полон' : 'Стрелы: не хватает железа',
-      );
+      campHud.notify('Стрелы: не хватает железа или колчан полон');
       return;
     }
     campHud.notify(`Стрелы ${camp.arrows} / ${cap}`);
+    persist();
+  },
+  /** §14.2 — переложить предмет в левой руке. Бесплатно и без таймера. */
+  onOffhand: (hand) => {
+    if (!setOffhand(camp, hand)) return;
+    campHud.notify(`В левой руке: ${OFFHAND[hand].name.toLowerCase()}`);
+    persist();
+  },
+  /**
+   * Задание «поставить палатку» (`sim/residents.ts`). Отказ звучит так же,
+   * как виден (§18.3), а вид пересобирается тем же путём, каким он
+   * пересобирается после настоящей постройки.
+   */
+  onTent: () => {
+    const spot = buildTent(camp);
+    if (spot === null) {
+      play('deny');
+      const why = tentBlock(camp);
+      if (why !== 'ok') campHud.notify(TENT_REASON[why]);
+      return;
+    }
+    play('build');
+    campView.setCamp(camp);
     persist();
   },
 });
@@ -602,7 +639,7 @@ const TRAIN_REASON: Record<string, string> = {
   busy: 'занят',
   'slot-busy': 'тренировочный слот занят',
   max: 'максимальный уровень',
-  'no-yard': 'тренировать негде — нужен Плац',
+  'no-yard': 'нужен Плац',
 };
 
 const BLOCK_REASON: Record<string, string> = {
@@ -624,6 +661,20 @@ const GEAR_REASON: Record<string, string> = {
   resources: 'не хватает железа',
   ok: 'не вышло',
 };
+
+/**
+ * Знакомство у прогалины. Панель заводится рядом с остальными, а обработчики
+ * приезжают позже: разговор существует только там, где есть поселенец,
+ * и держать его логику в общем месте значило бы делать вид, что он есть
+ * всегда.
+ */
+let meetOn: MeetPanelCallbacks | null = null;
+const meetPanel = new MeetPanel(app, {
+  onName: (name) => meetOn?.onName(name),
+  onAnswer: (answer) => meetOn?.onAnswer(answer),
+  onAdvance: () => meetOn?.onAdvance(),
+  onInvite: () => meetOn?.onInvite(),
+});
 
 /**
  * §20.1 — ковка. В отличие от стройки, она мгновенна и не занимает слот:
@@ -699,6 +750,17 @@ const tradePanel = new TradePanel(app, {
 });
 
 /**
+ * Подсказка гаснет, пока идёт разговор. Две строки внизу разом — это
+ * не тесная вёрстка, а два указания сразу, чего раскадровка не разрешает
+ * нигде: пока с игроком говорят, решать про ходьбу ему нечего.
+ *
+ * Гасится в одном месте, а не в трёх вызывающих: подсказку ставят и кадр
+ * онбординга, и постановка лагеря, и цикл поляны, и договориться им между
+ * собой не о чем — забыл бы первый же новый.
+ */
+const setHint = (text: string): void => hud.setHint(meetPanel.visible ? '' : text);
+
+/**
  * Настройки (§18.5). Живут во всех сборках, а не только в дев: громкость
  * нужна игроку, а не разработчику. «Новая игра» переехала сюда же из
  * дев-меню — сейв переживает перезагрузку, и стереть его из консоли нельзя:
@@ -737,7 +799,7 @@ function persist(): void {
  */
 function showOnb(step: OnbStep): void {
   hud.setReveal(reveal(step));
-  hud.setHint(ONB_HINT[step] ?? '');
+  setHint(ONB_HINT[step] ?? '');
   campHud.setOnboarding(step);
   // Второй акт пролога: кольцо ведёт за деревом, а с полной сумкой —
   // обратно к палатке. Оно и есть весь интерфейс улучшения.
@@ -881,7 +943,7 @@ function finishRaidForHero(
   const name = HERO_CLASSES[hero.cls].name;
   const outcome = applyRaidOutcome(
     hero,
-    state.hero.wounds,
+    state.hero.hp,
     carried,
     state.loc.tier,
     evacuated,
@@ -893,7 +955,13 @@ function finishRaidForHero(
   if (outcome.levels > 0) campHud.notify(`${name}: уровень ${hero.level}`);
   if (outcome.healSec > 0) {
     track({ t: 'heal_start', at: now, cls: hero.cls, wounds: outcome.wounds, seconds: outcome.healSec });
-    campHud.notify(`${name} ранен — лечение ${RosterPanel.healText(outcome.wounds, camp.levels.infirmary)}`);
+    // Здание называется только построенное. Прежде строка звала в Лазарет,
+    // которого в игре не было вовсе; теперь он есть — но у того, кто его
+    // не поставил, строка обязана остаться про время, а не про постройку.
+    const where = camp.levels.infirmary > 0 ? `${BUILDINGS.infirmary.name}: ` : 'в строю через ';
+    campHud.notify(
+      `${name} ранен — ${where}${RosterPanel.healText(outcome.wounds, camp.levels.infirmary)}`,
+    );
   }
 }
 
@@ -956,10 +1024,6 @@ function safestNode(now: number): number {
 }
 
 /**
- * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
- * карточкой карты — сюда приходит уже принятое решение.
- */
-/**
  * §19 — экран сборов встаёт между выбором точки и входом. Врезан здесь,
  * а не внутри `toRaid`: раздача обязана случиться **до** того, как вылазка
  * создана, — карта меняет её числа на входе, и подмешать их потом значило бы
@@ -986,6 +1050,25 @@ function enterNode(node: number): boolean {
   return true;
 }
 
+/**
+ * §11.7 — кто идёт следом за ведущим. Все, кто на ногах и свободен: §11.8
+ * отменил ротацию как выбор, и «оставить кого-то дома» перестало быть
+ * решением — раненые и без того лечатся, а остальные выходят вместе.
+ */
+function followersOf(lead: HeroState): HeroLoadout[] {
+  return roster.heroes
+    .filter((h) => h.id !== lead.id && h.wounds === 0 && h.status === 'ready')
+    .map((h) => loadout(h));
+}
+
+/** Классы тех, кто идёт следом: вид рисует их теми же моделями. */
+const mateClasses = (r: RaidState): HeroClassId[] =>
+  r.party.slice(1).map((f) => f.loadout.cls);
+
+/**
+ * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
+ * карточкой карты — сюда приходит уже принятое решение.
+ */
 function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // Место и его богатство берутся на момент входа, а не на момент открытия
   // панели: панель могла провисеть полчаса, а смена мира — сорок минут.
@@ -1043,6 +1126,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     // §14 — снаряжение складывается поверх класса: класс отвечает «кем идём»,
     // снаряжение — «с чем». Левая рука отдельно: §14.2 — это выбор перед
     // выходом, а не уровень предмета, и перекладывается он бесплатно.
@@ -1069,7 +1153,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // которую мир хранит (§4): кланы и восстановление считаются функцией.
   camp.visits.push({ node, shift: shiftAt(now) });
   persist();
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1145,12 +1229,13 @@ function toGraveyard(node: number, seed: number): boolean {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     loc: site.loc,
     evacOpen: true,
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1185,12 +1270,13 @@ function toCastle(node: number, seed: number): boolean {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     loc: site.loc,
     evacOpen: true,
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1255,7 +1341,7 @@ function siteNearHero(): Cell {
 function startPlacing(id: BuildingId): void {
   if (raid === null) return;
   placing = id;
-  hud.setHint(PITCH_HINT[id] ?? '');
+  setHint(PITCH_HINT[id] ?? '');
   const c = siteNearHero();
   raidView?.showSite(id, c.x, c.z, siteBlock(raid.loc, pitched, raid.hero, c) === 'ok');
 }
@@ -1471,7 +1557,7 @@ function stepGladeCamp(dt: number): void {
       : ONB_HINT.upgrade ?? '';
   if (hint !== gladeHint) {
     gladeHint = hint;
-    hud.setHint(hint);
+    setHint(hint);
   }
 }
 
@@ -1516,6 +1602,7 @@ function toGlade(): void {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
+    followers: followersOf(hero),
     loc: generateGlade(seed),
     food: gladeFood(),
     // Сумка пролога — своя, как и провиант: Склада ещё нет (`prologue.ts`).
@@ -1578,6 +1665,18 @@ function toCamp(): void {
   raid = null;
   campView.group.visible = true;
   campView.setCamp(camp);
+  // Наработанное называется первым и один раз: это то, что уже случилось,
+  // и сказать о нём позже задания значило бы отдать строку тому, что ещё
+  // только просят. Задание никуда не денется — оно живёт своей строкой
+  // и не гаснет через четыре секунды.
+  if (worked.length > 0 && !workShown) {
+    workShown = true;
+    campHud.notify(`Пока вас не было: ${worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · ')}`);
+  } else if (homeless(camp) > 0) {
+    campHud.notify(
+      homeless(camp) === 1 ? 'Гостю негде спать — нужна палатка' : `Без крыши: ${homeless(camp)}`,
+    );
+  }
   const c = campView.center;
   // По центру экрана: прежний сдвиг к югу выводил лагерь над панелью, которая
   // занимала нижнюю половину. Панели больше нет — лагерю принадлежит весь экран.
@@ -2150,6 +2249,44 @@ if (debugCamp !== null) {
     // сцене положено не только показывать состояние, но и двигать его —
     // высиживать восемь секунд у камня незачем.
     работа: () => campMine,
+    // Жильцы и палатки (`residents.ts`) числами: строка задания говорит,
+    // чего не хватает, но не говорит, кто в лагере и кто что ответил.
+    жильцы: () => ({
+      люди: camp.residents.map((r) => `${r.name} (${r.look}, ${r.answer})`),
+      крыш: roofs(camp),
+      'без крыши': homeless(camp),
+      палаток: camp.tents.length,
+      палатку: tentReason(camp),
+    }),
+    // Поставить палатку: цена списывается, место выбирается тем же правилом,
+    // что и в игре.
+    палатка: () => {
+      const spot = buildTent(camp);
+      if (spot === null) return tentReason(camp);
+      campView.setCamp(camp);
+      persist();
+      return spot;
+    },
+    // Один кадр интерфейса руками. Нужна, потому что вкладка в фоне
+    // не получает кадров вовсе (`document.hidden`), а строка задания
+    // красится в общем `sync`: без этой ручки её состояние из консоли
+    // не проверить, только глазом на переднем окне.
+    кадр: () => campHud.sync(camp, clock.now(), 0),
+    // Отлучка руками: ждать полчаса, чтобы посмотреть на прибавку, —
+    // не проверка. Кладёт ровно то же, что положила бы загрузка.
+    отлучка: (seconds: number) => {
+      const done = collectWork(camp, seconds);
+      campHud.sync(camp, clock.now(), 0);
+      persist();
+      return done.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`);
+    },
+    // Гость из ниоткуда: проверять палатки, каждый раз проходя знакомство,
+    // — не проверка. Имя раздаётся по счёту, потому что повтор не принимается.
+    гость: (answer: 'строим' | 'ходим' = 'строим') => {
+      admit(camp, { name: `Гость ${camp.residents.length + 1}`, look: 'поселенец', answer });
+      persist();
+      return homeless(camp);
+    },
   };
 }
 
@@ -2196,6 +2333,165 @@ if (debugParams.has('castle')) {
     raid: () => raid,
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
     rig,
+  };
+}
+
+/**
+ * `?встреча` — прогалина и сидящий поселенец. Сцена заведена под один
+ * вопрос, на который нельзя ответить рассуждением: **читается ли сидящий
+ * живым и небоеспособным** — и не дёргается ли он на вставании.
+ *
+ * Смещение на вставании держит правило (`rigged.rules.ts`): каталог набора
+ * обещал до полклетки, на нашем риге вышло 0,083, и круг «сидит → встаёт →
+ * покой» возвращает особь в точку старта. Глазом здесь остаётся то, чего
+ * число не скажет: читается ли сидящий живым и небоеспособным.
+ *
+ * Поляна взята готовая (`toGlade`): у неё тот же лес, что у лагеря, и это
+ * не экономия, а то же решение, по которому лес у поляны и лагеря один —
+ * герой выходит из него и в нём же встаёт лагерем.
+ *
+ * Чего в сцене нет: ни разговора, ни палаток, ни приглашения как решения.
+ * Пока не видно, что сидящий читается, строить на нём нечего.
+ */
+/**
+ * Состояние знакомства живёт рядом со сценой, а не в лагере: пока кадр
+ * отладочный, писать его в сохранение нечем и незачем — приглашение ещё
+ * ничего не открывает, и палаток под жильцов не существует.
+ */
+/** Причина словом — для отладочных ручек: они печатают строку, а не код. */
+const tentReason = (state: typeof camp): string => {
+  const why = tentBlock(state);
+  return why === 'ok' ? 'можно' : TENT_REASON[why];
+};
+
+let meetSettler: Settler | null = null;
+let meet: MeetState | null = null;
+
+if (debugParams.has('встреча')) {
+  toGlade();
+  const hero = raid!.hero;
+  // Клетка ищется свободная, а не назначается смещением: поляна заросшая,
+  // и первый же назначенный сдвиг посадил поселенца в ёлку — снаружи это
+  // читалось не «сидит», а «его нет». Прогалина обязана быть прогалиной,
+  // и на поляне это значит непроходимых клеток вокруг нет.
+  const n = raid!.loc.size;
+  const openAround = (x: number, z: number): boolean => {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const cx = x + dx;
+        const cz = z + dz;
+        if (cx < 0 || cz < 0 || cx >= n || cz >= n) return false;
+        if (raid!.loc.blocked[cz * n + cx] !== 0) return false;
+      }
+    }
+    return true;
+  };
+  let sitX = Math.round(hero.x);
+  let sitZ = Math.round(hero.z);
+  // Ближе двух клеток он попадает под героя, дальше четырёх — за кромку
+  // кадра, а сцена именно про то, как он читается рядом.
+  for (let r = 2; r <= 4 && (sitX === Math.round(hero.x) && sitZ === Math.round(hero.z)); r++) {
+    for (let z = Math.round(hero.z) - r; z <= Math.round(hero.z) + r; z++) {
+      for (let x = Math.round(hero.x) - r; x <= Math.round(hero.x) + r; x++) {
+        if (Math.round(Math.hypot(x - hero.x, z - hero.z)) !== r || !openAround(x, z)) continue;
+        sitX = x;
+        sitZ = z;
+        break;
+      }
+      if (sitX !== Math.round(hero.x) || sitZ !== Math.round(hero.z)) break;
+    }
+  }
+  // Лицом к герою: сидящий спиной читается брошенной вещью, а не человеком.
+  const satAt = { x: sitX + 0.5, z: sitZ + 0.5 };
+  // Поселенец выводится из сида поляны: тот же адрес даёт того же человека,
+  // и «а тот ли это был» перестаёт быть вопросом к памяти.
+  meetSettler = generateSettler(raid!.loc.seed);
+  meet = startMeet(meetSettler);
+  raidView!.putSettler(meetSettler.look, satAt.x, satAt.z, Math.atan2(hero.x - satAt.x, hero.z - satAt.z));
+
+  const redraw = (): void => {
+    if (meetSettler === null || meet === null) return;
+    meetPanel.show(meetSettler, meet);
+    setHint('');
+  };
+  const step = (): void => {
+    if (meet === null) return;
+    advance(meet);
+    redraw();
+    // Клавиатура открывается по жесту игрока и только на своём кадре:
+    // дёргать её на каждой перерисовке нельзя.
+    if (meet.step === 'ты') meetPanel.focusName();
+  };
+  meetOn = {
+    onName: (raw) => {
+      if (meet === null || meetSettler === null) return;
+      setHeroName(meet, raw, meetSettler.offeredName);
+      step();
+    },
+    onAnswer: (answer: SelfAnswer) => {
+      if (meet === null) return;
+      answerSelf(meet, answer);
+      play('pick');
+      step();
+    },
+    onAdvance: step,
+    onInvite: () => {
+      if (meet === null) return;
+      meet.invited = true;
+      // Дар кладётся в кошелёк лагеря той же тратой, что и всякая другая:
+      // крохи обязаны быть видны в полосе, иначе слово «возьми» ничем
+      // не подтверждено.
+      const gift = giftOf(meet);
+      if (gift !== null) {
+        for (const kind of ['wood', 'stone', 'iron', 'crystal'] as const) {
+          camp.resources[kind] += gift.resources[kind];
+        }
+        persist();
+      }
+      // Он остаётся в лагере независимо от того, есть ли крыша: запирать
+      // знакомство за ценой значило бы отменять само знакомство
+      // (`residents.ts`). Нехватка крыши станет заданием, а не отказом.
+      if (meetSettler !== null && meet.answer !== null) {
+        admit(camp, { name: meetSettler.name, look: meetSettler.look, answer: meet.answer });
+        persist();
+      }
+      play('build');
+      // Встаёт и идёт к герою: вставание не прерывается ходьбой (§17.1).
+      raidView?.callSettler(raid!.hero.x, raid!.hero.z);
+      advance(meet);
+      meetPanel.hide();
+      // Кэш подсказки поляны сравнивает со своим прошлым значением, а оно
+      // не менялось: без сброса подсказка не вернулась бы никогда.
+      gladeHint = '';
+    },
+  };
+  redraw();
+  // Камера сцены наводится сама: разговор идёт в двух клетках, а поляна
+  // 24×24, и открывать сцену видом на весь лес значило бы каждый раз
+  // доводить её руками из консоли.
+  rig.lookAt(satAt.x, satAt.z, true);
+  rig.setZoom(9, true);
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    raid: () => raid,
+    поселенец: () => raidView?.settlerAt() ?? null,
+    // Зов: встаёт и идёт к герою. Ходьба ждёт конца клипа — оборванное
+    // вставание и есть тот рывок, который сцена проверяет.
+    позвать: () => raidView?.callSettler(raid!.hero.x, raid!.hero.z),
+    посадить: (look: DwellerLook = 'поселенец') =>
+      raidView?.putSettler(look, satAt.x, satAt.z, Math.atan2(raid!.hero.x - satAt.x, raid!.hero.z - satAt.z)),
+    // Разговор целиком: кто он, на каком кадре стоим, как назвался игрок
+    // и что досталось. Глазом из панели видно только текущую строку.
+    знакомство: () => (meet === null ? null : {
+      он: meetSettler,
+      шаг: meet.step,
+      герой: meet.heroName,
+      ответ: meet.answer,
+      позвал: meet.invited,
+      дар: giftOf(meet),
+      кошелёк: { ...camp.resources },
+    }),
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
 }
 
@@ -2262,13 +2558,13 @@ startLoop({
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
-      const woundsBefore = raid.hero.wounds;
+      const woundsBefore = raid.hero.hp;
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
       // Рана обязана быть замечена телом, а не только глазом. Кадр 3
       // онбординга завёл эту тряску ради первой раны; со сменой модели боя
       // (§11.3) удар стал стоить разного числа ран, и молчать про них
       // за пределами раскадровки перестало быть допустимо.
-      if (raid.hero.wounds < woundsBefore) shake();
+      if (raid.hero.hp < woundsBefore) shake();
       if (sayNext !== null) {
         raid.events.push(sayNext);
         sayNext = null;
@@ -2376,7 +2672,7 @@ startLoop({
           durationSec: Math.round(result.durationSec),
           cause: result.cause,
           lastHitBy: result.lastHitBy,
-          woundsTaken: result.woundsTaken,
+          damageTaken: result.damageTaken,
           fights: result.fights,
           kills: result.kills,
         });
@@ -2416,6 +2712,10 @@ startLoop({
     }
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
+    // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
+    // лагерь про героев не знает, и сказать ему может только тот, кто знает
+    // обоих.
+    campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
     rosterPanel.sync(roster, now, camp.levels.yard);
   },
 

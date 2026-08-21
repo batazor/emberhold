@@ -48,7 +48,7 @@ export type TelemetryEvent =
        * и событие на стычку вымыло бы начало сессии за несколько десятков
        * вылазок, то есть сломало бы метрики §20 ради метрик §11.
        */
-      woundsTaken: number;
+      damageTaken: number;
       fights: number;
       kills: number;
     }
@@ -155,7 +155,7 @@ export interface Summary {
   readonly bought: Readonly<Record<string, number>>;
   readonly fired: Readonly<Record<string, number>>;
   readonly boughtTotal: number;
-  readonly avgWoundsTaken: number;
+  readonly avgDamageTaken: number;
   readonly avgFights: number;
   /** Кто добивает чаще: атрибуция без неё ничего не говорит о том, что чинить. */
   readonly fatalBy: Readonly<Record<string, number>>;
@@ -228,7 +228,7 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     bought,
     fired,
     boughtTotal,
-    avgWoundsTaken: mean(ends.map((e) => e.woundsTaken)),
+    avgDamageTaken: mean(ends.map((e) => e.damageTaken)),
     avgFights: mean(ends.map((e) => e.fights)),
     fatalBy,
   };

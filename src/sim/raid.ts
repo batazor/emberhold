@@ -1,12 +1,14 @@
+import { HERO_HP } from './balance';
 import { kitchenFood, storageCapacity } from './camp';
 import {
   ENEMY_WAKE_SHARE,
   FOOD_COST,
   HERO_REACH,
   ARROWS_PER_CONTAINER,
-  MIN_PIERCE_SHARE,
-  PIERCE_STEP,
-  PROJECTILE_HIT,
+  BANDAGE_HEAL,
+  HUNGER_BITE,
+  MIN_DAMAGE,
+  MIN_DAMAGE_SHARE,
   RANGED_MELEE_PENALTY,
   HERO_SPEED,
   TIER_RISK,
@@ -26,9 +28,9 @@ import {
 import type { ConsumableId } from './consumables';
 import { generateLocation } from './generate';
 import { effectOf } from './events';
-import type { EventId } from './events';
 import { effectOfCard } from './draft';
 import type { DraftCardId } from './draft';
+import type { EventId } from './events';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
 import {
@@ -42,6 +44,7 @@ import {
   enemyPlan,
 } from './battle';
 import type { BattleAction, BattleUnit } from './battle';
+import { keepApart } from './crowd';
 import { hasLineOfSight, idx } from './grid';
 import { hexToWorld } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
@@ -49,7 +52,7 @@ import type {
   Cell,
   EnemyKind,
   GameLocation,
-  Projectile,
+  Fighter,
   RaidState,
   RaidStatus,
   Tier,
@@ -67,6 +70,13 @@ export interface RaidOptions {
    * несравнимы с калибровкой §20.3.
    */
   readonly loadout?: HeroLoadout;
+  /**
+   * §11.7 — кто ещё идёт. Ведущий задаётся `loadout`, эти встают следом.
+   * Необязательно и по той же причине, что класс и снаряжение: без него
+   * вылазка обязана считаться ровно так, как её измеряли при калибровке
+   * §20.3, — иначе замеры на отряде и на одиночке стали бы несравнимы.
+   */
+  readonly followers?: readonly HeroLoadout[];
   /**
    * §14 — снаряжение из Мастерской. Тоже необязательное и по той же причине,
    * что и класс: без него вылазка обязана считаться ровно так, как её
@@ -154,55 +164,94 @@ export function createRaid(opts: RaidOptions): RaidState {
   // Событие сворачивается в числа на входе — ровно как снаряжение: вылазке
   // нужны множители, а не имя того, что происходит снаружи.
   const event = effectOf(opts.event ?? null);
-  // §19 — карта сворачивается в числа ровно там же и ровно так же, как
-  // событие: вылазке незачем знать про карты, ей нужны провиант, вместимость,
-  // обзор и ставка.
+  // §19 — карта сворачивается в числа там же и так же, как событие: вылазке
+  // незачем знать про карты, ей нужны провиант, вместимость, обзор и ставка.
   const draft = effectOfCard(opts.draft ?? null);
   const loc =
-    opts.loc ??
-    generateLocation(
-      opts.seed,
-      opts.tier,
-      (opts.lootMul ?? 1) * event.loot * draft.loot,
-      event.enemies,
-    );
+    opts.loc ?? generateLocation(opts.seed, opts.tier, (opts.lootMul ?? 1) * event.loot * draft.loot, event.enemies);
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
   const mods = opts.gear === undefined ? NO_MODS : gearMods(opts.gear, opts.offhand ?? 'torch');
   /**
    * §14.3 — вместимость и запас это две разные величины, и раньше они были
-   * одной. `arrowsMax` считался от того, сколько стрел взяли, поэтому ноль
-   * в лагере делал ноль вместимости, а подбор упирается в `arrows < arrowsMax`
-   * — и с пустым колчаном не срабатывал никогда. Ноль был поглощающим
-   * состоянием: выйти из него не давал ни один источник, кроме покупки,
-   * а она стоит железа.
-   *
-   * Теперь вместимость задаёт лук, а запас — лагерь. Вернуться из нуля можно
-   * тем же, чем колчан живёт вообще: подбором в вылазке.
+   * одной. `arrowsMax` считался от того, сколько взяли, поэтому ноль в лагере
+   * делал ноль вместимости, а подбор упирается в `arrows < arrowsMax` —
+   * и с пустым колчаном не срабатывал никогда. Ноль был поглощающим: выйти
+   * из него не давал ни один источник, кроме покупки за железо.
    */
-  const quiver = loadout.ranged ? mods.arrows : 0;
-  const carried = loadout.ranged ? Math.min(quiver, Math.max(0, opts.arrows ?? quiver)) : 0;
+  const quiverCap = loadout.ranged ? mods.arrows : 0;
+  const quiver = Math.min(quiverCap, Math.max(0, opts.arrows ?? quiverCap));
+  // §19 — карта провианта прибавляется и к запасу, и к потолку: полоса HUD
+  // читает потолок, и оставленный прежним он показал бы «103 из 78».
+  const supply = Math.max(1, (opts.food ?? kitchenFood(opts.kitchenLevel)) + draft.food);
+
+  /**
+   * §11.7 — отряд. Пока в нём один боец: состав приходит снаружи, и вылазка
+   * не знает, сколько их. Разница видна только тогда, когда их станет
+   * больше, — и это правильная проверка замены представления.
+   *
+   * §11.9а — запас хода личный. У одного бойца сумма равна его запасу,
+   * то есть ровно прежнему числу, и золотой мастер обязан это подтвердить.
+   */
+  /** Боец отряда. Ведущий и следующие собираются одним кодом: разница
+   *  между ними только в том, кто задаёт путь. */
+  const make = (id: number, who: HeroLoadout): Fighter => {
+    const capOf = who.ranged ? mods.arrows : 0;
+    const quiverOf = Math.min(capOf, Math.max(0, opts.arrows ?? capOf));
+    return {
+      id,
+      loadout: who,
+      mods,
+      x: loc.evac.x,
+      z: loc.evac.z,
+      prevX: loc.evac.x,
+      prevZ: loc.evac.z,
+      facing: 0,
+      hp: HERO_HP + who.hp + mods.wounds + draft.hp,
+      hpMax: HERO_HP + who.hp + mods.wounds + draft.hp,
+      cooldown: 0,
+      arrows: quiverOf,
+      arrowsMax: capOf,
+      food: supply,
+      foodMax: supply,
+    };
+  };
+
+  const party: Fighter[] = [{
+    id: 0,
+    loadout,
+    mods,
+    x: loc.evac.x,
+    z: loc.evac.z,
+    prevX: loc.evac.x,
+    prevZ: loc.evac.z,
+    facing: 0,
+    // Раны — от класса (§11.7) плюс броня (§14).
+    hp: HERO_HP + loadout.hp + mods.wounds + draft.hp,
+    hpMax: HERO_HP + loadout.hp + mods.wounds + draft.hp,
+    cooldown: 0,
+    arrows: quiver,
+    arrowsMax: quiverCap,
+    food: supply,
+    foodMax: supply,
+  }];
+  (opts.followers ?? []).forEach((who, i) => party.push(make(i + 1, who)));
+
   return {
     loc,
     loadout,
     mods,
     skillUsed: false,
     skillLeft: 0,
-    hero: {
-      x: loc.evac.x,
-      z: loc.evac.z,
-      prevX: loc.evac.x,
-      prevZ: loc.evac.z,
-      facing: 0,
-      // Раны — от класса (§11.7) плюс броня (§14).
-      wounds: loadout.wounds + mods.wounds + draft.wounds,
-      cooldown: 0,
-    },
-    // §19 — карта провианта прибавляется и к запасу, и к потолку: полоса HUD
-    // читает потолок, и оставленный прежним он показал бы «103 из 78».
-    food: Math.max(1, (opts.food ?? kitchenFood(opts.kitchenLevel)) + draft.food),
-    foodMax: Math.max(1, (opts.food ?? kitchenFood(opts.kitchenLevel)) + draft.food),
+    party,
+    active: 0,
+    trail: [],
+    // Ведущий — тот же объект, а не копия: правка через любое из двух имён
+    // меняет одно и то же.
+    hero: party[0]!,
+    food: supply,
+    foodMax: supply,
     bag: emptyResources(),
     bagTotal: 0,
     // Рюкзак класса: Лучник −25%, Бандит +30% (§11.7). Не меньше единицы,
@@ -240,15 +289,16 @@ export function createRaid(opts: RaidOptions): RaidState {
     smokeUntil: 0,
     lastHitBy: null,
     lastWoundFrom: null,
-    woundsTaken: 0,
+    damageTaken: 0,
     fights: 0,
+    joined: 0,
     kills: 0,
     evacOpen: opts.evacOpen ?? true,
     // §14.3 — колчан наполняется на выходе, из лагерного запаса и не выше
     // вместимости. У ближника вместимость нулевая, и «ноль стрел у Лучника»
     // с «нет колчана у Рыцаря» не смешиваются: различает их loadout.ranged.
-    arrows: carried,
-    arrowsMax: quiver,
+    arrows: quiver,
+    arrowsMax: quiverCap,
     arrowsSpent: 0,
     dryFights: 0,
     battle: null,
@@ -268,16 +318,16 @@ export function backSteps(state: RaidState): number {
 }
 
 /**
- * §11.7 «Тропа» — во что дорога домой обходится **при планировании**.
- * Отдельно от `backSteps` намеренно: сырое расстояние идёт в телеметрию
- * глубины (§11.11, `maxBack`), и скидка умения не должна делать заход мельче,
- * чем он был. Игроку и боту нужно другое число — сколько идти отсюда сейчас.
+ * §11.7 «Тропа» и §19 «Верёвка» — во что дорога домой обходится **при
+ * планировании**. Отдельно от `backSteps` намеренно: сырое расстояние идёт
+ * в телеметрию глубины (§11.11, `maxBack`), и скидка не должна делать заход
+ * мельче, чем он был. Игроку и боту нужно другое число — сколько идти отсюда.
  */
 export function backCost(state: RaidState, cell: number): number {
   const d = state.loc.backSteps[cell];
   const raw = d === undefined || d < 0 ? 0 : d;
-  // §19 «Верёвка» и §11.7 «Тропа» сокращают одну и ту же дорогу и потому
-  // перемножаются: карта работает всю вылазку, умение — тридцать секунд.
+  // Карта работает всю вылазку, умение — тридцать секунд; сокращают они одну
+  // и ту же дорогу и потому перемножаются.
   const skill = skillActive(state, 'trail') ? 1 - TRAIL_BACK_DISCOUNT : 1;
   return Math.ceil(raw * state.backMul * skill);
 }
@@ -344,7 +394,7 @@ export function commandMove(state: RaidState, target: Cell): boolean {
 function heroSpeed(state: RaidState): number {
   // Вес добычи замедляет героя (§1) — цена жадности платится дорогой назад.
   const load = state.bagTotal / state.capacity;
-  const starving = state.food <= 0 ? 0.6 : 1;
+  const starving = anyStarving(state) ? 0.6 : 1;
   return HERO_SPEED * state.loadout.speedMul * (1 - WEIGHT_SLOWDOWN * load) * starving;
 }
 
@@ -371,7 +421,11 @@ export function stepFoodCost(state: RaidState): number {
   // Тяжёлая броня дороже в дороге (§14). «Тропы» здесь больше нет: она
   // сокращает дорогу, а не цену шага, — иначе платит провиантом, который
   // перестал быть осью сложности (§11.3, снято).
-  return FOOD_COST.step * state.mods.foodStep * state.stepMul;
+  return (
+    FOOD_COST.step *
+    state.mods.foodStep *
+    state.stepMul
+  );
 }
 
 /** Умение применяется один раз за вылазку, отката нет (§11.7). */
@@ -389,7 +443,7 @@ export function useSkill(state: RaidState): boolean {
 
 function arriveAt(state: RaidState, cell: Cell): void {
   state.steps += 1;
-  state.food -= stepFoodCost(state);
+  spend(state, stepFoodCost(state));
 
   const container = state.loc.containers.find(
     (c) => !c.opened && c.x === cell.x && c.z === cell.z,
@@ -399,7 +453,7 @@ function arriveAt(state: RaidState, cell: Cell): void {
       state.events.push('Рюкзак полон — контейнер не вскрыт');
     } else {
       container.opened = true;
-      state.food -= state.containerFood;
+      spend(state, state.containerFood);
       // §11.7 «Схрон» — находка щедрее, пока умение держится. Множитель
       // ложится на содержимое, а не на взятое: упереться в рюкзак он не мешает.
       const inside = skillActive(state, 'cache') ? container.amount * CACHE_LOOT : container.amount;
@@ -408,9 +462,13 @@ function arriveAt(state: RaidState, cell: Cell): void {
       state.bagTotal += taken;
       // §14.3 — стрелы подбираются, и это отменяет §21.4 осознанно:
       // приберечь их нельзя, потому что тратит их бой, а не игрок.
-      if (state.loadout.ranged && state.arrows < state.arrowsMax) {
-        const picked = Math.min(ARROWS_PER_CONTAINER, state.arrowsMax - state.arrows);
-        state.arrows += picked;
+      // §14.3 — стрелы достаются тем, кто ими стреляет, и по колчану
+      // каждого: у ближника вместимость нулевая, и делить с ним нечего.
+      const shooter = state.party.find((f) => f.loadout.ranged && f.arrows < f.arrowsMax);
+      if (shooter !== undefined) {
+        const picked = Math.min(ARROWS_PER_CONTAINER, shooter.arrowsMax - shooter.arrows);
+        shooter.arrows += picked;
+        state.arrows = shooter.arrows;
         if (picked > 0) state.events.push(`+${picked} · стрелы`);
       }
       const found = `+${taken} · ${RESOURCE_NAME[container.kind]}`;
@@ -429,10 +487,59 @@ function arriveAt(state: RaidState, cell: Cell): void {
   }
 }
 
+/**
+ * §11.7 — на сколько отстаёт следующий в цепочке. Меньше клетки: отряд идёт
+ * вплотную, иначе хвост тянется через пол-локации и «отряд идёт вместе»
+ * перестаёт быть правдой. Больше половины: слипшиеся фигуры читаются как одна.
+ */
+const FOLLOW_GAP = 0.8;
+
+/** Сколько следов ведущего помним. Хватает на всю цепочку с запасом. */
+const TRAIL_MAX = 96;
+
+/**
+ * §11.7 — где встанет каждый. Отряд идёт **по следу ведущего**, а не рядом
+ * с ним: так он обходит те же камни, что и он, и не застревает в стене,
+ * которую ведущий обогнул. Цепочка — это и есть «идут вместе» на сетке,
+ * где рядом встать бывает негде.
+ *
+ * Вынесено наружу, потому что этот же ответ нужен рендеру: точка, куда
+ * встанет боец, обязана считаться тем же кодом, которым он туда встанет.
+ */
+export function followSpots(state: RaidState): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  for (let i = 0; i < state.party.length; i++) {
+    if (i === state.active) {
+      out.push({ x: state.hero.x, z: state.hero.z });
+      continue;
+    }
+    out.push(trailAt(state, FOLLOW_GAP * out.length));
+  }
+  return out;
+}
+
+/** Точка на следу ведущего в `back` шагах позади него. */
+function trailAt(state: RaidState, back: number): { x: number; z: number } {
+  let left = back;
+  let prev = { x: state.hero.x, z: state.hero.z };
+  for (const p of state.trail) {
+    const d = Math.hypot(p.x - prev.x, p.z - prev.z);
+    if (d >= left) {
+      const k = d === 0 ? 0 : left / d;
+      return { x: prev.x + (p.x - prev.x) * k, z: prev.z + (p.z - prev.z) * k };
+    }
+    left -= d;
+    prev = p;
+  }
+  return prev;
+}
+
 function stepMovement(state: RaidState, dt: number): void {
   const { hero } = state;
-  hero.prevX = hero.x;
-  hero.prevZ = hero.z;
+  for (const f of state.party) {
+    f.prevX = f.x;
+    f.prevZ = f.z;
+  }
   if (state.path.length === 0) return;
 
   let budget = heroSpeed(state) * dt;
@@ -459,89 +566,39 @@ function stepMovement(state: RaidState, dt: number): void {
       if (state.status !== 'running') return;
     }
   }
-}
 
-/**
- * §11.3 — сколько ран стоит удар этого противника по этому герою.
- *
- * Защита не отменяет удар, а делит пробой: часть проходит всегда
- * (MIN_PIERCE_SHARE), поэтому неуязвимости не существует по построению.
- * Раны при этом остаются целыми — меняется не их дробность, а их число.
- */
-export function woundsPerHit(attack: number, defense: number): number {
-  const pierce = Math.max(attack * MIN_PIERCE_SHARE, attack - defense / 2);
-  return 1 + Math.floor(Math.max(0, pierce - 1) / PIERCE_STEP);
-}
+  // След ведущего пишется после его хода: по нему пойдут остальные.
+  state.trail.unshift({ x: hero.x, z: hero.z });
+  if (state.trail.length > TRAIL_MAX) state.trail.length = TRAIL_MAX;
 
-/**
- * §11.3 — полёт снарядов. Идёт **до** боя, чтобы выстрел, сделанный в этом
- * тике, не долетал в этом же: иначе дальний бой отличался бы от ближнего
- * только словом, а фора, за которую игрок уходит с линии, не существовала бы.
- *
- * Снаряд кончается ровно тремя способами, и все три обязаны быть достижимы:
- * попал, врезался в камень, дошёл до точки прицеливания и никого там не нашёл.
- * Третий — и есть промах: цель ушла, пока он летел.
- */
-function stepProjectiles(state: RaidState, dt: number): void {
-  const { loc, hero } = state;
-  if (state.projectiles.length === 0) return;
-
-  const alive: Projectile[] = [];
-  for (const p of state.projectiles) {
-    p.prevX = p.x;
-    p.prevZ = p.z;
-
-    const toAimX = p.aimX - p.x;
-    const toAimZ = p.aimZ - p.z;
-    const left = Math.hypot(toAimX, toAimZ);
-    const move = p.speed * dt;
-
-    // Дошёл до точки прицеливания и никого не задел — промах.
-    if (left <= move) {
-      continue;
-    }
-    p.x += (toAimX / left) * move;
-    p.z += (toAimZ / left) * move;
-
-    // Камень останавливает снаряд там же, где перекрывает видимость:
-    // одна и та же сетка, иначе выстрел «сквозь стену» вернулся бы
-    // с другой стороны.
-    const cell = idx(loc.size, Math.round(p.x), Math.round(p.z));
-    if (loc.blocked[cell]) continue;
-
-    if (p.from === 'enemy') {
-      if (Math.hypot(hero.x - p.x, hero.z - p.z) <= PROJECTILE_HIT) {
-        // «Заслон» отсюда убран вместе с самим умением: он платил боем, а бой
-        // умения больше не покупают (§11.7). Ветка отражения не оставлена
-        // «на будущее» — мёртвая ветка в бою хуже отсутствующей.
-        {
-          const took = woundsPerHit(p.power, state.loadout.defense + state.mods.defense);
-          hero.wounds -= took;
-          state.woundsTaken += took;
-          state.lastHitBy = p.kind;
-          state.lastWoundFrom = 'enemy';
-          state.events.push(`${p.kind === null ? 'Выстрел' : ENEMY_STATS[p.kind].name} бьёт`);
-        }
-        continue;
-      }
-    } else {
-      const target = loc.enemies.find((e) => e.id === p.targetId);
-      if (target !== undefined && target.hp > 0
-        && Math.hypot(target.x - p.x, target.z - p.z) <= PROJECTILE_HIT) {
-        target.hp -= p.power;
-        if (target.hp <= 0) {
-          target.awake = false;
-          state.kills += 1;
-          state.events.push(`${ENEMY_STATS[target.kind].name} падёт`);
-        }
-        continue;
-      }
-    }
-
-    alive.push(p);
+  const spots = followSpots(state);
+  for (let i = 0; i < state.party.length; i++) {
+    if (i === state.active) continue;
+    const f = state.party[i]!;
+    const to = spots[i]!;
+    const dx = to.x - f.x;
+    const dz = to.z - f.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 1e-4) f.facing = Math.atan2(dx, dz);
+    f.x = to.x;
+    f.z = to.z;
   }
-  state.projectiles = alive;
 }
+
+/**
+ * §11.3 — урон. Одна формула в обе стороны, как раздел её и записал.
+ *
+ * Работать так она стала только со шкалой: пока здоровье считалось целыми
+ * ранами, «минус половина Защиты» вырождалось — при любой Защите удар стоил
+ * ровно одной раны, и характеристика не делала ничего. Половину работы
+ * над боем занял обход этого вырождения порогами; со шкалой порогов
+ * не нужно, и Защита смягчает удар плавно.
+ *
+ * MIN_DAMAGE держит нижнюю границу: неуязвимости не существует
+ * по построению, а не по настройке.
+ */
+export const damageOf = (attack: number, defense: number): number =>
+  Math.max(MIN_DAMAGE, attack * MIN_DAMAGE_SHARE, attack - defense / 2);
 
 function stepContact(state: RaidState, dt: number, vision: number): void {
   const { hero, loc } = state;
@@ -595,6 +652,25 @@ function stepContact(state: RaidState, dt: number, vision: number): void {
     }
   }
 
+  /**
+   * Тела не проходят сквозь тела (`sim/crowd.ts`). Погоня ведёт каждого
+   * к герою по своей прямой, и втроём они сходились в одну точку: трое
+   * в одном силуэте читаются одним противником, и бой перестаёт быть
+   * «сколько их», превращаясь в «сколько успеешь ударить».
+   *
+   * Герой в списке стоит неподвижным: его двигает игрок, и толкать его
+   * толпой значило бы отнимать управление. Упереться в него противники
+   * и так не могут — они останавливаются на своей дистанции удара.
+   */
+  const alive = loc.enemies.filter((e) => e.hp > 0 && e.awake);
+  if (alive.length > 1) {
+    const crowd = [...alive, hero];
+    keepApart(crowd, {
+      fixed: (i: number) => i === crowd.length - 1,
+      free: (x: number, z: number) => loc.blocked[idx(loc.size, Math.round(x), Math.round(z))] === 0,
+    });
+  }
+
   state.inFight = touching;
 }
 
@@ -619,14 +695,20 @@ function stepConsumables(state: RaidState): void {
 
   // Повязка — на последней ране, до того как её снимут. Иначе она лечила бы
   // труп, а §21 обещает страховку от ошибки, а не воскрешение.
-  if (hero.wounds === 1 && state.consumables.includes('bandage')) {
+  // §21.2 — повязка страхует ошибку маршрута. Срабатывает на четверти
+  // здоровья: «последней раны», по которой она срабатывала раньше,
+  // на шкале не существует.
+  // §21.2 — «страхует ошибку, а не воскрешает»: на нуле она не срабатывает.
+  // С целыми ранами это выходило само (условие было «ровно одна рана»),
+  // на шкале ноль попадает в «четверть и ниже», и правило надо назвать.
+  if (hero.hp > 0 && hero.hp <= hero.hpMax / 4 && state.consumables.includes('bandage')) {
     fireConsumable(state, 'bandage');
-    hero.wounds += 1;
+    hero.hp = Math.min(hero.hpMax, hero.hp + BANDAGE_HEAL);
   }
 
-  if (state.food <= 0 && state.consumables.includes('ration')) {
+  if (anyStarving(state) && state.consumables.includes('ration')) {
     fireConsumable(state, 'ration');
-    state.food += RATION_FOOD;
+    feed(state, RATION_FOOD);
     state.starve = 0;
   }
 
@@ -651,9 +733,95 @@ function stepConsumables(state: RaidState): void {
  */
 export const inBattle = (state: RaidState): boolean => state.battle !== null;
 
-/** Идентификатор героя на поле. Отрицательный: у противников номера
- *  выданы генератором с нуля, и два счётчика не должны столкнуться. */
+/**
+ * §11.9а — каждый платит из своего запаса.
+ *
+ * Не из общего котла и не поровну от суммы: запас личный, и «докуда дойдём»
+ * определяется тем, у кого он кончится первым. Отсюда и решение «кого вести» —
+ * тяжёлый Рыцарь и лёгкий Лучник расходятся по дальности.
+ *
+ * Отряд идёт вместе, поэтому шаг стоит одинаково всем: платят все, а не
+ * ведущий за всех.
+ */
+function spend(state: RaidState, each: number): void {
+  for (const f of state.party) f.food -= each;
+  syncSupply(state);
+}
+
+/**
+ * Найденное достаётся тому, кто нашёл, — ведущему. Делить паёк на троих
+ * значило бы, что запас не личный, а общий, только записанный иначе.
+ */
+function feed(state: RaidState, amount: number): void {
+  state.hero.food += amount;
+  syncSupply(state);
+}
+
+/** Полоса HUD показывает отряд, а не ведущего: провиант вылазки — сумма. */
+function syncSupply(state: RaidState): void {
+  let sum = 0;
+  for (const f of state.party) sum += f.food;
+  state.food = sum;
+}
+
+/** §11.9а — выдать отряду провиант. Запас личный, поэтому пишется бойцам,
+ *  а `state.food` пересчитывается из них. */
+export function setSupply(state: RaidState, each: number): void {
+  for (const f of state.party) f.food = each;
+  let sum = 0;
+  for (const f of state.party) sum += f.food;
+  state.food = sum;
+}
+
+/** Кончился ли провиант хоть у кого-то: дальше идёт тот, кто голоден,
+ *  а не отряд в среднем. */
+const anyStarving = (state: RaidState): boolean => state.party.some((f) => f.food <= 0);
+
+/**
+ * §11.2 — **провалом считается падение всего отряда, а не любого бойца.**
+ *
+ * Ставка объявлена локацией до входа (§11.6), и пересчитывать её по головам
+ * значило бы менять сделку задним числом. Павший выбывает из вылазки
+ * и уходит на лечение (§11.8); отряд идёт дальше меньшим числом — и это
+ * решение, а не приговор: с двумя бойцами глубже, но дороже.
+ *
+ * Ведущий при падении меняется: вести отряд некому, если тот, кем вели,
+ * лежит.
+ */
+export function standing(state: RaidState): Fighter[] {
+  return state.party.filter((f) => f.hp > 0);
+}
+
+/** Передать ведение живому. Возвращает, остался ли кто-то на ногах. */
+function reelect(state: RaidState): boolean {
+  if (state.hero.hp > 0) return true;
+  const next = state.party.findIndex((f) => f.hp > 0);
+  if (next < 0) return false;
+  state.active = next;
+  state.hero = state.party[next]!;
+  // След ведёт прежний ведущий, и новый пойдёт по нему же: цепочка
+  // не рвётся оттого, что первый упал.
+  return true;
+}
+
+/**
+ * Номер бойца на поле. Отрицательный: у противников номера выданы
+ * генератором с нуля, и два счётчика не должны столкнуться.
+ */
+const unitOf = (f: Fighter): number => -1 - f.id;
+
+/** Кто на поле стоит за этим бойцом. С отрядом «свой» перестал означать
+ *  «ведущий», и спрашивать колчан у ведущего стало ошибкой. */
+const fighterOf = (state: RaidState, unit: BattleUnit): Fighter | undefined =>
+  state.party.find((f) => unitOf(f) === unit.id);
 const HERO_UNIT = -1;
+
+/**
+ * §11.7 — на каком расстоянии боец втягивается в завязавшийся бой.
+ * Столько же, сколько длина цепочки на троих: кто идёт следом, тот и в бою,
+ * а отставший подходит и вступает позже.
+ */
+const JOIN_RANGE = 2.5;
 
 /**
  * Завязать бой. Мир останавливается, бойцы встают на решётку там, где их
@@ -665,33 +833,52 @@ function openBattle(state: RaidState): void {
   const engaged = state.loc.enemies.filter((e) => e.hp > 0 && e.awake);
   if (engaged.length === 0) return;
 
-  // Отряд из одного — но уже отряд (§11.7). Список здесь заведён затем,
-  // что поле боя оперирует сторонами с самого начала: когда бойцов станет
-  // трое, изменится то, кого сюда положили, а не как считается бой.
-  //
+  /**
+   * §11.7 — **в бой втягиваются только те, кто рядом.**
+   *
+   * Так это устроено в играх, откуда взята форма: половина отряда дерётся,
+   * половина ещё подходит и вступает следующим ходом. Втягивать всех
+   * независимо от расстояния значило бы телепортировать хвост цепочки
+   * к завязке — и цепочка, ради которой отряд идёт следом, перестала бы
+   * что-либо значить.
+   *
+   * Порог тот же, что у пробуждения противника (§15): кого видно, тот и в бою.
+   */
+  const near = state.party.filter(
+    (f) => f.hp > 0
+      && engaged.some((e) => Math.hypot(e.x - f.x, e.z - f.z) <= JOIN_RANGE),
+  );
+  // Ведущий в бою всегда: контакт завязался на нём, и оставить его снаружи
+  // означало бы бой, в котором игроку нечем ходить.
+  const joining = near.includes(state.hero) ? near : [state.hero, ...near];
+
   // Идентификаторы своих отрицательные: у противников они выданы генератором
   // и начинаются с нуля, и столкнуться эти два счётчика не должны.
   state.battle = createBattle(
     state.loc.size,
     state.loc.blocked,
-    [{
-      id: HERO_UNIT,
-      x: state.hero.x,
-      z: state.hero.z,
-      wounds: state.hero.wounds,
-      speed: HERO_SPEED * state.loadout.speedMul,
+    joining.map((f) => ({
+      id: unitOf(f),
+      x: f.x,
+      z: f.z,
+      hp: f.hp,
+      speed: HERO_SPEED * f.loadout.speedMul,
       reach: HERO_REACH,
-      ranged: state.loadout.ranged && state.arrows > 0,
-      attack: state.loadout.attack,
-      defense: state.loadout.defense + state.mods.defense,
-    }],
+      ranged: f.loadout.ranged && f.arrows > 0,
+      attack: f.loadout.attack + f.mods.attack,
+      defense: f.loadout.defense + f.mods.defense,
+    })),
     engaged.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z, hp: e.hp })),
   );
   // Завязка стоит провианта ровно как прежде (§11.1) — цена решения
   // ввязаться не изменилась оттого, что бой стал пошаговым.
-  state.food -= state.fightFood;
+  spend(state, state.fightFood);
   state.fights += 1;
   state.paidRound = 1;
+  // §11.7 — сколько бойцов успело втянуться. Прибор спрашивает этим: если
+  // всегда трое, правило «только ближние» — украшение; если всегда один,
+  // цепочка слишком длинная.
+  state.joined += joining.length;
   state.path = [];
   state.events.push('Бой');
 }
@@ -708,14 +895,13 @@ function closeBattle(state: RaidState): void {
   for (const u of battle.units) {
     const world = hexToWorld(u.hex);
     if (u.side === 'hero') {
-      // Пока боец один, мир хранит его отдельным полем. С отрядом здесь
-      // будет поиск по id — и это единственное, что придётся дописать.
-      if (u.id !== HERO_UNIT) continue;
-      state.hero.wounds = u.hp;
-      state.hero.prevX = state.hero.x;
-      state.hero.prevZ = state.hero.z;
-      state.hero.x = world.x;
-      state.hero.z = world.z;
+      const f = state.party.find((p) => unitOf(p) === u.id);
+      if (f === undefined) continue;
+      f.hp = u.hp;
+      f.prevX = f.x;
+      f.prevZ = f.z;
+      f.x = world.x;
+      f.z = world.z;
       continue;
     }
     const enemy = state.loc.enemies.find((e) => e.id === u.id);
@@ -766,7 +952,7 @@ function stepBattle(state: RaidState): boolean {
   // бесплатным убежищем, иначе стоять в бою выгоднее, чем идти.
   if (battle.round > state.paidRound) {
     state.paidRound = battle.round;
-    state.food -= FOOD_PER_ROUND;
+    spend(state, FOOD_PER_ROUND);
 
     // Начало раунда — момент, когда проверяется отрыв. Ушёл и пережил
     // чужие ходы — бой кончился, мир пошёл дальше, противники остались
@@ -822,19 +1008,21 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
   if (!ok) return false;
 
   if (heroUnit !== undefined && heroUnit.hp < woundsBefore) {
-    state.woundsTaken += woundsBefore - heroUnit.hp;
+    state.damageTaken += woundsBefore - heroUnit.hp;
     state.lastWoundFrom = 'enemy';
     if (unit.side === 'enemy') state.lastHitBy = unit.kind;
-    state.hero.wounds = heroUnit.hp;
+    state.hero.hp = heroUnit.hp;
   }
 
   for (const e of battle.events) state.events.push(e);
 
   // Стрелок тратит стрелу за выстрел — там же, где раньше (§14.3).
-  if (action.kind === 'attack' && unit.side === 'hero' && unit.ranged && state.arrows > 0) {
-    state.arrows -= 1;
+  const shot = fighterOf(state, unit) ?? state.hero;
+  if (action.kind === 'attack' && unit.side === 'hero' && unit.ranged && shot.arrows > 0) {
+    shot.arrows -= 1;
+    state.arrows = shot.arrows;
     state.arrowsSpent += 1;
-    if (state.arrows === 0) state.events.push('Колчан пуст');
+    if (shot.arrows === 0) state.events.push('Колчан пуст');
   }
 
   // Шаг ходом не кончается: подойти и ударить — один ход. Кончают его удар,
@@ -854,14 +1042,15 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
  */
 function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): number {
   if (from.side === 'hero') {
-    // Пустой колчан бьёт слабее (§14.3). Проверка по стрелам остаётся общей,
-    // пока боец один; с отрядом колчан переедет к бойцу вместе с остальным.
-    const dry = state.loadout.ranged && state.arrows <= 0;
+    // Пустой колчан бьёт слабее (§14.3) — и колчан того, кто бьёт, а не
+    // ведущего: с отрядом «свой» перестал означать «единственный».
+    const f = fighterOf(state, from);
+    const dry = f !== undefined && f.loadout.ranged && f.arrows <= 0;
     return from.attack * (dry ? RANGED_MELEE_PENALTY : 1);
   }
   // Защита берётся у того, кого бьют, а не у стороны: трое бойцов держат
   // удар по-разному, и это и есть смысл характеристики.
-  return woundsPerHit(from.attack, to.defense);
+  return damageOf(from.attack, to.defense);
 }
 
 export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge: number): void {
@@ -873,8 +1062,8 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   if (state.battle !== null) {
     let guard = 0;
     while (stepBattle(state) && guard++ < 64) { /* доигрываем чужие ходы */ }
-    if (state.hero.wounds <= 0) {
-      state.hero.wounds = 0;
+    if (!reelect(state)) {
+      for (const f of state.party) f.hp = 0;
       state.status = 'failed';
       state.path = [];
     }
@@ -891,9 +1080,6 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   const vision = visionRadius(knowledge, night, true) + state.mods.vision + state.visionAdd;
   stepMovement(state, dt);
   if (state.status !== 'running') return;
-  // Снаряды двигаются до боя: выстрел, сделанный в этом тике, не долетает
-  // в этом же. Иначе дальний бой отличался бы от ближнего только словом.
-  stepProjectiles(state, dt);
   // Вне боя остаётся только завязка: разбудить и подойти. Сам бой считает
   // поле (§11.3), и считать его дважды нельзя.
   stepContact(state, dt, vision);
@@ -901,12 +1087,12 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
 
   // Голод не убивает мгновенно: провиант обязан оставаться главной причиной
   // провала (§11.3), но провал должен наступать в дороге, а не внезапно.
-  if (state.food <= 0 && state.hunger) {
+  if (anyStarving(state) && state.hunger) {
     state.starve += dt;
     if (state.starve >= 6) {
       state.starve = 0;
-      state.hero.wounds -= 1;
-      state.woundsTaken += 1;
+      state.hero.hp -= HUNGER_BITE;
+      state.damageTaken += HUNGER_BITE;
       state.lastWoundFrom = 'hunger';
       state.events.push('Голод');
     }
@@ -914,8 +1100,8 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
 
   stepConsumables(state);
 
-  if (state.hero.wounds <= 0) {
-    state.hero.wounds = 0;
+  if (!reelect(state)) {
+    for (const f of state.party) f.hp = 0;
     state.status = 'failed';
     state.path = [];
   }
@@ -945,11 +1131,17 @@ export interface RaidResult {
    * доевшего провиант.
    */
   readonly cause: RaidCause;
-  readonly woundsTaken: number;
+  readonly damageTaken: number;
   readonly fights: number;
   readonly kills: number;
   /** Кто нанёс последний удар. null — вылазка кончилась не боем. */
   readonly lastHitBy: EnemyKind | null;
+  /** §11.7 — сколько бойцов вернулось на ногах. Провал — это ноль, а не
+   *  «ведущий пал»: остальные идут дальше меньшим числом. */
+  readonly standing: number;
+  /** §11.7 — бойцов, втянутых в бои. Делённое на стычки даёт средний
+   *  размер боя: правило «только ближние» этим и проверяется. */
+  readonly joined: number;
   /** §14.3 — колчан обязан пустеть не всегда и не никогда; это меряется. */
   readonly arrowsSpent: number;
   readonly arrowsLeft: number;
@@ -1012,10 +1204,12 @@ export function raidResult(state: RaidState): RaidResult {
     durationSec: state.elapsed,
     fired: [...state.fired],
     cause: raidCause(state),
-    woundsTaken: state.woundsTaken,
+    damageTaken: state.damageTaken,
     fights: state.fights,
     kills: state.kills,
     lastHitBy: raidCause(state) === 'combat' ? state.lastHitBy : null,
+    standing: standing(state).length,
+    joined: state.joined,
     arrowsSpent: state.arrowsSpent,
     arrowsLeft: state.arrows,
     dryFights: state.dryFights,

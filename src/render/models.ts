@@ -9,7 +9,7 @@ import { WEAPONS_MODELS } from './weapons.data';
 import { weaponOf } from './weapons';
 import { WEAPONS_PALETTE } from './palette';
 import type { AdventurerModelName } from './adventurers.data';
-import { folkParts } from './folk';
+import { folkGeometry, folkParts } from './folk';
 import type { FolkModelName } from './folk.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
@@ -600,6 +600,19 @@ export const dwellerParts = (look: DwellerLook): RiggedParts =>
   // люди одного мира, и разный рост читался бы не «другой человек»,
   // а «другой масштаб сцены».
   folkParts(DWELLER_MODEL[look], heroHeight(GUARD_LIKE));
+
+/**
+ * Жилец лагеря неподвижной геометрией. Именно неподвижной, и это решение,
+ * а не экономия: в лагере скиннованных мешей нет вовсе — герой лагеря сам
+ * стоит `heroGeometry` и ходит без клипа ходьбы. Жилец с ригом оказался бы
+ * единственным анимированным телом в кадре и сделал бы героя рядом с собой
+ * заметно хуже, чем он есть.
+ *
+ * Рост и модель — те же, что у ходячего жильца двора: подменять их значило бы
+ * сказать, что в лагере живёт кто-то другой.
+ */
+export const residentGeometry = (look: DwellerLook): THREE.BufferGeometry =>
+  folkGeometry(DWELLER_MODEL[look], heroHeight(GUARD_LIKE));
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
 export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {
