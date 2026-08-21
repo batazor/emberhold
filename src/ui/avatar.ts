@@ -24,7 +24,9 @@ import { MATERIAL } from '../core/palette';
 import { mulberry32 } from '../core/rng';
 
 /** Кого рисуем. Классы героев (§11.7) и виды жильцов (`garrison.ts`). */
-export type AvatarLook = 'knight' | 'archer' | 'rogue' | 'поселенец' | 'торговец';
+export type AvatarLook =
+  | 'knight' | 'archer' | 'rogue'
+  | 'поселенец' | 'торговец' | 'кузнец' | 'охотник';
 
 export const AVATAR_LOOKS: readonly AvatarLook[] = [
   'knight',
@@ -32,6 +34,8 @@ export const AVATAR_LOOKS: readonly AvatarLook[] = [
   'rogue',
   'поселенец',
   'торговец',
+  'кузнец',
+  'охотник',
 ];
 
 const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
@@ -72,6 +76,8 @@ const BACK: Record<AvatarLook, string> = {
   rogue: C['металл-тень'],
   поселенец: C.тень,
   торговец: C.тень,
+  кузнец: C.тень,
+  охотник: C.тень,
 };
 
 /**
@@ -131,6 +137,23 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
       `<path d="M13 17a9 9 0 0 1 18 0z" fill="${C.дерево}"/>` +
       `<circle cx="34" cy="34" r="5" fill="${C.латунь}"/>` +
       `<circle cx="34" cy="34" r="2" fill="${C.жар}"/>`,
+    // Кузнец (§6.1.13): тёмная косынка на лбу и молот у плеча.
+    кузнец:
+      head +
+      eyes +
+      `<path d="M10 19a12 12 0 0 1 24 0v-3a12 12 0 0 0-24 0z" fill="${C.мрак}"/>` +
+      `<rect x="10" y="17" width="24" height="3" rx="1.5" fill="${C['сукно-тень']}"/>` +
+      `<rect x="31" y="26" width="3" height="13" rx="1.5" fill="${C['дерево-тень']}"/>` +
+      `<rect x="28" y="24" width="9" height="5" rx="1" fill="${C.металл}"/>`,
+    // Охотник (§6.1.13): красный капюшон и перо — он из леса, а не со двора.
+    охотник:
+      head +
+      eyes +
+      `<path d="M9 26a13 13 0 0 1 26 0v-5a13 13 0 0 0-26 0z" fill="${C['краска-алая']}"/>` +
+      `<path d="M9 21a13 13 0 0 1 26 0l-4 2a9 9 0 0 0-18 0z" fill="${C['краска-алая']}"/>` +
+      `<rect x="9" y="20" width="4" height="11" rx="2" fill="${C['сукно-тень']}"/>` +
+      `<rect x="31" y="20" width="4" height="11" rx="2" fill="${C['сукно-тень']}"/>` +
+      `<path d="M31 14c3-3 6-4 9-4-1 3-3 6-7 7z" fill="${C.мох}"/>`,
   };
 
   return (

@@ -26,6 +26,7 @@ import {
   ARCHER_SPEED,
   DWELLER_SPEED,
   DWELLER_STAND,
+  STANDING_LOOKS,
   PATROL_SPEED,
   SQUAD,
   archerAt,
@@ -438,8 +439,12 @@ describe('Гарнизон: стрелок на стене', () => {
 describe('Замок: жильцы двора', () => {
   test('жильцы есть, и двор ими не забит', () => {
     for (const { site, g } of guards) {
+      const walking = g.yard.filter((w) => w.path.length > 1);
+      const standing = g.yard.filter((w) => w.path.length === 1);
       assert.ok(g.yard.length >= 2, `сид ${site.loc.seed}: двор пуст`);
-      assert.ok(g.yard.length <= 4, `сид ${site.loc.seed}: жильцов ${g.yard.length} — это толпа`);
+      assert.ok(walking.length <= 4, `сид ${site.loc.seed}: гуляющих ${walking.length} — это толпа`);
+      // Стоящих не больше трёх: торговец (§13.5) и два ремесленника (§6.1.13).
+      assert.ok(standing.length <= 3, `сид ${site.loc.seed}: стоящих ${standing.length}`);
       let free = 0;
       for (let z = 0; z < site.loc.size; z++) {
         for (let x = 0; x < site.loc.size; x++) {
@@ -451,10 +456,11 @@ describe('Замок: жильцы двора', () => {
        * порогом в двоих: на самом тесном дворе порог плотность перебивает.
        * Порог сохранён потому, что двор без жильцов не выполняет обещания
        * карточки, а двое на два десятка клеток — всё ещё двор, а не толпа.
+       * Мерится он по гуляющим: стоящий у края клеток обхода не ест.
        */
       assert.ok(
-        free / g.yard.length >= 10,
-        `сид ${site.loc.seed}: ${free} свободных клеток двора на ${g.yard.length} жильцов`,
+        free / Math.max(1, walking.length) >= 10,
+        `сид ${site.loc.seed}: ${free} свободных клеток двора на ${walking.length} гуляющих`,
       );
     }
   });
@@ -462,11 +468,22 @@ describe('Замок: жильцы двора', () => {
   test('обход замкнут, лежит во дворе и не идёт сквозь занятое', () => {
     for (const { site, g } of guards) {
       for (const w of g.yard) {
-        // Обход из одной клетки бывает ровно у одного жильца — торговца:
-        // он стоит на месте, и это его работа (§13.5).
+        // Обход из одной клетки бывает только у стоящих: торговец на лавке
+        // (§13.5), кузнец и охотник у края двора (§6.1.13).
         if (w.path.length === 1) {
-          assert.ok(site.trader !== null, `сид ${site.loc.seed}: стоящий жилец без лавки`);
-          assert.deepEqual(w.path[0], site.trader, `сид ${site.loc.seed}: стоит не на лавке`);
+          assert.ok(STANDING_LOOKS.has(w.look), `сид ${site.loc.seed}: гуляющий «${w.look}» встал`);
+          if (w.look === 'торговец') {
+            assert.ok(site.trader !== null, `сид ${site.loc.seed}: стоящий торговец без лавки`);
+            assert.deepEqual(w.path[0], site.trader, `сид ${site.loc.seed}: стоит не на лавке`);
+          } else {
+            const c = w.path[0]!;
+            assert.ok(inYard(site, c), `сид ${site.loc.seed}: «${w.look}» стоит вне двора`);
+            assert.equal(
+              site.loc.blocked[idx(site.loc.size, c.x, c.z)],
+              0,
+              `сид ${site.loc.seed}: «${w.look}» стоит в занятой клетке`,
+            );
+          }
           continue;
         }
         assert.ok(w.path.length >= 2, `сид ${site.loc.seed}: обход из одной клетки`);
@@ -485,7 +502,9 @@ describe('Замок: жильцы двора', () => {
 
   test('облики разные: двор не собран из одинаковых', () => {
     const seen = new Set(guards.flatMap(({ g }) => g.yard.map((w) => w.look)));
-    assert.equal(seen.size, 2, `обликов встретилось ${seen.size}`);
+    // Четыре облика: гуляющий поселенец, стоящие торговец, кузнец и охотник.
+    assert.equal(seen.size, 4, `обликов встретилось ${seen.size}`);
+    assert.ok(seen.has('кузнец') && seen.has('охотник'), 'ремесленники §6.1.13 не встали ни в один двор');
   });
 
   test('за круг жилец не покидает двора и возвращается к началу', () => {
@@ -535,9 +554,10 @@ describe('Замок: жильцы двора', () => {
           if (a.walking) moved += step; else stood += STEP;
         }
         if (w.path.length === 1) {
-          // Торговец не ходит вовсе, и это проверяется, а не подразумевается:
-          // ушедшая лавка — это панель, открывающаяся от пустого места.
-          assert.equal(moved, 0, `сид ${site.loc.seed}: торговец сошёл с места`);
+          // Стоящий не ходит вовсе, и это проверяется, а не подразумевается:
+          // ушедшая лавка — панель от пустого места, а ремесленник без
+          // скелета (§6.1.13) не идёт, а скользит.
+          assert.equal(moved, 0, `сид ${site.loc.seed}: «${w.look}» сошёл с места`);
           continue;
         }
         assert.ok(moved > 1, `сид ${site.loc.seed}: жилец ${i} прошёл за круг ${moved.toFixed(2)}`);
@@ -557,9 +577,9 @@ describe('Замок: жильцы двора', () => {
   test('у торговца есть тело, и оно стоит на его клетке', () => {
     for (const { site, g } of guards) {
       if (site.trader === null) continue;
-      const standing = g.yard.filter((w) => w.path.length === 1);
-      assert.equal(standing.length, 1, `сид ${site.loc.seed}: стоящих ${standing.length}`);
-      const man = dwellersAt(g, 17.3)[g.yard.indexOf(standing[0]!)]!;
+      const traders = g.yard.filter((w) => w.look === 'торговец');
+      assert.equal(traders.length, 1, `сид ${site.loc.seed}: торговцев ${traders.length}`);
+      const man = dwellersAt(g, 17.3)[g.yard.indexOf(traders[0]!)]!;
       assert.ok(
         atTrader(site, man.x, man.z),
         `сид ${site.loc.seed}: тело торговца не дотягивается до его лавки`,
