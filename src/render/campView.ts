@@ -18,6 +18,8 @@ import type { GraveyardPartModelName } from './graveyard';
 import type { FencePiece } from '../sim/fence';
 import type { CastlePartModelName } from './castle';
 import { CASTLE_CELL, type Piece, type Spot } from '../sim/castle';
+import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
+import { roadPieces } from '../sim/roads';
 import { PALETTE } from './palette';
 
 /**
@@ -700,6 +702,8 @@ export class CampView {
     const pos = this.camp.layout.kitchen;
     this.fire.set('kitchen', this.camp.levels.kitchen, pos.x + 0.5, pos.z + 0.5, BUILDING_SCALE);
     this.fire.update(now, day);
+    // Фонари живут тем же днём, что костёр: гаснут к утру, горят к ночи.
+    if (this.lampGlow !== null) setLampsNight(1 - day, this.lampGlow, this.lampLights);
   }
 
   /** Площадка стройки — единственное, что мигает в лагере всегда. */
@@ -803,6 +807,87 @@ export class CampView {
         mesh.setMatrixAt(i, dummy.matrix);
       }
       this.walls.add(mesh);
+    }
+  }
+
+  /* ---------- дороги и фонари (§6.1.12) ---------- */
+
+  private readonly roadsGroup = new THREE.Group();
+  private roadSignature = '';
+  private readonly lampsGroup = new THREE.Group();
+  private lampSignature = '';
+  /** Плафоны фонарей лагеря: ночь кампании поднимает им эмиссию. */
+  private lampGlow: THREE.MeshLambertMaterial | null = null;
+  private readonly lampLights: THREE.PointLight[] = [];
+
+  /**
+   * Перестроить настил. Клетки приходят из `campWalls.ts`, форму плитки
+   * каждой клетке выводит `roads.ts` — рендер, как и у стен, ставит готовое.
+   */
+  setRoads(spots: readonly Spot[]): void {
+    const pieces = roadPieces(spots);
+    const signature = pieces.map((p) => `${p.tile}${p.x},${p.z},${p.turn}`).join('|');
+    if (signature === this.roadSignature) return;
+    this.roadSignature = signature;
+
+    this.roadsGroup.clear();
+    if (this.roadsGroup.parent === null) this.group.add(this.roadsGroup);
+    if (pieces.length === 0) return;
+
+    const mat = this.track(propsMaterial());
+    const byTile = new Map<string, typeof pieces>();
+    for (const piece of pieces) {
+      const list = byTile.get(piece.tile) ?? [];
+      list.push(piece);
+      byTile.set(piece.tile, list);
+    }
+    const dummy = new THREE.Object3D();
+    for (const [tile, list] of byTile) {
+      const { geometry, turn, lift } = roadGeometry('дерево', tile as typeof pieces[number]['tile']);
+      const mesh = new THREE.InstancedMesh(geometry, mat, list.length);
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i++) {
+        const piece = list[i]!;
+        const at = CampView.at(piece);
+        dummy.position.set(at.x, MEADOW_Y + 0.03 + lift, at.z);
+        dummy.rotation.set(0, ((piece.turn + turn) * Math.PI) / 2, 0);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      this.roadsGroup.add(mesh);
+    }
+  }
+
+  /**
+   * Перестроить фонари. Столб и плафон — раздельными мешами: плафону ночью
+   * поднимают эмиссию, и светящийся столб был бы «фонарём из лампы»
+   * (§6.1.11 — то же деление у окна хижины).
+   */
+  setLamps(spots: readonly Spot[]): void {
+    const signature = spots.map((s) => `${s.x},${s.z}`).join('|');
+    if (signature === this.lampSignature) return;
+    this.lampSignature = signature;
+
+    this.lampsGroup.clear();
+    this.lampLights.length = 0;
+    if (this.lampsGroup.parent === null) this.group.add(this.lampsGroup);
+    if (spots.length === 0) return;
+
+    const parts = lampParts(LAMP_OF['дерево']);
+    const postMat = this.track(propsMaterial());
+    if (this.lampGlow === null) this.lampGlow = this.track(lampGlowMaterial());
+    for (const spot of spots) {
+      const lamp = new THREE.Group();
+      const post = new THREE.Mesh(parts.post, postMat);
+      post.castShadow = true;
+      const glow = new THREE.Mesh(parts.glow, this.lampGlow);
+      const light = lampLight();
+      light.position.set(parts.lampAt[0], parts.lampAt[1], parts.lampAt[2]);
+      this.lampLights.push(light);
+      lamp.add(post, glow, light);
+      const at = CampView.at(spot);
+      lamp.position.set(at.x, MEADOW_Y, at.z);
+      this.lampsGroup.add(lamp);
     }
   }
 

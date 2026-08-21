@@ -218,3 +218,83 @@ describe('Замок на карте: чего в нём нет', () => {
     assert.ok(worst >= 8, `ближайший торговец в ${worst} шагах от выхода — это ларёк, а не двор`);
   });
 });
+
+describe('Замок на карте: дорога называет маршрут', () => {
+  test('дорога — одна четырёхсвязная цепь от подхода до двора торговца', () => {
+    for (const site of sites) {
+      const { roads, loc } = site;
+      assert.ok(roads.length >= 3, `сид ${loc.seed}: дороги нет`);
+      // Связность: волна по клеткам дороги от первой накрывает все.
+      const set = new Set(roads.map((s) => `${s.x}:${s.z}`));
+      const queue = [roads[0]!];
+      const seen = new Set([`${roads[0]!.x}:${roads[0]!.z}`]);
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        for (const d of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+          const key = `${cur.x + d[0]!}:${cur.z + d[1]!}`;
+          if (!set.has(key) || seen.has(key)) continue;
+          seen.add(key);
+          queue.push({ x: cur.x + d[0]!, z: cur.z + d[1]! });
+        }
+      }
+      assert.equal(seen.size, set.size, `сид ${loc.seed}: дорога порвана`);
+    }
+  });
+
+  test('дорога проходима: плита не лежит под стеной', () => {
+    for (const site of sites) {
+      const { roads, loc } = site;
+      // Ворота — единственная деталь над дорогой, и под аркой проходят.
+      for (const plan of roads) {
+        const base = spotAt(site, plan);
+        const mid = { x: base.x + (CASTLE_CELL >> 1), z: base.z + (CASTLE_CELL >> 1) };
+        if (mid.x < 0 || mid.z < 0 || mid.x >= loc.size || mid.z >= loc.size) continue;
+        assert.equal(
+          loc.blocked[idx(loc.size, mid.x, mid.z)], 0,
+          `сид ${loc.seed}: дорога ${plan.x},${plan.z} упирается в постройку`,
+        );
+      }
+    }
+  });
+
+  test('дорога доводит до торговца, и на ней не лежит валун', () => {
+    for (const site of sites) {
+      const { roads, trader, loc } = site;
+      assert.notEqual(trader, null);
+      const last = roads[roads.length - 1]!;
+      const base = spotAt(site, last);
+      const d = Math.hypot(base.x + (CASTLE_CELL >> 1) - trader!.x, base.z + (CASTLE_CELL >> 1) - trader!.z);
+      assert.ok(d <= CASTLE_CELL, `сид ${loc.seed}: дорога кончается в ${d.toFixed(1)} кл. от торговца`);
+
+      const cells = new Set<string>();
+      for (const plan of roads) {
+        const b = spotAt(site, plan);
+        for (let dz = 0; dz < CASTLE_CELL; dz++) {
+          for (let dx = 0; dx < CASTLE_CELL; dx++) cells.add(`${b.x + dx}:${b.z + dz}`);
+        }
+      }
+      for (const stone of loc.stones) {
+        assert.ok(!cells.has(`${stone.x}:${stone.z}`), `сид ${loc.seed}: валун на плите ${stone.x},${stone.z}`);
+      }
+    }
+  });
+
+  test('фонари стоят у дороги, не на ней и не в стене', () => {
+    for (const site of sites) {
+      const { lamps, loc } = site;
+      assert.ok(lamps.length >= 1, `сид ${loc.seed}: у дороги ни одного фонаря`);
+      const cells = new Set<string>();
+      for (const plan of site.roads) {
+        const b = spotAt(site, plan);
+        for (let dz = 0; dz < CASTLE_CELL; dz++) {
+          for (let dx = 0; dx < CASTLE_CELL; dx++) cells.add(`${b.x + dx}:${b.z + dz}`);
+        }
+      }
+      for (const lamp of lamps) {
+        assert.equal(loc.blocked[idx(loc.size, lamp.x, lamp.z)], 0, `сид ${loc.seed}: фонарь в стене`);
+        assert.ok(!cells.has(`${lamp.x}:${lamp.z}`), `сид ${loc.seed}: фонарь посреди полотна`);
+        assert.ok(!loc.stones.some((s) => s.x === lamp.x && s.z === lamp.z), `сид ${loc.seed}: фонарь в валуне`);
+      }
+    }
+  });
+});

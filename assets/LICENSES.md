@@ -31,6 +31,8 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kenney-graveyard-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kaykit-builder/glb/**/*.glb` — 226 моделей: 30 объектов (постройки, стены, мосты, рельеф, растительность), 68 квадратных плиток и 128 гексов | [kaylousberg.itch.io/kaykit-medieval-builder-pack](https://kaylousberg.itch.io/kaykit-medieval-builder-pack), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
+| `craftpix-props/glb/*.glb` — 16 моделей: дороги трёх мостовых по четыре формы плитки и четыре фонаря; конвертация из FBX набора Blender'ом один-в-один | [free-game-assets.itch.io/free-environment-props-3d-low-poly-pack](https://free-game-assets.itch.io/free-environment-props-3d-low-poly-pack), тариф FREE | craftpix royalty-free | craftpix.net |
+| `craftpix-props/Texture.png` — атлас набора, десять цветовых полос | там же | craftpix royalty-free | craftpix.net |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
@@ -50,6 +52,15 @@ NC-лицензии несовместимы с любой монетизаци�
 Указания авторства в поставке. Строка выше и есть это указание; при появлении
 экрана «О игре» она обязана попасть туда же. Своей копии шрифта в репозитории
 нет намеренно: он берётся из `three` и не может разъехаться с её версией.
+
+## Craftpix royalty-free и что она требует
+
+Лицензия [craftpix.net/file-licenses](https://craftpix.net/file-licenses/):
+использовать в играх, включая коммерческие, можно; перепродавать или
+раздавать набор как набор — нельзя; указание авторства не обязательно.
+В репозитории набор лежит как рабочий материал сборки, наружу едет только
+запечённая геометрия — то есть игра, а не набор. `craftpix-props/License.txt` —
+файл из архива как пришёл, в нём ссылка на страницу лицензий.
 
 ## CC0 и что она требует
 

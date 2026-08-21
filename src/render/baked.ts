@@ -46,6 +46,13 @@ export interface Part {
   readonly palette: readonly number[];
   /** Матрица 4×4 по столбцам, как её задаёт glTF. Без неё — свои координаты. */
   readonly matrix?: readonly number[];
+  /**
+   * Взять только треугольники этих слотов; без поля — все. Нужен модели,
+   * у которой часть треугольников живёт другим материалом: плафон фонаря
+   * светится ночью, а столб — нет, и делить их надо по слоту, а не второй
+   * моделью (§6.1.11 — тем же делением стекло хижины отделено от сруба).
+   */
+  readonly only?: ReadonlySet<number>;
 }
 
 export function decode(base64: string): Uint8Array {
@@ -138,8 +145,10 @@ export function bakedGeometry(parts: readonly Part[], fit?: Fit): THREE.BufferGe
       }
     }
     // Цвет вершины — цвет её треугольника: вершина сломана по слоту, поэтому
-    // второго цвета у неё быть не может.
+    // второго цвета у неё быть не может. Треугольник чужого слота при фильтре
+    // просто не попадает в индекс: вершины остаются, на них никто не ссылается.
     for (let t = 0; t < part.model.tris; t++) {
+      if (part.only !== undefined && !part.only.has(slot[t]!)) continue;
       color.setHex(part.palette[slot[t]!] ?? 0xff00ff);
       for (let k = 0; k < 3; k++) {
         const v = vertexAt + index[t * 3 + k]!;
@@ -155,7 +164,7 @@ export function bakedGeometry(parts: readonly Part[], fit?: Fit): THREE.BufferGe
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.setIndex(new THREE.BufferAttribute(indices.subarray(0, indexAt), 1));
   geometry.computeVertexNormals();
   return geometry;
 }
