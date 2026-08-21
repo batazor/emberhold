@@ -106,9 +106,9 @@
 
 <header>
   <div class="eyebrow">Артбук · готовый набор</div>
-  <h1>Сто пятьдесят девять клипов <em>и одна константа</em></h1>
-  <p class="lede">KayKit Character Animations 1.1, бесплатный тариф, лицензия CC0: две оснастки,
-    восемь категорий, 159 клипов. Страница показывает не витрину, а сами файлы из
+  <h1>Сто тридцать один клип <em>и одна константа</em></h1>
+  <p class="lede">KayKit Character Animations 1.1, бесплатный тариф, лицензия CC0: восемь
+    категорий, 131 клип средней оснастки. Страница показывает не витрину, а сами файлы из
     <code>assets/kaykit-animations</code>: скелет и меш читаются из <code>.glb</code> прямо
     здесь, каждая цифра посчитана <code>npm run clips</code>.</p>
   <p class="lede">Набор моделей меряют треугольниками. Набор анимаций мерить нечем — пока
@@ -226,13 +226,13 @@
     </div>
     <div>
       <h3>Корень сдвинут</h3>
-      <p><b><span id="drifted">…</span></b> из 159. Все — уклонения и скелеты: <span
+      <p><b><span id="drifted">…</span></b>. Все — уклонения и скелеты: <span
         id="driftList">…</span>. Здесь набор спорит с animation.html напрямую.</p>
     </div>
     <div>
       <h3>Позы, а не клипы</h3>
       <p><b><span id="poses">…</span></b> клипов длятся ноль секунд — это конечные позы
-        к своим анимациям. Плюс <code>T-Pose</code> в каждом из 14 файлов, которую
+        к своим анимациям. Плюс <code>T-Pose</code> в каждом из восьми файлов, которую
         обмер не считает клипом вовсе.</p>
     </div>
   </div>
@@ -241,11 +241,15 @@
 <div class="sec">
   <div class="hd">
     <h2>Оснастка</h2>
-    <p>Кости в файлах клипов у обеих оснасток одни и те же — двадцать три, имя в имя.
-      Расходятся они не составом, а пропорциями: крупный манекен почти вдвое выше
-      среднего, и один и тот же поворот плеча уводит кисть на разное расстояние.
-      Поэтому клип со среднего на крупный переносится по именам костей, но не по смыслу:
-      шаг станет другой длины, а замах — другого радиуса.</p>
+    <p>Кости у обеих оснасток одни и те же — имя в имя. Расходятся они не составом,
+      а пропорциями: крупный манекен почти вдвое выше среднего, и один и тот же поворот
+      плеча уводит кисть на разное расстояние. Поэтому клип со среднего на крупный
+      переносится по именам костей, но не по смыслу: шаг станет другой длины,
+      а замах — другого радиуса.</p>
+    <p>Крупных персонажей в игре нет ни одного — все шестеро искателей и все четыре
+      скелета сидят на средней оснастке. Двадцать восемь клипов крупной оснастки
+      удалены из репозитория как вес, которому некуда прикладываться; манекен остался,
+      и разрыв в пропорциях виден по нему.</p>
   </div>
   <table id="rigs"><thead><tr>
     <th>Манекен</th><th class="num">Костей</th><th class="num">Треугольников</th>
@@ -419,8 +423,8 @@ function sample(track, t, quat, out){
 
 /**
  * Один файл набора — это меш манекена, его скелет и все клипы категории сразу.
- * Поэтому грузится он один раз на категорию, а не на клип: 159 карточек
- * обошлись бы в 159 запросов там, где хватает четырнадцати.
+ * Поэтому грузится он один раз на категорию, а не на клип: 131 карточка
+ * обошлась бы в 131 запрос там, где хватает восьми.
  */
 class Rig{
   constructor(glb){
@@ -639,10 +643,13 @@ for(const category of cat.order){
 }
 const seconds = cat.clips.reduce((s, c) => s + c.duration, 0);
 const bytes = cat.clips.reduce((s, c) => s + c.bytes, 0);
+const files = new Set(cat.clips.map((c) => c.file)).size;
+const rigCount = new Set(cat.clips.map((c) => c.rig)).size;
 document.getElementById('total').textContent =
-  clipsOf(cat.clips.length) + ' в ' + cat.rigs.length + ' оснастках, ' + num(seconds, 1) +
+  clipsOf(cat.clips.length) + (rigCount === 1 ? ' одной оснастки, ' : ' в ' + rigCount + ' оснастках, ') +
+  num(seconds, 1) +
   ' с движения, ' + Math.round(bytes / 1024) + ' КБ сырых дорожек — ' +
-  Math.round(bytes / 1024 / cat.clips.length) + ' КБ на клип. Плюс T-Pose в каждом из 14 файлов: ' +
+  Math.round(bytes / 1024 / cat.clips.length) + ' КБ на клип. Плюс T-Pose в каждом из ' + files + ' файлов: ' +
   'это опора для переноса, а не анимация, и обмер её не считает.';
 
 /* ---------- стенд ---------- */
@@ -893,9 +900,12 @@ for(const category of cat.order){
   block._category = category;
 }
 
-/* Фильтр по оснастке: клипы среднего и крупного манекенов — разные наборы,
-   и смотреть их вперемешку значит сравнивать несравнимое. */
-for(const label of ['все', 'средний', 'крупный']){
+/* Фильтр по оснастке: клипы разных манекенов — разные наборы, и смотреть их
+   вперемешку значит сравнивать несравнимое. Пока в наборе одна оснастка,
+   фильтру нечего разделять, и полосы нет. */
+const rigsInClips = [...new Set(cat.clips.map((c) => c.rig))];
+if(rigsInClips.length < 2) filters.style.display = 'none';
+for(const label of rigsInClips.length < 2 ? [] : ['все', ...rigsInClips]){
   const b = document.createElement('button');
   b.textContent = label === 'все' ? 'Обе оснастки' : label;
   b.setAttribute('aria-pressed', String(label === rigFilter));
@@ -990,7 +1000,7 @@ const openLoop = moving.filter((c) => c.loop > cat.open);
 const drifted = cat.clips.filter((c) => c.drift > 0.01);
 document.getElementById('loopOk').textContent = clipsOf(moving.length - openLoop.length) + ' из ' + moving.length;
 document.getElementById('loopBad').textContent = clipsOf(openLoop.length);
-document.getElementById('drifted').textContent = clipsOf(drifted.length);
+document.getElementById('drifted').textContent = clipsOf(drifted.length) + ' из ' + cat.clips.length;
 document.getElementById('driftList').textContent = drifted.map((c) => c.name).join(', ');
 document.getElementById('poses').textContent = cat.clips.filter((c) => c.duration === 0).length;
 
@@ -1016,7 +1026,7 @@ for(const r of cat.rigs){
   rigsBody.appendChild(tr);
 }
 document.getElementById('rigNote').textContent =
-  'В файлах клипов у обеих оснасток 23 кости с одинаковыми именами — включая handslot.l ' +
+  'В файлах клипов 23 кости с именами оснастки — включая handslot.l ' +
   'и handslot.r, узлы, к которым крепится оружие. У поставляемого Mannequin_Medium их нет: ' +
   'меч вешать не на что, если брать манекен, а не скелет из клипа. Порядок костей в списке ' +
   'при этом у оснасток разный, так что переносить клип можно только по именам — ' +
