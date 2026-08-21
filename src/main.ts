@@ -107,7 +107,8 @@ import {
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
 import { generateCastleSite } from './sim/castleSite';
-import { generateGraveSite } from './sim/graveSite';
+import { generateGraveSite, readEpitaph } from './sim/graveSite';
+import type { GraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
@@ -841,6 +842,7 @@ function toRaid(node: number): boolean {
     return false;
   }
   raidNode = node;
+  graveSite = null;
   const rotated = hero !== activeHero(roster);
   if (rotated) selectHero(roster, roster.heroes.indexOf(hero));
   hero.status = 'raid';
@@ -911,10 +913,20 @@ function toRaid(node: number): boolean {
  * это постройка, а не сделка, и провиант в ней ничего не решает. Выход
  * открыт сразу — уйти можно в любой момент, потому что уходить не от чего.
  */
+/**
+ * Участок кладбища, пока по нему ходят, и камень, который герой читает
+ * прямо сейчас. Второе нужно затем, чтобы надпись всплывала один раз
+ * на подход, а не шестьдесят раз в секунду.
+ */
+let graveSite: GraveSite | null = null;
+let readStone: string | null = null;
+
 function toGraveyard(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateGraveSite(seed);
+  graveSite = site;
+  readStone = null;
   raidNode = node;
   // Раны здесь получить можно, а вот занимать героя незачем: добычи нет,
   // и заход не обязан снимать с ротации того, кто просто сходил посмотреть.
@@ -951,6 +963,7 @@ function toCastle(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateCastleSite(seed);
+  graveSite = null;
   raidNode = node;
   // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
   // прогулка не обязана снимать его с лечения.
@@ -1740,6 +1753,17 @@ startLoop({
       if (sayNext !== null) {
         raid.events.push(sayNext);
         sayNext = null;
+      }
+      /**
+       * Камни кладбища читаются подходом (§6.1.7). Надпись всплывает один раз
+       * на камень: пока герой стоит рядом, она не повторяется, а отойдя
+       * и вернувшись, он прочтёт её снова. Ничего, кроме строки в HUD,
+       * это не делает — кладбище остаётся прогулкой.
+       */
+      if (graveSite !== null) {
+        const read = readEpitaph(graveSite, raid.hero.x, raid.hero.z, readStone);
+        readStone = read.last;
+        if (read.say !== null) raid.events.push(read.say);
       }
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).

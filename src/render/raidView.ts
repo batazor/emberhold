@@ -295,8 +295,43 @@ export class RaidView {
   }
 
   private buildGrass(perTile: number): void {
-    this.grass = new Grass(this.loc, perTile);
+    this.grass = new Grass(this.loc, perTile, undefined, this.bareCells());
     this.group.add(this.grass.mesh);
+  }
+
+  /**
+   * Где траву не сеют. Пусто везде, кроме кладбища: там весь участок
+   * за оградой — **между могилами не растёт**. Иначе трава закрывает
+   * надгробия, и участок читается лугом с камнями.
+   *
+   * Границы участка берутся у самой ограды, а не назначаются: клетка
+   * набора это `FENCE_SCALE` клеток локации, и внутренность — прямоугольник
+   * между крайними её деталями.
+   */
+  private bareCells(): ReadonlySet<number> {
+    const site = this.grave;
+    if (site === null) return new Set();
+    let x0 = Infinity;
+    let z0 = Infinity;
+    let x1 = -Infinity;
+    let z1 = -Infinity;
+    for (const piece of site.fence) {
+      x0 = Math.min(x0, piece.x);
+      z0 = Math.min(z0, piece.z);
+      x1 = Math.max(x1, piece.x);
+      z1 = Math.max(z1, piece.z);
+    }
+    if (!Number.isFinite(x0)) return new Set();
+    const at = (v: number): number => site.at.x + v * FENCE_SCALE;
+    const atZ = (v: number): number => site.at.z + v * FENCE_SCALE;
+    const out = new Set<number>();
+    for (let z = Math.floor(atZ(z0)); z <= Math.ceil(atZ(z1)); z++) {
+      for (let x = Math.floor(at(x0)); x <= Math.ceil(at(x1)); x++) {
+        if (x < 0 || z < 0 || x >= this.loc.size || z >= this.loc.size) continue;
+        out.add(idx(this.loc.size, x, z));
+      }
+    }
+    return out;
   }
 
   /** Отладочный орган управления, как ползунок «Ночь»: это замер, не механика. */

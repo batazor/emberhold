@@ -19,8 +19,9 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { CLANS } from './world';
 import { FENCE_CELL } from './fence';
-import { FIELD, WOOD, generateGraveSite } from './graveSite';
+import { EPITAPH_REACH, FIELD, WOOD, epitaphAt, generateGraveSite, readEpitaph } from './graveSite';
 import { distanceField, idx } from './grid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
@@ -121,6 +122,17 @@ describe('Кладбище: что в нём есть и чего нет', () =>
     }
   });
 
+  test('в одной клетке не стоит двух отметок', () => {
+    for (const site of sites) {
+      const seen = new Set<string>();
+      for (const mark of site.marks) {
+        const key = `${mark.x}:${mark.z}`;
+        assert.ok(!seen.has(key), `сид ${site.loc.seed}: две отметки в ${key}`);
+        seen.add(key);
+      }
+    }
+  });
+
   test('склеп и могилы стоят, и хотя бы часть из них обходят', () => {
     for (const site of sites) {
       assert.ok(site.marks.some((m) => m.model === 'crypt'), `сид ${site.loc.seed}: склепа нет`);
@@ -160,5 +172,124 @@ describe('Кладбище: один сид — одно кладбище', () =
   test('материал ограды выпадает разный: четыре кладбища, а не одно', () => {
     const seen = new Set(sites.map((s) => s.material));
     assert.ok(seen.size >= 3, `на пятнадцати сидах материалов ${seen.size}`);
+  });
+});
+
+describe('Кладбище: что написано на камнях (§0.1)', () => {
+  test('на камне надпись, на насыпи нет', () => {
+    for (const site of sites) {
+      for (const mark of site.marks) {
+        if (mark.model === 'grave' || mark.model === 'coffin') {
+          assert.equal(mark.epitaph, null, `${site.loc.seed}: на насыпи что-то написано`);
+        } else {
+          assert.ok(
+            mark.epitaph !== null && mark.epitaph.length > 0,
+            `${site.loc.seed}: камень ${mark.model} без надписи`,
+          );
+        }
+      }
+    }
+  });
+
+  /**
+   * Главное правило раздела, и оно про §0.1, а не про текст: **на камне
+   * не может стоять того, чего нет в игре**. Фракции эпитафий сверяются
+   * с фракциями карты мира — переименуют клан, и правило упадёт, а не
+   * оставит на кладбище имя, которого в мире больше нет.
+   */
+  test('фракции на камнях — те же, что на карте мира', () => {
+    const stems = CLANS.map((c) => c.name.split(' ').pop()!.slice(0, 4));
+    const seen = new Set<string>();
+    for (const site of sites) {
+      for (const mark of site.marks) {
+        if (mark.epitaph === null) continue;
+        const hit = stems.find((stem) => mark.epitaph!.includes(stem));
+        assert.ok(hit !== undefined, `«${mark.epitaph}» — фракции нет на карте`);
+        seen.add(hit);
+      }
+    }
+    assert.equal(seen.size, CLANS.length, 'на камнях встретились не все фракции карты');
+  });
+
+  test('камень читается подходом, и читается ближайший', () => {
+    for (const site of sites) {
+      const stone = site.marks.find((m) => m.epitaph !== null);
+      assert.ok(stone !== undefined);
+      // Вплотную — читается он же.
+      assert.equal(epitaphAt(site, stone.x, stone.z)?.epitaph, stone.epitaph);
+      // Что бы ни прочиталось с любого места участка — оно в пределах
+      // вытянутой руки. Проверять «этот камень, а не соседний» бессмысленно:
+      // ряды идут через клетку, и с полутора клеток соседний бывает ближе.
+      for (const mark of site.marks) {
+        const read = epitaphAt(site, mark.x, mark.z);
+        if (read === null) continue;
+        const d = Math.hypot(read.x - mark.x, read.z - mark.z);
+        assert.ok(d <= EPITAPH_REACH, `прочиталось с ${d.toFixed(2)} клетки`);
+      }
+
+      // Вдали от участка не читается ничего: надпись привязана к камню.
+      assert.equal(epitaphAt(site, 0, 0), null, 'надпись слышна за оградой');
+    }
+  });
+
+  test('надпись ничего не меняет: кладбище остаётся прогулкой', () => {
+    // Чтение — чистая функция от места: два вызова подряд дают то же самое,
+    // и ни один не трогает участок.
+    for (const site of sites) {
+      const before = JSON.stringify(site.marks);
+      const stone = site.marks.find((m) => m.epitaph !== null)!;
+      epitaphAt(site, stone.x, stone.z);
+      epitaphAt(site, stone.x, stone.z);
+      assert.equal(JSON.stringify(site.marks), before);
+    }
+  });
+});
+
+describe('Кладбище: надпись всплывает один раз на подход', () => {
+  test('стоя у камня, игрок читает его один раз, а не каждый кадр', () => {
+    const site = sites[0]!;
+    const stone = site.marks.find((m) => m.epitaph !== null)!;
+    let last: string | null = null;
+    const said: string[] = [];
+    // Шестьдесят кадров на одном месте — столько же, сколько секунда игры.
+    for (let i = 0; i < 60; i++) {
+      const read = readEpitaph(site, stone.x, stone.z, last);
+      last = read.last;
+      if (read.say !== null) said.push(read.say);
+    }
+    assert.equal(said.length, 1, `надпись всплыла ${said.length} раз`);
+  });
+
+  test('отошёл и вернулся — читает снова', () => {
+    const site = sites[0]!;
+    const stone = site.marks.find((m) => m.epitaph !== null)!;
+    let last: string | null = null;
+    const say = (x: number, z: number): string | null => {
+      const read = readEpitaph(site, x, z, last);
+      last = read.last;
+      return read.say;
+    };
+    assert.ok(say(stone.x, stone.z) !== null, 'у камня не прочиталось');
+    assert.equal(say(stone.x, stone.z), null, 'на месте повторилось');
+    // Уйти за ограду, где камней нет вовсе, и вернуться.
+    assert.equal(say(0, 0), null);
+    assert.ok(say(stone.x, stone.z) !== null, 'вернувшись, не прочитал');
+  });
+
+  test('за один обход участка читается не одна надпись', () => {
+    // Мерка простая: кладбище обязано быть населённым разными людьми.
+    // Один текст на весь участок — это не кладбище, а копия одного камня.
+    for (const site of sites) {
+      let last: string | null = null;
+      const said = new Set<string>();
+      for (let z = 0; z < site.loc.size; z++) {
+        for (let x = 0; x < site.loc.size; x++) {
+          const read = readEpitaph(site, x, z, last);
+          last = read.last;
+          if (read.say !== null) said.add(read.say);
+        }
+      }
+      assert.ok(said.size >= 3, `сид ${site.loc.seed}: на весь участок ${said.size} надписи`);
+    }
   });
 });
