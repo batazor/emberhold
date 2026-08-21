@@ -27,7 +27,7 @@ import {
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { GEAR } from './sim/gear';
+import { GEAR, MAX_ITEM_LEVEL } from './sim/gear';
 import type { GearSlot } from './sim/gear';
 import { visionRadius } from './sim/config';
 import {
@@ -885,7 +885,7 @@ function toRaid(node: number): boolean {
   // которую мир хранит (§4): кланы и восстановление считаются функцией.
   camp.visits.push({ node, shift: shiftAt(now) });
   persist();
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -943,7 +943,7 @@ function toGraveyard(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -980,7 +980,7 @@ function toCastle(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1273,7 +1273,7 @@ function toGlade(): void {
     // их рубят, а по краю рубят сколько угодно.
     logging: true,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade');
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1709,6 +1709,14 @@ if (debugCamp !== null) {
     nav: () => campNav(camp),
     tap: (x: number, z: number, level: 'земля' | 'верх' = 'земля') =>
       commandCampMove(camp, campHero, { x, z }, level),
+    // §14 и §6.1.8: уровень оружия меняет клинок в руке. Ковать ради проверки
+    // незачем — ручка ставит уровень и пересобирает вид тем же путём,
+    // которым он пересобирается после настоящей ковки.
+    оружие: (level: number) => {
+      camp.gear.weapon = Math.max(0, Math.min(MAX_ITEM_LEVEL, level | 0));
+      campView.setCamp(camp);
+      return camp.gear.weapon;
+    },
   };
 }
 

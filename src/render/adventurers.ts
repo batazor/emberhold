@@ -4,7 +4,7 @@ import type { AdventurerModel, AdventurerModelName } from './adventurers.data';
 import { bakedGeometry, fitOf } from './baked';
 import { skinnedGeometry } from './rigged';
 import type { RiggedParts } from './rigged';
-import type { Part } from './baked';
+import type { BakedModel, Part } from './baked';
 import { ADVENTURERS_PALETTE } from './palette';
 
 /**
@@ -25,6 +25,20 @@ if (ADVENTURERS_PALETTE.length !== ADVENTURERS_SLOTS.length) {
 
 export type { AdventurerModelName };
 
+/**
+ * Предмет в правой руке. Набор у него свой: оружие приезжает
+ * из `weapons.data.ts` (§6.1.8), а рука — из этого набора, и палитра
+ * у каждого своя, потому что порядок слотов у наборов разный.
+ *
+ * Имя нужно кэшу: две модели с одинаковым ключом слиплись бы в одну,
+ * и уровень оружия перестал бы меняться на глазах.
+ */
+export interface Held {
+  readonly name: string;
+  readonly model: BakedModel;
+  readonly palette: readonly number[];
+}
+
 const cache = new Map<string, THREE.BufferGeometry>();
 
 /**
@@ -38,9 +52,9 @@ const cache = new Map<string, THREE.BufferGeometry>();
 export function adventurerGeometry(
   name: AdventurerModelName,
   height: number,
-  holds?: AdventurerModelName,
+  holds?: Held,
 ): THREE.BufferGeometry {
-  const key = `${name}+${holds ?? ''}@${height}`;
+  const key = `${name}+${holds?.name ?? ''}@${height}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
 
@@ -48,7 +62,7 @@ export function adventurerGeometry(
   const parts: Part[] = [{ model, palette: ADVENTURERS_PALETTE }];
   if (holds !== undefined) {
     if (model.hand === undefined) throw new Error(`у модели ${name} нет узла руки`);
-    parts.push({ model: ADVENTURERS_MODELS[holds], palette: ADVENTURERS_PALETTE, matrix: model.hand });
+    parts.push({ model: holds.model, palette: holds.palette, matrix: model.hand });
   }
 
   const geometry = bakedGeometry(parts, fitOf(model, height));
@@ -62,9 +76,9 @@ const rigCache = new Map<string, RiggedParts>();
 export function adventurerParts(
   name: AdventurerModelName,
   height: number,
-  holds?: AdventurerModelName,
+  holds?: Held,
 ): RiggedParts {
-  const key = `${name}+${holds ?? ''}@${height}`;
+  const key = `${name}+${holds?.name ?? ''}@${height}`;
   const hit = rigCache.get(key);
   if (hit !== undefined) return hit;
 
@@ -73,7 +87,7 @@ export function adventurerParts(
     body: skinnedGeometry([{ model, palette: ADVENTURERS_PALETTE }]),
     ...(holds === undefined
       ? {}
-      : { held: bakedGeometry([{ model: ADVENTURERS_MODELS[holds], palette: ADVENTURERS_PALETTE }]) }),
+      : { held: bakedGeometry([{ model: holds.model, palette: holds.palette }]) }),
     fit: fitOf(model, height),
   };
   rigCache.set(key, parts);
