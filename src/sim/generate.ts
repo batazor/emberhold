@@ -129,7 +129,18 @@ function degree(size: number, blocked: Uint8Array, x: number, z: number): number
  *   на карте мира (§4). По умолчанию 1 — вылазка вне карты (пролог, замеры,
  *   золотой мастер) обязана считаться ровно так, как её калибровали (§20.3).
  */
-export function generateLocation(seed: number, tier: Tier, lootMul = 1): GameLocation {
+export function generateLocation(
+  seed: number,
+  tier: Tier,
+  lootMul = 1,
+  /**
+   * Множитель числа противников от события (§11.6). Единица по умолчанию:
+   * бот, калибровка §20.3 и золотой мастер считают локацию без событий.
+   * Роспись состава при этом не меняется — ростер яруса повторяется по кругу,
+   * то есть «врагов больше» значит «тех же больше», а не «пришли другие».
+   */
+  enemyMul = 1,
+): GameLocation {
   const size = TIER_SIZE[tier];
   // Эвакуация в углу: «путь назад» обязан расти вместе с глубиной захода,
   // а из центра карты любая точка одинаково близка.
@@ -271,7 +282,10 @@ export function generateLocation(seed: number, tier: Tier, lootMul = 1): GameLoc
   };
 
   const enemies: Enemy[] = [];
-  TIER_ROSTER[tier].forEach((kind, i) => {
+  const roster = TIER_ROSTER[tier];
+  const count = Math.max(0, Math.round(roster.length * enemyMul));
+  const scaled = Array.from({ length: count }, (_, i) => roster[i % roster.length]!);
+  scaled.forEach((kind, i) => {
     const stats = ENEMY_STATS[kind];
     // §15 — маг перекрывает маршрут, а не гонится. Значит его место
     // в узком проходе: там обход стоит шагов, а прорыв — ран.

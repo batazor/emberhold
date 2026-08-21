@@ -11,8 +11,11 @@
  * живёт внутри локации; здесь — сравнение. Ставка, ярус и богатство названы
  * до входа (§1, §11.6), потому что сюрприз после входа читается как обман.
  */
+import { tierBlock } from '../sim/camp';
 import type { CampState } from '../sim/camp';
 import { TIER_NAME, TIER_RISK } from '../sim/config';
+import { EVENTS, effectOf } from '../sim/events';
+import type { EventId } from '../sim/events';
 import { formatDuration } from '../core/clock';
 import { CLANS, RICH_MAX, SHIFT_SEC, dayAt, lootMul, regionAt, worldAt } from '../sim/world';
 import type { NodeState, Region, WorldNode } from '../sim/world';
@@ -20,10 +23,117 @@ import type { NodeState, Region, WorldNode } from '../sim/world';
 /** Цвет узла по богатству: от выработанной к полной жиле. */
 const RICH_COLOR: readonly string[] = ['#d4543a', '#c07a3a', '#c8a24a', '#7fb069'];
 
+/**
+ * Цвет глифа события. Единственное на узле, что красится не богатством:
+ * событие обязано читаться и на выработанной точке, где кольцо уже красное.
+ */
+const EVENT_COLOR: Record<EventId, string> = {
+  storm: '#e2a33c',
+  collapse: '#d4543a',
+  quiet: '#7fb069',
+  vein: '#e8e2d4',
+};
+
+/**
+ * Глифы событий (§11.6). Прямые грани, без скруглений и полутонов — то же
+ * правило, по которому нарисована шестерня настроек, и то же плоское
+ * затенение, что у всего в игре (§6.1).
+ *
+ * Рисуются отрезками в долях `u` — четверти радиуса узла, — чтобы глиф ехал
+ * вместе с картой при любом размере экрана.
+ *
+ * Место глифа — левый верх узла. Нутро занято крестом выработанной, правый
+ * верх — флагом клана, кольцо несёт разом богатство (цветом) и ярус
+ * (толщиной). Шесть каналов на одной точке — это потолок, и седьмому здесь
+ * места уже нет.
+ */
+const GLYPH: Record<EventId, (ctx: CanvasRenderingContext2D, u: number) => void> = {
+  // Буря — три косые штриха одного наклона: ветер, а не молния.
+  storm: (ctx, u) => {
+    for (let i = -1; i <= 1; i++) {
+      const d = i * u * 0.7;
+      ctx.moveTo(-u + d, u * 0.55);
+      ctx.lineTo(d, -u * 0.55);
+    }
+  },
+  // Обвал — три ступени вниз: то, что осело, а не то, что стоит. Сплошной
+  // треугольник на десяти пикселях слипался в пятно и читался как флаг клана.
+  collapse: (ctx, u) => {
+    ctx.moveTo(-u, -u * 0.7);
+    ctx.lineTo(-u, 0);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(0, u * 0.7);
+    ctx.lineTo(u, u * 0.7);
+  },
+  // Тихая ночь — чаша: две стенки и дно. Дуга здесь не годится, круг уже
+  // занят самим узлом.
+  quiet: (ctx, u) => {
+    ctx.moveTo(-u, -u * 0.7);
+    ctx.lineTo(-u * 0.75, u * 0.7);
+    ctx.lineTo(u * 0.75, u * 0.7);
+    ctx.lineTo(u, -u * 0.7);
+  },
+  // Жила — ромб. Пустой: черта внутри на этом размере съедала контур,
+  // и ромб переставал отличаться от квадратного флага клана.
+  vein: (ctx, u) => {
+    ctx.moveTo(0, -u);
+    ctx.lineTo(u * 0.8, 0);
+    ctx.lineTo(0, u);
+    ctx.lineTo(-u * 0.8, 0);
+    ctx.closePath();
+  },
+};
+
+/**
+ * Нарисовать глиф события у точки. Вынесено из `draw()` затем, что тем же
+ * кодом его рисует артбук `world.html`: две копии одной арифметики разошлись
+ * бы молча, а глиф — это то, по чему игрок решает, идти ли.
+ */
+export function drawEventGlyph(
+  ctx: CanvasRenderingContext2D,
+  id: EventId,
+  x: number,
+  y: number,
+  r: number,
+  w = Infinity,
+  h = Infinity,
+): void {
+  // Размер измерен глазами, а не выведен: на узле радиусом 5–9 пикселей
+  // (`r = max(5, w * 0.026)`) глиф мельче трети радиуса слипается в пятно.
+  const u = Math.max(3, r * 0.62);
+  // Точки стоят от 2% ширины (`world.ts`), и у кромки глиф уезжал за канвас
+  // наполовину. Зажим оставляет его при своём узле — сдвиг меньше радиуса, —
+  // но целым: обрезанный глиф читается как другой глиф.
+  const gx = Math.max(u + 1, Math.min(w - u - 1, x - r * 1.3));
+  const gy = Math.max(u + 1, Math.min(h - u - 1, y - r * 1.3));
+  ctx.save();
+  ctx.translate(gx, gy);
+  ctx.beginPath();
+  GLYPH[id](ctx, u);
+  ctx.strokeStyle = EVENT_COLOR[id];
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+  ctx.stroke();
+  ctx.restore();
+}
+
 export interface WorldMapCallbacks {
   /** Игрок выбрал место и решил идти. */
   onRaid(node: number): void;
 }
+
+/**
+ * Почему сюда нельзя. Причина, а не булево, — то же правило, что у построек
+ * (`camp.ts`) и у мест под здание в прологе: игрок обязан видеть, что мешает,
+ * а не молчащую серую кнопку.
+ */
+export type EntryBlock = 'ok' | 'kitchen' | 'onb';
+
+const ENTRY_REASON: Record<Exclude<EntryBlock, 'ok'>, string> = {
+  kitchen: 'Провианта не хватит на такую глубину — нужна Кухня выше',
+  onb: 'Первая вылазка идёт в другое место — оно одно горит на карте',
+};
 
 export class WorldMap {
   readonly root: HTMLElement;
@@ -41,6 +151,12 @@ export class WorldMap {
   private world: NodeState[] = [];
   private camp: CampState | null = null;
   private now = 0;
+  /**
+   * Единственное место, открытое первой вылазкой (§16.2); null — карта открыта
+   * целиком. Ставится снаружи: карта не знает про кадры раскадровки, ей
+   * говорят «сегодня можно только сюда».
+   */
+  private only: number | null = null;
 
   constructor(private readonly cb: WorldMapCallbacks) {
     this.root = document.createElement('div');
@@ -182,6 +298,19 @@ export class WorldMap {
       const state = this.world[node.id];
       const color = RICH_COLOR[state?.rich ?? RICH_MAX] ?? '#c8a24a';
 
+      // Запертая точка гаснет, но остаётся на месте: §4.1 запрещает туман
+      // войны, и спрятать девятнадцать точек ради одной — это он и есть.
+      // Игрок видит, что мир больше сегодняшней задачи, и видит, куда
+      // он вырастет.
+      ctx.save();
+      // Гаснут по-разному, и это не украшение. Кухня — надолго, и точка
+      // остаётся читаемой целью: игрок должен видеть, куда вырастет. Кадр
+      // раскадровки — на одну вылазку, и там гасится сильнее: на экране
+      // обязано остаться ровно одно место.
+      const block = this.entryBlock(node);
+      if (block === 'onb') ctx.globalAlpha = 0.16;
+      else if (block !== 'ok') ctx.globalAlpha = 0.34;
+
       if (this.focus === node.id) {
         ctx.beginPath();
         ctx.arc(x, y, r * 2, 0, Math.PI * 2);
@@ -220,7 +349,44 @@ export class WorldMap {
         ctx.fillStyle = CLANS[clan % CLANS.length]!.color;
         ctx.fillRect(x + r * 0.95, y - r * 1.35, r * 0.62, r * 0.62);
       }
+
+      // §11.6 — что здесь сегодня. Глиф в левом верху: нутро занято крестом,
+      // правый верх флагом клана.
+      const event = node.kind === 'замок' ? null : state?.event ?? null;
+      if (event !== null) drawEventGlyph(ctx, event, x, y, r, w, h);
+
+      ctx.restore();
     }
+  }
+
+  /**
+   * Пускают ли в это место. Две причины, и обе временные по-разному: кадр
+   * раскадровки кончится сам, Кухня вырастет постройкой. Замок не запирается
+   * ничем — там нечего добывать и нечем рисковать (§6.1.6).
+   */
+  private entryBlock(node: WorldNode): EntryBlock {
+    // Запирание кадра сильнее всех послаблений, включая замок: на первой
+    // вылазке «ровно одно место» обязано значить ровно одно, иначе игрок
+    // уходит гулять по стенам вместо того, ради чего кадр заведён.
+    if (this.only !== null) return node.id === this.only ? 'ok' : 'onb';
+    if (node.kind === 'замок') return 'ok';
+    if (this.camp !== null && tierBlock(this.camp, node.tier) !== 'ok') return 'kitchen';
+    return 'ok';
+  }
+
+  /**
+   * Открыть карту целиком или запереть на одном месте (§16.2). Зовётся
+   * снаружи: про кадры раскадровки карта не знает и знать не должна.
+   *
+   * Фокус переезжает на открытое место сразу: карточка, показывающая
+   * запертую точку в тот момент, когда открыта ровно одна, — это лишний тап
+   * до единственного возможного действия.
+   */
+  setOnly(node: number | null): void {
+    if (this.only === node) return;
+    this.only = node;
+    if (node !== null) this.focus = node;
+    this.paint();
   }
 
   /* ---------- карточка ---------- */
@@ -231,8 +397,13 @@ export class WorldMap {
       this.paintKeepCard(node);
       return;
     }
-    const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0 };
-    const mul = lootMul(state.rich);
+    const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0, event: null };
+    // §11.6 — «объявляются до входа». Объявлять надо итог: карточка, которая
+    // пишет «ставка 0%» и «×0,6», пока буря делает 25% и ×0,9, — это и есть
+    // сюрприз после входа, которого раздел прямо не хочет.
+    const fx = effectOf(state.event);
+    const mul = lootMul(state.rich) * fx.loot;
+    const stake = TIER_RISK[node.tier] + fx.risk;
     const clan = state.clan === null ? null : CLANS[state.clan % CLANS.length]!;
 
     const pips = Array.from(
@@ -244,14 +415,22 @@ export class WorldMap {
       `<div class="t"><b>${node.name}</b><i>${state.rich} из ${RICH_MAX}</i></div>` +
       `<div class="pips">${pips}</div>` +
       `<div class="line"><span>${TIER_NAME[node.tier]}</span>` +
-      `<b>ставка ${Math.round(TIER_RISK[node.tier] * 100)}%</b></div>` +
+      `<b class="${fx.risk > 0 ? 'bad' : ''}">ставка ${Math.round(stake * 100)}%</b></div>` +
       `<div class="line"><span>Добыча</span>` +
       `<b class="${mul < 1 ? 'bad' : 'good'}">×${mul.toFixed(1).replace('.', ',')}</b></div>` +
       `<div class="line"><span>Кто здесь</span>` +
       (clan === null
         ? '<b class="good">никого</b>'
         : `<b style="color:${clan.color}">${clan.name}</b>`) +
-      '</div>';
+      '</div>' +
+      // §11.6 — событие названо до входа, как ставка и богатство. Строка
+      // появляется только тогда, когда есть что сказать: пустое «Событие: —»
+      // обещало бы, что когда-нибудь оно заполнится само.
+      (state.event === null
+        ? ''
+        : `<div class="line"><span>${EVENTS[state.event].name}</span>` +
+          `<b class="${state.event === 'collapse' ? 'bad' : 'good'}">` +
+          `${EVENTS[state.event].line}</b></div>`);
 
     // Срок восстановления — вместо запрета. Локация не закрыта, она просто
     // невыгодна, и игрок должен видеть, когда сюда снова стоит идти.
@@ -262,7 +441,12 @@ export class WorldMap {
 
     // Кнопка называется действием, а не местом: имя локации склоняется,
     // а имена в прототипе рабочие (§0.1) и меняются без предупреждения.
+    const block = this.entryBlock(node);
     this.go.textContent = 'Войти';
+    this.go.disabled = block !== 'ok';
+    // Отказ говорит причиной и перебивает срок восстановления: игроку сейчас
+    // важнее, почему сюда нельзя, чем когда сюда снова будет выгодно.
+    if (block !== 'ok') this.note.textContent = ENTRY_REASON[block];
   }
 
   /**
