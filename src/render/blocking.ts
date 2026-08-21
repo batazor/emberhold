@@ -37,6 +37,7 @@ export const C = {
   sukT: '#3c332c', suk: '#5c4f43', sukS: '#847263',
   ugol: '#4d2a10', zhar: '#8e4a17', plam: '#c9722a', lat: '#dfa53c',
   krasA: '#d83f35', krasS: '#268eca',
+  steklo: '#6f9bb5',
 } as const;
 
 export type V3 = readonly [number, number, number];

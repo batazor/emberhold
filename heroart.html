@@ -87,7 +87,7 @@
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Артбук · готовый набор</div>
+  <div class="eyebrow">Артбук · готовый набор и свои модели</div>
   <h1>Персонажи, <em>примеренные к бюджету</em></h1>
   <p class="lede">KayKit Adventurers 2.0, бесплатный тариф, лицензия CC0: пять героев
     (шесть моделей — у разбойника есть капюшон), тридцать один предмет в руки и две
@@ -109,6 +109,10 @@
     это решилось, и она же показывает, чего оно стоило: <b>бюджет героя пришлось
     переписать</b>, а потом ещё раз — когда выяснилось, что переписанный бюджет
     никто не проверял.</p>
+  <p class="lede">Конец страницы — про обратное решение. <b>Двоих жильцов двора
+    нарисовали здесь, а не взяли готовыми</b>, и их числа стоят рядом с числами
+    набора намеренно: это одна тема — модель персонажа, — и сравнивать её саму
+    с собой честнее, чем по двум разным книгам (§6.1.10).</p>
   <p class="lede fail" id="warn" style="display:none"></p>
 </header>
 
@@ -136,8 +140,8 @@
     <h2>Герой стоил девятьсот</h2>
     <p>Это единственный бюджет, который меряет не нас, а набор: у окружения потолка
       в §6.1 не было и его пришлось выводить из первого набора, а вот
-      <b>«герой ≤ 900 треугольников»</b> записан до всякого KayKit. Ниже — та же
-      строчка против шести моделей, и не проходит ни одна.</p>
+      <b>«герой ≤ 900 треугольников»</b> был записан до всякого KayKit. Ниже — та же
+      строчка против шести моделей, и не прошла ни одна.</p>
     <p>Строчку переписали, и вот на каком основании. Девятьсот считались, когда
       героев в кадре предполагалось много. Их <b>один</b>: в лагере — один
       у Жилья, в вылазке — один. Одна фигура не упирается в кадр, она упирается
@@ -152,8 +156,17 @@
       нынешних 226. Потолок опущен с 300, когда двор ушёл на свои модели
       и маг с посохом уехали из бандла: оставленный прежним, он молча
       разрешил бы вернуть семьдесят килобайт, за которые уже заплачено. Мерится весь набор, а не отдельная голова: игрок скачивает
-      файл целиком. Девятьсот треугольников остались в силе там, где фигур
-      много, — у противников и у самих примитивов.</p>
+      файл целиком.</p>
+    <p>А теперь девятьсот <b>сняты совсем</b>. Строчка держалась на фигурах,
+      которых не осталось: примитивных классов нет ни одного — у рыцаря,
+      лучника и бандита с §6.1.4 стоят модели набора, — а свои модели в неё
+      не укладывались никогда, поселенец и торговец идут по 2400–3100 (§6.1.10).
+      Проверка в <code>models.rules.ts</code> при этом не падала и не могла:
+      она пропускала классы с моделью, то есть все. <b>Правило, которое нечему
+      нарушить, — не правило, а строчка.</b> На её месте стоит проверка, у которой
+      есть чему падать: у каждого класса непустая геометрия — опечатка в имени
+      модели иначе гасит героя молча. Числа ниже остаются мерой того, во сколько
+      раз набор мимо, а не порогом, который кто-то обязан пройти.</p>
   </div>
   <div class="scroll">
     <table id="heroes"><thead><tr>
@@ -164,7 +177,7 @@
   <p class="note" id="heroNote"></p>
   <div class="guard">
     <div class="warn">
-      <h3>Ни одна модель не проходит</h3>
+      <h3>Ни одна модель не проходила</h3>
       <p>Разрыв не в полтора раза и не в два — <span id="heroWorst">…</span>. Это не
         «чуть тяжелее»: это <b>другой класс детализации</b>. Набор нарисован под
         камеру, которая смотрит персонажу в лицо, а наша ортокамера 45°/30° держит
@@ -291,8 +304,10 @@
         в кадре предполагалось много</b>, а он один — и в лагере, и в вылазке.
         Гарнизон замка это не отменил: пятеро в кадре стоят не треугольниками,
         а вызовами отрисовки, и платит за них одна локация из всех.
-        Прежний потолок остался там, где фигур действительно много: у жителей,
-        противников и у самих примитивов.</p>
+        А потом прежний потолок <b>сняли совсем</b>: он держался на примитивных
+        классах, которых не осталось, и на своих моделях, которые в него
+        не укладывались и не должны были. Треугольниками персонаж больше
+        не меряется нигде — ни покупной, ни свой.</p>
     </div>
     <div class="key">
       <h3>Палитра расширилась</h3>
@@ -314,6 +329,80 @@
         <code>scripts/models.ts</code> применяет скиннинг на запекании
         и кладёт в игру <b>один нарисованный кадр</b>, а не интерполяцию.
         Риг при этом измерен и ждёт: 23 кости, 26 клипов, ноль корневого движения.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
+    <h2>Свои: поселенец и торговец</h2>
+    <p>Первые модели, нарисованные здесь, а не купленные. Источник —
+      <code>assets/folk/build.py</code>: обе фигуры собираются из коробок, капсул
+      и эллипсоидов числами, а <code>.glb</code> рядом — результат, а не источник.
+      «Поправить ноги» здесь значит <b>поменять два числа и пересобрать</b>,
+      а не искать вершины мышью. Рабочей сцены <code>.blend</code> в репозитории
+      нет намеренно: она держала бы внутри копию рыцаря из чужого набора
+      и расходилась бы со скриптом молча.</p>
+    <p>Повод был не художественный. Жильцами двора работали маг и плут этого
+      набора — приключенцы, изображающие горожан, — и двор читался
+      <b>лагерем искателей, а не жильём</b>. Это ровно тот случай, под который
+      §6.1 писал «героев делаем сами»: чужой набор отвечает на вопрос «как это
+      выглядит» и не отвечает на вопрос «кто это».</p>
+    <p>Рисуются они тем же кодом и в той же позе, что и покупные выше, —
+      иначе сравнение было бы подтасовкой. Цвет берётся не с атласа: <b>у своих
+      моделей его нечем угадывать</b>, слот палитры назван в самом файле
+      материалом, и карточка красит треугольник прямо по нему. Килобайты внизу
+      посчитаны по тому, что везёт игра, — по <code>src/render/folk.data.ts</code>,
+      тем же gzip, каким потолок проверяет <code>models.rules.ts</code>.</p>
+  </div>
+  <div class="scroll">
+    <table id="folk"><thead><tr>
+      <th>Модель</th><th class="num">Треугольников</th><th class="num">Вершин</th>
+      <th class="num">Слотов палитры</th><th class="num">Костей в деле</th>
+      <th>Габарит в позе, ед.</th><th class="num">Против рыцаря</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+  <p class="note" id="folkNote"></p>
+  <div class="models" id="folkGrid"></div>
+  <div class="guard">
+    <div class="key">
+      <h3>Пропорции сняты, а не выбраны</h3>
+      <p>У рыцаря набора голова занимает 42% роста, ноги 21%. Первый заход был
+        построен по риг-манекену и дал <b>нормальные человеческие фигуры</b> —
+        рядом с гарнизоном они читались не «другой человек», а «другая игра».
+        Гарнизон и жильцы стоят в одном дворе, и это условие сильнее любого вкуса:
+        габариты сняты с <code>Knight.glb</code> в единицах общего рига.</p>
+    </div>
+    <div class="key">
+      <h3>Лицо приходится делать геометрией</h3>
+      <p>Запекание кладёт один слот палитры на треугольник, поэтому лицо,
+        нарисованное в атласе, схлопывается в ровную кожу: <b>ни у одной модели
+        набора лица в игре нет</b>. Глаза, нос и рот у жильцов — коробки
+        и эллипсоиды. Следствие принято: во дворе жильцы единственные с лицами,
+        рыцарь рядом остаётся с гладким забралом. Бровей нет — двумя палочками
+        над глазами они читались мусором на лице, и их работу делает нижний
+        край волос.</p>
+    </div>
+    <div class="warn">
+      <h3>Нормали были вывернуты, и Блендер молчал</h3>
+      <p>Коробки и капсулы собираются перечислением вершин, и обход был задан так,
+        что наружу смотрела изнанка. Вьюпорт рисует двусторонне и не сказал ничего;
+        игра лицевую сторону рисует, а выворотку отбрасывает — <b>на экране
+        оставались дыры, сквозь которые видно нутро модели</b>. Трижды принято
+        за другое: за лысину, за цвет шапки, за кривой силуэт. Причин две:
+        зеркальный вызов при <code>s = -1</code> давал минимум больше максимума,
+        и фаска толще половины детали вырождала грани. Обе вернулись бы молча,
+        поэтому мерка теперь в <code>models.rules.ts</code>: <b>внутреннее ребро
+        пройдено дважды и в противоположных направлениях</b>. Не объём — объём
+        знает только замкнутая оболочка, а запекание дробит вершины по слотам.</p>
+    </div>
+    <div class="key">
+      <h3>Цвет назван материалом, а не угадан по атласу</h3>
+      <p>Материалы в Blender зовутся слотами палитры артбука, таблица набора
+        тождественная, и запеканию нечего выводить окнами оттенка. Проверка
+        от этого не исчезла, а стала строже: <code>materialTableOf</code> падает,
+        если в модели заведётся материал, которого в палитре нет. <b>Дороже всего
+        в своей модели не рисование, а расхождение с общим списком цветов.</b></p>
     </div>
   </div>
 </div>
@@ -439,7 +528,10 @@ document.getElementById('total').textContent =
   ' · ' + cat.pack + ' · лицензия ' + cat.license;
 
 /* ---------- бюджет героя ---------- */
-const HERO_BUDGET = cat.budgets.hero;
+// Потолок героя снят (§6.1), и каталог его больше не пишет. Девятьсот
+// остались здесь числом страницы: таблица ниже — запись о том, во сколько
+// раз набор мимо снятой мерки, а не проверка живого правила.
+const HERO_BUDGET = 900;
 const heroesBody = document.querySelector('#heroes tbody');
 for(const m of [...HEROES].sort((a, b) => b.tris - a.tris)){
   const times = (m.tris / HERO_BUDGET).toFixed(1).replace('.', ',');
@@ -454,10 +546,10 @@ const heroTris = HEROES.reduce((s, m) => s + m.tris, 0);
 const worstHero = HEROES.reduce((a, b) => (a.tris > b.tris ? a : b));
 document.getElementById('heroNote').textContent =
   models(HEROES.length) + ' — ' + pct(heroTris, totalTris) + ' треугольников набора; ' +
-  'в бюджет не проходит ни одна, средняя тяжелее его в ' +
+  'в снятую мерку не проходила ни одна, средняя тяжелее её в ' +
   (heroTris / HEROES.length / HERO_BUDGET).toFixed(1).replace('.', ',') + ' раза.';
 document.getElementById('heroWorst').textContent =
-  'самая тяжёлая, ' + worstHero.name + ', тяжелее бюджета в ' +
+  'самая тяжёлая, ' + worstHero.name + ', тяжелее прежней мерки в ' +
   (worstHero.tris / HERO_BUDGET).toFixed(1).replace('.', ',') + ' раза';
 
 // Поза, в которой набор посчитан и нарисован: из каталога, не из головы.
@@ -732,7 +824,9 @@ const ensurePose = () => (poseWaiting ??= loadPose());
 
 async function loadPose(){
   if(cat.pose === undefined) return null;
-  const {gltf, dv} = await loadDoc(PACK + 'clips/' + cat.pose.library + '.glb');
+  // Путь к клипу лежит в каталоге и считается от папки набора: библиотека
+  // общая на все риговые наборы, и держать её копию у каждого незачем.
+  const {gltf, dv} = await loadDoc(new URL(cat.pose.file, location.origin + PACK).pathname);
   const anim = (gltf.animations ?? []).find(a => a.name === cat.pose.clip);
   if(anim === undefined) return null;
   const read = reader(gltf, dv);
@@ -743,7 +837,7 @@ async function loadPose(){
     const name = gltf.nodes[ch.target.node]?.name;
     if(name === undefined) continue;
     const values = read(anim.samplers[ch.sampler].output);
-    const at = Math.min(cat.pose.key, values.length - 1);
+    const at = Math.min(cat.pose.at, values.length - 1);
     const entry = out.get(name) ?? {};
     entry[path] = values[at];
     out.set(name, entry);
@@ -786,8 +880,8 @@ function blended(mats, joints, weights, v){
   return out;
 }
 
-async function loadModel(file){
-  const {gltf, dv} = await loadDoc(PACK + file);
+async function loadModel(file, base = PACK){
+  const {gltf, dv} = await loadDoc(base + file);
   const read = reader(gltf, dv);
   const pose = gltf.skins === undefined ? null : await ensurePose();
   const mats = gltf.skins === undefined ? null : jointMatrices(gltf, read, pose);
@@ -799,7 +893,10 @@ async function loadModel(file){
     // игнорируется, вершины ставит скелет. Рисуем позу привязки — как в файле.
     const place = node.skin === undefined ? world : IDENT;
     if(node.mesh !== undefined) for(const prim of gltf.meshes[node.mesh].primitives){
-      const pos = read(prim.attributes.POSITION), uv = read(prim.attributes.TEXCOORD_0), idx = read(prim.indices);
+      const pos = read(prim.attributes.POSITION), idx = read(prim.indices);
+      // Развёртки может не быть вовсе: у своих моделей цвет назван материалом,
+      // и UV им незачем. Тогда карточке нечего снимать с атласа — и не надо.
+      const uv = prim.attributes.TEXCOORD_0 === undefined ? null : read(prim.attributes.TEXCOORD_0);
       const joints = node.skin === undefined ? null : read(prim.attributes.JOINTS_0);
       const weights = node.skin === undefined ? null : read(prim.attributes.WEIGHTS_0);
       for(let i = 0; i < idx.length; i += 3){
@@ -807,7 +904,7 @@ async function loadModel(file){
           joints === null ? place : blended(mats, joints, weights, idx[i+k]),
           pos[idx[i+k]],
         )));
-        uvs.push([
+        uvs.push(uv === null ? [0, 0] : [
           (uv[idx[i]][0] + uv[idx[i+1]][0] + uv[idx[i+2]][0]) / 3,
           (uv[idx[i]][1] + uv[idx[i+1]][1] + uv[idx[i+2]][1]) / 3,
         ]);
@@ -834,7 +931,10 @@ for(const m of cat.models){
   const stage = document.createElement('div');
   stage.className = 'stage';
   stage.appendChild(canvas);
-  const budget = hero ? HERO_BUDGET : cat.budgets.model;
+  // У персонажа потолка в треугольниках нет вовсе, поэтому и красной пометки
+  // на карточке нет: помечать «сверх бюджета» там, где бюджета не осталось,
+  // значило бы рисовать нарушение несуществующего правила.
+  const budget = hero ? Infinity : cat.budgets.model;
   card.innerHTML = '<b>' + m.name.replace(/_/g, ' ') + '</b>' +
     '<u><s' + (m.tris > budget ? ' class="over"' : '') + '>' + m.tris + ' тр.</s>' +
     '<s>' + m.size.join('×') + '</s></u>';
@@ -904,5 +1004,103 @@ for(const [key, label] of [['palette', 'В нашей палитре'], ['pack',
   });
   modes.push(b);
   bar.appendChild(b);
+}
+
+/* ---------- свои модели: жильцы двора (§6.1.10) ---------- */
+/**
+ * Свои модели живут отдельной папкой и отдельным каталогом, но проходят
+ * тем же конвейером, что покупные, — поэтому и рисуются здесь тем же
+ * `loadModel`, в той же позе и той же камерой. Отличий в коде ровно два:
+ * папка и то, что цвет назван материалом, а не снят с атласа.
+ */
+const FOLK_PACK = '/assets/folk/';
+let folk = null;
+try{
+  const [meta, data, pal] = await Promise.all([
+    fetch(FOLK_PACK + 'catalog.json').then(r => r.json()),
+    import('/src/render/folk.data.ts'),
+    import('/src/render/palette.ts').then(m => m.FOLK_PALETTE),
+  ]);
+  const rig = await import('/src/render/rig.data.ts');
+  folk = {meta, models: data.FOLK_MODELS, names: data.FOLK_SLOTS, palette: pal, bones: rig.RIG_BONES.length};
+}catch(err){
+  fail('Свои модели не прочитались: ' + err.message);
+}
+
+if(folk !== null){
+  const bytes = (b64) => {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  };
+  /** Цвет слота — из палитры игры по имени, а не по порядковому номеру. */
+  const folkColor = (name) => hex(folk.palette[folk.names.indexOf(name)]);
+  /** Кость считается задействованной, только если её вес ненулевой. */
+  const bonesUsed = (model) => {
+    if(model.bone === undefined || model.weight === undefined) return 0;
+    const bone = bytes(model.bone), packed = bytes(model.weight), seen = new Set();
+    for(let v = 0; v < model.verts; v++){
+      const w = [packed[v*2] / 255, packed[v*2+1] / 255];
+      w.push(Math.max(0, 1 - w[0] - w[1]));
+      for(let k = 0; k < 3; k++) if(w[k] > 0) seen.add(bone[v*3+k]);
+    }
+    return seen.size;
+  };
+
+  const KNIGHT = cat.models.find(m => m.name === 'Knight');
+  const folkBody = document.querySelector('#folk tbody');
+  const folkGrid = document.getElementById('folkGrid');
+  let folkTris = 0;
+
+  for(const m of folk.meta.models){
+    const baked = folk.models[m.name];
+    folkTris += m.tris;
+    const list = bytes(m.slot);
+    const used = new Set(list).size;
+
+    const tr = document.createElement('tr');
+    tr.className = 'gap';
+    tr.innerHTML = '<td class="mono">' + m.name + '</td><td class="num">' + m.tris +
+      '</td><td class="num">' + m.verts + '</td><td class="num">' + used + ' из ' +
+      folk.meta.slots.length + '</td><td class="num">' +
+      (baked === undefined ? '—' : bonesUsed(baked) + ' из ' + folk.bones) +
+      '</td><td class="mono">' + m.size.join('×') + '</td><td class="num">' +
+      (KNIGHT === undefined ? '—' : pct(m.tris, KNIGHT.tris)) + '</td>';
+    folkBody.appendChild(tr);
+
+    const card = document.createElement('div');
+    card.className = 'm';
+    const canvas = document.createElement('canvas');
+    canvas.width = 168; canvas.height = 210;
+    const stage = document.createElement('div');
+    stage.className = 'stage';
+    stage.appendChild(canvas);
+    card.innerHTML = '<b>' + m.name + '</b><u><s>' + m.tris + ' тр.</s><s>' +
+      m.size.join('×') + '</s></u>';
+    card.prepend(stage);
+    folkGrid.appendChild(card);
+    // Моделей две, и обе видны сразу: ленивая загрузка здесь стоила бы
+    // наблюдателя ради двух карточек.
+    loadModel(m.file, FOLK_PACK)
+      .then(({tris}) => draw(canvas, tris, tris.map((_, i) => folkColor(folk.meta.slots[list[i]]))))
+      .catch(() => { stage.textContent = '—'; });
+  }
+
+  /**
+   * Килобайты — единственная мерка персонажа, оставшаяся в силе, поэтому
+   * страница их считает, а не объявляет: те же base64-строки и тот же gzip,
+   * которым потолок проверяет `models.rules.ts`.
+   */
+  const blobs = Object.values(folk.models)
+    .flatMap(m => ['pos', 'idx', 'slot', 'bone', 'weight'].map(k => m[k]).filter(Boolean)).join('');
+  const gz = new Blob([blobs]).stream().pipeThrough(new CompressionStream('gzip'));
+  const packed = (await new Response(gz).arrayBuffer()).byteLength;
+  document.getElementById('folkNote').textContent =
+    models(folk.meta.models.length) + ' — ' + folkTris + ' треугольников, ' + kb(packed) +
+    ' gzip при потолке 40 КБ' +
+    (KNIGHT === undefined ? '' : '; обе вместе — ' + pct(folkTris, KNIGHT.tris) +
+      ' от одного рыцаря по треугольникам') +
+    '. Потолка в треугольниках у персонажа нет — ни у покупного, ни у своего.';
 }
 </script>
