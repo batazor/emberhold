@@ -565,6 +565,10 @@ function stepConsumables(state: RaidState): void {
  */
 export const inBattle = (state: RaidState): boolean => state.battle !== null;
 
+/** Идентификатор героя на поле. Отрицательный: у противников номера
+ *  выданы генератором с нуля, и два счётчика не должны столкнуться. */
+const HERO_UNIT = -1;
+
 /**
  * Завязать бой. Мир останавливается, бойцы встают на решётку там, где их
  * застал контакт (§11.3). В бой идут только проснувшиеся: спящий за стеной
@@ -575,17 +579,26 @@ function openBattle(state: RaidState): void {
   const engaged = state.loc.enemies.filter((e) => e.hp > 0 && e.awake);
   if (engaged.length === 0) return;
 
+  // Отряд из одного — но уже отряд (§11.7). Список здесь заведён затем,
+  // что поле боя оперирует сторонами с самого начала: когда бойцов станет
+  // трое, изменится то, кого сюда положили, а не как считается бой.
+  //
+  // Идентификаторы своих отрицательные: у противников они выданы генератором
+  // и начинаются с нуля, и столкнуться эти два счётчика не должны.
   state.battle = createBattle(
     state.loc.size,
     state.loc.blocked,
-    {
+    [{
+      id: HERO_UNIT,
       x: state.hero.x,
       z: state.hero.z,
       wounds: state.hero.wounds,
       speed: HERO_SPEED * state.loadout.speedMul,
       reach: HERO_REACH,
       ranged: state.loadout.ranged && state.arrows > 0,
-    },
+      attack: state.loadout.attack,
+      defense: state.loadout.defense + state.mods.defense,
+    }],
     engaged.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z, hp: e.hp })),
   );
   // Завязка стоит провианта ровно как прежде (§11.1) — цена решения
@@ -609,6 +622,9 @@ function closeBattle(state: RaidState): void {
   for (const u of battle.units) {
     const world = hexToWorld(u.hex);
     if (u.side === 'hero') {
+      // Пока боец один, мир хранит его отдельным полем. С отрядом здесь
+      // будет поиск по id — и это единственное, что придётся дописать.
+      if (u.id !== HERO_UNIT) continue;
       state.hero.wounds = u.hp;
       state.hero.prevX = state.hero.x;
       state.hero.prevZ = state.hero.z;
@@ -709,7 +725,7 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
   // напрямую с бойца, и без этого замера счётчики молчат: золотой мастер
   // показал «ран за вылазку 0» при живом бое, то есть прибор атрибуции
   // остался цел, но перестал быть подключён.
-  const heroUnit = battle.units.find((u) => u.side === 'hero');
+  const heroUnit = battle.units.find((u) => u.id === HERO_UNIT);
   const woundsBefore = heroUnit?.hp ?? 0;
 
   const ok = apply(
@@ -752,12 +768,14 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
  */
 function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): number {
   if (from.side === 'hero') {
+    // Пустой колчан бьёт слабее (§14.3). Проверка по стрелам остаётся общей,
+    // пока боец один; с отрядом колчан переедет к бойцу вместе с остальным.
     const dry = state.loadout.ranged && state.arrows <= 0;
-    return state.loadout.attack * (dry ? RANGED_MELEE_PENALTY : 1);
+    return from.attack * (dry ? RANGED_MELEE_PENALTY : 1);
   }
-  const stats = ENEMY_STATS[from.kind!];
-  void to;
-  return woundsPerHit(stats.attack, state.loadout.defense + state.mods.defense);
+  // Защита берётся у того, кого бьют, а не у стороны: трое бойцов держат
+  // удар по-разному, и это и есть смысл характеристики.
+  return woundsPerHit(from.attack, to.defense);
 }
 
 export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge: number): void {

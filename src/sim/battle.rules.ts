@@ -37,7 +37,7 @@ function duo(kind: 'minion' | 'warrior' | 'mage' = 'minion'): BattleState {
   const e = hexToWorld({ q: 9, r: 8 });
   return createBattle(
     N, open(),
-    { x: c.x, z: c.z, wounds: 3, speed: 1.67, reach: 1, ranged: false },
+    [{ id: -1, x: c.x, z: c.z, wounds: 3, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3 }],
     [{ id: 0, kind, x: e.x, z: e.z, hp: ENEMY_STATS[kind].hp }],
   );
 }
@@ -79,7 +79,7 @@ describe('Пошаговый бой', () => {
     const c = hexToWorld({ q: 5, r: 5 });
     const state = createBattle(
       N, open(),
-      { x: c.x, z: c.z, wounds: 3, speed: 1.67, reach: 1, ranged: false },
+      [{ id: -1, x: c.x, z: c.z, wounds: 3, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3 }],
       [
         { id: 0, kind: 'minion', x: c.x, z: c.z, hp: 4 },
         { id: 1, kind: 'minion', x: c.x + 0.01, z: c.z, hp: 4 },

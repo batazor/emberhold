@@ -59,6 +59,17 @@ export interface BattleUnit {
   hp: number;
   /** Гексов за ход. Выводится из скорости мира, а не назначается. */
   readonly move: number;
+  /**
+   * §11.3 — Атака и Защита **этого бойца**, а не стороны.
+   *
+   * Заведены здесь, а не берутся у героя, потому что отряд уже близко:
+   * пока своих ровно один, спросить его характеристики у `state.loadout`
+   * было бы одно и то же, — но ровно с этого места единственность и начала
+   * бы врастать. Трое бойцов с числами одного читались бы как поломка,
+   * которую нашли бы не сразу.
+   */
+  readonly attack: number;
+  readonly defense: number;
   /** Дальность удара в гексах. Ближний бой — единица, то есть соседство. */
   readonly reach: number;
   readonly ranged: boolean;
@@ -175,26 +186,45 @@ function placeOn(size: number, blocked: Uint8Array, want: Hex, taken: ReadonlySe
 export function createBattle(
   size: number,
   blocked: Uint8Array,
-  hero: { x: number; z: number; wounds: number; speed: number; reach: number; ranged: boolean },
+  /**
+   * Свои бойцы. Список, а не один: поле боя оперирует сторонами с самого
+   * начала, и отряд ложится сюда без правок — меняется только то, кого
+   * в него передали.
+   */
+  party: readonly {
+    id: number;
+    x: number;
+    z: number;
+    wounds: number;
+    speed: number;
+    reach: number;
+    ranged: boolean;
+    attack: number;
+    defense: number;
+  }[],
   enemies: readonly { id: number; kind: EnemyKind; x: number; z: number; hp: number }[],
 ): BattleState {
-  const units: BattleUnit[] = [
-    {
-      id: -1,
+  const units: BattleUnit[] = [];
+  const taken = new Set<string>();
+  for (const p of party) {
+    const hex = placeOn(size, blocked, worldToHex(p.x, p.z), taken);
+    taken.add(hexKey(hex));
+    units.push({
+      id: p.id,
       side: 'hero',
       kind: null,
-      hex: placeOn(size, blocked, worldToHex(hero.x, hero.z), new Set()),
-      hp: hero.wounds,
-      move: movePerTurn(hero.speed),
-      reach: reachInHexes(hero.ranged ? HERO_RANGED_REACH : hero.reach, hero.ranged),
-      ranged: hero.ranged,
+      hex,
+      hp: p.wounds,
+      move: movePerTurn(p.speed),
+      reach: reachInHexes(p.ranged ? HERO_RANGED_REACH : p.reach, p.ranged),
+      ranged: p.ranged,
+      attack: p.attack,
+      defense: p.defense,
       moved: false,
       acted: false,
       guarding: false,
-    },
-  ];
-
-  const taken = new Set<string>([hexKey(units[0]!.hex)]);
+    });
+  }
   for (const e of enemies) {
     const stats = ENEMY_STATS[e.kind];
     // Двое в одном гексе — следствие округления, а не расстановки: в мире
@@ -210,13 +240,18 @@ export function createBattle(
       move: movePerTurn(stats.speed),
       reach: reachInHexes(stats.ranged ? stats.reach : 1, stats.ranged),
       ranged: stats.ranged,
+      attack: stats.attack,
+      defense: 0,
       moved: false,
       acted: false,
       guarding: false,
     });
   }
 
-  const speeds = units.map((u) => (u.side === 'hero' ? hero.speed : ENEMY_STATS[u.kind!].speed));
+  const speeds = units.map((u) => {
+    if (u.side !== 'hero') return ENEMY_STATS[u.kind!].speed;
+    return party.find((p) => p.id === u.id)?.speed ?? 0;
+  });
   return { units, order: initiative(units, speeds), at: 0, round: 1, events: [] };
 }
 
