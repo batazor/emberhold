@@ -721,6 +721,171 @@ const meetPanel = new MeetPanel(app, {
 });
 
 /**
+ * Знакомство (§16.1). Состояние живёт здесь, а не в сейве: не приглашённый
+ * человек сидит у палатки каждый вход заново — знакомство не сгорает от
+ * того, что мимо прошли. Приглашённый вписан в жильцов (`residents.ts`),
+ * и это единственное, что переживает перезагрузку.
+ */
+let meetSettler: Settler | null = null;
+let meet: MeetState | null = null;
+/** Где сидит; null — в этом кадре встречи нет. */
+let meetAt: Cell | null = null;
+let meetShown = false;
+
+/**
+ * Свободная клетка с чистыми соседями в кольце 2–4 от точки. Прогалина
+ * обязана быть прогалиной: первый же назначенный сдвиг посадил поселенца
+ * в ёлку, и снаружи это читалось не «сидит», а «его нет».
+ */
+function sitSpotNear(at: Cell, loc: GameLocation, taken?: (x: number, z: number) => boolean): Cell | null {
+  const n = loc.size;
+  const openAround = (x: number, z: number): boolean => {
+    // Сидеть в следе палатки — то же, что в ёлке: человек и здание рендерятся
+    // друг в друге. Постройки в blocked не пишутся, их называет вызывающий.
+    if (taken !== undefined && taken(x, z)) return false;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const cx = x + dx;
+        const cz = z + dz;
+        if (cx < 0 || cz < 0 || cx >= n || cz >= n) return false;
+        if (loc.blocked[cz * n + cx] !== 0) return false;
+      }
+    }
+    return true;
+  };
+  for (let r = 2; r <= 4; r++) {
+    for (let z = at.z - r; z <= at.z + r; z++) {
+      for (let x = at.x - r; x <= at.x + r; x++) {
+        if (Math.round(Math.hypot(x - at.x, z - at.z)) !== r || !openAround(x, z)) continue;
+        return { x, z };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Разговор знакомства: кадры листает игрок, приглашение кладёт дар в кошелёк
+ * и вписывает человека в жильцы. Общий у настоящей встречи в лагере и
+ * отладочного кадра `?встреча`: разговор один, сцен у него две.
+ */
+function meetCallbacks(): MeetPanelCallbacks {
+  const redraw = (): void => {
+    if (meetSettler === null || meet === null) return;
+    meetPanel.show(meetSettler, meet);
+    setHint('');
+  };
+  const step = (): void => {
+    if (meet === null) return;
+    advance(meet);
+    redraw();
+    // Клавиатура открывается по жесту игрока и только на своём кадре:
+    // дёргать её на каждой перерисовке нельзя.
+    if (meet.step === 'ты') meetPanel.focusName();
+  };
+  return {
+    onName: (raw) => {
+      if (meet === null || meetSettler === null) return;
+      setHeroName(meet, raw, meetSettler.offeredName);
+      step();
+    },
+    onAnswer: (answer: SelfAnswer) => {
+      if (meet === null) return;
+      answerSelf(meet, answer);
+      play('pick');
+      step();
+    },
+    onAdvance: step,
+    onInvite: () => {
+      if (meet === null) return;
+      meet.invited = true;
+      // Дар кладётся в кошелёк лагеря той же тратой, что и всякая другая:
+      // крохи обязаны быть видны в полосе, иначе слово «возьми» ничем
+      // не подтверждено.
+      const gift = giftOf(meet);
+      if (gift !== null) {
+        for (const kind of ['wood', 'stone', 'iron', 'crystal'] as const) {
+          camp.resources[kind] += gift.resources[kind];
+        }
+        persist();
+      }
+      // Он остаётся в лагере независимо от того, есть ли крыша: запирать
+      // знакомство за ценой значило бы отменять само знакомство
+      // (`residents.ts`). Нехватка крыши станет заданием, а не отказом.
+      if (meetSettler !== null && meet.answer !== null) {
+        // Сид приходит вместе с человеком: с каким лицом сидел на прогалине,
+        // с таким и войдёт в лагерь.
+        admit(camp, {
+          name: meetSettler.name,
+          look: meetSettler.look,
+          seed: meetSettler.seed,
+          answer: meet.answer,
+        });
+        persist();
+      }
+      play('build');
+      // Встаёт и идёт к герою: вставание не прерывается ходьбой (§17.1).
+      if (raid !== null) raidView?.callSettler(raid.hero.x, raid.hero.z);
+      advance(meet);
+      meetPanel.hide();
+      // Кэш подсказки поляны сравнивает со своим прошлым значением, а оно
+      // не менялось: без сброса подсказка не вернулась бы никогда.
+      gladeHint = '';
+    },
+  };
+}
+
+/**
+ * Посадить поселенца у лагеря (§16.1): после первой вылазки, пока в лагере
+ * нет жильцов. Каждый вход — заново: человек пришёл знакомиться, а не
+ * мелькнуть один раз.
+ */
+function seatSettler(door: Cell): void {
+  meetAt = null;
+  meetShown = false;
+  if (raid === null || raidView === null) return;
+  if (camp.raids < 1 || camp.residents.length > 0) return;
+  const o0 = campOrigin(camp);
+  const sit = sitSpotNear(door, raid.loc, (x, z) =>
+    PITCH_ORDER.some((id) => {
+      const p = camp.layout[id];
+      return x >= o0.x + p.x && x <= o0.x + p.x + 1 && z >= o0.z + p.z && z <= o0.z + p.z + 1;
+    }));
+  if (sit === null) return;
+  // Человек выводится из якоря лагеря: тот же лагерь — тот же человек,
+  // и «а тот ли это был» перестаёт быть вопросом к памяти.
+  const o = campOrigin(camp);
+  meetSettler = generateSettler((o.x * 73 + o.z * 131) ^ 0x5eed);
+  meet = startMeet(meetSettler);
+  meetAt = sit;
+  raidView.putSettler(
+    meetSettler.look,
+    sit.x + 0.5,
+    sit.z + 0.5,
+    Math.atan2(raid.hero.x - (sit.x + 0.5), raid.hero.z - (sit.z + 0.5)),
+  );
+  meetOn = meetCallbacks();
+}
+
+/**
+ * Разговор случается там, где игрок стоит: панель открывается, когда герой
+ * подошёл к сидящему, и гаснет, когда отошёл, — кнопки «закрыть» нет.
+ */
+function syncMeet(): void {
+  if (raid === null || meet === null || meetSettler === null || meetAt === null) return;
+  if (meet.invited) return;
+  const near =
+    Math.hypot(raid.hero.x - (meetAt.x + 0.5), raid.hero.z - (meetAt.z + 0.5)) <= 2.5;
+  if (near && !meetShown) {
+    meetShown = true;
+    meetPanel.show(meetSettler, meet);
+  } else if (!near && meetShown) {
+    meetShown = false;
+    meetPanel.hide();
+  }
+}
+
+/**
  * §20.1 — ковка. В отличие от стройки, она мгновенна и не занимает слот:
  * это и есть то действие, которое экран возврата предлагает, пока идёт таймер.
  */
@@ -1805,7 +1970,9 @@ function toGladeCamp(): void {
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
-    followers: followersOf(hero),
+    // В лагере на площадке герой один — на поляне тоже: спутники ходят
+    // в вылазку, а не за ведущим по двору. Отряд целиком виден в веере.
+    followers: [],
     loc,
     // Провиант в лагере ничего не отсчитывает (§18.4): полосы скрыты
     // сценой 'camp', а запас пополняется каждый тик.
@@ -1829,6 +1996,7 @@ function toGladeCamp(): void {
     raidView.setLevel(id, camp.levels[id]);
   }
   raidView.hideSite();
+  seatSettler(door);
   rig.lookAt(raid.hero.x, raid.hero.z, true);
   rig.setZoom(20, true);
   // Поляна — на поверхности, и это день: тот же свет, что в прологе.
@@ -2191,12 +2359,20 @@ canvas.addEventListener('pointerdown', (e) => {
     const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
     const o = campOrigin(camp);
     // Запас в клетку вокруг следа 2×2 — как у площадки: в здание надо
-    // попадать пальцем, а не курсором.
-    const picked = PITCH_ORDER.find((id) => {
+    // попадать пальцем, а не курсором. Побеждает ближайший след, а не первый
+    // по списку: палатка и костёр стоят рядом, их запасы пересекаются,
+    // и тап у костра не должен открывать палатку — костёр сам по себе.
+    let picked: BuildingId | null = null;
+    let best = Infinity;
+    for (const id of PITCH_ORDER) {
       const p = camp.layout[id];
-      return Math.abs(cell.x - (o.x + p.x + 0.5)) <= 1.5 && Math.abs(cell.z - (o.z + p.z + 0.5)) <= 1.5;
-    });
-    if (picked !== undefined) {
+      const d = Math.hypot(cell.x - (o.x + p.x + 0.5), cell.z - (o.z + p.z + 0.5));
+      if (d <= 1.9 && d < best) {
+        best = d;
+        picked = id;
+      }
+    }
+    if (picked !== null) {
       campHud.openBuilding(picked);
       return;
     }
@@ -2605,9 +2781,6 @@ const tentReason = (state: typeof camp): string => {
   return why === 'ok' ? 'можно' : TENT_REASON[why];
 };
 
-let meetSettler: Settler | null = null;
-let meet: MeetState | null = null;
-
 if (debugParams.has('встреча')) {
   toGlade();
   const hero = raid!.hero;
@@ -2650,70 +2823,9 @@ if (debugParams.has('встреча')) {
   meet = startMeet(meetSettler);
   raidView!.putSettler(meetSettler.look, satAt.x, satAt.z, Math.atan2(hero.x - satAt.x, hero.z - satAt.z));
 
-  const redraw = (): void => {
-    if (meetSettler === null || meet === null) return;
-    meetPanel.show(meetSettler, meet);
-    setHint('');
-  };
-  const step = (): void => {
-    if (meet === null) return;
-    advance(meet);
-    redraw();
-    // Клавиатура открывается по жесту игрока и только на своём кадре:
-    // дёргать её на каждой перерисовке нельзя.
-    if (meet.step === 'ты') meetPanel.focusName();
-  };
-  meetOn = {
-    onName: (raw) => {
-      if (meet === null || meetSettler === null) return;
-      setHeroName(meet, raw, meetSettler.offeredName);
-      step();
-    },
-    onAnswer: (answer: SelfAnswer) => {
-      if (meet === null) return;
-      answerSelf(meet, answer);
-      play('pick');
-      step();
-    },
-    onAdvance: step,
-    onInvite: () => {
-      if (meet === null) return;
-      meet.invited = true;
-      // Дар кладётся в кошелёк лагеря той же тратой, что и всякая другая:
-      // крохи обязаны быть видны в полосе, иначе слово «возьми» ничем
-      // не подтверждено.
-      const gift = giftOf(meet);
-      if (gift !== null) {
-        for (const kind of ['wood', 'stone', 'iron', 'crystal'] as const) {
-          camp.resources[kind] += gift.resources[kind];
-        }
-        persist();
-      }
-      // Он остаётся в лагере независимо от того, есть ли крыша: запирать
-      // знакомство за ценой значило бы отменять само знакомство
-      // (`residents.ts`). Нехватка крыши станет заданием, а не отказом.
-      if (meetSettler !== null && meet.answer !== null) {
-        // Сид приходит вместе с человеком: с каким лицом сидел на прогалине,
-        // с таким и войдёт в лагерь.
-        admit(camp, {
-          name: meetSettler.name,
-          look: meetSettler.look,
-          seed: meetSettler.seed,
-          answer: meet.answer,
-        });
-        persist();
-      }
-      play('build');
-      // Встаёт и идёт к герою: вставание не прерывается ходьбой (§17.1).
-      raidView?.callSettler(raid!.hero.x, raid!.hero.z);
-      advance(meet);
-      meetPanel.hide();
-      // Кэш подсказки поляны сравнивает со своим прошлым значением, а оно
-      // не менялось: без сброса подсказка не вернулась бы никогда.
-      gladeHint = '';
-    },
-  };
-  redraw();
+  meetOn = meetCallbacks();
+  meetPanel.show(meetSettler, meet);
+  setHint('');
   // Камера сцены наводится сама: разговор идёт в двух клетках, а поляна
   // 24×24, и открывать сцену видом на весь лес значило бы каждый раз
   // доводить её руками из консоли.
@@ -2916,6 +3028,7 @@ startLoop({
       // не отсчитывает (§18.4) — запас пополняется тем же тиком, что тратит.
       stepRaid(raid, dt, false, 0);
       raid.food = raid.foodMax;
+      syncMeet();
       stepCampSystems(dt, now);
       return;
     }
