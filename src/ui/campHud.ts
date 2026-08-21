@@ -23,6 +23,7 @@ import { dayAt, firstRaidNode } from '../sim/world';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
+import { Banner } from './banner';
 import { WorldMap } from './worldMap';
 
 /**
@@ -137,7 +138,8 @@ export class CampHud {
   private slots!: HTMLElement;
 
   private open: SheetKind = null;
-  private bannerTimer = 0;
+  /** Что говорить игроку и в каком порядке (`banner.ts`). */
+  private readonly line = new Banner();
   private onb: OnbStep = 'done';
   /**
    * Последнее, что панель видела в sync. Нужно, чтобы открытый лист красился
@@ -408,10 +410,7 @@ export class CampHud {
       if (el !== undefined) el.textContent = String(camp.resources[kind]);
     }
 
-    if (this.bannerTimer > 0) {
-      this.bannerTimer -= dt;
-      if (this.bannerTimer <= 0) this.banner.textContent = '';
-    }
+    this.line.tick(dt);
 
     this.last = { camp, now };
     this.paintOpen();
@@ -577,9 +576,12 @@ export class CampHud {
       this.last !== null && GEAR_ORDER.some((slot) => gearBlock(this.last!.camp, slot) === 'ok');
     const quiet = (this.onb === 'build' && affordable) || (this.onb === 'craft' && canForge);
 
-    // Подсказка кадра держится, пока кадр не сменится.
-    const hint = ONB_HINT[this.onb];
-    if (hint !== undefined) this.banner.textContent = hint;
+    // Подсказка кадра держится, пока кадр не сменится, — но не поверх
+    // сообщения: сообщение живёт секунды, кадр живёт до следующего кадра.
+    // Кадр без подсказки не оставляет чужую: на `done` онбординг кончился,
+    // и последняя его строка не имеет права висеть до конца игры.
+    this.line.setSticky(ONB_HINT[this.onb] ?? '');
+    this.banner.textContent = this.line.text;
 
     this.bar.style.display = quiet ? 'none' : '';
     this.sheetClose.style.display = quiet ? 'none' : '';
@@ -600,9 +602,14 @@ export class CampHud {
     this.root.style.display = visible ? 'flex' : 'none';
   }
 
+  /**
+   * Сказать игроку строку. Строки не спорят за одно поле, а становятся
+   * в очередь (`banner.ts`): пришедшие в один тик показываются по очереди,
+   * а не последней выигравшей.
+   */
   notify(text: string): void {
-    this.banner.textContent = text;
-    this.bannerTimer = 4;
+    this.line.push(text);
+    this.banner.textContent = this.line.text;
   }
 
   /**
