@@ -37,6 +37,7 @@ import {
   PATROL_WALK,
   PATROL_STAND,
 } from './garrison';
+import { BODY } from './crowd';
 import { idx } from './grid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
@@ -224,16 +225,38 @@ describe('Гарнизон: отряд обходит периметр', () => {
     }
   });
 
+  /**
+   * Потолок шага двойной, и это не поблажка, а два разных обещания.
+   *
+   * Идущий сам по себе не может пройти за кадр больше, чем прошёл ногами:
+   * тут потолок — скорость обхода с надбавкой на кривизну полосы
+   * (`PATROL_STEP_MAX`). А кадр, на котором рядом кто-то ближе `BODY`, —
+   * это кадр, где работает разведение (`sim/crowd.ts`), и сдвиг в сторону
+   * там законен: он и есть «не проходят сквозь». Его потолок свой — ширина
+   * тела: дальше разводить незачем, ближе не разведёшь.
+   */
   test('шаг непрерывен: между кадрами никто не прыгает', () => {
+    // Кадр здесь настоящий, а не крупный шаг правил: на четверти секунды
+    // рыцарь успевает сойтись с соседом и разойтись целиком между двумя
+    // замерами, и проверка «тесно ли сейчас» промахивается мимо всего,
+    // что случилось внутри интервала.
+    const FRAME = 1 / 60;
     for (const { site, g } of guards) {
       let prev = patrolAt(g, 0);
-      for (let t = TICK; t < 300; t += TICK) {
+      for (let t = FRAME; t < 120; t += FRAME) {
         const men = patrolAt(g, t);
         for (let i = 0; i < men.length; i++) {
           const step = Math.hypot(men[i]!.x - prev[i]!.x, men[i]!.z - prev[i]!.z);
+          // Тесно — если тесно было хоть на одном из двух кадров: разведение
+          // работает и на том, где оно как раз развело.
+          const crowded = men.some((o, j) =>
+            j !== i && Math.hypot(o.x - men[i]!.x, o.z - men[i]!.z) < BODY + 1e-6)
+            || prev.some((o, j) =>
+              j !== i && Math.hypot(o.x - prev[i]!.x, o.z - prev[i]!.z) < BODY + 1e-6);
+          const cap = PATROL_SPEED * FRAME * PATROL_STEP_MAX + (crowded ? BODY : 0);
           assert.ok(
-            step <= PATROL_SPEED * TICK * PATROL_STEP_MAX + 1e-9,
-            `сид ${site.loc.seed}: рыцарь ${i} прошёл ${step.toFixed(3)} за ${TICK} с`,
+            step <= cap + 1e-9,
+            `сид ${site.loc.seed}: рыцарь ${i} прошёл ${step.toFixed(3)} за кадр`,
           );
         }
         prev = men;
@@ -498,8 +521,15 @@ describe('Замок: жильцы двора', () => {
           const a = dwellersAt(g, t)[i]!;
           const b = dwellersAt(g, t + STEP)[i]!;
           const step = Math.hypot(b.x - a.x, b.z - a.z);
+          // Та же двойная мерка, что у обхода: на кадре с разведением сдвиг
+          // в сторону законен, и потолок ему — ширина тела.
+          const before = dwellersAt(g, t);
+          const after = dwellersAt(g, t + STEP);
+          const crowded = before.some((o, j) =>
+            j !== i && Math.hypot(o.x - a.x, o.z - a.z) < BODY + 1e-6)
+            || after.some((o, j) => j !== i && Math.hypot(o.x - b.x, o.z - b.z) < BODY + 1e-6);
           assert.ok(
-            step <= DWELLER_SPEED * STEP + 1e-6,
+            step <= DWELLER_SPEED * STEP + (crowded ? BODY : 0) + 1e-6,
             `сид ${site.loc.seed}: жилец ${i} прыгнул на ${step.toFixed(3)}`,
           );
           if (a.walking) moved += step; else stood += STEP;

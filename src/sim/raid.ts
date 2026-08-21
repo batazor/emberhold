@@ -42,6 +42,7 @@ import {
   enemyPlan,
 } from './battle';
 import type { BattleAction, BattleUnit } from './battle';
+import { keepApart } from './crowd';
 import { hasLineOfSight, idx } from './grid';
 import { hexToWorld } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
@@ -596,6 +597,25 @@ function stepContact(state: RaidState, dt: number, vision: number): void {
         }
       }
     }
+  }
+
+  /**
+   * Тела не проходят сквозь тела (`sim/crowd.ts`). Погоня ведёт каждого
+   * к герою по своей прямой, и втроём они сходились в одну точку: трое
+   * в одном силуэте читаются одним противником, и бой перестаёт быть
+   * «сколько их», превращаясь в «сколько успеешь ударить».
+   *
+   * Герой в списке стоит неподвижным: его двигает игрок, и толкать его
+   * толпой значило бы отнимать управление. Упереться в него противники
+   * и так не могут — они останавливаются на своей дистанции удара.
+   */
+  const alive = loc.enemies.filter((e) => e.hp > 0 && e.awake);
+  if (alive.length > 1) {
+    const crowd = [...alive, hero];
+    keepApart(crowd, {
+      fixed: (i: number) => i === crowd.length - 1,
+      free: (x: number, z: number) => loc.blocked[idx(loc.size, Math.round(x), Math.round(z))] === 0,
+    });
   }
 
   state.inFight = touching;
