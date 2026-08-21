@@ -27,6 +27,16 @@ const RICH_COLOR: readonly string[] = ['#d4543a', '#c07a3a', '#c8a24a', '#7fb069
  * Цвет глифа события. Единственное на узле, что красится не богатством:
  * событие обязано читаться и на выработанной точке, где кольцо уже красное.
  */
+/**
+ * С какой ставки вход перестаёт быть обычным и кнопка краснеет.
+ *
+ * Шестьдесят процентов — не подобранное число: артбук `world.html` красит
+ * оранжевым ровно два входа, «В Сухое русло — ставка 60%» и «Войти в бурю»
+ * (60% → 85%), и оба стоят на `TIER_RISK[2]` и выше. Тридцать процентов
+ * в том же артбуке остаются золотой кнопкой.
+ */
+const DANGER_STAKE = 0.6;
+
 const EVENT_COLOR: Record<EventId, string> = {
   storm: '#e2a33c',
   collapse: '#d4543a',
@@ -176,7 +186,10 @@ export class WorldMap {
     this.note.className = 'map-note';
 
     this.go = document.createElement('button');
-    this.go.className = 'primary';
+    // §4, артбук `world.html`: вход в локацию — единственное необратимое
+    // действие на этом экране, и класс у него свой. Прежний `primary`
+    // не имел в карте ни одного правила и падал на общую `button`.
+    this.go.className = 'cta';
     this.go.addEventListener('click', () => this.cb.onRaid(this.node().id));
 
     this.root.append(this.canvas, this.card, this.note, this.go);
@@ -441,8 +454,16 @@ export class WorldMap {
 
     // Кнопка называется действием, а не местом: имя локации склоняется,
     // а имена в прототипе рабочие (§0.1) и меняются без предупреждения.
+    //
+    // Ставку она называет только там, где та стала настоящей. Артбук делает
+    // ровно это — «В Сухое русло — ставка 60%», «Войти в бурю», — и делает
+    // не ради полноты: строка карточки объявляет ставку глазам, а кнопка —
+    // пальцу, который сейчас нажмёт. Ниже порога кнопка молчит: повторять
+    // «ставка 0%» на кнопке значит учить не читать её.
     const block = this.entryBlock(node);
-    this.go.textContent = 'Войти';
+    const hot = stake >= DANGER_STAKE;
+    this.go.textContent = hot ? `Войти · ставка ${Math.round(stake * 100)}%` : 'Войти';
+    this.go.classList.toggle('danger', hot && block === 'ok');
     this.go.disabled = block !== 'ok';
     // Отказ говорит причиной и перебивает срок восстановления: игроку сейчас
     // важнее, почему сюда нельзя, чем когда сюда снова будет выгодно.
@@ -463,5 +484,8 @@ export class WorldMap {
       '<div class="line"><span>Кто здесь</span><b class="good">никого</b></div>';
     this.note.textContent = 'Прогулка: ни добычи, ни противников. Выход открыт сразу.';
     this.go.textContent = 'Пойти';
+    // У замка ставки нет вовсе (§6.1.6) — и оранжевой кнопке там взяться неоткуда.
+    this.go.classList.remove('danger');
+    this.go.disabled = this.entryBlock(node) !== 'ok';
   }
 }

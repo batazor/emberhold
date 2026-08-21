@@ -199,7 +199,48 @@ button:active { background: rgba(255, 255, 255, 0.12); }
 .map-card .pips s { width: 22px; height: 4px; background: var(--good); border-radius: 2px; }
 .map-card .pips s.off { background: rgba(232, 226, 212, 0.16); }
 .map-note { font-size: 11px; color: var(--dim); min-height: 14px; }
-#camp .map > button { padding: 11px; }
+
+/* Кнопка входа — по артбуку `world.html` (`.cta`), а не общая `button`.
+   Это не украшение: вход в локацию — единственное необратимое действие
+   на экране, и выглядеть оно обязано иначе, чем «Отряд» и «Припасы».
+   До сих пор кнопка носила класс `primary`, для которого правила в карте
+   не было вовсе, — и падала на общую `button`: 12 пикселей, серая панель,
+   тонкая рамка. То есть самое дорогое действие игры выглядело как вкладка.
+
+   Числа взяты из артбука дословно: заливка градиентом, засечный шрифт,
+   16 пикселей, скругление 9. Тёмный текст на светлом — единственное такое
+   место в интерфейсе, и в этом весь смысл. */
+.cta {
+  display: block; width: 100%; text-align: center;
+  padding: 12px 18px; border-radius: 9px;
+  border: 1px solid #e0bc3c;
+  background: linear-gradient(180deg, #d5ac2c, #a8811a);
+  color: #140f02;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px; font-weight: 600;
+}
+.cta:active { background: linear-gradient(180deg, #c39c26, #8f6e16); }
+/* Ставка перестала быть посильной. Порог — 60%: артбук красит оранжевым
+   ровно два входа, «В Сухое русло — ставка 60%» и «Войти в бурю» (60% → 85%),
+   и оба стоят на `TIER_RISK[2]` и выше. Ниже кнопка остаётся золотой:
+   если оранжевой станет каждая вылазка, оранжевый перестанет значить что-либо. */
+.cta.danger {
+  border-color: #e07c46;
+  background: linear-gradient(180deg, #d2662f, #9e4620);
+  color: #150802;
+}
+.cta.danger:active { background: linear-gradient(180deg, #bb5a29, #8a3c1b); }
+/* Заперто. Не серая версия золотой, а другая кнопка: заливка снимается
+   совсем, иначе «нельзя» читается как «сломалось». Причину говорит строка
+   под ней (`.map-note`), а не сама кнопка. */
+.cta:disabled {
+  background: transparent; border-color: var(--line); color: var(--dim);
+  cursor: default;
+}
+/* Правило `#camp .map > button { padding: 11px }` отсюда убрано: оно было
+   написано под прежнюю кнопку и по специфичности перебивало отступы `.cta`,
+   то есть отменяло артбук молча — в демо вне `#camp` всё выглядело верно,
+   а в игре нет. Размер кнопки задаёт `.cta`, и только он. */
 /* Перестановка — второе действие карточки, поэтому тише главного. */
 #camp .b .move { align-self: flex-start; font-size: 11px; padding: 5px 9px; }
 /* Нижняя строка: три входа и ничего больше. Главный — вылазка.
