@@ -98,7 +98,7 @@ interface SaveV1 {
    * открываться. Отсутствие читается пустым лагерем — герой один и живёт
    * в Жилье, ровно как было до появления жильцов.
    */
-  residents?: { name: string; look: string; answer: string }[];
+  residents?: { name: string; look: string; answer: string; seed?: number }[];
   tents?: { x: number; z: number }[];
 }
 
@@ -135,7 +135,12 @@ export function save(
     // Пишется остаток, а не список с пометками: разбитый валун — это просто
     // камень, которого больше нет, и хранить о нём запись незачем.
     stones: camp.stones.filter((s) => !s.taken).map((s) => ({ x: s.x, z: s.z })),
-    residents: camp.residents.map((r) => ({ name: r.name, look: r.look, answer: r.answer })),
+    residents: camp.residents.map((r) => ({
+      name: r.name,
+      look: r.look,
+      answer: r.answer,
+      seed: r.seed,
+    })),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
     onb: onboarding,
     heroes: {
@@ -156,6 +161,16 @@ export function save(
     // Приватный режим или переполнение — игра обязана продолжать работать
     // без сохранения, а не падать на записи.
   }
+}
+
+/** Сид лица из имени: для жильцов, записанных до того, как лицо появилось. */
+export function seedOfName(name: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }
 
 export function load(): LoadResult {
@@ -254,13 +269,21 @@ export function load(): LoadResult {
     // подставить умолчание значило бы придумать за игрока, кого он позвал.
     if (Array.isArray(data.residents)) {
       camp.residents = data.residents
-        .filter((r): r is { name: string; look: DwellerLook; answer: SelfAnswer } =>
+        .filter((r): r is { name: string; look: DwellerLook; answer: SelfAnswer; seed?: number } =>
           r != null &&
           typeof r.name === 'string' &&
           r.name !== '' &&
           DWELLER_LOOKS.includes(r.look as DwellerLook) &&
           SELF_ANSWERS.includes(r.answer as SelfAnswer))
-        .map((r) => ({ name: r.name, look: r.look, answer: r.answer }));
+        // Сид лица у старых сохранений отсутствует, и выдумывать его случайно
+        // нельзя: жилец менял бы лицо при каждой загрузке. Берётся из имени —
+        // оно у жильца не меняется, значит и лицо не изменится.
+        .map((r) => ({
+          name: r.name,
+          look: r.look,
+          answer: r.answer,
+          seed: typeof r.seed === 'number' ? r.seed : seedOfName(r.name),
+        }));
     }
     if (Array.isArray(data.tents)) {
       camp.tents = data.tents

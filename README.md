@@ -99,8 +99,8 @@ src/
   render/    scene (камера, свет, ночь), raidView, campView, titleView,
              palette, baked (общее для готовых наборов), forest, skeleton,
              adventurers, *.data.ts — генерируются, не править
-  ui/        hud (вылазка), campHud (лагерь), worldMap (карта §4), rosterPanel,
-             startScreen,
+  ui/        hud (вылазка), campHud (лагерь), worldMap (карта §4), heroCard,
+             avatar (лица NPC: рисуются кодом из вида и сида), startScreen,
              campPrompt (конец пролога), devMenu (только в dev-сборке) —
              DOM поверх канваса
   **/*.rules.ts  проверки лежат рядом с тем, что проверяют

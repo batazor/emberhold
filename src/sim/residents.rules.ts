@@ -14,7 +14,7 @@ import { BUILDING_ORDER, BUILD_COST, campArea, createCamp } from './camp';
 import type { CampState } from './camp';
 import { CHOP_SECONDS } from './logging';
 import { MINE_SECONDS } from './stones';
-import { SELF_ANSWERS } from './settler';
+import { SELF_ANSWERS, generateSettler } from './settler';
 import {
   RESIDENT_WORK,
   TENT_COST,
@@ -24,6 +24,7 @@ import {
   buildTent,
   dwellers,
   homeless,
+  homelessFolk,
   roofs,
   WORK_CAP,
   WORK_SECONDS,
@@ -36,7 +37,7 @@ import type { Resident } from './residents';
 import { totalOf } from './resources';
 import type { Resources } from './resources';
 
-const guest = (name: string): Resident => ({ name, look: 'поселенец', answer: 'строим' });
+const guest = (name: string): Resident => ({ name, look: 'поселенец', seed: name.length, answer: 'строим' });
 
 const rich = (): CampState => {
   const camp = createCamp();
@@ -71,6 +72,31 @@ describe('Жильцы и палатки', () => {
     assert.ok(admit(camp, guest('Гита')), 'приглашение отклонено при пустом кошельке');
     assert.equal(homeless(camp), 1, 'без палатки он обязан числиться без крыши');
     assert.equal(tentBlock(camp), 'resources', 'причина обязана называть, чего не хватает');
+  });
+
+  /** Приглашённый входит с тем лицом, с каким сидел на прогалине. */
+  test('лицо приходит в лагерь вместе с человеком', () => {
+    const camp = rich();
+    const met = generateSettler(77);
+    admit(camp, { name: met.name, look: met.look, seed: met.seed, answer: 'строим' });
+    const lives = camp.residents[0]!;
+    assert.equal(lives.seed, met.seed, 'жилец сменил лицо на входе');
+    assert.equal(lives.look, met.look, 'жилец сменил вид на входе');
+  });
+
+  /**
+   * Задание показывает того самого человека, а не первого попавшегося:
+   * лицо в строке обязано совпадать со счётом без крыши, иначе игрок ставит
+   * палатку и видит, что просил её кто-то другой.
+   */
+  test('без крыши остаются последние пришедшие, и счёт с ними сходится', () => {
+    const camp = rich();
+    for (let n = 1; n <= 4; n++) admit(camp, guest(`Гость ${n}`));
+    assert.equal(homelessFolk(camp).length, homeless(camp), 'счёт и список разошлись');
+    assert.equal(homelessFolk(camp)[0]!.name, 'Гость 1', 'крышу ждёт не тот, кто пришёл раньше');
+    buildTent(camp);
+    assert.equal(homelessFolk(camp).length, homeless(camp), 'после палатки счёт разошёлся');
+    assert.equal(homelessFolk(camp)[0]!.name, 'Гость 2', 'палатка досталась не первому в очереди');
   });
 
   test('один и тот же человек не приходит дважды', () => {
@@ -307,9 +333,9 @@ describe('Жильцы и палатки', () => {
 
   test('оба ответа складываются каждый в свой ресурс', () => {
     const camp = rich();
-    admit(camp, { name: 'Строитель', look: 'поселенец', answer: 'строим' });
+    admit(camp, { name: 'Строитель', look: 'поселенец', seed: 1, answer: 'строим' });
     buildTent(camp);
-    admit(camp, { name: 'Ходок', look: 'торговец', answer: 'ходим' });
+    admit(camp, { name: 'Ходок', look: 'торговец', seed: 2, answer: 'ходим' });
     buildTent(camp);
     const wood = camp.resources.wood;
     const stone = camp.resources.stone;

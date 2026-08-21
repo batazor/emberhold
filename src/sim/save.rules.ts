@@ -166,6 +166,44 @@ describe('Сохранение', () => {
     assert.equal(watermark, 777);
     wipe();
   });
+
+  /**
+   * **Лицо переживает перезагрузку.** Лицо жильца выводится из сида
+   * (`ui/avatar.ts`), и сид обязан лежать в сейве: без него игрок возвращался
+   * бы в лагерь, где все живут с новыми лицами.
+   */
+  test('жилец возвращается с тем же лицом', () => {
+    const camp = createCamp();
+    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 12345, answer: 'строим' }];
+    save(camp, createRoster(), 1);
+    assert.deepEqual(load().camp.residents, camp.residents);
+    wipe();
+  });
+
+  /**
+   * Сейв, записанный до того, как лицо появилось, не роняет игру и не выдаёт
+   * жильцу случайное лицо: сид берётся из имени, а имя у жильца не меняется.
+   */
+  test('жилец из старого сейва получает лицо от имени, а не случайное', () => {
+    // Сейв собирается настоящим `save`, а лицо из него вырезается: так
+    // «старый сейв» отличается от нынешнего ровно одним полем, а не формой,
+    // которую пришлось бы придумать.
+    const camp = createCamp();
+    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 999, answer: 'строим' }];
+    save(camp, createRoster(), 1);
+    const raw = JSON.parse(localStorage.getItem('emberhold/save')!) as {
+      residents: { seed?: number }[];
+    };
+    delete raw.residents[0]!.seed;
+    const old = raw;
+    localStorage.setItem('emberhold/save', JSON.stringify(old));
+    const first = load().camp.residents[0];
+    localStorage.setItem('emberhold/save', JSON.stringify(old));
+    const second = load().camp.residents[0];
+    assert.ok(first !== undefined && typeof first.seed === 'number', 'жилец без лица');
+    assert.equal(first.seed, second?.seed, 'лицо поменялось между загрузками');
+    wipe();
+  });
 });
 
 describe('Сохранение: стены лагеря', () => {
