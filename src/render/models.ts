@@ -462,3 +462,32 @@ export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {
     : adventurerParts(model, heroHeight(cls), heldOf(cls, weapon));
 }
 
+
+/**
+ * Гарнизон замка (§6.1.6) — рыцарь набора: тот, что по периметру, и тот,
+ * что на стене. Персонаж один на обоих, а отличает их предмет в руке —
+ * ровно то же правило, каким набор различает своих скелетов (§6.1.3):
+ * силуэт делает снаряжение, а не порода.
+ *
+ * Рост берётся у героя, а не назначается своим числом. Гарнизон и герой —
+ * люди одного мира, и разный рост читался бы не «другой человек», а «другой
+ * масштаб сцены»; вдобавок мерка героя снята с примитива, который он заменил,
+ * и второе записанное число разошлось бы с ней молча.
+ */
+const GUARD_MODEL: AdventurerModelName = 'Knight';
+
+/** Класс, у которого рост измерен: единственный, кому набор уже вписан. */
+const GUARD_LIKE: HeroClassId = 'ranger';
+
+/** Кто в гарнизоне: обходящий периметр и стоящий на стене. */
+export type GuardKind = 'дозор' | 'стрелок';
+
+const GUARD_HELD: Record<GuardKind, AdventurerModelName> = {
+  'дозор': 'sword_1handed',
+  'стрелок': 'bow_withString',
+};
+
+export const guardHeight = (): number => heroHeight(GUARD_LIKE);
+
+export const guardParts = (kind: GuardKind): RiggedParts =>
+  adventurerParts(GUARD_MODEL, heroHeight(GUARD_LIKE), GUARD_HELD[kind]);

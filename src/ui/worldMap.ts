@@ -19,9 +19,14 @@ import type { EventId } from '../sim/events';
 import { formatDuration } from '../core/clock';
 import { CLANS, RICH_MAX, SHIFT_SEC, dayAt, lootMul, regionAt, worldAt } from '../sim/world';
 import type { NodeState, Region, WorldNode } from '../sim/world';
+import { drawMapTerrain } from './mapTerrain';
 
-/** Цвет узла по богатству: от выработанной к полной жиле. */
-const RICH_COLOR: readonly string[] = ['#d4543a', '#c07a3a', '#c8a24a', '#7fb069'];
+/**
+ * Цвет узла по богатству: от выработанной к полной жиле. Наружу выставлен
+ * ради замера (`mapTerrain.rules.ts`): фон карты обязан остаться темнее
+ * любого из этих четырёх, и проверяется это числом, а не глазами.
+ */
+export const RICH_COLOR: readonly string[] = ['#d4543a', '#c07a3a', '#c8a24a', '#7fb069'];
 
 /**
  * Цвет глифа события. Единственное на узле, что красится не богатством:
@@ -273,11 +278,21 @@ export class WorldMap {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
+    const spots = [...this.region.nodes, { ...this.region.camp, id: -1 }];
+
+    // §4.2 — земля под точками. Чёрный экран делал из региона список кружков,
+    // разложенный по прямоугольнику; местность делает из него место. Ни одного
+    // канала она при этом не несёт и ни на одну точку не наступает — за то
+    // и другое отвечает `sim/terrain.ts`.
+    drawMapTerrain(ctx, this.region.day, spots, w, h, dpr);
+
     // Тракт: связи ближних узлов. Без них двадцать точек читаются как список,
     // а не как местность, и «дальше» перестаёт значить «дороже».
-    ctx.strokeStyle = 'rgba(232, 226, 212, 0.10)';
+    //
+    // По земле он светлее, чем по чёрному: на 10% прозрачности линия пропадала
+    // в хвое и оставляла точки без связей.
+    ctx.strokeStyle = 'rgba(232, 226, 212, 0.16)';
     ctx.lineWidth = 1;
-    const spots = [...this.region.nodes, { ...this.region.camp, id: -1 }];
     for (let i = 0; i < spots.length; i++) {
       for (let j = i + 1; j < spots.length; j++) {
         const a = spots[i]!;
