@@ -32,6 +32,44 @@ const run = (state: RaidState, seconds: number): void => {
 
 describe('Вылазка', () => {
   /**
+   * §11.4 — обзор считается в одном месте и одним числом.
+   *
+   * Правило заведено на конкретном расхождении: слагаемых у обзора три —
+   * формула, фонарь из снаряжения и событие, — а свет на экране брал только
+   * формулу. Выкованный фонарь будил скелетов на два тайла дальше, не расширив
+   * круга света; обвал сужал обзор, не тронув картинку. Проверяется поэтому
+   * не формула (она в config), а то, что все три слагаемых доезжают
+   * до `state.vision`, откуда читает и `stepContact`, и рендер.
+   */
+  test('§11.4 — фонарь и событие доезжают до обзора', () => {
+    const opts = {
+      seed: 5,
+      tier: 2 as const,
+      kitchenLevel: 3,
+      storageLevel: 3,
+      gear: emptyGear(),
+    };
+    const bare = createRaid(opts);
+    const lit = createRaid({ ...opts, gear: { ...emptyGear(), torch: 4 } });
+    const shielded = createRaid({ ...opts, gear: { ...emptyGear(), torch: 4 }, offhand: 'shield' });
+    const buried = createRaid({ ...opts, event: 'collapse' });
+
+    assert.equal(lit.vision, bare.vision + lit.mods.vision, 'фонарь не расширил обзор');
+    assert.ok(lit.mods.vision > 0, 'и прибавка у фонаря ненулевая, иначе проверка пустая');
+    assert.equal(shielded.vision, bare.vision, '§14.2 — со щитом в левой руке не светит');
+    assert.equal(buried.vision, bare.vision + buried.visionAdd, 'обвал не сузил обзор');
+    assert.equal(buried.visionAdd, -1, 'и сужает он именно на тайл');
+
+    // Шаг пересчитывает число целиком, а не только базу: до этого поля
+    // слагаемые складывались внутри stepRaid и наружу не выходили.
+    const before = lit.vision;
+    stepRaid(lit, TICK, false, lit.loadout.knowledge);
+    assert.equal(lit.vision, before, 'день на входе и день на шаге дают одно');
+    stepRaid(lit, TICK, true, lit.loadout.knowledge);
+    assert.equal(lit.vision, before - 1, '§11.4 — ночь отнимает тайл, а фонарь остаётся');
+  });
+
+  /**
    * §14.3. Вместимость колчана задаёт лук, запас — лагерь, и путать их нельзя.
    * Пока `arrowsMax` считался от взятого, ноль в лагере обнулял вместимость,
    * а подбор упирается в `arrows < arrowsMax` — и пустой колчан не мог

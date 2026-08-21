@@ -278,6 +278,10 @@ export function createRaid(opts: RaidOptions): RaidState {
     risk: opts.risk ?? true,
     riskAdd: event.risk + draft.risk,
     visionAdd: event.vision + draft.vision,
+    // Ночь на входе неизвестна — её знает только кадр, — поэтому здесь день.
+    // Первый же шаг перепишет число целиком, а до него по локации никто
+    // не ходит и никого не будит.
+    vision: visionRadius(loadout.knowledge, false, true) + mods.vision + event.vision + draft.vision,
     stepMul: event.step,
     // §19 — множитель пути назад. Единица без карты; «Верёвка» ставит 0,75.
     backMul: draft.back,
@@ -1053,6 +1057,25 @@ function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): numb
   return damageOf(from.attack, to.defense);
 }
 
+/**
+ * Шаг вылазки. **Порядок стадий — часть контракта, а не деталь реализации,**
+ * и каждая следующая читает то, что записала предыдущая:
+ *
+ * 1. **Бой.** Если стычка открыта, мир стоит целиком и шаг на этом кончается.
+ * 2. **Часы** — `elapsed`, откат умения, глубина возвращения (`maxBack`).
+ * 3. **Обзор** — `state.vision`, единственное место, где складываются
+ *    слагаемые (§11.4). Всё ниже и весь рендер читают уже готовое число.
+ * 4. **Движение** — герой едет по пути и платит провиантом за шаг.
+ * 5. **Контакт** — кто проснулся и кто дотянулся; считается от `vision`
+ *    и от позиции после шага, иначе враг реагировал бы на прошлый кадр.
+ * 6. **Голод** — грызёт раны, только если провиант кончился на этом шаге.
+ * 7. **Расходники** — срабатывают после урона, чтобы зелье спасало от раны,
+ *    которая уже нанесена, а не от будущей.
+ * 8. **Перевыбор ведущего** — последним: до него отряд ещё мог потерять
+ *    бойца в любой из стадий выше, и раньше выбирать не из чего.
+ *
+ * Перестановка любых двух — смена правил игры, а не рефактор.
+ */
 export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge: number): void {
   if (state.status !== 'running') return;
   state.events.length = 0;
@@ -1077,12 +1100,12 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
 
   // Базовый фонарь героя (§11.4) остаётся у всех; выкованный фонарь
   // прибавляется сверху и потому не ужесточает ярусы задним числом.
-  const vision = visionRadius(knowledge, night, true) + state.mods.vision + state.visionAdd;
+  state.vision = visionRadius(knowledge, night, true) + state.mods.vision + state.visionAdd;
   stepMovement(state, dt);
   if (state.status !== 'running') return;
   // Вне боя остаётся только завязка: разбудить и подойти. Сам бой считает
   // поле (§11.3), и считать его дважды нельзя.
-  stepContact(state, dt, vision);
+  stepContact(state, dt, state.vision);
   if (state.inFight && state.battle === null) openBattle(state);
 
   // Голод не убивает мгновенно: провиант обязан оставаться главной причиной

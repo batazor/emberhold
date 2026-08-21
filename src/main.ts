@@ -33,7 +33,6 @@ import {
 import type { BuildingId, CampState } from './sim/camp';
 import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
 import type { GearSlot } from './sim/gear';
-import { visionRadius } from './sim/config';
 import {
   HERO_CLASSES,
   activeHero,
@@ -2634,7 +2633,7 @@ if (debugParams.has('bench')) {
         return;
       } else if (mode === 'raid' && raid !== null && raidView !== null) {
         raidView.sync(raid, 0, 1 / 60, performance.now(), rig.dayFactor);
-        rig.update(1 / 60, raid.hero.x, raid.hero.z, visionRadius(raid.loadout.knowledge, rig.night > 0.5, true));
+        rig.update(1 / 60, raid.hero.x, raid.hero.z, raid.vision);
       }
       rig.render();
     },
@@ -2864,12 +2863,9 @@ startLoop({
       } else {
         rig.lookAt(raid.hero.x, raid.hero.z);
       }
-      rig.update(
-        dt,
-        raid.hero.x,
-        raid.hero.z,
-        visionRadius(raid.loadout.knowledge, rig.night > 0.5, true),
-      );
+      // Число берётся из состояния, а не считается заново: слагаемых у обзора
+      // три (§11.4), и своя формула здесь роняла бы фонарь и обвал с экрана.
+      rig.update(dt, raid.hero.x, raid.hero.z, raid.vision);
       rig.render();
     } else {
       // camp.html §3: лагерь идёт на 30 кадрах и замирает через 20 секунд
