@@ -5,6 +5,12 @@
  * Одна строка и одна кнопка, как на заставке (§6 — UI это DOM над канвасом).
  * Окна с «Понятно» здесь нет намеренно: раскадровка запрещает их на всём
  * протяжении обучения, а решение тут ровно одно, и отказаться от него нельзя.
+ *
+ * **Живёт внутри нижней панели вылазки, а не отдельным слоем (§6.2.6).**
+ * Своим `position: fixed` приглашение приходило четвёртой коробкой в нижний
+ * угол и в конце пролога налезало на подсказку: «Разбить лагерь» и «Соберите
+ * бруски» спорили за одни пиксели. Родитель ему теперь даёт `Hud.promptSlot`,
+ * и обе строки стоят в одном столбце.
  */
 export interface CampPromptCallbacks {
   onPitch(): void;
@@ -17,11 +23,13 @@ export class CampPrompt {
   constructor(parent: HTMLElement, cb: CampPromptCallbacks) {
     this.root = document.createElement('div');
     this.root.id = 'pitch';
-    // Строка на панели, а не голым текстом по сцене: под ней светлая листва
-    // поляны, и одной тени для контраста не хватало.
+    // Строка — та же `.chip`, что и подсказка вылазки: они стоят в одном
+    // месте столбца и никогда одновременно, значит и выглядеть обязаны
+    // одним объектом. Под ними светлая листва поляны, и одной тени
+    // для контраста не хватало.
     this.root.innerHTML = `
-      <p class="panel" data-role="reason">Дерево собрано</p>
-      <button data-act="pitch">Разбить лагерь</button>`;
+      <p class="chip" data-role="reason">Дерево собрано</p>
+      <button class="cta" data-act="pitch">Разбить лагерь</button>`;
     this.root.style.display = 'none';
     parent.appendChild(this.root);
     const reason = this.root.querySelector('[data-role="reason"]');

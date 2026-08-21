@@ -9,11 +9,43 @@ import type { Reveal } from '../sim/onboarding';
  * §6: UI — DOM поверх канваса, не внутри сцены.
  * §11.2: ставка показывается числом «12 из 19», а не процентом.
  * §11.3: здоровье — полоса очков; правило «раны, а не полоска» отменено там же.
+ *
+ * **Отладка не живёт в игровом экране (§6.2.5).** Ползунки ночи и травы,
+ * счётчик кадров и зум камеры стояли в той же панели, что и провиант,
+ * и после онбординга (`reveal.controls`) показывались игроку наравне
+ * с ним. Прятались они выключателем, а выключатель — не граница: ручка
+ * к состоянию оказывалась в игре просто потому, что её некуда было деть.
+ *
+ * Теперь у неё есть куда: отладочный ряд собирается только при `?debug`
+ * в адресе — тем же приёмом, каким открываются отладочные кадры. Замер
+ * при этом не потерян, а стал повторяемым: ночь и трава задаются
+ * `?night=` и `?grass=` и без ползунков.
+ *
+ * **Низ — одна панель, а не три коробки (§6.2.6).** Слоты, подсказка и ряд
+ * кнопок стояли в нижнем углу тремя независимыми плашками разной ширины,
+ * а приглашение разбить лагерь (`ui/campPrompt.ts`) приходило четвёртым
+ * слоем поверх — своим `position: fixed`, ничего не знающим об остальных.
+ * В конце пролога они и налезали друг на друга: «Разбить лагерь» и
+ * «Соберите бруски» спорили за одни и те же пиксели.
+ *
+ * Теперь низ — один столбец в одной панели: состояние сверху, строка
+ * посередине, действия снизу. Приглашение вселяется в неё же через
+ * `promptSlot`, а не приходит отдельным слоем, и пока оно на экране,
+ * подсказка с игровыми кнопками уступают место: сообщение одно
+ * и действие одно.
+ *
+ * **Четыре полосы остаются четырьмя.** Они записаны §11.1 («путь назад…
+ * всегда на экране»), и то, что их именно четыре, — уже решение: колчан
+ * не стал пятой строкой ровно поэтому. Чистка состава касается того,
+ * что наросло, а не того, что решено.
  */
 export interface HudCallbacks {
   onRotate(steps: number): void;
+  /** Отладка: кадр камеры. Записанного решения про зум в вылазке нет, и жест
+   *  под него не заведён, — поэтому он не в игровом ряду, а в отладочном. */
   onZoom(delta: number): void;
   onEvacuate(): void;
+  /** Отладка, не механика: сколько ночи. Дублируется адресом `?night=`. */
   onNight(value: number): void;
   /** Отладка, не механика: плотность травы в травинках на клетку. */
   onGrass(perTile: number): void;
@@ -38,12 +70,25 @@ export class Hud {
   private slotsKey = '';
   private readonly stats: HTMLElement;
   private readonly skill: HTMLButtonElement;
+  /** Собран ли отладочный ряд. Без него ползунков и счётчика в разметке нет
+   *  вовсе — не спрятаны, а не созданы. */
+  private readonly debug: boolean;
   private hintTimer = 0;
   /** Подсказка онбординга. Живёт, пока кадр не сменится, — в отличие от
    *  реплик вылазки, которые гаснут через пару секунд. */
   private sticky = '';
 
-  constructor(parent: HTMLElement, private readonly cb: HudCallbacks) {
+  /**
+   * `debug` — не выключатель, а начальные значения ряда. Собрать ряд, не сказав,
+   * с чего он начинается, нельзя: ползунок на 100, когда в адресе `night=30`,
+   * врёт ровно тому, кто пришёл мерить.
+   */
+  constructor(
+    parent: HTMLElement,
+    private readonly cb: HudCallbacks,
+    debug: { readonly night: number; readonly grass: number } | null = null,
+  ) {
+    this.debug = debug !== null;
     this.root = document.createElement('div');
     this.root.id = 'hud';
     this.root.innerHTML = `
@@ -65,20 +110,15 @@ export class Hud {
           <div class="bar back" data-row="back"><i id="h-back-bar"></i></div>
           <span class="num" id="h-back" data-row="back">0 ш.</span>
         </div>
-        <div class="risk" data-row="risk"><span id="h-risk"></span> · <span id="h-tier"></span></div>
+        <div class="row risk" data-row="risk"><span id="h-risk"></span><span id="h-tier"></span></div>
       </div>
       <div class="bottom">
         <div id="h-slots" class="raid-slots"></div>
         <div id="h-hint" class="chip hint"></div>
-        <div class="panel night" data-row="controls">
-          <span class="lbl">Ночь</span><input id="h-night" type="range" min="0" max="100" value="100">
-          <span class="lbl">Трава</span><input id="h-grass" type="range" min="0" max="64" value="24">
-        </div>
+        <div id="h-prompt" class="prompt"></div>
         <div class="ctl">
           <button data-act="rot-l" data-row="controls">⟲</button>
           <button data-act="rot-r" data-row="controls">⟳</button>
-          <button data-act="zoom-in" data-row="controls">＋</button>
-          <button data-act="zoom-out" data-row="controls">－</button>
           <button data-act="skill" id="h-skill" data-row="controls">Умение</button>
           <button data-act="evac" data-row="evac">Домой</button>
         </div>
@@ -100,12 +140,30 @@ export class Hud {
     this.slots = this.q('h-slots');
     this.stats = document.createElement('div');
     this.stats.id = 'stats';
-    // Счётчик кадров — часть отладочного управления: в первой вылазке
-    // на экране только то, что игрок обязан прочитать.
-    this.stats.dataset['row'] = 'controls';
-    // В потоке над подсказкой, а не поверх панели: панель меняет высоту
-    // от длины строк, и абсолютно позиционированный счётчик её перекрывал.
-    this.root.querySelector('.bottom')?.prepend(this.stats);
+    this.stats.className = 'chip';
+    if (this.debug) {
+      const bottom = this.root.querySelector('.bottom');
+      // Ряд собирается целиком здесь, а не прячется в разметке выключателем:
+      // спрятанная ручка — всё ещё ручка в игровом экране.
+      const debugRow = document.createElement('div');
+      debugRow.className = 'panel night';
+      debugRow.innerHTML = `
+        <span class="lbl">Ночь</span>
+        <input id="h-night" type="range" min="0" max="100" value="${Math.round(debug!.night * 100)}">
+        <span class="lbl">Трава</span>
+        <input id="h-grass" type="range" min="0" max="64" value="${debug!.grass}">
+        <button data-act="zoom-in">＋</button><button data-act="zoom-out">－</button>`;
+      bottom?.insertBefore(debugRow, bottom.querySelector('.ctl'));
+      // В потоке над подсказкой, а не поверх панели: панель меняет высоту
+      // от длины строк, и абсолютно позиционированный счётчик её перекрывал.
+      bottom?.prepend(this.stats);
+      this.q('h-night').addEventListener('input', (e) => {
+        this.cb.onNight(Number((e.target as HTMLInputElement).value) / 100);
+      });
+      this.q('h-grass').addEventListener('input', (e) => {
+        this.cb.onGrass(Number((e.target as HTMLInputElement).value));
+      });
+    }
 
     this.root.addEventListener('click', (e) => {
       const el = e.target;
@@ -120,13 +178,6 @@ export class Hud {
       }
     });
 
-    this.q('h-night').addEventListener('input', (e) => {
-      this.cb.onNight(Number((e.target as HTMLInputElement).value) / 100);
-    });
-
-    this.q('h-grass').addEventListener('input', (e) => {
-      this.cb.onGrass(Number((e.target as HTMLInputElement).value));
-    });
   }
 
   private q(id: string): HTMLElement {
@@ -259,7 +310,31 @@ export class Hud {
     this.stats.style.visibility = visible ? 'visible' : 'hidden';
   }
 
+  /** Счётчик кадров пишется только когда есть куда. */
+  get showsStats(): boolean {
+    return this.debug;
+  }
+
+  /**
+   * Куда вселяется приглашение конца пролога. Отдельным слоем оно налезало
+   * на подсказку: два нижних угла не знали друг о друге.
+   */
+  get promptSlot(): HTMLElement {
+    return this.q('h-prompt');
+  }
+
+  /**
+   * Пока приглашение на экране, подсказка и игровые кнопки уступают место.
+   * Сообщение одно и действие одно — иначе панель предлагает выбор там,
+   * где выбора нет (§16.1: отказаться от лагеря нельзя).
+   */
+  setPrompting(on: boolean): void {
+    this.root.classList.toggle('prompting', on);
+  }
+
+  /** Без отладочного ряда ползунка нет — и синхронизировать нечего. */
   setGrass(perTile: number): void {
+    if (!this.debug) return;
     (this.q('h-grass') as HTMLInputElement).value = String(perTile);
   }
 

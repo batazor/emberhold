@@ -317,6 +317,22 @@ const seedParam = Number(debugParams.get('seed'));
 const debugSeed = Number.isFinite(seedParam) && debugParams.has('seed') ? seedParam | 0 : null;
 
 /**
+ * Ночь адресом (§6.2.5). Раньше её задавал только ползунок в игровом HUD,
+ * и замер на конкретной темноте нельзя было повторить, не подвинув его
+ * рукой на то же место.
+ */
+const nightParam = Number(debugParams.get('night'));
+const debugNight = debugParams.has('night') && Number.isFinite(nightParam)
+  ? Math.max(0, Math.min(1, nightParam / 100))
+  : null;
+
+/**
+ * Отладочный ряд в вылазке. Собирается только по адресу: ручка к состоянию
+ * не живёт в игровом экране, а `?grass=` в адресе — уже просьба её показать.
+ */
+const debugHud = debugParams.has('debug') || debugParams.has('grass') || debugParams.has('night');
+
+/**
  * Кем идём в вылазку. Выбранный герой может быть занят (ушёл лечиться,
  * пока игрок был в лагере) — тогда берём первого готового, а не блокируем
  * кнопку: §11.8 вводил ротацию затем, чтобы простой не останавливал игру.
@@ -334,6 +350,15 @@ setMix(loadMix());
 bindPageAudio();
 
 const rig = new SceneRig(app);
+
+/**
+ * Ночь сцены. Заданная адресом перебивает сценарную: замер на конкретной
+ * темноте обязан повторяться, а не подгоняться ползунком на то же место.
+ * Без `?night=` ведёт себя ровно как присваивание, которым была.
+ */
+const setNight = (value: number): void => {
+  rig.night = debugNight ?? value;
+};
 const campView = new CampView(camp);
 rig.world.add(campView.group);
 
@@ -358,7 +383,7 @@ const hud = new Hud(app, {
     if (raid === null) return;
     if (useSkill(raid)) track({ t: 'skill', at: clock.now(), skill: raid.loadout.skill, tier: raid.loc.tier });
   },
-});
+}, debugHud ? { night: debugNight ?? 1, grass: grassPerTile } : null);
 
 const campHud = new CampHud(app, {
   onUpgrade: (id) => {
@@ -723,9 +748,12 @@ const startScreen = new StartScreen(app, {
   onPlay: () => (onboarding.step === 'glade' ? toGlade() : toCamp()),
 });
 
-const campPrompt = new CampPrompt(app, {
+// Приглашение вселяется в нижнюю панель вылазки, а не приходит отдельным
+// слоем: два нижних угла не знали друг о друге и налезали (§6.2.6).
+const campPrompt = new CampPrompt(hud.promptSlot, {
   onPitch: () => {
     campPrompt.setVisible(false);
+    hud.setPrompting(false);
     // Лагерь встаёт прямо здесь. Никакого перехода в отдельную сцену:
     // поляна, по которой игрок только что ходил, и есть место, где он
     // остался, — и первое здание вырастает у него на глазах, а не за
@@ -1011,6 +1039,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   statsPanel.setVisible(panels.stats);
   startScreen.setVisible(panels.startScreen);
   campPrompt.setVisible(panels.campPrompt);
+  if (!panels.campPrompt) hud.setPrompting(false);
   if (!panels.returnScreen) returnScreen.hide();
 
   const sound = soundFor(scene, tier);
@@ -1172,7 +1201,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   campView.group.visible = false;
   rig.lookAt(raid.hero.x, raid.hero.z, true);
   rig.setZoom(18, true);
-  rig.night = 1;
+  setNight(1);
   resultShown = false;
   ear.reset(raid);
   showScene('raid', tier);
@@ -1257,7 +1286,7 @@ function toGraveyard(node: number, seed: number): boolean {
   // чтобы заглянуть внутрь, не нужно — через неё и так видно.
   rig.setZoom(22, true);
   // Сумерки: кладбище стоит на поверхности, но не полдень же на нём.
-  rig.night = 0.45;
+  setNight(0.45);
   resultShown = false;
   ear.reset(raid);
   showScene('raid', 0);
@@ -1298,7 +1327,7 @@ function toCastle(node: number, seed: number): boolean {
   // стена закрывала бы двор целиком.
   rig.setZoom(26, true);
   // День: замок стоит на поверхности, и подземный мрак спрятал бы его.
-  rig.night = 0.1;
+  setNight(0.1);
   resultShown = false;
   ear.reset(raid);
   showScene('raid', 0);
@@ -1318,7 +1347,7 @@ function toTitle(): void {
   rig.lookAt(titleView.center.x, titleView.center.z, true);
   rig.setZoom(21, true);
   // Ранний вечер: тени от букв уже длинные, но поле ещё зелёное, а не серое.
-  rig.night = 0.08;
+  setNight(0.08);
   inGlade = false;
   showScene('title');
 }
@@ -1642,7 +1671,7 @@ function toGlade(): void {
   rig.setZoom(20, true);
   // Поляна — на поверхности, и это день. Подземный мрак вылазки здесь
   // спрятал бы лес, ради которого кадр и существует.
-  rig.night = 0.12;
+  setNight(0.12);
   resultShown = false;
   inGlade = true;
   chop = null;
@@ -1703,7 +1732,7 @@ function toCamp(): void {
   rig.setZoom(campArea(camp.levels.hq) * 2.8, true);
   // Лагерь — вечер, а не полдень: тёплый свет и длинные тени читаются лучше
   // на плоском затенении, чем прямое солнце.
-  rig.night = 0.22;
+  setNight(0.22);
   // Стены и ограды, построенные игроком, — часть лагеря: они встают вместе
   // с ним, а не по открытию панели.
   campView.setWalls(wallPieces(wallsOf()));
@@ -2722,6 +2751,7 @@ startLoop({
           resultShown = true;
           campPrompt.setReason(enough ? 'Дерево собрано' : 'Провиант кончился');
           campPrompt.setVisible(true);
+          hud.setPrompting(true);
           // Пульс отработал своё: он вёл к этой секунде и молчит после неё.
           stopPulse();
         }
@@ -2900,7 +2930,7 @@ startLoop({
     fpsFrames++;
     if (fpsAcc > 0.5) {
       const blades = raidView?.grassBlades ?? 0;
-      hud.setStats(
+      if (hud.showsStats) hud.setStats(
         `${Math.round(fpsFrames / fpsAcc)} fps · ${rig.drawCalls} draw` +
           (blades > 0 ? ` · ${blades} трав.` : ''),
       );

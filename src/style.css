@@ -208,6 +208,9 @@ canvas { display: block; touch-action: none; }
   flex: 1; height: 6px; border-radius: var(--r-bar); background: var(--fill-2);
 }
 .bar.segmented > i.on { background: var(--bad); }
+/* Риск и ярус — та же `.row`: слева, во что обойдётся провал, справа — где
+   мы. Раньше они стояли одной строкой через точку, и из двух фактов
+   читался один. */
 .risk { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 12px; }
 .risk b { color: var(--warn); }
 .dim { color: var(--dim); }
@@ -216,13 +219,29 @@ canvas { display: block; touch-action: none; }
 .good { color: var(--good); }
 .ok { color: var(--good); }
 
-.bottom { display: flex; flex-direction: column; gap: 8px; }
-/* Подсказка тоже стоит поверх сцены, и на светлой поляне пролога тень
-   её не спасала. Подложка появляется только у непустой строки: пустая
-   плашка читалась бы как пропавший текст. */
+/* Низ вылазки — одна панель, а не три коробки (§6.2.6): состояние сверху,
+   строка посередине, действия снизу. Плашки стояли врозь, разной ширины,
+   а приглашение конца пролога приходило четвёртым слоем поверх — и они
+   налезали. Панель по содержимому, а не во всю ширину: сцену она закрывать
+   не должна. */
+.bottom {
+  display: flex; flex-direction: column; gap: 8px; align-self: center;
+  align-items: center; max-width: min(100%, 460px);
+}
+/* Подсказка стоит поверх сцены, и на светлой поляне пролога тень её
+   не спасала. Подложка теперь общая — панель под ней. */
 .hint { min-height: 17px; font-size: 12px; color: var(--dim); text-align: center; }
-.hint:not(:empty) { color: var(--ink); padding: 4px 10px; align-self: center; }
-.night { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+.hint:not(:empty) { color: var(--ink); }
+
+/* Приглашение конца пролога живёт в этой же панели. Пока оно на экране,
+   подсказка и игровые кнопки уступают: сообщение одно и действие одно —
+   отказаться от лагеря нельзя (§16.1). */
+#hud:not(.prompting) .prompt { display: none; }
+#hud.prompting .hint, #hud.prompting .ctl { display: none; }
+/* Отладочный ряд вылазки (§6.2.5). Собирается только при `?debug` в адресе —
+   в игре его нет в разметке вовсе, поэтому и правило здесь одно. */
+.night { display: flex; align-items: center; gap: 8px; pointer-events: auto; flex-wrap: wrap; }
+.night button { padding: 4px 10px; }
 .night input { flex: 1; accent-color: var(--gold); }
 .ctl { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .tiers { margin-top: 2px; }
@@ -510,21 +529,19 @@ button[disabled] { opacity: 0.4; cursor: default; }
    раны и провалы. Кнопка не красная целиком: она не главная в окне. */
 #settings .danger { color: var(--bad); border-color: var(--bad-line); }
 
-/* Конец пролога. Стоит там же, где кнопка заставки: одно решение внизу экрана. */
-#pitch {
-  position: fixed; inset: auto 0 0 0; display: flex; flex-direction: column;
-  align-items: center; gap: 12px;
-  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
-  pointer-events: none;
-}
+/* Конец пролога. Столбец внутри нижней панели вылазки, а не свой слой
+   поверх неё (§6.2.6). */
+#pitch { flex-direction: column; align-items: center; gap: 10px; width: 100%; }
 #pitch p {
   margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  text-align: center;
   /* Не приглушённый: это не фоновая подсказка, а объявление конца кадра. */
   color: var(--ink);
 }
-#pitch button {
-  pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
-}
+/* Кнопка главная в кадре, и выглядит она главной: та же `.cta`, что
+   на заставке. Раньше это была обычная кнопка с крупным отступом —
+   размер обещал вес, которого стиль не подтверждал. */
+#pitch button { pointer-events: auto; align-self: stretch; }
 
 /* ---------- драфт сборов (§19) ---------- */
 /* Экран, а не строка внизу: это единственное решение между картой и входом,
