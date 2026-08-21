@@ -260,6 +260,61 @@
 
 <div class="sec">
   <div class="hd">
+    <h2>Второй набор: Universal Animation Library</h2>
+    <p>Quaternius, лицензия CC0, файлы в <code>assets/quaternius-ual</code>: один манекен,
+      <span id="ualClips">…</span> в двух GLB — <code>UAL1_Standard.glb</code> нарисован
+      на месте, <code>UAL1_Standard_RM.glb</code> несёт ход в корне. Каждая цифра
+      посчитана <code>npm run ual</code> тем же обмером, что и таблицы выше.</p>
+    <p>Первый замер здесь — не скорость, а <b>совместимость</b>: клипы в игре ложатся
+      на персонажей по именам костей, без ретаргета. Скелет набора — <span id="ualJoints">…</span>
+      костей в конвенции Unreal (<code>pelvis</code>, <code>upperarm_l</code>,
+      <code>thigh_r</code>), наш Rig_Medium — 23 в конвенции KayKit (<code>hips</code>,
+      <code>upperarm.l</code>, <code>upperleg.r</code>). Совпадает <b><span id="ualMatched">…</span></b> —
+      <span id="ualMatchList">…</span>.</p>
+    <p class="lede fail">По именам клипы не ложатся: сегодня это библиотека движений
+      и справочник скоростей, а не замена набору KayKit. Дорога в игру у него одна —
+      ретаргет, и это отдельное решение, которого никто не принимал.</p>
+  </div>
+  <table id="ualCats"><thead><tr>
+    <th>Категория</th><th class="num">Клипов</th><th class="num">Секунд</th>
+    <th class="num">Средний</th><th>Самый длинный</th>
+  </tr></thead><tbody></tbody></table>
+  <table id="ualSpeeds"><thead><tr>
+    <th>Цикл хода</th><th class="num">Длит., с</th><th class="num">Ед./с</th>
+    <th class="num">Тайла/с</th><th class="num">Темп к 1,67</th><th class="num">Корень _RM, ед./с</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="note" id="ualSpeedNote"></p>
+  <div class="guard">
+    <div class="key">
+      <h3>Бег попадает в константу почти сам</h3>
+      <p><code>Jog_Fwd_Loop</code> даёт <b><span id="ualJog">…</span> тайла/с</b> при росте
+        нашего героя — темп <span id="ualJogRate">…</span> до 1,67. У KayKit лучший цикл
+        требует ×2,17. Это главное, что набор умеет и чего нам не хватает.</p>
+    </div>
+    <div>
+      <h3>Оснастка втрое выше бюджета</h3>
+      <p><span id="ualBones">…</span> костей — с пальцами по фаланге — против бюджета
+        ≤ 24 (animation.html, 04). При ретаргете на Rig_Medium лишние кости не переносятся,
+        а схлопываются: пальцы в кисть, три позвонка в два.</p>
+    </div>
+    <div>
+      <h3>Вес — не КБ, а МБ</h3>
+      <p>Дорожки пишут все <span id="ualBones2">…</span> костей: <b><span id="ualKb">…</span> КБ
+        на клип</b> сырых float против <span id="kayKb">…</span> КБ у KayKit. В бандл набор
+        не едет, как и всё в <code>assets/</code> (§6.1.2), — но и после ретаргета
+        клип похудеет лишь вместе с костями.</p>
+    </div>
+    <div>
+      <h3>Корень чист, правда о скорости — в _RM</h3>
+      <p>В <code>Standard</code> корень не сдвинул ни один клип — запрет animation.html
+        набор выполняет сам. Файл <code>_RM</code> хранит авторскую скорость каждого
+        хода в корне: столбец выше сверяет по нему наш замер проскальзывания.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="hd">
     <h2>Что этот набор стоит игре</h2>
     <p>Набор лежит в репозитории и не едет в бандл — как подземелье (§6.1.2). Страница —
       и есть взвешивание; вот что оно показало.</p>
@@ -1067,6 +1122,65 @@ requestAnimationFrame(function tick(now){
     pump();
   }catch(e){ fail('Отрисовка: ' + e); throw e; }
 });
+
+/* ---------- второй набор: Universal Animation Library ---------- */
+
+try{
+  const ual = await (await fetch('./assets/quaternius-ual/catalog.json')).json();
+
+  document.getElementById('ualClips').textContent = clipsOf(ual.clips.length) + ' + A_TPose';
+  document.getElementById('ualJoints').textContent = ual.rig.joints;
+  document.getElementById('ualMatched').textContent =
+    ual.ourRig.matched.length + ' ' + plural(ual.ourRig.matched.length, 'имя', 'имени', 'имён') +
+    ' из ' + ual.ourRig.joints;
+  document.getElementById('ualMatchList').textContent =
+    ual.ourRig.matched.map((b) => '«' + b + '»').join(', ');
+
+  const ucats = document.querySelector('#ualCats tbody');
+  for(const name of ual.order){
+    const list = ual.clips.filter((c) => c.category === name);
+    if(list.length === 0) continue;
+    const total = list.reduce((s, c) => s + c.duration, 0);
+    const longest = list.reduce((a, b) => (a.duration > b.duration ? a : b));
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><b>' + name + '</b></td><td class="num">' + list.length +
+      '</td><td class="num">' + num(total, 1) + '</td><td class="num">' +
+      num(total / list.length) + '</td><td class="mono">' + longest.name + '</td>';
+    ucats.appendChild(tr);
+  }
+
+  const cycles = ual.clips
+    .filter((c) => c.duration > 0 && c.slide >= ual.still && c.loop <= ual.open)
+    .sort((a, b) => b.slide - a.slide);
+  const uspeeds = document.querySelector('#ualSpeeds tbody');
+  for(const c of cycles){
+    const speed = c.slide * ual.scale;
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="mono">' + c.name + '</td><td class="num">' + num(c.duration) +
+      '</td><td class="num">' + num(c.slide) + '</td><td class="num">' + num(speed) +
+      '</td><td class="num">×' + num(ual.heroSpeed / speed) + '</td><td class="num">' +
+      num(c.rmSpeed) + '</td>';
+    uspeeds.appendChild(tr);
+  }
+  document.getElementById('ualSpeedNote').textContent =
+    'Циклов хода ' + cycles.length + ' из ' + ual.clips.filter((c) => c.duration > 0).length +
+    ': петля замкнута, земля едет. Скорости приведены к игре множителем ×' +
+    num(ual.scale, 3) + ' — манекен набора ростом ' + num(ual.rig.height) +
+    ' против ' + num(ual.heroHeight) + ' у героя.';
+
+  const jog = ual.clips.find((c) => c.name === 'Jog_Fwd_Loop');
+  if(jog !== undefined){
+    const speed = jog.slide * ual.scale;
+    document.getElementById('ualJog').textContent = num(speed);
+    document.getElementById('ualJogRate').textContent = '×' + num(ual.heroSpeed / speed);
+  }
+  document.getElementById('ualBones').textContent = ual.rig.joints;
+  document.getElementById('ualBones2').textContent = ual.rig.joints;
+  document.getElementById('ualKb').textContent =
+    Math.round(ual.clips.reduce((s, c) => s + c.bytes, 0) / 1024 / ual.clips.length);
+  document.getElementById('kayKb').textContent =
+    Math.round(cat.clips.reduce((s, c) => s + c.bytes, 0) / 1024 / cat.clips.length);
+}catch(e){ fail('Второй набор: ' + e); }
 
 document.getElementById('stageNote').textContent =
   'Скелет, меш и дорожки читаются из ' + PACK + 'gltf/ прямо в браузере: прямая кинематика, ' +

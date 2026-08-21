@@ -31,6 +31,7 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kenney-graveyard-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kaykit-builder/glb/**/*.glb` — 226 моделей: 30 объектов (постройки, стены, мосты, рельеф, растительность), 68 квадратных плиток и 128 гексов | [kaylousberg.itch.io/kaykit-medieval-builder-pack](https://kaylousberg.itch.io/kaykit-medieval-builder-pack), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
+| `quaternius-ual/gltf/UAL1_Standard.glb`, `UAL1_Standard_RM.glb` — 42 скелетных клипа на манекене 65 костей; второй файл — те же клипы с ходом в корне | [quaternius.itch.io/universal-animation-library](https://quaternius.itch.io/universal-animation-library), тариф Standard (бесплатный) | CC0 1.0 | Quaternius |
 | `craftpix-props/glb/*.glb` — 16 моделей: дороги трёх мостовых по четыре формы плитки и четыре фонаря; конвертация из FBX набора Blender'ом один-в-один | [free-game-assets.itch.io/free-environment-props-3d-low-poly-pack](https://free-game-assets.itch.io/free-environment-props-3d-low-poly-pack), тариф FREE | craftpix royalty-free | craftpix.net |
 | `craftpix-props/Texture.png` — атлас набора, десять цветовых полос | там же | craftpix royalty-free | craftpix.net |
 
@@ -38,8 +39,8 @@ NC-лицензии несовместимы с любой монетизаци�
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
 `kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
-`kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`
-и `kenney-graveyard-kit/License.txt` — файлы лицензий как они пришли
+`kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`,
+`kenney-graveyard-kit/License.txt` и `quaternius-ual/License.txt` — файлы лицензий как они пришли
 в архивах, без правок.
 
 Атласа у строителя нет: цвет лежит в именованных материалах glTF, и картинки
