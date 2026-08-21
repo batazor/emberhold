@@ -23,6 +23,8 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-adventurers/*_texture.png` — пять атласов, свой на каждого персонажа | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-resources/gltf/*.gltf`, `*.bin` — 76 моделей: слитки, самородки, брёвна, доски, тюки, поддоны, бочки, груды деталей | [kaylousberg.itch.io/resource-bits](https://kaylousberg.itch.io/resource-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-resources/resource_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
+| `kaykit-weapons/gltf/*.gltf`, `*.bin` — 31 модель: мечи, топоры, молоты, кинжалы, древковое, луки, посохи, кулачное, щиты | [kaylousberg.itch.io/fantasy-weapons-bits](https://kaylousberg.itch.io/fantasy-weapons-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
+| `kaykit-weapons/weapons_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kenney-castle-kit/glb/*.glb` — 76 моделей: стены, углы, башни, ворота, мосты, лестницы, знамёна, осадные машины | [kenney.nl/assets/castle-kit](https://kenney.nl/assets/castle-kit), версия 2.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-castle-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-graveyard-kit/glb/*.glb` — 91 модель: ограды, склепы, могилы, надгробия, хвоя, пеньки, тыквы, утварь, пятеро существ | [kenney.nl/assets/graveyard-kit](https://kenney.nl/assets/graveyard-kit), версия 5.0 | CC0 1.0 | Kenney Vleugels |
@@ -33,9 +35,10 @@ NC-лицензии несовместимы с любой монетизаци�
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
-`kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`,
-`kenney-graveyard-kit/License.txt` и `kaykit-builder/License.txt` — файлы
-лицензий как они пришли в архивах, без правок.
+`kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
+`kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`
+и `kenney-graveyard-kit/License.txt` — файлы лицензий как они пришли
+в архивах, без правок.
 
 Атласа у строителя нет: цвет лежит в именованных материалах glTF, и картинки
 в наборе только промо-кадры автора — они в репозиторий не переносились.
@@ -65,8 +68,8 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 и пишет геометрию в `src/render/*.data.ts`.
 В сборку едут только эти файлы; исходные наборы остаются здесь как источник,
 из которого их можно пересобрать. Каталоги наборов с числами и цветами —
-`forestart.html`, `dungeonart.html`, `enemyart.html`, `heroart.html`
-и `resourceart.html`
+`forestart.html`, `dungeonart.html`, `enemyart.html`, `heroart.html`,
+`resourceart.html` и `weaponart.html`
 (только на dev-сервере: страницы читают файлы отсюда).
 
 Набор анимаций устроен иначе: запекать в нём нечего — в клипе нет ни цвета,
@@ -179,6 +182,29 @@ Ogg Vorbis только в 18.4, а §18.5 отдельно оговаривае
 `Preview.png` / `Sample.png`. Атлас лежит один раз, в корне набора.
 
 Каталог набора — `graveart.html` (только на dev-сервере: страница читает
+файлы отсюда).
+
+## Из оружия едут пять
+
+`kaykit-weapons/` измерен целиком, а в бандл поехали пять моделей из 31 —
+лестница уровней оружия §14: `sword_A` … `sword_E`, 2447 треугольников,
+46,2 КБ base64 в `src/render/weapons.data.ts` (§6.1.8). Остальные 26 лежат
+здесь источником: реестру это всё равно — файлы в репозитории есть, значит
+запись обязана быть, — но при чтении «чужие ассеты в игре» считать нужно пять.
+
+Едет не сам `.gltf`: `npm run models -- --write` снимает цвет с атласа,
+заменяет его слотом палитры и пишет геометрию. Ни атласа, ни узлов сцены
+в сборке нет. Место в руке при этом берётся у другого набора — узел
+`handslot.r` персонажа (§6.1.4), — и что нуль у обоих наборов в одном месте,
+проверено замером, а не примеркой.
+
+Из архива взято не всё: `.obj`, `.fbx` и `.fbx(unity)` выброшены целиком —
+обмер и запекание идут по `.gltf`, а второй, третий и четвёртый формат тех же
+моделей это только вес. По той же причине нет обзорной картинки набора
+и трёх ярлыков `.url`. Атлас лежит один раз, в корне набора: свои копии
+внутри `gltf/` и `fbx/` пришли побайтно те же и удалены.
+
+Каталог набора — `weaponart.html` (только на dev-сервере: страница читает
 файлы отсюда).
 
 ## Чего здесь нет и почему
