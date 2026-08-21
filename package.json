@@ -23,6 +23,7 @@
     "fence": "tsx scripts/fence.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
+    "ual": "tsx scripts/ual.ts",
     "audio": "tsx scripts/audio.ts",
     "play": "tsx scripts/play.ts",
     "tents": "tsx scripts/tents.ts",
