@@ -7,6 +7,10 @@ import type { CastleSite } from '../sim/castleSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
 import { Rigged } from './rigged';
+import { HexGrid } from './hexGrid';
+import { current, moves, targets } from '../sim/battle';
+import { hexToWorld } from '../sim/hex';
+import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
 import { HERO_SPEED } from '../sim/config';
@@ -176,6 +180,8 @@ export class RaidView {
   private heroBusy = false;
   /** Секунды, оставшиеся вспышке урона (§17.1). */
   private heroFlash = 0;
+  /** §11.3 — гекс-сетка поля боя. Вне боя её нет. */
+  private readonly hexGrid = new HexGrid();
   private marker!: THREE.Mesh;
   /** Точка тапа из кадра 1 онбординга: единственная подсказка, которая
    *  показывает жест вместо того, чтобы называть его словами. */
@@ -819,6 +825,7 @@ export class RaidView {
     this.marker.position.y = 0.07;
     this.marker.visible = false;
     this.group.add(this.marker);
+    this.group.add(this.hexGrid.group);
   }
 
   private buildHintRing(): void {
@@ -831,6 +838,39 @@ export class RaidView {
     this.hintRing.rotation.x = -Math.PI / 2;
     this.hintRing.visible = false;
     this.group.add(this.hintRing);
+  }
+
+  /**
+   * §11.3 — что показывает сетка. Роли считает поле боя теми же правилами,
+   * которыми потом применит ход: рендер не вправе показать досягаемость,
+   * отличную от настоящей, — иначе подсветка врёт, а игрок винит себя.
+   */
+  private syncGrid(state: RaidState): void {
+    const battle = state.battle;
+    if (battle === null) {
+      this.hexGrid.hide();
+      return;
+    }
+    const unit = current(battle);
+    if (unit === undefined) {
+      this.hexGrid.hide();
+      return;
+    }
+    // Сетка показывается только на ходу героя. На чужом ходу она молчит:
+    // подсвечивать чужие возможности — значит просить игрока читать то,
+    // на что он всё равно не влияет.
+    if (unit.side !== 'hero') {
+      this.hexGrid.show({
+        move: [],
+        stand: [unit.hex],
+        target: [],
+      });
+      return;
+    }
+    const { size, blocked } = this.loc;
+    const move: Hex[] = [...moves(battle, size, blocked, unit).values()].map((s) => s.hex);
+    const target: Hex[] = targets(battle, size, blocked, unit).map((u) => u.hex);
+    this.hexGrid.show({ move, stand: [unit.hex], target });
   }
 
   /** Подсветить клетку. Кольцо пульсирует, пока кадр не сменится: статичное
@@ -861,9 +901,21 @@ export class RaidView {
       (this.hintRing.material as THREE.MeshBasicMaterial).opacity = 0.55 + (pulse - 1) * 1.6;
     }
     const { hero } = state;
-    const hx = lerp(hero.prevX, hero.x, alpha);
-    const hz = lerp(hero.prevZ, hero.z, alpha);
+    // §11.3 — в бою положение живёт на поле, а не в мире: мир обновится
+    // только на выходе. Поэтому бойцы едут к центрам своих гексов, а не
+    // интерполируются между тиками, которых больше нет.
+    const battle = state.battle;
+    const heroUnit = battle?.units.find((u) => u.side === 'hero');
+    const heroTarget = heroUnit === undefined ? null : hexToWorld(heroUnit.hex);
+    const hx = heroTarget === null
+      ? lerp(hero.prevX, hero.x, alpha)
+      : lerp(this.hero.position.x, heroTarget.x, Math.min(1, dt * 9));
+    const hz = heroTarget === null
+      ? lerp(hero.prevZ, hero.z, alpha)
+      : lerp(this.hero.position.z, heroTarget.z, Math.min(1, dt * 9));
     this.hero.position.set(hx, 0, hz);
+
+    this.syncGrid(state);
 
     let turn = hero.facing - this.hero.rotation.y;
     while (turn > Math.PI) turn -= Math.PI * 2;
@@ -939,9 +991,17 @@ export class RaidView {
         continue;
       }
 
-      const ex = lerp(e.prevX, e.x, alpha);
-      const ez = lerp(e.prevZ, e.z, alpha);
-      const walking = e.x !== e.prevX || e.z !== e.prevZ;
+      const unit = battle?.units.find((u) => u.id === e.id);
+      const spot = unit === undefined ? null : hexToWorld(unit.hex);
+      const ex = spot === null
+        ? lerp(e.prevX, e.x, alpha)
+        : lerp(view.rig.root.position.x, spot.x, Math.min(1, dt * 9));
+      const ez = spot === null
+        ? lerp(e.prevZ, e.z, alpha)
+        : lerp(view.rig.root.position.z, spot.z, Math.min(1, dt * 9));
+      const walking = spot === null
+        ? e.x !== e.prevX || e.z !== e.prevZ
+        : Math.hypot(spot.x - ex, spot.z - ez) > 0.02;
       view.rig.root.position.set(ex, 0, ez);
       // Порядок важен: вспышка попадания перебивает телеграф. Замах длится
       // четверть секунды и дольше, вспышка — 150 мс, и если телеграф выиграет,
@@ -1051,6 +1111,7 @@ export class RaidView {
   }
 
   dispose(): void {
+    this.hexGrid.dispose();
     this.grass?.dispose();
     this.fire.dispose();
     this.grass = null;

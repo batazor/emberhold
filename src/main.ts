@@ -112,6 +112,10 @@ import { StatsPanel } from './ui/statsPanel';
 import { CampPrompt } from './ui/campPrompt';
 import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
+import { BattleHud } from './ui/battleHud';
+import { commandBattle, inBattle } from './sim/raid';
+import { current, moves, targets, unitAt } from './sim/battle';
+import { worldToHex, hexKey } from './sim/hex';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
 import { bindCampInput } from './features/campInput';
@@ -644,6 +648,28 @@ function shake(): void {
   // анимация подряд не запускается вовсе.
   void canvas.offsetWidth;
   canvas.classList.add('shake');
+}
+
+/**
+ * §11.3 — панель боя. Кнопок три, и хода среди них нет: ходят тапом
+ * по гексу, тем же жестом, каким ходят по локации (§6).
+ */
+const battleHud = new BattleHud(app, {
+  onAttack: () => heroAttack(),
+  onGuard: () => { if (raid !== null) commandBattle(raid, { kind: 'guard' }); },
+  onWait: () => { if (raid !== null) commandBattle(raid, { kind: 'wait' }); },
+});
+
+/** Ударить того, кого достаём. Если целей несколько — самого израненного:
+ *  добить дешевле, чем начать нового, и это же правило у бота. */
+function heroAttack(): void {
+  if (raid === null || raid.battle === null) return;
+  const unit = current(raid.battle);
+  if (unit === undefined || unit.side !== 'hero') return;
+  const list = targets(raid.battle, raid.loc.size, raid.loc.blocked, unit);
+  if (list.length === 0) return;
+  const weakest = list.reduce((a, b) => (a.hp <= b.hp ? a : b));
+  commandBattle(raid, { kind: 'attack', target: weakest.id });
 }
 
 const returnScreen = new ReturnScreen(app, {
@@ -1397,6 +1423,30 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (raid === null || raid.status !== 'running') return;
+
+  // §11.3 — бой перехватывает палец целиком: пока идёт ход, тап значит
+  // «шагнуть сюда» или «ударить того», а не «идти по локации».
+  if (inBattle(raid)) {
+    const battle = raid.battle!;
+    const unit = current(battle);
+    if (unit === undefined || unit.side !== 'hero') return;
+    const want = worldToHex(hit.x, hit.z);
+
+    // Тап по противнику — удар, если достаём. Проверяет поле, а не панель:
+    // подсветка и удар обязаны считаться одним правилом.
+    const there = unitAt(battle, want);
+    if (there !== undefined && there.side !== 'hero') {
+      if (targets(battle, raid.loc.size, raid.loc.blocked, unit).includes(there)) {
+        commandBattle(raid, { kind: 'attack', target: there.id });
+      }
+      return;
+    }
+
+    const reach = moves(battle, raid.loc.size, raid.loc.blocked, unit);
+    const spot = reach.get(hexKey(want));
+    if (spot !== undefined) commandBattle(raid, { kind: 'move', to: spot.hex });
+    return;
+  }
   // Тап по дереву — рубка (§13.3). Жест тот же, что у всего остального:
   // герой идёт сам и начинает работать, когда дойдёт. Второго жеста
   // («выбрать топор», «нажать рубить») здесь нет и быть не должно —
@@ -1711,6 +1761,18 @@ startLoop({
 
     if (mode === 'raid' && raid !== null && raidView !== null) {
       raidView.sync(raid, alpha, dt, now, rig.dayFactor);
+      // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
+      // теми же правилами, которыми применит ход: кнопка, предлагающая
+      // невозможное, хуже отсутствующей.
+      if (raid.battle !== null) {
+        const unit = current(raid.battle);
+        const canHit = unit !== undefined && unit.side === "hero"
+          && targets(raid.battle, raid.loc.size, raid.loc.blocked, unit).length > 0;
+        battleHud.setVisible(true);
+        battleHud.sync(raid.battle, canHit);
+      } else {
+        battleHud.setVisible(false);
+      }
       rig.lookAt(raid.hero.x, raid.hero.z);
       rig.update(
         dt,
