@@ -193,6 +193,17 @@ describe('События: что видит вылазка', () => {
     assert.equal(atRisk(deep), Math.ceil(10 * EVENTS.storm.risk));
   });
 
+  test('ставка не переваливает за сто процентов', () => {
+    // На Дне база уже 100% (§11.2). Событие поверх обещало бы отнять больше,
+    // чем игрок несёт, — а отнять больше нечего, и карточка врала бы числом.
+    const bottom = createRaid({
+      seed: 11, tier: 3, kitchenLevel: 4, storageLevel: 4, event: 'storm',
+    });
+    bottom.bag.stone = 10;
+    bottom.bagTotal = 10;
+    assert.equal(atRisk(bottom), 10, 'под угрозой оказалось больше рюкзака');
+  });
+
   test('обвал дорожит шаг, тихая ночь убирает противников, жила добавляет', () => {
     assert.ok(stepFoodCost(raid('collapse')) > stepFoodCost(raid(null)), 'обвал не подорожал');
     assert.equal(raid('collapse').visionAdd, -1);
