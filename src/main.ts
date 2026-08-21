@@ -828,6 +828,7 @@ function meetCallbacks(): MeetPanelCallbacks {
       if (raid !== null) raidView?.callSettler(raid.hero.x, raid.hero.z);
       advance(meet);
       meetPanel.hide();
+      dialogHud(false);
       // Кэш подсказки поляны сравнивает со своим прошлым значением, а оно
       // не менялось: без сброса подсказка не вернулась бы никогда.
       gladeHint = '';
@@ -878,11 +879,27 @@ function syncMeet(): void {
     Math.hypot(raid.hero.x - (meetAt.x + 0.5), raid.hero.z - (meetAt.z + 0.5)) <= 2.5;
   if (near && !meetShown) {
     meetShown = true;
+    dialogHud(true);
     meetPanel.show(meetSettler, meet);
   } else if (!near && meetShown) {
     meetShown = false;
     meetPanel.hide();
+    dialogHud(false);
   }
+}
+
+/**
+ * Диалогу — весь низ. На время разговора панели лагеря и веер гаснут:
+ * «Назваться» не должен драться с «В мир» за нижнюю кромку. Действует
+ * только в лагере на поляне: отладочный кадр `?встреча` живёт в сцене
+ * вылазки, где панелей лагеря и так нет.
+ */
+function dialogHud(on: boolean): void {
+  if (!inGladeCamp) return;
+  const quiet = onboarding.step === 'build' || onboarding.step === 'craft';
+  campHud.setVisible(!on);
+  heroFan.setVisible(!on && !quiet);
+  heroCard.setVisible(!on && !quiet);
 }
 
 /**
@@ -1023,10 +1040,10 @@ function persist(): void {
  * прячет. Полосы включаются здесь, а не в цикле: сравнивать состояние
  * каждый тик значило бы драться с игроком за видимость элементов.
  */
-function showOnb(step: OnbStep): void {
+function showOnb(step: OnbStep, restore = false): void {
   hud.setReveal(reveal(step));
   setHint(ONB_HINT[step] ?? '');
-  campHud.setOnboarding(step);
+  campHud.setOnboarding(step, restore);
   // Второй акт пролога: кольцо ведёт за деревом, а с полной сумкой —
   // обратно к палатке. Оно и есть весь интерфейс улучшения.
   if (step === 'upgrade' && raid !== null) {

@@ -628,6 +628,12 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #meet .acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 #meet .acts button {
   pointer-events: auto; font-size: 15px; padding: 12px 26px; letter-spacing: 0.04em;
+  display: flex; flex-direction: column; gap: 4px; align-items: center; max-width: 300px;
+}
+/* Пояснение под ответом: что выбор значит для лагеря. */
+#meet .acts button small {
+  font-size: 11px; letter-spacing: 0.02em; color: var(--dim); white-space: normal;
+  line-height: 1.35;
 }
 
 /* ---------- лавка торговца (§13.4) ---------- */
