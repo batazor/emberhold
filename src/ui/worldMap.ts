@@ -209,7 +209,7 @@ export class WorldMap {
     this.canvas.addEventListener('pointerdown', (e) => this.pick(e));
 
     this.card = document.createElement('div');
-    this.card.className = 'map-card';
+    this.card.className = 'card map-card';
 
     this.note = document.createElement('div');
     this.note.className = 'map-note';
@@ -489,18 +489,18 @@ export class WorldMap {
     ).join('');
 
     this.card.innerHTML =
-      `<div class="t"><b>${node.name}</b><i>${state.rich} из ${RICH_MAX}</i></div>` +
+      `<div class="row t"><b>${node.name}</b><i>${state.rich} из ${RICH_MAX}</i></div>` +
       `<div class="pips">${pips}</div>` +
-      `<div class="line"><span>${TIER_NAME[node.tier]}</span>` +
+      `<div class="row line"><span>${TIER_NAME[node.tier]}</span>` +
       `<b class="${fx.risk > 0 ? 'bad' : ''}">ставка ${Math.round(stake * 100)}%</b></div>` +
-      `<div class="line"><span>Добыча</span>` +
+      `<div class="row line"><span>Добыча</span>` +
       `<b class="${mul < 1 ? 'bad' : 'good'}">×${mul.toFixed(1).replace('.', ',')}</b></div>` +
       // §13 — что здесь падает. Ставка называет цену яруса, а довод за него
       // до сих пор не называл никто: железо идёт с первого, кристалл со
       // второго, и узнать это можно было только сходив. Ставку игрок читает
       // до входа — награда обязана читаться там же.
-      `<div class="line"><span>Падает</span><b>${lootLine(node.tier)}</b></div>` +
-      `<div class="line"><span>Кто здесь</span>` +
+      `<div class="row line"><span>Падает</span><b>${lootLine(node.tier)}</b></div>` +
+      `<div class="row line"><span>Кто здесь</span>` +
       (clan === null
         ? '<b class="good">никого</b>'
         : `<b style="color:${clan.color}">${clan.name}</b>`) +
@@ -510,7 +510,7 @@ export class WorldMap {
       // обещало бы, что когда-нибудь оно заполнится само.
       (state.event === null
         ? ''
-        : `<div class="line"><span>${EVENTS[state.event].name}</span>` +
+        : `<div class="row line"><span>${EVENTS[state.event].name}</span>` +
           `<b class="${state.event === 'collapse' ? 'bad' : 'good'}">` +
           `${EVENTS[state.event].line}</b></div>`);
 
@@ -552,10 +552,10 @@ export class WorldMap {
    */
   private paintGraveCard(node: WorldNode): void {
     this.card.innerHTML =
-      `<div class="t"><b>${node.name}</b><i>прогулка</i></div>` +
-      '<div class="line"><span>Что там</span><b>ограда, могилы, склеп</b></div>' +
-      '<div class="line"><span>Добыча</span><b>нет</b></div>' +
-      '<div class="line"><span>Кто здесь</span><b class="bad">привидения</b></div>';
+      `<div class="row t"><b>${node.name}</b><i>прогулка</i></div>` +
+      '<div class="row line"><span>Что там</span><b>ограда, могилы, склеп</b></div>' +
+      '<div class="row line"><span>Добыча</span><b>нет</b></div>' +
+      '<div class="row line"><span>Кто здесь</span><b class="bad">привидения</b></div>';
     this.note.textContent = 'Прогулка: добычи нет. Привидение медленнее вас — от него можно уйти.';
     this.walkButton(node);
   }
@@ -571,10 +571,10 @@ export class WorldMap {
    */
   private paintKeepCard(node: WorldNode): void {
     this.card.innerHTML =
-      `<div class="t"><b>${node.name}</b><i>постройка</i></div>` +
-      '<div class="line"><span>Что там</span><b>стены, башни, двор</b></div>' +
-      '<div class="line"><span>Кто здесь</span><b class="good">торговец</b></div>' +
-      '<div class="line"><span>Меняет на</span><b>железо</b></div>';
+      `<div class="row t"><b>${node.name}</b><i>постройка</i></div>` +
+      '<div class="row line"><span>Что там</span><b>стены, башни, двор</b></div>' +
+      '<div class="row line"><span>Кто здесь</span><b class="good">торговец</b></div>' +
+      '<div class="row line"><span>Меняет на</span><b>железо</b></div>';
     this.note.textContent = 'Прогулка: добычи и противников нет. Торговец во дворе, за воротами.';
     this.walkButton(node);
   }

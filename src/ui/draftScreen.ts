@@ -56,7 +56,7 @@ export class DraftScreen {
     for (const id of this.hand) {
       const c = DRAFT[id];
       const button = document.createElement('button');
-      button.className = 'card';
+      button.className = 'card draft-card';
       button.dataset['card'] = id;
       // Ось названа на карте: §19.1 обещает три разные оси в раздаче,
       // и обещание это видно только если ось подписана.

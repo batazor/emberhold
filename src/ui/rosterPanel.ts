@@ -76,7 +76,7 @@ export class RosterPanel {
     box.className = 'r';
 
     const top = document.createElement('div');
-    top.className = 'r-top';
+    top.className = 'row r-top';
     const name = document.createElement('b');
     const status = document.createElement('span');
     status.className = 'dim';

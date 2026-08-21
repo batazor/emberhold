@@ -179,7 +179,7 @@ export class CampHud {
     }
 
     this.banner = document.createElement('div');
-    this.banner.className = 'hint';
+    this.banner.className = 'chip hint';
 
     /* ---------- задание ---------- */
     // Строка, а не уведомление. Уведомление гаснет через четыре секунды,
@@ -207,7 +207,7 @@ export class CampHud {
     this.sheet = document.createElement('div');
     this.sheet.className = 'panel sheet';
     const head = document.createElement('div');
-    head.className = 'sheet-head';
+    head.className = 'row mid sheet-head';
     this.sheetTitle = document.createElement('b');
     this.sheetClose = document.createElement('button');
     this.sheetClose.className = 'ghost sheet-x';
@@ -341,7 +341,7 @@ export class CampHud {
     // Имя здания стоит в шапке листа, и второй раз оно только шумит:
     // карточка открыта ровно про одно здание.
     const top = document.createElement('div');
-    top.className = 'b-top';
+    top.className = 'row b-top';
     const level = document.createElement('span');
     level.className = 'dim';
     top.append(level);
@@ -357,7 +357,7 @@ export class CampHud {
     barWrap.style.display = 'none';
 
     const bottom = document.createElement('div');
-    bottom.className = 'b-bot';
+    bottom.className = 'row mid b-bot';
     const status = document.createElement('span');
     status.className = 'dim';
     const button = document.createElement('button');
@@ -378,14 +378,15 @@ export class CampHud {
   private makeGearRow(slot: GearSlot): HTMLElement {
     const def = GEAR[slot];
     const box = document.createElement('div');
-    box.className = 'b';
+    // Пять предметов подряд — список, и коробка ему нужна общая: `.card`.
+    box.className = 'card b';
 
     const top = document.createElement('div');
-    top.className = 'b-top';
+    top.className = 'row b-top';
     const name = document.createElement('b');
     name.textContent = def.name;
     const level = document.createElement('span');
-    level.className = 'dim';
+    level.className = 'badge';
     top.append(name, level);
 
     const effect = document.createElement('div');
@@ -398,10 +399,11 @@ export class CampHud {
     barWrap.appendChild(bar);
 
     const bottom = document.createElement('div');
-    bottom.className = 'b-bot';
+    bottom.className = 'row mid b-bot';
     const status = document.createElement('span');
     status.className = 'dim';
     const button = document.createElement('button');
+    button.className = 'act';
     bottom.append(status, button);
     button.addEventListener('click', () => this.cb.onCraft(slot));
 

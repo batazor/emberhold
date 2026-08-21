@@ -1,12 +1,133 @@
+/**
+ * Один словарь на все панели игры (DESIGN §6.2).
+ *
+ * Правило простое: цвет и мера объявляются здесь, а панель их только берёт.
+ * До этого правила в карте лежало тридцать шестнадцатеричных значений мимо
+ * `:root`, экран возврата был объявлен дважды целиком, строка «слева подпись,
+ * справа значение» переизобреталась тринадцать раз, а коробка с рамкой —
+ * десять. Каждая новая панель заводила своё, и разошлись они не потому,
+ * что кто-то так решил, а потому, что решать было не обо что.
+ *
+ * Что списки не разошлись снова, сторожит `src/ui/style.rules.ts` — тем же
+ * приёмом, каким `models.rules.ts` сторожит палитру наборов.
+ */
 :root {
+  /* ---------- чернила и подложка ---------- */
   --ink: #e8e2d4;
   --dim: #9a927f;
-  --warn: #e2a33c;
-  --bad: #d4543a;
-  --good: #7fb069;
+  /* Тусклее `--dim`, но ещё не фон: полоса, которая есть, но ничего не значит. */
+  --mute: #6f6a5c;
+  --ground: #0b0a09;
   --panel: rgba(14, 13, 11, 0.82);
   --line: rgba(232, 226, 212, 0.14);
+  /* Стекло под диалогом. Гасит сцену только там, где экран приходит вместо
+     игры, а не поверх неё, — см. `#return`. */
+  --scrim: rgba(8, 7, 6, 0.86);
+  --scrim-soft: rgba(8, 7, 6, 0.8);
+
+  /* ---------- заливки поверх панели ----------
+     Три плотности на всю игру, а не своя у каждой панели: подложка карточки,
+     значок и нажатие. Все три — чернила с прозрачностью, поэтому панель
+     остаётся одного семейства при любой сцене под ней. */
+  --fill: rgba(232, 226, 212, 0.035);
+  --fill-2: rgba(232, 226, 212, 0.1);
+  --press: rgba(232, 226, 212, 0.14);
+
+  /* ---------- состояния ----------
+     `--good` и `--bad` совпадают со сценой (`PALETTE.siteOk`, `siteNo`)
+     значение в значение: §6.1 требует, чтобы панель и сцена говорили
+     одним цветом, и это единственное место, где это можно нарушить. */
+  --good: #7fb069;
+  --bad: #d4543a;
+  --warn: #e2a33c;
+  --gold: #c8a24a;
+  /* Текст по заливке `--warn`: тёмный, потому что заливка светлая. */
+  --on-warn: #16150f;
+
+  /* ---------- выбранная карточка ----------
+     Заливка и обводка врозь: на светлой сцене заливку почти не видно,
+     и выбор держится обводкой. Снос — та же пара в красном. */
+  --pick: #3c3320;
+  --pick-line: #a2842f;
+  --raze: #3a2320;
+  --raze-line: #b0574a;
+  /* Рамка опасного действия: тот же красный, только вполсилы. */
+  --bad-line: rgba(212, 84, 58, 0.5);
+
+  /* ---------- главная кнопка ----------
+     Числа взяты из артбука дословно (см. `.cta`): градиент, засечный шрифт,
+     тёмный текст на светлом — единственное такое место в интерфейсе. */
+  --cta-line: #e0bc3c;
+  --cta-top: #d5ac2c;
+  --cta-bot: #a8811a;
+  --cta-top-on: #c39c26;
+  --cta-bot-on: #8f6e16;
+  --cta-ink: #140f02;
+  --risk-line: #e07c46;
+  --risk-top: #d2662f;
+  --risk-bot: #9e4620;
+  --risk-top-on: #bb5a29;
+  --risk-bot-on: #8a3c1b;
+  --risk-ink: #150802;
+
+  /* ---------- мера ----------
+     Скругление тоже словарь: коробка, значок и полоса — три значения,
+     а не восемь подобранных по месту. */
+  --r-card: 10px;
+  --r-chip: 6px;
+  --r-bar: 3px;
+  --r-pill: 999px;
 }
+
+/* ---------- словарь панелей ----------
+ * Пять примитивов. Ни одна панель не заводит своей коробки, своей строки
+ * и своего значка: если чего-то не хватает, добавляется модификатор здесь,
+ * а не второй набор правил в разделе панели.
+ */
+
+/** Коробка с краем. Карточка постройки, предмета, локации, класса. */
+.card {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px; border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--fill);
+}
+/** Выбрана. Обводка вдвое заметнее заливки, поэтому держится ею. */
+.card.on { background: var(--pick); border-color: var(--pick-line); }
+
+/**
+ * Строка «слева подпись, справа значение». Тринадцать панелей писали её
+ * своими руками — отсюда и разъезд по базовой линии между листами.
+ */
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+/** По центру — там, где справа кнопка, а не число. */
+.row.mid { align-items: center; }
+/** Вплотную: кнопка и причина рядом, а не по разным краям. Разводить их
+ *  по краям — значит потерять связь между действием и отказом. */
+.row.tight { justify-content: flex-start; align-items: center; }
+
+/** Значок: уровень, счёт, состояние. Не делит ширину ни с чем. */
+.badge {
+  padding: 1px 7px; border-radius: var(--r-pill); background: var(--fill-2);
+  color: var(--dim); font-size: 10.5px; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.badge:empty { display: none; }
+
+/**
+ * Метка: подсказка, слот вылазки, отладочный счётчик. Тот же край, что
+ * у карточки, но без содержимого — надпись, которая стоит поверх сцены
+ * и обязана читаться на любом фоне. Стекло у неё то же, что у листа.
+ */
+.chip {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-chip);
+  padding: 2px 7px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+
+/** Силуэт. Заливкой без обводки — тем же приёмом, что и низкополигональный арт. */
+.glyph { width: 25px; height: 25px; fill: currentColor; }
+
+/** Кнопка действия в строке. Одна ширина на список, иначе правый край рваный. */
+.act { min-width: 104px; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 /* Игровой интерфейс не выделяется: случайный протяг по панели не должен
    превращаться в выделение текста и съедать нажатие. */
@@ -22,27 +143,25 @@
    под тёмным стеклом на 86% с размытием. Отсюда же брались «темно и
    размыто» в вылазке и «а где лагерь» после кнопки «Играть». */
 #return {
-  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px);
+  background: var(--scrim); backdrop-filter: blur(5px);
 }
 #return.on { display: flex; }
 #return .panel { width: 100%; max-width: 360px; }
 #return h2 { margin: 0 0 2px; font-size: 20px; }
 #return p { margin: 4px 0; font-size: 13px; }
 #return .loot { margin: 12px 0 6px; display: flex; flex-direction: column; gap: 4px; }
-.loot-row { display: flex; justify-content: space-between; align-items: baseline; }
 .loot-row b { font-size: 20px; font-variant-numeric: tabular-nums; }
 /* «Полосы важнее добычи»: прогресс занимает больше места, чем ресурсы. */
 #return .progress { margin: 14px 0 16px; display: flex; flex-direction: column; gap: 6px; }
 #return .progress .bar { height: 10px; }
-#return .progress .bar > i { background: #c8a24a; }
+#return .progress .bar > i { background: var(--gold); }
 #return .acts { display: flex; flex-direction: column; gap: 7px; }
 #return button { width: 100%; padding: 12px; font-size: 14px; }
-#return .primary { background: #3c3320; border-color: #6d5a30; font-weight: 600; }
+#return .primary { background: var(--pick); border-color: var(--pick-line); font-weight: 600; }
 #return .ghost { background: transparent; color: var(--dim); }
 
-button { touch-action: manipulation; }
 html, body {
-  margin: 0; height: 100%; overflow: hidden; background: #0b0a09; color: var(--ink);
+  margin: 0; height: 100%; overflow: hidden; background: var(--ground); color: var(--ink);
   font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 canvas { display: block; touch-action: none; }
@@ -62,7 +181,7 @@ canvas { display: block; touch-action: none; }
 }
 .lbl { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .num { font-size: 12px; min-width: 56px; text-align: right; }
-.bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.bar { height: 6px; border-radius: var(--r-bar); background: var(--fill-2); overflow: hidden; }
 /* Пустая полоса по умолчанию: незаполненная width читается как «полный»,
    и это уже один раз выглядело как баг. */
 /* Без CSS-перехода: ширину пишет игровой цикл 60 раз в секунду, и переход
@@ -72,12 +191,12 @@ canvas { display: block; touch-action: none; }
 .bar > i.good { background: var(--good); }
 .bar > i.warn { background: var(--warn); }
 .bar > i.bad { background: var(--bad); }
-.bar > i.dimbar { background: #6f6a5c; }
-#h-bag-bar { background: #c8a24a; }
+.bar > i.dimbar { background: var(--mute); }
+#h-bag-bar { background: var(--gold); }
 /* Раны — сегменты, а не сплошная полоса (§11.3). */
 .bar.segmented { display: flex; gap: 3px; background: none; overflow: visible; }
 .bar.segmented > i {
-  flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1);
+  flex: 1; height: 6px; border-radius: var(--r-bar); background: var(--fill-2);
 }
 .bar.segmented > i.on { background: var(--bad); }
 .risk { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 12px; }
@@ -93,57 +212,27 @@ canvas { display: block; touch-action: none; }
    её не спасала. Подложка появляется только у непустой строки: пустая
    плашка читалась бы как пропавший текст. */
 .hint { min-height: 17px; font-size: 12px; color: var(--dim); text-align: center; }
-.hint:not(:empty) {
-  color: var(--ink);
-  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 4px 10px; align-self: center;
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-}
+.hint:not(:empty) { color: var(--ink); padding: 4px 10px; align-self: center; }
 .night { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
-.night input { flex: 1; accent-color: #c8a24a; }
+.night input { flex: 1; accent-color: var(--gold); }
 .ctl { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .tiers { margin-top: 2px; }
 button {
   pointer-events: auto; font: inherit; font-size: 12px; color: var(--ink);
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 7px 11px; cursor: pointer;
+  padding: 7px 11px; cursor: pointer; touch-action: manipulation;
 }
-button:active { background: rgba(255, 255, 255, 0.12); }
-
-/* ---------- экран возврата (мокап 04) ---------- */
-#return {
-  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 6;
-}
-#return.on { display: flex; }
-#return .panel { width: 100%; max-width: 360px; }
-#return h2 { margin: 0 0 2px; font-size: 20px; }
-#return p { margin: 4px 0; font-size: 13px; }
-#return .loot { margin: 12px 0 6px; display: flex; flex-direction: column; gap: 4px; }
-.loot-row { display: flex; justify-content: space-between; align-items: baseline; }
-.loot-row b { font-size: 20px; font-variant-numeric: tabular-nums; }
-/* «Полосы важнее добычи»: прогресс занимает больше места, чем ресурсы. */
-#return .progress { margin: 14px 0 16px; display: flex; flex-direction: column; gap: 6px; }
-#return .progress .bar { height: 10px; }
-#return .progress .bar > i { background: #c8a24a; }
-#return .acts { display: flex; flex-direction: column; gap: 7px; }
-#return button { width: 100%; padding: 12px; font-size: 14px; }
-#return .primary { background: #3c3320; border-color: #6d5a30; font-weight: 600; }
-#return .ghost { background: transparent; color: var(--dim); }
+button:active { background: var(--press); }
 
 #result { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8, 7, 6, 0.8); backdrop-filter: blur(4px); padding: 20px; z-index: 5; }
+  background: var(--scrim-soft); backdrop-filter: blur(4px); padding: 20px; z-index: 5; }
 #result.on { display: flex; }
 #result .panel { max-width: 340px; width: 100%; text-align: center; }
 #result h2 { margin: 0; font-size: 20px; }
 #result p { margin: 6px 0; font-size: 13px; color: var(--dim); }
 #result .big { font-size: 34px; font-variant-numeric: tabular-nums; margin: 10px 0 2px; }
 
-#stats {
-  align-self: flex-end; font-size: 10px; color: var(--dim);
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 6px; padding: 2px 6px; pointer-events: none;
-}
+#stats { align-self: flex-end; font-size: 10px; color: var(--dim); pointer-events: none; }
 
 /* ---------- лагерь ---------- */
 #camp {
@@ -165,9 +254,17 @@ button:active { background: rgba(255, 255, 255, 0.12); }
   align-self: stretch;
   max-height: 62vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
-.sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.sheet-head b { font-size: 15px; }
-.sheet-x { font-size: 11px; padding: 4px 8px; background: transparent; color: var(--dim); }
+/* Шапка листа — та же `.row.mid`: слева имя, справа выход. Черта отделяет её
+   от содержимого; без неё заголовок висел в воздухе и читался как первая
+   строка списка, а не как его имя. */
+.sheet-head { padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+.sheet-head b { font-size: 15px; letter-spacing: 0.01em; }
+/* «Готово» — единственный выход из листа, и выглядеть призраком ему нельзя:
+   рамка есть, вес обычный. Палец у большого пальца, поэтому 32 px в высоту. */
+.sheet-x {
+  font-size: 12px; padding: 6px 12px; min-height: 32px; color: var(--ink);
+  background: var(--fill-2);
+}
 #camp .sec { display: flex; flex-direction: column; gap: 10px; }
 #camp .gear { display: flex; flex-direction: column; gap: 10px; margin-top: 4px;
   padding-top: 10px; border-top: 1px solid var(--line); }
@@ -184,17 +281,10 @@ button:active { background: rgba(255, 255, 255, 0.12); }
   width: 100%; aspect-ratio: 3 / 2; max-height: 30vh; display: block;
   border: 1px solid var(--line); border-radius: 8px;
 }
-.map-card {
-  display: flex; flex-direction: column; gap: 4px;
-  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
-}
-.map-card .t { display: flex; justify-content: space-between; align-items: baseline; }
+.map-card { padding: 8px 10px; }
 .map-card .t b { font-size: 14px; }
 .map-card .t i { font-style: normal; font-size: 11px; color: var(--dim); }
-.map-card .line {
-  display: flex; justify-content: space-between; align-items: baseline;
-  font-size: 12px; color: var(--dim);
-}
+.map-card .line { font-size: 12px; color: var(--dim); }
 .map-card .line b { font-size: 12px; color: var(--ink); font-weight: 600; }
 .map-card .line b.good { color: var(--good); }
 .map-card .line b.bad { color: var(--bad); }
@@ -202,7 +292,7 @@ button:active { background: rgba(255, 255, 255, 0.12); }
    взглядом, а число заставляет считать. */
 .map-card .pips { display: flex; gap: 4px; }
 .map-card .pips s { width: 22px; height: 4px; background: var(--good); border-radius: 2px; }
-.map-card .pips s.off { background: rgba(232, 226, 212, 0.16); }
+.map-card .pips s.off { background: var(--press); }
 .map-note { font-size: 11px; color: var(--dim); min-height: 14px; }
 
 /* Кнопка входа — по артбуку `world.html` (`.cta`), а не общая `button`.
@@ -218,23 +308,23 @@ button:active { background: rgba(255, 255, 255, 0.12); }
 .cta {
   display: block; width: 100%; text-align: center;
   padding: 12px 18px; border-radius: 9px;
-  border: 1px solid #e0bc3c;
-  background: linear-gradient(180deg, #d5ac2c, #a8811a);
-  color: #140f02;
+  border: 1px solid var(--cta-line);
+  background: linear-gradient(180deg, var(--cta-top), var(--cta-bot));
+  color: var(--cta-ink);
   font-family: Georgia, "Times New Roman", serif;
   font-size: 16px; font-weight: 600;
 }
-.cta:active { background: linear-gradient(180deg, #c39c26, #8f6e16); }
+.cta:active { background: linear-gradient(180deg, var(--cta-top-on), var(--cta-bot-on)); }
 /* Ставка перестала быть посильной. Порог — 60%: артбук красит оранжевым
    ровно два входа, «В Сухое русло — ставка 60%» и «Войти в бурю» (60% → 85%),
    и оба стоят на `TIER_RISK[2]` и выше. Ниже кнопка остаётся золотой:
    если оранжевой станет каждая вылазка, оранжевый перестанет значить что-либо. */
 .cta.danger {
-  border-color: #e07c46;
-  background: linear-gradient(180deg, #d2662f, #9e4620);
-  color: #150802;
+  border-color: var(--risk-line);
+  background: linear-gradient(180deg, var(--risk-top), var(--risk-bot));
+  color: var(--risk-ink);
 }
-.cta.danger:active { background: linear-gradient(180deg, #bb5a29, #8a3c1b); }
+.cta.danger:active { background: linear-gradient(180deg, var(--risk-top-on), var(--risk-bot-on)); }
 /* Заперто. Не серая версия золотой, а другая кнопка: заливка снимается
    совсем, иначе «нельзя» читается как «сломалось». Причину говорит строка
    под ней (`.map-note`), а не сама кнопка. */
@@ -253,12 +343,27 @@ button:active { background: rgba(255, 255, 255, 0.12); }
    без него сжималась по тексту, а «В вылазку» переносилось на две строки. */
 .camp-bar { display: flex; gap: 6px; pointer-events: auto; align-self: stretch; }
 .camp-bar button { flex: 1; padding: 11px 8px; }
-.camp-bar .primary { flex: 1.6; background: #3c3320; border-color: #6d5a30; font-weight: 600; }
+.camp-bar .primary { flex: 1.6; background: var(--pick); border-color: var(--pick-line); font-weight: 600; }
 #camp .b { display: flex; flex-direction: column; gap: 5px; }
-#camp .b + .b { padding-top: 9px; border-top: 1px solid var(--line); }
-.b-top { display: flex; justify-content: space-between; align-items: baseline; }
+/* Волосяная линия разделяет только то, что и так стоит в листе поодиночке.
+   Список снаряжения ею не разделяется — он ниже становится карточками:
+   четыре строки подряд под волосинкой читаются сплошным текстом, а не
+   набором предметов. */
+#camp .sec .b + .b { padding-top: 9px; border-top: 1px solid var(--line); }
 .b-eff { font-size: 12px; color: var(--dim); }
-.b-bot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+.b-bot { font-size: 12px; }
+
+/* ---------- снаряжение: карточка на предмет ---------- */
+/* Пять предметов подряд — это список, и выглядеть он обязан списком: каждый
+   предмет берёт `.card`, уровень — `.badge`, кнопка — `.act`. Своих правил
+   у снаряжения остаётся два, и оба про то, чем оно отличается от прочих
+   списков, а не про то, как рисуется коробка. */
+#camp .gear .badge { align-self: center; }
+/* Полоса ковки тонкая: во всю высоту она разрывала строку предмета пополам. */
+#camp .gear .bar { height: 4px; }
+/* §20.4 — перестановка бесплатна и мгновенна. Кнопка во всю ширину обещала
+   вес, которого у действия нет, и вставала разделителем посреди листа. */
+#camp .move { align-self: flex-start; padding: 7px 12px; font-size: 12px; }
 #camp .raid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
   align-items: center; pointer-events: auto;
@@ -273,12 +378,11 @@ button[disabled] { opacity: 0.4; cursor: default; }
 }
 #stats-panel {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 7;
+  background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 7;
 }
 #stats-panel.on { display: flex; }
 #stats-panel .panel { width: 100%; max-width: 380px; max-height: 82vh; overflow-y: auto; }
 #stats-panel h2 { margin: 0 0 10px; font-size: 18px; }
-.sp-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .sp-row b { font-variant-numeric: tabular-nums; }
 .sp-note { font-size: 11px; color: var(--dim); margin: 0 0 8px; }
 #stats-panel .acts { display: flex; gap: 6px; margin-top: 12px; }
@@ -296,7 +400,6 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Активный герой выделен рамкой, а не цветом текста: строка должна читаться
    с расстояния вытянутой руки, как и всё остальное в лагере. */
 #roster .r.on { border-left: 2px solid var(--warn); padding-left: 7px; }
-.r-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .r-meta { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .r-skill { font-size: 11px; color: var(--dim); }
 .r-acts { display: flex; gap: 6px; }
@@ -311,11 +414,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #camp .slots .slot.empty { border-style: dashed; color: var(--dim); }
 /* Слоты в вылазке молчат: тусклые, без счётчиков и подсветки. */
 .raid-slots { display: flex; gap: 6px; justify-content: center; min-height: 18px; }
-.raid-slot {
-  font-size: 10px; letter-spacing: 0.04em; color: var(--dim);
-  border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px;
-  background: var(--panel);
-}
+.raid-slot { font-size: 10px; letter-spacing: 0.04em; color: var(--dim); }
 .raid-slot.spent { opacity: 0.35; text-decoration: line-through; }
 
 /* ---------- онбординг: раскадровка первых трёх минут ---------- */
@@ -338,15 +437,6 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Кадр 10: карточка яруса. Ставка объявляется до входа (§11.6).
    Во всю ширину панели: сетка вылазки — четыре колонки под ярусы, и карточка,
    зажатая в одну из них, переносила цену провала на три строки. */
-.tier-card {
-  grid-column: 1 / -1;
-  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
-  display: flex; flex-direction: column; gap: 2px;
-}
-.tier-card .t { display: flex; justify-content: space-between; align-items: baseline; }
-.tier-card b { font-size: 14px; }
-.tier-card span { font-size: 11px; }
-.tier-card p { margin: 4px 0 0; font-size: 12px; }
 /* ---------- стартовый экран ---------- */
 /* Заголовок стоит в сцене буквами, поэтому здесь только вход в игру.
    Кнопка крупнее прочих: это единственное, что на экране можно нажать. */
@@ -369,7 +459,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
   z-index: 50; padding: 6px; line-height: 0; opacity: 0.72; color: var(--ink);
 }
 #settings-open:hover { opacity: 1; }
-#settings-open svg { display: block; width: 18px; height: 18px; }
+#settings-open svg { display: block; width: 18px; height: 18px; transition: transform 140ms ease-out; }
 /* Угол занят, и верхние строки его освобождают. Раньше это правило держалось
    на честном слове — дев-кнопка стояла здесь же и наезжала на «Камень» в лагере,
    но была полупрозрачной и только в разработке, поэтому никто не замечал.
@@ -379,12 +469,11 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #camp .panel.res { padding-left: 34px; }
 /* Шестерня проворачивается на нажатие — единственная анимация интерфейса,
    и она отвечает пальцу, а не играет сама по себе. */
-#settings-open svg { transition: transform 140ms ease-out; }
 #settings-open:active svg { transform: rotate(45deg); }
 
 #settings {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8, 7, 6, 0.86); backdrop-filter: blur(5px); padding: 18px; z-index: 60;
+  background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 60;
 }
 /* Окно накрывает и саму шестерню: тап по затемнению закрывает настройки,
    и повторный тап по кнопке обязан работать так же, а не открывать заново. */
@@ -395,7 +484,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Подпись · ползунок · число: числа выровнены по правому краю колонкой,
    иначе «5%» и «100%» дёргают ползунок при каждом движении. */
 .set-row { display: grid; grid-template-columns: 88px 1fr 38px; gap: 8px; align-items: center; }
-.set-row input { width: 100%; accent-color: #c8a24a; }
+.set-row input { width: 100%; accent-color: var(--gold); }
 .set-row b { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 #settings .sp-note { margin: 10px 0 0; }
 #settings .acts { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
@@ -403,7 +492,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #settings .acts p { margin: 2px 0 4px; font-size: 12px; text-align: center; }
 /* Необратимое действие подписано цветом потери — тем же, каким считаются
    раны и провалы. Кнопка не красная целиком: она не главная в окне. */
-#settings .danger { color: var(--bad); border-color: rgba(212, 84, 58, 0.5); }
+#settings .danger { color: var(--bad); border-color: var(--bad-line); }
 
 /* Конец пролога. Стоит там же, где кнопка заставки: одно решение внизу экрана. */
 #pitch {
@@ -429,7 +518,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #draft {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
   padding: 16px calc(16px + env(safe-area-inset-left)) calc(16px + env(safe-area-inset-bottom));
-  background: rgba(8, 7, 6, 0.72); z-index: 20;
+  background: var(--scrim-soft); z-index: 20;
 }
 #draft .panel { width: 100%; max-width: 460px; }
 #draft h2 { margin: 0 0 2px; font-size: 20px; }
@@ -441,10 +530,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
   #draft .cards { flex-direction: row; align-items: stretch; }
   #draft .card { flex: 1 1 0; }
 }
-#draft .card {
-  display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
-  padding: 12px 14px; text-align: left; line-height: 1.35;
-}
+#draft .card { align-items: flex-start; padding: 12px 14px; text-align: left; line-height: 1.35; }
 #draft .card .axis {
   font-style: normal; font-size: 11px; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--dim);
@@ -511,25 +597,61 @@ button[disabled] { opacity: 0.4; cursor: default; }
   color: var(--ink);
 }
 #trade .wallet { margin: 0; font-size: 12px; color: var(--dim); }
-#trade .row { display: flex; align-items: center; gap: 8px; }
 #trade button { pointer-events: auto; font-size: 14px; padding: 10px 22px; }
 #trade .why { font-size: 11px; color: var(--bad); min-width: 64px; }
 
 /* ---------- панель стройки стен (§12, §6.1.6) ---------- */
 #camp .build { gap: 10px; align-self: stretch; }
-.build-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 6px; }
+.build-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .build-card { display: flex; }
+/* Карточка — сетка, а не колонка: силуэт слева на две строки, имя и жест
+   справа, цена во всю ширину внизу. Колонкой строки съезжали друг относительно
+   друга, потому что жест у одних в одну строку, у других в три. */
 .build-pick {
-  flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
-  text-align: left; padding: 9px 10px; line-height: 1.3;
+  flex: 1; position: relative; display: grid;
+  grid-template-columns: auto 1fr;
+  /* Средняя строка тянется, поэтому цена прижата к низу карточки, а не
+     идёт сразу за жестом. Иначе в одном ряду цена «Стены» стоит на второй
+     строке, а «Ограды» на четвёртой, и нижний край ряда пляшет. */
+  grid-template-rows: auto 1fr auto;
+  gap: 1px 9px; text-align: left; padding: 10px 10px 9px; line-height: 1.3;
 }
-.build-pick b { font-size: 13px; }
-.build-gesture { font-size: 10.5px; }
-.build-bot { display: flex; justify-content: space-between; gap: 8px; width: 100%; font-size: 10.5px; }
-.build-pick[aria-pressed="true"] { background: #3c3320; border-color: #6d5a30; }
-.build-card.raze .build-pick[aria-pressed="true"] { background: #3a2320; border-color: #7a4038; }
+.build-pick .glyph { grid-row: 1 / 3; opacity: 0.62; }
+.build-pick b { grid-column: 2; font-size: 13.5px; padding-right: 18px; }
+.build-gesture { grid-column: 2; font-size: 10.5px; }
+/* Цена во всю ширину под чертой: она относится к карточке целиком,
+   а не к правой колонке. */
+.build-price {
+  grid-column: 1 / -1; margin-top: 7px; padding-top: 7px;
+  border-top: 1px solid var(--line); font-size: 11px; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+/* Не хватает на клетку — цена красная. Карточка живая: причину говорит
+   подсказка под панелью, а погашенная кнопка объяснить ничего не может. */
+.build-price.cant { color: var(--bad); }
+/* Счёт построенного — `.badge` в углу: ширину не делит ни с чем, поэтому
+   не ломается ни на какой цене. */
+.build-count { position: absolute; top: 8px; right: 9px; min-width: 18px; text-align: center; }
+/* Выбранная карточка держится не только фоном: обводка в два раза заметнее
+   заливки на светлой сцене, а силуэт разгорается до полного. */
+.build-pick[aria-pressed="true"] {
+  background: var(--pick); border-color: var(--pick-line); box-shadow: inset 0 0 0 1px var(--pick-line);
+}
+.build-pick[aria-pressed="true"] .glyph { opacity: 1; }
+.build-pick[aria-pressed="true"] b { color: var(--warn); }
+/* Снос — во всю ширину и последним: он не строит, и стоять шестым в ряду
+   построек ему нечего. Строкой он ещё и не занимает высоту карточки. */
+.build-card.raze { grid-column: 1 / -1; }
+.build-card.raze .build-pick { grid-template-columns: auto 1fr auto; align-items: center; }
+.build-card.raze .glyph { grid-row: auto; opacity: 0.5; }
+.build-card.raze .build-gesture { min-height: 0; grid-column: 2; }
+.build-card.raze .build-price { grid-column: 3; margin: 0; padding: 0; border: 0; }
+.build-card.raze .build-pick[aria-pressed="true"] {
+  background: var(--raze); border-color: var(--raze-line); box-shadow: inset 0 0 0 1px var(--raze-line);
+}
+.build-card.raze .build-pick[aria-pressed="true"] b { color: var(--bad); }
 .build-note { font-size: 11.5px; }
-.build-note.warn { color: #d4543a; }
+.build-note.warn { color: var(--bad); }
 
 /* §14.3 — колчан в нижней строке вылазки. Сегментами, как раны (§11.3):
    игрок считает штуки, а не читает долю. Потолок вместимости — восемь,
@@ -546,8 +668,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .battle {
   position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%);
   display: none; flex-direction: column; align-items: center; gap: 6px;
-  padding: 8px 12px; border-radius: 10px;
-  background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(2px);
+  padding: 8px 12px;
   max-width: min(92vw, 420px);
 }
 .battle.on { display: flex; }
@@ -557,15 +678,15 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .battle-order { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
 .turn-chip {
   padding: 2px 7px; border-radius: 999px; font-size: 11px;
-  background: rgba(255, 255, 255, 0.08); color: var(--dim);
+  background: var(--fill); color: var(--dim);
 }
 .turn-chip.me { color: var(--ink); }
-.turn-chip.now { background: var(--warn); color: #16150f; }
+.turn-chip.now { background: var(--warn); color: var(--on-warn); }
 .battle-acts { display: flex; gap: 6px; }
 .battle-acts button {
   min-width: 76px; padding: 8px 10px; font-size: 13px;
   border: 0; border-radius: 8px; cursor: pointer;
-  background: rgba(255, 255, 255, 0.12); color: var(--ink);
+  background: var(--press); color: var(--ink);
 }
 .battle-acts button:disabled { opacity: 0.35; cursor: default; }
 .battle-hint { margin: 0; font-size: 11px; }

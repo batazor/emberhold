@@ -506,7 +506,7 @@ const wallSite = (): WallSite => ({
 
 function openWalls(): void {
   buildPanel.setVisible(true);
-  buildPanel.update(wallsOf(), clock.now());
+  buildPanel.update(wallsOf(), clock.now(), camp.resources);
   campHud.notify('Стены: выберите карточку, дальше жест по земле');
 }
 
@@ -514,7 +514,7 @@ function openWalls(): void {
 function refreshWalls(): void {
   campView.setWalls(wallPieces(wallsOf()));
   campView.setFences(fencePieces(wallsOf()));
-  buildPanel.update(wallsOf(), clock.now());
+  buildPanel.update(wallsOf(), clock.now(), camp.resources);
 }
 
 /** Тап или мазок по земле в режиме стройки. Возвращает: жест обработан. */
@@ -601,7 +601,7 @@ function finishWall(result: StartBlock, subject?: string): boolean {
   }
   play('build');
   buildPanel.setNote(null);
-  buildPanel.update(wallsOf(), clock.now());
+  buildPanel.update(wallsOf(), clock.now(), camp.resources);
   campHud.sync(camp, clock.now(), 0);
   persist();
   return true;

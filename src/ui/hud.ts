@@ -69,7 +69,7 @@ export class Hud {
       </div>
       <div class="bottom">
         <div id="h-slots" class="raid-slots"></div>
-        <div id="h-hint" class="hint"></div>
+        <div id="h-hint" class="chip hint"></div>
         <div class="panel night" data-row="controls">
           <span class="lbl">Ночь</span><input id="h-night" type="range" min="0" max="100" value="100">
           <span class="lbl">Трава</span><input id="h-grass" type="range" min="0" max="64" value="24">
@@ -203,7 +203,7 @@ export class Hud {
       this.slots.innerHTML = '';
       if (state.arrowsMax > 0) {
         const quiver = document.createElement('span');
-        quiver.className = 'raid-slot quiver';
+        quiver.className = 'chip raid-slot quiver';
         quiver.innerHTML =
           Array.from({ length: state.arrowsMax }, (_, i) =>
             i < state.arrows ? '<i></i>' : '<i class="spent"></i>').join('');
@@ -211,13 +211,13 @@ export class Hud {
       }
       for (const id of state.consumables) {
         const el = document.createElement('span');
-        el.className = 'raid-slot';
+        el.className = 'chip raid-slot';
         el.textContent = CONSUMABLES[id].name;
         this.slots.appendChild(el);
       }
       for (const id of state.fired) {
         const el = document.createElement('span');
-        el.className = 'raid-slot spent';
+        el.className = 'chip raid-slot spent';
         el.textContent = CONSUMABLES[id].name;
         this.slots.appendChild(el);
       }

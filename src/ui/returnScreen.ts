@@ -242,7 +242,7 @@ export class ReturnScreen {
       const amount = result.carried[kind];
       if (amount <= 0) continue;
       const row = document.createElement('div');
-      row.className = 'loot-row';
+      row.className = 'row loot-row';
       const name = document.createElement('span');
       name.className = 'lbl';
       name.textContent = RESOURCE_NAME[kind];

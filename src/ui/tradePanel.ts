@@ -48,7 +48,7 @@ export class TradePanel {
 
     for (const id of OFFER_ORDER) {
       const box = document.createElement('div');
-      box.className = 'row';
+      box.className = 'row tight';
       const button = document.createElement('button');
       button.addEventListener('click', () => cb.onTrade(id));
       const note = document.createElement('span');

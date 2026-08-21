@@ -108,7 +108,7 @@ export class StatsPanel {
     this.body.innerHTML = rows
       .map(
         ([name, value, note]) =>
-          `<div class="sp-row"><span class="lbl">${name}</span><b>${value}</b></div>` +
+          `<div class="row sp-row"><span class="lbl">${name}</span><b>${value}</b></div>` +
           (note === '' ? '' : `<div class="sp-note">${note}</div>`),
       )
       .join('');

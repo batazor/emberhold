@@ -39,7 +39,7 @@ export class BattleHud {
   constructor(host: HTMLElement, hooks: BattleHudHooks) {
     this.root = document.createElement('div');
     this.root.id = 'battle';
-    this.root.className = 'battle';
+    this.root.className = 'panel battle';
     this.root.innerHTML = `
       <div class="battle-turn"><b id="b-turn"></b><span id="b-round" class="dim"></span></div>
       <div class="battle-order" id="b-order"></div>
