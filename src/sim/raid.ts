@@ -47,6 +47,7 @@ import type {
   Cell,
   EnemyKind,
   GameLocation,
+  Fighter,
   Projectile,
   RaidState,
   RaidStatus,
@@ -153,24 +154,47 @@ export function createRaid(opts: RaidOptions): RaidState {
   // знать про слоты, ей нужны вместимость, раны и множители.
   const mods = opts.gear === undefined ? NO_MODS : gearMods(opts.gear, opts.offhand ?? 'torch');
   const quiver = loadout.ranged ? Math.min(mods.arrows, Math.max(0, opts.arrows ?? mods.arrows)) : 0;
+  const supply = opts.food ?? kitchenFood(opts.kitchenLevel);
+
+  /**
+   * §11.7 — отряд. Пока в нём один боец: состав приходит снаружи, и вылазка
+   * не знает, сколько их. Разница видна только тогда, когда их станет
+   * больше, — и это правильная проверка замены представления.
+   *
+   * §11.9а — запас хода личный. У одного бойца сумма равна его запасу,
+   * то есть ровно прежнему числу, и золотой мастер обязан это подтвердить.
+   */
+  const party: Fighter[] = [{
+    id: 0,
+    loadout,
+    mods,
+    x: loc.evac.x,
+    z: loc.evac.z,
+    prevX: loc.evac.x,
+    prevZ: loc.evac.z,
+    facing: 0,
+    // Раны — от класса (§11.7) плюс броня (§14).
+    wounds: loadout.wounds + mods.wounds,
+    cooldown: 0,
+    arrows: quiver,
+    arrowsMax: quiver,
+    food: supply,
+    foodMax: supply,
+  }];
+
   return {
     loc,
     loadout,
     mods,
     skillUsed: false,
     skillLeft: 0,
-    hero: {
-      x: loc.evac.x,
-      z: loc.evac.z,
-      prevX: loc.evac.x,
-      prevZ: loc.evac.z,
-      facing: 0,
-      // Раны — от класса (§11.7) плюс броня (§14).
-      wounds: loadout.wounds + mods.wounds,
-      cooldown: 0,
-    },
-    food: opts.food ?? kitchenFood(opts.kitchenLevel),
-    foodMax: opts.food ?? kitchenFood(opts.kitchenLevel),
+    party,
+    active: 0,
+    // Ведущий — тот же объект, а не копия: правка через любое из двух имён
+    // меняет одно и то же.
+    hero: party[0]!,
+    food: supply,
+    foodMax: supply,
     bag: emptyResources(),
     bagTotal: 0,
     // Рюкзак класса: Лучник −25%, Бандит +30% (§11.7). Не меньше единицы,
@@ -284,7 +308,7 @@ export function commandMove(state: RaidState, target: Cell): boolean {
 function heroSpeed(state: RaidState): number {
   // Вес добычи замедляет героя (§1) — цена жадности платится дорогой назад.
   const load = state.bagTotal / state.capacity;
-  const starving = state.food <= 0 ? 0.6 : 1;
+  const starving = anyStarving(state) ? 0.6 : 1;
   return HERO_SPEED * state.loadout.speedMul * (1 - WEIGHT_SLOWDOWN * load) * starving;
 }
 
@@ -324,14 +348,14 @@ export function useSkill(state: RaidState): boolean {
   const def = SKILLS[state.loadout.skill];
   state.skillUsed = true;
   state.skillLeft = def.seconds;
-  if (state.loadout.skill === 'forage') state.food += FORAGE_FOOD;
+  if (state.loadout.skill === 'forage') feed(state, FORAGE_FOOD);
   state.events.push(`${def.name}: ${def.effect}`);
   return true;
 }
 
 function arriveAt(state: RaidState, cell: Cell): void {
   state.steps += 1;
-  state.food -= stepFoodCost(state);
+  spend(state, stepFoodCost(state));
 
   const container = state.loc.containers.find(
     (c) => !c.opened && c.x === cell.x && c.z === cell.z,
@@ -341,15 +365,19 @@ function arriveAt(state: RaidState, cell: Cell): void {
       state.events.push('Рюкзак полон — контейнер не вскрыт');
     } else {
       container.opened = true;
-      state.food -= state.containerFood;
+      spend(state, state.containerFood);
       const taken = Math.min(container.amount, state.capacity - state.bagTotal);
       state.bag[container.kind] += taken;
       state.bagTotal += taken;
       // §14.3 — стрелы подбираются, и это отменяет §21.4 осознанно:
       // приберечь их нельзя, потому что тратит их бой, а не игрок.
-      if (state.loadout.ranged && state.arrows < state.arrowsMax) {
-        const picked = Math.min(ARROWS_PER_CONTAINER, state.arrowsMax - state.arrows);
-        state.arrows += picked;
+      // §14.3 — стрелы достаются тем, кто ими стреляет, и по колчану
+      // каждого: у ближника вместимость нулевая, и делить с ним нечего.
+      const shooter = state.party.find((f) => f.loadout.ranged && f.arrows < f.arrowsMax);
+      if (shooter !== undefined) {
+        const picked = Math.min(ARROWS_PER_CONTAINER, shooter.arrowsMax - shooter.arrows);
+        shooter.arrows += picked;
+        state.arrows = shooter.arrows;
         if (picked > 0) state.events.push(`+${picked} · стрелы`);
       }
       const found = `+${taken} · ${RESOURCE_NAME[container.kind]}`;
@@ -564,9 +592,9 @@ function stepConsumables(state: RaidState): void {
     hero.wounds += 1;
   }
 
-  if (state.food <= 0 && state.consumables.includes('ration')) {
+  if (anyStarving(state) && state.consumables.includes('ration')) {
     fireConsumable(state, 'ration');
-    state.food += RATION_FOOD;
+    feed(state, RATION_FOOD);
     state.starve = 0;
   }
 
@@ -590,6 +618,50 @@ function stepConsumables(state: RaidState): void {
  * интерфейс и бот, и каждый из них не должен знать, как устроено поле.
  */
 export const inBattle = (state: RaidState): boolean => state.battle !== null;
+
+/**
+ * §11.9а — каждый платит из своего запаса.
+ *
+ * Не из общего котла и не поровну от суммы: запас личный, и «докуда дойдём»
+ * определяется тем, у кого он кончится первым. Отсюда и решение «кого вести» —
+ * тяжёлый Рыцарь и лёгкий Лучник расходятся по дальности.
+ *
+ * Отряд идёт вместе, поэтому шаг стоит одинаково всем: платят все, а не
+ * ведущий за всех.
+ */
+function spend(state: RaidState, each: number): void {
+  for (const f of state.party) f.food -= each;
+  syncSupply(state);
+}
+
+/**
+ * Найденное достаётся тому, кто нашёл, — ведущему. Делить паёк на троих
+ * значило бы, что запас не личный, а общий, только записанный иначе.
+ */
+function feed(state: RaidState, amount: number): void {
+  state.hero.food += amount;
+  syncSupply(state);
+}
+
+/** Полоса HUD показывает отряд, а не ведущего: провиант вылазки — сумма. */
+function syncSupply(state: RaidState): void {
+  let sum = 0;
+  for (const f of state.party) sum += f.food;
+  state.food = sum;
+}
+
+/** §11.9а — выдать отряду провиант. Запас личный, поэтому пишется бойцам,
+ *  а `state.food` пересчитывается из них. */
+export function setSupply(state: RaidState, each: number): void {
+  for (const f of state.party) f.food = each;
+  let sum = 0;
+  for (const f of state.party) sum += f.food;
+  state.food = sum;
+}
+
+/** Кончился ли провиант хоть у кого-то: дальше идёт тот, кто голоден,
+ *  а не отряд в среднем. */
+const anyStarving = (state: RaidState): boolean => state.party.some((f) => f.food <= 0);
 
 /** Идентификатор героя на поле. Отрицательный: у противников номера
  *  выданы генератором с нуля, и два счётчика не должны столкнуться. */
@@ -621,7 +693,7 @@ function openBattle(state: RaidState): void {
       wounds: state.hero.wounds,
       speed: HERO_SPEED * state.loadout.speedMul,
       reach: HERO_REACH,
-      ranged: state.loadout.ranged && state.arrows > 0,
+      ranged: state.hero.loadout.ranged && state.hero.arrows > 0,
       attack: state.loadout.attack,
       defense: state.loadout.defense + state.mods.defense,
     }],
@@ -629,7 +701,7 @@ function openBattle(state: RaidState): void {
   );
   // Завязка стоит провианта ровно как прежде (§11.1) — цена решения
   // ввязаться не изменилась оттого, что бой стал пошаговым.
-  state.food -= FOOD_COST.fight;
+  spend(state, FOOD_COST.fight);
   state.fights += 1;
   state.paidRound = 1;
   state.path = [];
@@ -706,7 +778,7 @@ function stepBattle(state: RaidState): boolean {
   // бесплатным убежищем, иначе стоять в бою выгоднее, чем идти.
   if (battle.round > state.paidRound) {
     state.paidRound = battle.round;
-    state.food -= FOOD_PER_ROUND;
+    spend(state, FOOD_PER_ROUND);
 
     // Начало раунда — момент, когда проверяется отрыв. Ушёл и пережил
     // чужие ходы — бой кончился, мир пошёл дальше, противники остались
@@ -771,10 +843,12 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
   for (const e of battle.events) state.events.push(e);
 
   // Стрелок тратит стрелу за выстрел — там же, где раньше (§14.3).
-  if (action.kind === 'attack' && unit.side === 'hero' && unit.ranged && state.arrows > 0) {
-    state.arrows -= 1;
+  const shot = state.party.find((f) => f.id === -unit.id - 1) ?? state.hero;
+  if (action.kind === 'attack' && unit.side === 'hero' && unit.ranged && shot.arrows > 0) {
+    shot.arrows -= 1;
+    state.arrows = shot.arrows;
     state.arrowsSpent += 1;
-    if (state.arrows === 0) state.events.push('Колчан пуст');
+    if (shot.arrows === 0) state.events.push('Колчан пуст');
   }
 
   // Шаг ходом не кончается: подойти и ударить — один ход. Кончают его удар,
@@ -796,7 +870,7 @@ function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): numb
   if (from.side === 'hero') {
     // Пустой колчан бьёт слабее (§14.3). Проверка по стрелам остаётся общей,
     // пока боец один; с отрядом колчан переедет к бойцу вместе с остальным.
-    const dry = state.loadout.ranged && state.arrows <= 0;
+    const dry = state.hero.loadout.ranged && state.hero.arrows <= 0;
     return from.attack * (dry ? RANGED_MELEE_PENALTY : 1);
   }
   // Защита берётся у того, кого бьют, а не у стороны: трое бойцов держат
@@ -841,7 +915,7 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
 
   // Голод не убивает мгновенно: провиант обязан оставаться главной причиной
   // провала (§11.3), но провал должен наступать в дороге, а не внезапно.
-  if (state.food <= 0 && state.hunger) {
+  if (anyStarving(state) && state.hunger) {
     state.starve += dt;
     if (state.starve >= 6) {
       state.starve = 0;

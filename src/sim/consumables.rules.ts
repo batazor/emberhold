@@ -15,7 +15,7 @@ import {
   cheapestAffordable,
   refundConsumable,
 } from './consumables';
-import { createRaid, stepRaid } from './raid';
+import { createRaid, setSupply, stepRaid } from './raid';
 
 describe('Расходники', () => {
   test('§21.1 — не больше двух за вылазку', () => {
@@ -75,7 +75,7 @@ describe('Срабатывание', () => {
 
   test('§21 — паёк срабатывает на нуле провианта', () => {
     const raid = raidWith(['ration']);
-    raid.food = 0;
+    setSupply(raid, 0);
     stepRaid(raid, TICK, true, 5);
     assert.equal(raid.food, RATION_FOOD);
     assert.deepEqual(raid.fired, ['ration']);
@@ -107,7 +107,7 @@ describe('Срабатывание', () => {
   test('§21 — без расходников ничего не срабатывает', () => {
     const raid = raidWith([]);
     raid.hero.wounds = 1;
-    raid.food = 0;
+    setSupply(raid, 0);
     stepRaid(raid, TICK, true, 5);
     assert.deepEqual(raid.fired, []);
     assert.equal(raid.hero.wounds, 1);

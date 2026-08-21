@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createRaid } from '../../sim/raid';
+import { createRaid, setSupply } from '../../sim/raid';
 import type { RaidState } from '../../sim/raid';
 import { createRaidEar } from './index';
 import type { RaidEar, Sink } from './index';
@@ -119,10 +119,10 @@ describe('Звук вылазки (§18.3)', () => {
     const raid = raidWithEnemies();
     const { ear, heard } = listen(raid);
     // Девятая часть запаса — ещё не десятая.
-    raid.food = raid.foodMax - Math.floor(raid.foodMax / 10) + 1;
+    setSupply(raid, raid.foodMax - Math.floor(raid.foodMax / 10) + 1);
     ear.hear(raid);
     assert.deepEqual(heard, [], 'тик прозвучал раньше десятой');
-    raid.food = raid.foodMax - Math.ceil(raid.foodMax / 10);
+    setSupply(raid, raid.foodMax - Math.ceil(raid.foodMax / 10));
     ear.hear(raid);
     assert.deepEqual(heard, ['tick']);
   });
@@ -149,11 +149,11 @@ describe('Звук вылазки (§18.3)', () => {
     const { ear, share } = listen(raid);
     ear.hear(raid);
     assert.equal(share.at(-1), 1);
-    raid.food = raid.foodMax / 2;
+    setSupply(raid, raid.foodMax / 2);
     ear.hear(raid);
     assert.equal(share.at(-1), 0.5);
     // Голод уводит запас ниже нуля (§11.1) — пульсу от этого ускоряться некуда.
-    raid.food = -5;
+    setSupply(raid, -5);
     ear.hear(raid);
     assert.equal(share.at(-1), 0);
   });

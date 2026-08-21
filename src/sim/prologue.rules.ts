@@ -30,7 +30,7 @@ import {
 } from './prologue';
 import { restartStep } from './onboarding';
 import { campArea, createCamp } from './camp';
-import { commandMove, createRaid, stepRaid } from './raid';
+import { commandMove, createRaid, setSupply, stepRaid } from './raid';
 
 const glade = (seed = 1): ReturnType<typeof generateGlade> => generateGlade(seed);
 
@@ -323,7 +323,7 @@ describe('Пролог: кадр кончается собранным дере�
 
   test('голод в прологе раны не грызёт: нуль провианта — повод отдохнуть', () => {
     const state = prologue(4);
-    state.food = 0;
+    setSupply(state, 0);
     const wounds = state.hero.wounds;
     for (let i = 0; i < 60 * 30; i++) stepRaid(state, 1 / 60, false, 0);
     assert.equal(state.hero.wounds, wounds, 'пролог начал отнимать раны');
@@ -357,7 +357,7 @@ describe('Пролог: отдых у лагеря', () => {
       containerFood: 0,
       hunger: false,
     });
-    state.food = food;
+    setSupply(state, food);
     return state;
   };
 
