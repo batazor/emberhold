@@ -16,7 +16,7 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-dungeon/dungeon_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-skeletons/gltf/*.gltf`, `*.bin`, `*.glb` — 17 моделей: четыре скелета, оружие, щиты, стрелы | [kaylousberg.itch.io/kaykit-skeletons](https://kaylousberg.itch.io/kaykit-skeletons), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
 | `kaykit-skeletons/skeleton_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
-| `kaykit-animations/gltf/*.glb` — 159 скелетных клипов: ход, бой, работа, быт | [kaylousberg.itch.io/kaykit-character-animations](https://kaylousberg.itch.io/kaykit-character-animations), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
+| `kaykit-animations/gltf/*.glb` — 131 скелетный клип средней оснастки: ход, бой, работа, быт | [kaylousberg.itch.io/kaykit-character-animations](https://kaylousberg.itch.io/kaykit-character-animations), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
 | `kaykit-animations/rig/*.glb`, `mannequin_texture.png` — два манекена набора и их текстура | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-adventurers/characters/*.glb` — 6 моделей персонажей: рыцарь, варвар, маг, следопыт, разбойник (и он же в капюшоне) | [kaylousberg.itch.io/kaykit-adventurers](https://kaylousberg.itch.io/kaykit-adventurers), тариф FREE, версия 2.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-adventurers/gltf/*.gltf`, `*.bin` — 31 предмет в руки: мечи, топоры, луки, арбалеты, стрелы, щиты, посохи, книги, кружки | там же | CC0 1.0 | Kay Lousberg |
@@ -82,6 +82,11 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 наборов, остаётся в `assets/` и в сборку не попадает.
 
 ## Подземелье и анимации лежат, но не едут
+
+Набор анимаций к тому же лежит не целиком: у него две оснастки, а крупных
+персонажей в игре нет ни одного, и 28 клипов `Rig_Large_*` удалены — 4,1 МБ
+дорожек, которые не на кого надеть. Манекен `Mannequin_Large` оставлен: по нему
+`charart.html` показывает, чем крупная оснастка отличается от средней.
 
 `kaykit-dungeon/` и `kaykit-animations/` измерены целиком, и в бандле от них
 нет ни байта: список принятых моделей пуст, `.data.ts` под них не пишется,

@@ -57,7 +57,7 @@ describe('Онбординг: порядок кадров', () => {
     assert.ok(!isRaidStep('world'), 'лагерь после пролога переживает перезапуск');
     assert.ok(
       stepIndex('build') > stepIndex('evac'),
-      'лагерь идёт после эвакуации: он награда за вылазку, а не стартовая комната',
+      'лагерь идёт после возвращения: он награда за вылазку, а не стартовая комната',
     );
   });
 
@@ -135,7 +135,7 @@ describe('Онбординг: цепочка не рвётся', () => {
     assert.equal(nextRaidStep('bait', sig({ looted: 1, sinceStep: 1 })), null);
   });
 
-  test('из любого кадра вылазки цепочка доходит до эвакуации', () => {
+  test('из любого кадра вылазки цепочка доходит до выхода', () => {
     let step: OnbStep = 'move';
     const s = sig({ moved: true, wounded: true, looted: 2, sinceStep: BAIT_TIMEOUT });
     for (let guard = 0; guard < ONB_ORDER.length && step !== 'evac'; guard++) {
@@ -156,7 +156,7 @@ describe('Онбординг: выход открывается добычей',
     assert.equal(state.evacOpen, true, 'замеры и бот считают вылазку как прежде');
   });
 
-  test('герой стартует на точке эвакуации — потому выход и закрыт', () => {
+  test('герой стартует на точке выхода — потому выход и закрыт', () => {
     const state = first();
     assert.equal(state.hero.x, state.loc.evac.x);
     assert.equal(state.hero.z, state.loc.evac.z);

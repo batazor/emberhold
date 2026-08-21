@@ -178,11 +178,50 @@ export class TitleView {
   /**
    * Шрифт грузится отдельным файлом и не задерживает первый кадр: поле
    * с травой встаёт сразу, буквы приходят следом.
+   *
+   * Грузится своим `fetch`, а не `FontLoader.load`, и это не вкусовщина.
+   * `load` устроен так:
+   *
+   *     loader.load(url, (text) => { const font = scope.parse(JSON.parse(text)); … },
+   *                 onProgress, onError)
+   *
+   * — `JSON.parse` стоит **внутри** колбэка успеха. Ответ, который пришёл,
+   * но не разобрался, доходит до этой строки как удачный и падает уже в ней,
+   * мимо `catch` внутри `FileLoader`: `onError` не зовётся никогда, а в консоли
+   * остаётся «Uncaught (in promise) SyntaxError: Unexpected token '<'»
+   * со стеком внутри чанка three, где ни адреса, ни причины.
+   *
+   * Случай не выдуманный: дев-сервер на неудачный путь отдаёт свою страницу
+   * с кодом 200, и `<!doctype` приезжает вместо шрифта; то же даёт 504
+   * «Outdated Optimize Dep», пока vite пересобирает зависимости.
+   *
+   * Своим fetch отказ становится обычной веткой: адрес назван, причина
+   * названа, заставка живёт дальше. Заголовок — украшение, а кнопка «Играть»
+   * лежит в DOM и от шрифта не зависит.
    */
   private loadTitle(): void {
-    new FontLoader().load(fontUrl, (font: Font) => {
-      // Экран мог смениться, пока шрифт ехал.
-      if (this.disposed) return;
+    void fetch(fontUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error(`ответ ${res.status}`);
+        return res.json();
+      })
+      .then((json: unknown) => {
+        // Экран мог смениться, пока шрифт ехал.
+        if (this.disposed) return;
+        this.buildTitle(new FontLoader().parse(json as Parameters<FontLoader['parse']>[0]));
+      })
+      .catch((err: unknown) => {
+        if (this.disposed) return;
+        console.warn(
+          `Заставка без 3D-заголовка: шрифт ${String(fontUrl)} не загрузился (${String(err)}). ` +
+            'Кнопка «Играть» работает как обычно.',
+        );
+      });
+  }
+
+  /** Собрать буквы из загруженного шрифта. */
+  private buildTitle(font: Font): void {
+    {
       const geo = this.track(
         new TextGeometry(TITLE, {
           font,
@@ -227,7 +266,7 @@ export class TitleView {
       mesh.rotation.y = Math.atan2(CAMERA_AT.x, CAMERA_AT.z);
       this.title = mesh;
       this.group.add(mesh);
-    });
+    }
   }
 
   /** Порыв от курсора; null — ветра нет (render/cursorWind.ts). */
