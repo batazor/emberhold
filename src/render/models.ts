@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind, RaidEnemyKind } from '../sim/types';
-import { adventurerGeometry, adventurerParts } from './adventurers';
+import { adventurerGeometry, adventurerHeld, adventurerParts } from './adventurers';
+import type { Held } from './adventurers';
+import { WEAPONS_MODELS } from './weapons.data';
+import { weaponOf } from './weapons';
+import { WEAPONS_PALETTE } from './palette';
 import type { AdventurerModelName } from './adventurers.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
@@ -393,20 +397,35 @@ function heroHeight(cls: HeroClassId): number {
 }
 
 /**
- * Что у героя в руке. Оружие §14 зовётся «Кайло»; кирки в наборе нет, поэтому
- * взят одноручный топор — ближайшее по чтению. Это замена палке примитива:
- * уровень предмета из Мастерской моделью пока не читается, и когда начнёт,
- * здесь появится не строка, а таблица.
+ * Что у героя в руке. Раньше здесь стояла строка — одноручный топор из набора
+ * персонажей, один на все уровни; комментарий рядом обещал таблицу, когда
+ * уровень предмета начнёт читаться моделью. Набор оружия (§6.1.8) это и есть.
+ *
+ * Классов с моделью пока один, поэтому таблица одномерная: уровень оружия §14
+ * выбирает ступень лестницы, а класс — держит ли он её вообще. Появится второй
+ * класс с моделью набора — здесь появится второй ключ, а не второй способ.
  */
-const HERO_HELD: Partial<Record<HeroClassId, AdventurerModelName>> = {
-  ranger: 'axe_1handed',
+const HERO_ARMED: Partial<Record<HeroClassId, true>> = {
+  ranger: true,
 };
 
-export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
+/**
+ * Предмет в руке по уровню оружия. Уровень 0 — «не выковано»: в руке остаётся
+ * деревянный клинок набора, потому что пустая рука в бою читается как ошибка
+ * рисовальщика, а не как «Мастерская не построена».
+ */
+const heldOf = (cls: HeroClassId, weapon: number): Held | undefined => {
+  if (HERO_ARMED[cls] !== true) return undefined;
+  const name = weaponOf(weapon);
+  return { name, model: WEAPONS_MODELS[name], palette: WEAPONS_PALETTE };
+};
+
+/** §14 — уровень оружия из Мастерской. 0 — слот пуст, ковки ещё не было. */
+export const heroGeometry = (cls: HeroClassId, weapon = 0): THREE.BufferGeometry => {
   const model = HERO_MODELS[cls];
   return model === undefined
     ? merge(HERO_SHAPES[cls]())
-    : adventurerGeometry(model, heroHeight(cls), HERO_HELD[cls]);
+    : adventurerGeometry(model, heroHeight(cls), heldOf(cls, weapon));
 };
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
@@ -436,11 +455,11 @@ const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {
 export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind]();
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
-export function heroParts(cls: HeroClassId): RiggedParts | null {
+export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {
   const model = HERO_MODELS[cls];
   return model === undefined
     ? null
-    : adventurerParts(model, heroHeight(cls), HERO_HELD[cls]);
+    : adventurerParts(model, heroHeight(cls), heldOf(cls, weapon));
 }
 
 
@@ -471,4 +490,4 @@ const GUARD_HELD: Record<GuardKind, AdventurerModelName> = {
 export const guardHeight = (): number => heroHeight(GUARD_LIKE);
 
 export const guardParts = (kind: GuardKind): RiggedParts =>
-  adventurerParts(GUARD_MODEL, heroHeight(GUARD_LIKE), GUARD_HELD[kind]);
+  adventurerParts(GUARD_MODEL, heroHeight(GUARD_LIKE), adventurerHeld(GUARD_HELD[kind]));

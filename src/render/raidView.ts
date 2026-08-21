@@ -263,6 +263,8 @@ export class RaidView {
     private readonly keep: CastleSite | null = null,
     /** Участок кладбища (§6.1.7): то же самое для вкуса «кладбище». */
     private readonly grave: GraveSite | null = null,
+    /** §14 — уровень оружия: он выбирает клинок в руке (§6.1.8). */
+    private readonly weapon = 0,
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
@@ -1071,10 +1073,10 @@ export class RaidView {
     // Герой стоит на том же риге, что противники (§6.1.4), и клипы у них общие.
     // Классу без модели набора достаётся неподвижный примитив — у него скелета
     // нет, и выдумывать его нечем.
-    const parts = heroParts(this.heroClass);
+    const parts = heroParts(this.heroClass, this.weapon);
     let body: THREE.Object3D;
     if (parts === null) {
-      const mesh = new THREE.Mesh(this.track(heroGeometry(this.heroClass)), this.blocking);
+      const mesh = new THREE.Mesh(this.track(heroGeometry(this.heroClass, this.weapon)), this.blocking);
       mesh.castShadow = true;
       body = mesh;
     } else {
