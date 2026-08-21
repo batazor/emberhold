@@ -10,6 +10,7 @@ import { Rigged } from './rigged';
 import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
 import { HERO_SPEED } from '../sim/config';
+import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
 import type { EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
@@ -106,6 +107,17 @@ const rateFor = (speed: number, scale: number): number =>
 const walkRate = (kind: EnemyKind, scale: number): number =>
   rateFor(ENEMY_STATS[kind].speed, scale);
 
+/** Сколько ствол дрожит после замаха (§13.3). Короче клипа удара: дрожь —
+ *  ответ на удар, а не отдельное событие. */
+const SHAKE_SECONDS = 0.32;
+
+/**
+ * Сколько падает срубленное дерево. Дольше падения противника (680 мс,
+ * §17.1): у ствола длиннее плечо, а мгновенное исчезновение читалось бы
+ * не рубкой, а пропажей.
+ */
+const FALL_SECONDS = 0.9;
+
 /** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка. */
 const hash = (a: number, b: number, mod: number): number =>
   Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
@@ -147,6 +159,18 @@ export class RaidView {
   private site: THREE.Mesh | null = null;
   private ghost: THREE.Mesh | null = null;
   private grass: Grass | null = null;
+  /** Где какое дерево стоит (§13.3): клетка → экземпляр в своём меше.
+   *  Заполняется только лесной локацией — камень не рубят. */
+  private readonly trees = new Map<number, { mesh: THREE.InstancedMesh; at: number; turn: number }>();
+  /** Клетки, дрожащие после замаха, и сколько они уже дрожат. */
+  private readonly shaken = new Map<number, number>();
+  /** Падающие стволы. `regrow` — кромка: на её место встаёт следующее дерево. */
+  private readonly falling: { key: number; t: number; regrow: boolean }[] = [];
+  /** Пятно работы под деревом. Заводится в первую же рубку, а не на входе:
+   *  в вылазке его не будет никогда. */
+  private chopMark: THREE.Mesh | null = null;
+  /** Рубит ли герой прямо сейчас — этим он и отличается от стоящего. */
+  private chopping = false;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
   /** Порыв от курсора. Считает его main — источник ветра один на игру. */
@@ -263,7 +287,6 @@ export class RaidView {
     }
 
     const mat = this.track(forestMaterial());
-    const dummy = new THREE.Object3D();
     for (let v = 0; v < models.length; v++) {
       const list = cells[v]!;
       if (list.length === 0) continue;
@@ -274,17 +297,150 @@ export class RaidView {
       for (let i = 0; i < list.length; i += 2) {
         const x = list[i]!;
         const z = list[i + 1]!;
-        const t = ((Math.sin(x * 3.1 + z * 7.7) * 1000) % 1 + 1) % 1;
-        // Дерево ростом с камень читалось бы кустом: тот же размах,
-        // что у леса вокруг лагеря, иначе это два разных леса.
-        const s = tree ? 1.9 + t * 1.1 : 0.85 + t * 0.55;
-        dummy.position.set(x + (t - 0.5) * 0.22, tree ? -0.05 : -0.12, z + (t - 0.5) * 0.18);
-        dummy.rotation.set(0, t * 6.28, 0);
-        dummy.scale.set(s, s * (tree ? 0.9 + t * 0.25 : 0.8 + t * 0.5), s);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i / 2, dummy.matrix);
+        const at = RaidView.standAt(x, z, tree, 0);
+        mesh.setMatrixAt(i / 2, at);
+        // Дерево, которое можно срубить, обязано быть найдено по клетке:
+        // симуляция говорит «клетка освободилась», а рендеру надо знать,
+        // какой из экземпляров какого меша на ней стоит (§13.3).
+        if (tree) this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
       }
       this.group.add(mesh);
+    }
+  }
+
+  /* ---------- вырубка (§13.3) ---------- */
+
+  /**
+   * Матрица дерева на клетке. Всё в ней выведено из координаты — тот же
+   * приём, что у выбора модели: лес обязан совпадать сам с собой между
+   * заходами. `turn` сдвигает вывод для дерева, вставшего на место
+   * срубленного на кромке: рубят там вечно, и стоять на месте упавшего
+   * обязан не он сам.
+   */
+  private static standAt(x: number, z: number, tree: boolean, turn: number): THREE.Matrix4 {
+    const dummy = new THREE.Object3D();
+    const t = ((Math.sin(x * 3.1 + z * 7.7 + turn * 2.3) * 1000) % 1 + 1) % 1;
+    // Дерево ростом с камень читалось бы кустом: тот же размах,
+    // что у леса вокруг лагеря, иначе это два разных леса.
+    const s = tree ? 1.9 + t * 1.1 : 0.85 + t * 0.55;
+    dummy.position.set(x + (t - 0.5) * 0.22, tree ? -0.05 : -0.12, z + (t - 0.5) * 0.18);
+    dummy.rotation.set(0, t * 6.28, 0);
+    dummy.scale.set(s, s * (tree ? 0.9 + t * 0.25 : 0.8 + t * 0.5), s);
+    dummy.updateMatrix();
+    return dummy.matrix.clone();
+  }
+
+  /** Поставить дереву матрицу и сказать three, что буфер поменялся. */
+  private static put(mesh: THREE.InstancedMesh, at: number, m: THREE.Matrix4): void {
+    mesh.setMatrixAt(at, m);
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * Замах пришёлся в дерево: ствол вздрагивает. Дрожь — единственное, чем
+   * рендер отвечает на удар до падения, и без неё десять замахов читаются
+   * как зависание.
+   */
+  hitTree(x: number, z: number): void {
+    // Топор вошёл в ствол — с этого мгновения идёт следующий замах.
+    this.heroRig?.replay();
+    const key = idx(this.loc.size, x, z);
+    if (!this.trees.has(key)) return;
+    this.shaken.set(key, 0);
+  }
+
+  /**
+   * Дерево падает. `regrow` — кромка: там за упавшим стоит следующее, и оно
+   * встаёт, как только первое легло. Внутреннее дерево уходит совсем,
+   * клетка под ним уже освобождена симуляцией.
+   */
+  fellTree(x: number, z: number, regrow: boolean): void {
+    const key = idx(this.loc.size, x, z);
+    const tree = this.trees.get(key);
+    if (tree === undefined) return;
+    this.shaken.delete(key);
+    this.falling.push({ key, t: 0, regrow });
+  }
+
+  /** Работа топором: пятно под деревом растёт вместе с ней. 0 — работы нет. */
+  showChop(x: number, z: number, share: number): void {
+    if (this.chopMark === null) {
+      this.chopMark = new THREE.Mesh(
+        this.track(new THREE.CircleGeometry(0.44, 20)),
+        this.track(
+          new THREE.MeshBasicMaterial({
+            color: PALETTE.siteOk,
+            transparent: true,
+            opacity: 0.4,
+            depthWrite: false,
+            fog: false,
+          }),
+        ),
+      );
+      this.chopMark.rotation.x = -Math.PI / 2;
+      this.group.add(this.chopMark);
+    }
+    this.chopMark.visible = true;
+    this.chopMark.position.set(x, 0.06, z);
+    this.chopMark.scale.setScalar(Math.max(0.08, share));
+    // Пятно и клип — одно состояние: пока пятно растёт, герой машет топором,
+    // а не стоит в покое рядом с работающим индикатором.
+    this.chopping = true;
+  }
+
+  hideChop(): void {
+    if (this.chopMark !== null) this.chopMark.visible = false;
+    this.chopping = false;
+  }
+
+  /** Дрожь после замаха и падение — оба живут кадрами, а не тиками симуляции. */
+  private syncTrees(dt: number): void {
+    for (const [key, t] of [...this.shaken]) {
+      const tree = this.trees.get(key);
+      if (tree === undefined) {
+        this.shaken.delete(key);
+        continue;
+      }
+      const next = t + dt;
+      const base = RaidView.standAt(key % this.loc.size, (key / this.loc.size) | 0, true, tree.turn);
+      if (next >= SHAKE_SECONDS) {
+        this.shaken.delete(key);
+        RaidView.put(tree.mesh, tree.at, base);
+        continue;
+      }
+      this.shaken.set(key, next);
+      // Затухающий кивок: удар отдаёт в крону, а не раскачивает ствол.
+      const lean = Math.sin((next / SHAKE_SECONDS) * Math.PI * 3) * 0.05 * (1 - next / SHAKE_SECONDS);
+      RaidView.put(tree.mesh, tree.at, base.clone().multiply(new THREE.Matrix4().makeRotationX(lean)));
+    }
+
+    for (let i = this.falling.length - 1; i >= 0; i--) {
+      const fall = this.falling[i]!;
+      const tree = this.trees.get(fall.key);
+      if (tree === undefined) {
+        this.falling.splice(i, 1);
+        continue;
+      }
+      fall.t += dt;
+      const x = fall.key % this.loc.size;
+      const z = (fall.key / this.loc.size) | 0;
+      const share = Math.min(1, fall.t / FALL_SECONDS);
+      if (share < 1) {
+        // Ускорение к земле: ствол трогается медленно и обрушивается в конце.
+        const base = RaidView.standAt(x, z, true, tree.turn);
+        const angle = (Math.PI / 2) * share * share;
+        RaidView.put(tree.mesh, tree.at, base.multiply(new THREE.Matrix4().makeRotationX(angle)));
+        continue;
+      }
+      this.falling.splice(i, 1);
+      if (fall.regrow) {
+        const turn = tree.turn + 1;
+        this.trees.set(fall.key, { ...tree, turn });
+        RaidView.put(tree.mesh, tree.at, RaidView.standAt(x, z, true, turn));
+      } else {
+        this.trees.delete(fall.key);
+        RaidView.put(tree.mesh, tree.at, new THREE.Matrix4().makeScale(0, 0, 0));
+      }
     }
   }
 
@@ -673,6 +829,9 @@ export class RaidView {
     } else {
       this.heroRig.update(dt);
       if (heroWalking) this.heroRig.play('ходьба', rateFor(HERO_SPEED, this.heroRig.root.scale.y));
+      // Рубка — тот же клип удара, растянутый под замах (§13.3): топор
+      // обязан входить в ствол ровно тогда, когда стучит звук.
+      else if (this.chopping) this.heroRig.play('удар', STRIKE / SWING_SECONDS);
       else this.heroRig.play('покой');
     }
 
@@ -748,6 +907,7 @@ export class RaidView {
       mesh.position.y = 0.45 + Math.sin(time / 500 + c.id) * 0.08;
     }
 
+    this.syncTrees(dt);
     this.syncGrass(hx, hz, time);
 
     if (this.evacRing !== null) {

@@ -77,6 +77,13 @@ export interface RaidOptions {
    */
   readonly hunger?: boolean;
   /**
+   * Рубится ли лес (§13.3). Включается там, где занятые клетки — деревья:
+   * поляна пролога стоит на поверхности, а стена вылазки — камень, и рубить
+   * её нечем. По умолчанию выключено: замеры, бот и золотой мастер обязаны
+   * считать вылазку ровно так, как её считали при калибровке §20.3.
+   */
+  readonly logging?: boolean;
+  /**
    * Называет ли событие подбора ставку («под угрозой N»). Выключается
    * прологом: ставка вводится кадром `bait` первой вылазки и нулём — а на
    * поляне полоса риска намеренно скрыта, и всплывающая строка проговаривала
@@ -135,6 +142,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     starve: 0,
     containerFood: opts.containerFood ?? FOOD_COST.container,
     hunger: opts.hunger ?? true,
+    logging: opts.logging ?? false,
     risk: opts.risk ?? true,
     consumables: [...(opts.consumables ?? [])],
     fired: [],
