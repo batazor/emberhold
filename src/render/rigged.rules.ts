@@ -17,7 +17,7 @@ import { describe, test } from 'node:test';
 import * as THREE from 'three';
 import { CLASS_ORDER } from '../sim/heroes';
 import type { RaidEnemyKind } from '../sim/types';
-import { enemyParts, heroParts, settlerParts } from './models';
+import { enemyParts, heroParts, dwellerParts } from './models';
 import { WEAPON_LADDER } from './weapons';
 import { WEAPONS_MODELS } from './weapons.data';
 import { Rigged } from './rigged';
@@ -158,7 +158,7 @@ describe('привязка скина', () => {
    * Порог 0,25 клетки — четверть, дальше сдвиг видно.
    */
   test('сидящий сидит на земле и встаёт на своей клетке', () => {
-    const rig = new Rigged(settlerParts('плут'), new THREE.MeshBasicMaterial());
+    const rig = new Rigged(dwellerParts('поселенец'), new THREE.MeshBasicMaterial());
     const at = (name: string): THREE.Matrix4 => {
       rig.root.updateMatrixWorld(true);
       const bone = rig.root.getObjectByName(name);

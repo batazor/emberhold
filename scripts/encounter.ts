@@ -9,10 +9,17 @@
  * Расхождение принципиальное — маг в дуэли стоил двух воинов, а в вылазке
  * 1,15, — и ошибку нашёл именно такой прогон, а не формула.
  *
- * Метод повторяет тот, которым сняты нынешние числа: по три врага одного
- * вида на локацию, шестьдесят забегов на точку, остальное убрано. Вычитается
- * фон — прогон вовсе без врагов, — потому что часть ран отнимает голод,
- * и без вычитания она осела бы на том, кто просто рядом стоял.
+ * Метод: по три врага одного вида на локацию, шестьдесят забегов на точку,
+ * остальное убрано. Вычитается фон — прогон вовсе без врагов, — потому что
+ * часть ран отнимает голод, и без вычитания она осела бы на том, кто просто
+ * рядом стоял.
+ *
+ * **Цена снимается на каждом ярусе, а не на одном.** Прежде прибор мерил
+ * только ярус 2 и печатал одно число на все четыре; прогон по всем даёт
+ * разброс вдвое, и причина не в противнике, а в карте — на 20×20 того же
+ * скелета встречают вдвое реже, чем на 12×12. Пока таблица была плоской,
+ * модель брала с Дна плату по расценкам яруса 2 и ставила туда столько же
+ * врагов, сколько на вдвое меньшую карту: ярус 2 выходил тяжелее Дна.
  *
  * Печатает результат в форме, готовой к вставке в `balance.ts`: это числа
  * для кода, а не отчёт для чтения.
@@ -21,32 +28,35 @@
  */
 import { POLICIES, playRaid } from '../src/sim/bot';
 import { mulberry32 } from '../src/core/rng';
+import { ENCOUNTER_WOUND } from '../src/sim/balance';
 import { ENEMY_STATS } from '../src/sim/enemies';
 import { generateLocation } from '../src/sim/generate';
 import type { RaidOptions } from '../src/sim/raid';
-import type { EnemyKind, Tier } from '../src/sim/types';
+import type { EnemyKind, RaidEnemyKind, Tier } from '../src/sim/types';
 
 /** Забегов на точку. Столько же, сколько при съёме нынешних чисел. */
 const RUNS = 60;
 /** По скольку врагов одного вида ставим. Тоже как тогда. */
 const PACK = 3;
-/** Ярус, на котором меряем: середина кривой, где есть и дорога, и находки. */
+/** Ярус для подробного разбора: середина кривой, где есть и дорога, и находки.
+ *  Таблица по числу и насыщение печатаются на нём; предельная цена — на всех. */
 const TIER: Tier = 2;
+const TIERS: readonly Tier[] = [0, 1, 2, 3];
 const CAMP = { kitchenLevel: 3, storageLevel: 3 };
 
 /**
  * Локация яруса с подменённым составом врагов. Геометрия, находки и провиант
  * остаются теми же — меняется ровно одно, иначе сравнивать будет нечего.
  */
-function withEnemies(seed: number, kinds: readonly EnemyKind[]): RaidOptions {
-  const loc = generateLocation(seed, TIER, 1);
+function withEnemies(seed: number, kinds: readonly EnemyKind[], tier: Tier = TIER): RaidOptions {
+  const loc = generateLocation(seed, tier, 1);
   const kept = loc.enemies.slice(0, kinds.length);
   const enemies = kept.map((e, i) => ({
     ...e,
     kind: kinds[i]!,
     hp: ENEMY_STATS[kinds[i]!].hp,
   }));
-  return { ...CAMP, seed, tier: TIER, loc: { ...loc, enemies } };
+  return { ...CAMP, seed, tier, loc: { ...loc, enemies } };
 }
 
 /**
@@ -59,7 +69,7 @@ function withEnemies(seed: number, kinds: readonly EnemyKind[]): RaidOptions {
  */
 const play = (opts: RaidOptions): { wounds: number; ok: boolean } => {
   const r = playRaid(opts, POLICIES.cautious, mulberry32(opts.seed));
-  return { wounds: r.woundsTaken, ok: r.status === 'evacuated' };
+  return { wounds: r.damageTaken, ok: r.status === 'evacuated' };
 };
 
 const KINDS = Object.keys(ENEMY_STATS) as EnemyKind[];
@@ -73,14 +83,12 @@ const base = mean(
   Array.from({ length: RUNS }, (_, i) => play(withEnemies(1000 + i, [])).wounds),
 );
 
-console.log('вид            ран за вылазку   сверх фона   цена одного   успех');
-const measured: Record<string, number> = {};
+console.log(`вид            ран за вылазку   сверх фона   один из ${PACK}   успех`);
 for (const kind of KINDS) {
   const pack: EnemyKind[] = Array.from({ length: PACK }, () => kind);
   const runs = Array.from({ length: RUNS }, (_, i) => play(withEnemies(1000 + i, pack)));
   const w = mean(runs.map((r) => r.wounds));
   const per = Math.max(0, (w - base) / PACK);
-  measured[kind] = per;
   console.log(
     `${ENEMY_STATS[kind].name.padEnd(14)}${w.toFixed(2).padStart(14)}` +
       `${(w - base).toFixed(2).padStart(13)}${per.toFixed(2).padStart(14)}` +
@@ -88,11 +96,11 @@ for (const kind of KINDS) {
   );
 }
 console.log(`фон (без врагов)${base.toFixed(2).padStart(12)}\n`);
-
-console.log('Готовое к вставке в src/sim/balance.ts:\n');
-console.log('export const ENCOUNTER_WOUND: Record<EnemyKind, number> = {');
-for (const kind of KINDS) console.log(`  ${kind}: ${measured[kind]!.toFixed(2)},`);
-console.log('};');
+console.log(
+  `  Это цена одного в тройке, а не предельная. Пиннуется предельная —\n`
+  + `  прогон с одним врагом, ещё не тронутый насыщением, — и её печатает\n`
+  + `  блок в самом низу, после таблицы по числу.\n`,
+);
 
 /**
  * Линейна ли цена по числу. Модель §22 набирает состав, складывая цену
@@ -116,16 +124,75 @@ console.log('\nЦена по числу: где она перестаёт скл
  * Не насыщается доля провалов, поэтому она печатается рядом. Цену по ранам
  * читаем, пока успех высок; как только он валится, читать надо провалы.
  */
+/** Предельная цена: колонка «один». Её и пиннует `balance.ts`. */
+const marginal: Record<string, number> = {};
+
 for (const kind of KINDS) {
   const perWound: string[] = [];
   const perFail: string[] = [];
   for (const n of [1, 2, 3, 4, 5]) {
     const pack: EnemyKind[] = Array.from({ length: n }, () => kind);
     const runs = Array.from({ length: RUNS }, (_, i) => play(withEnemies(1000 + i, pack)));
-    perWound.push(((mean(runs.map((r) => r.wounds)) - base) / n).toFixed(2).padStart(9));
+    const per = (mean(runs.map((r) => r.wounds)) - base) / n;
+    if (n === 1) marginal[kind] = Math.max(0, per);
+    perWound.push(per.toFixed(2).padStart(9));
     perFail.push(`${((runs.filter((r) => !r.ok).length / RUNS) * 100).toFixed(0)}%`.padStart(9));
   }
   console.log(`${ENEMY_STATS[kind].name.padEnd(14)}${perWound.join('')}   ран на одного`);
   console.log(`${''.padEnd(14)}${perFail.join('')}   провалов`);
 }
 console.log('\n  штук:' + [1, 2, 3, 4, 5].map((n) => String(n).padStart(9)).join(''));
+
+/**
+ * Готовое к вставке. Три вещи, каждая из которых уже стоила прогона:
+ *
+ * 1. **Печатается предельная цена**, а не цена одного в тройке. `balance.ts`
+ *    называет пиннуемую величину предельной прямым текстом, а блок печатал
+ *    колонку тройки — две разные величины под одним именем.
+ * 2. **Тип `RaidEnemyKind`, а не `EnemyKind`.** Привидение в ярусах не
+ *    спавнится (§6.1.7) и в бюджет ран не входит; вставленный как есть блок
+ *    с ним просто не собирался.
+ * 3. **Ключи берутся у самого `ENCOUNTER_WOUND`**, а не у `ENEMY_STATS`:
+ *    блок обязан заполнять ровно то, что заполняет, — и новый вид в бюджете
+ *    появится здесь сам.
+ */
+/**
+ * Предельная цена на каждом ярусе. Меряется тем же способом, что и колонка
+ * «один» выше, — иначе таблица в `balance.ts` и прибор говорили бы о разных
+ * величинах под одним именем, а это уже стоило одного прогона.
+ */
+console.log('\n\nПредельная цена по ярусам\n');
+const byTier: Record<number, Record<string, number>> = {};
+const kinds = Object.keys(ENCOUNTER_WOUND[TIER]) as RaidEnemyKind[];
+
+console.log('вид            ' + TIERS.map((t) => `ярус ${t}`.padStart(9)).join(''));
+for (const kind of kinds) {
+  const row: number[] = [];
+  for (const tier of TIERS) {
+    const bg = mean(
+      Array.from({ length: RUNS }, (_, i) => play(withEnemies(1000 + i, [], tier)).wounds),
+    );
+    const one = mean(
+      Array.from({ length: RUNS }, (_, i) => play(withEnemies(1000 + i, [kind], tier)).wounds),
+    );
+    row.push(Math.max(0, one - bg));
+  }
+  for (const [i, tier] of TIERS.entries()) (byTier[tier] ??= {})[kind] = row[i]!;
+  console.log(ENEMY_STATS[kind].name.padEnd(14) + row.map((x) => x.toFixed(2).padStart(9)).join(''));
+}
+
+const spread = Math.max(...kinds.map((k) => byTier[0]![k]! / Math.max(0.01, byTier[3]![k]!)));
+console.log(
+  spread >= 1.3
+    ? `\n✓ Цена зависит от яруса: разброс до ×${spread.toFixed(1)}. Одним числом её брать нельзя.`
+    : '\n⚠ Цена почти одинакова на всех ярусах: потierная таблица лишняя,\n' +
+      '  и её стоит свернуть обратно в одно число.',
+);
+
+console.log('\n\nГотовое к вставке в src/sim/balance.ts:\n');
+console.log('export const ENCOUNTER_WOUND: Record<Tier, Record<RaidEnemyKind, number>> = {');
+for (const tier of TIERS) {
+  const cells = kinds.map((k) => `${k}: ${(byTier[tier]![k] ?? 0).toFixed(2)}`).join(', ');
+  console.log(`  ${tier}: { ${cells} },`);
+}
+console.log('};');

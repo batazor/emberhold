@@ -47,7 +47,7 @@ export type TelemetryEvent =
        * и событие на стычку вымыло бы начало сессии за несколько десятков
        * вылазок, то есть сломало бы метрики §20 ради метрик §11.
        */
-      woundsTaken: number;
+      damageTaken: number;
       fights: number;
       kills: number;
     }
@@ -155,7 +155,7 @@ export interface Summary {
    * из провианта в бой, проходит золотой мастер незамеченной.
    */
   readonly combatFailShare: number;
-  readonly avgWoundsTaken: number;
+  readonly avgDamageTaken: number;
   readonly avgFights: number;
   /** Кто добивает чаще: атрибуция без неё ничего не говорит о том, что чинить. */
   readonly fatalBy: Readonly<Record<string, number>>;
@@ -233,7 +233,7 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     // проигрывают», а не «часто ли». При нуле провалов доли не существует.
     combatFailShare:
       fails.length === 0 ? 0 : fails.filter((e) => e.cause === 'combat').length / fails.length,
-    avgWoundsTaken: mean(ends.map((e) => e.woundsTaken)),
+    avgDamageTaken: mean(ends.map((e) => e.damageTaken)),
     avgFights: mean(ends.map((e) => e.fights)),
     fatalBy,
   };

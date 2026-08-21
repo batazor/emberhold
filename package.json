@@ -17,6 +17,7 @@
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
     "hands": "tsx scripts/hands.ts",
+    "party": "tsx scripts/party.ts",
     "classes": "tsx scripts/classes.ts",
     "trade": "tsx scripts/trade.ts",
     "fence": "tsx scripts/fence.ts",

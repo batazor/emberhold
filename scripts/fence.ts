@@ -31,7 +31,7 @@ import { WALL_COST, WALL_SECONDS } from '../src/sim/campWalls';
 import { CHOP_SECONDS, CHOP_WOOD } from '../src/sim/logging';
 import { LOOT_SHARE } from '../src/sim/resources';
 import { emptyResources, type ResourceKind, type Resources } from '../src/sim/resources';
-import { createHero, loadout } from '../src/sim/heroes';
+import { CLASS_ORDER, HERO_CLASSES, createHero, loadout } from '../src/sim/heroes';
 
 const RUNS = 300;
 /**
@@ -44,7 +44,18 @@ const num = (x: number, d = 1): string => x.toFixed(d).padStart(7);
 
 /* ---------- 1. что даёт заход и сколько он идёт ---------- */
 
-const gear = loadout(createHero('archer', 0));
+/**
+ * Кем меряем. Тем, кем игрок ходит, когда строит ограду, — а это первый
+ * герой ростера (`createRoster`), то есть Рыцарь.
+ *
+ * Здесь стоял Лучник, и это тихо испортило весь инструмент: на ярусе 0
+ * он доходит в считанных процентах забегов, и вся цена ресурса в секундах
+ * выводилась из десятка везучих прогонов из трёхсот. Класс к вопросу
+ * «сколько стоит ограда» отношения не имеет, поэтому и брать надо
+ * не выразительный, а тот, который у игрока есть.
+ */
+const CLS = CLASS_ORDER[0]!;
+const gear = loadout(createHero(CLS, 0));
 const carried: Resources = emptyResources();
 let seconds = 0;
 let success = 0;
@@ -72,10 +83,20 @@ const unitsPerRaid = (Object.keys(carried) as ResourceKind[]).reduce((s, k) => s
 /** Секунда за одну вскрытую находку — что бы из неё ни выпало. */
 const perFind = raidSeconds / Math.max(1e-9, unitsPerRaid);
 
-console.log(`Замер: ${RUNS} вылазок яруса 0, бот-осторожный\n`);
+console.log(`Замер: ${RUNS} вылазок яруса 0, ${HERO_CLASSES[CLS].name}, бот-осторожный\n`);
 console.log('Что даёт заход');
 console.log('─'.repeat(64));
-console.log(`  успешных ${success} из ${RUNS} · ${num(raidSeconds)} с на заход`);
+const share = success / RUNS;
+console.log(
+  `  успешных ${success} из ${RUNS} (${(share * 100).toFixed(0)}%) · ${num(raidSeconds)} с на заход`,
+);
+if (share < 0.5) {
+  console.log(
+    `  ⚠ ВЫБОРКА НЕГОДНАЯ: успешных меньше половины, и всё, что ниже,\n`
+    + `    выведено из везучих коротких забегов, а не из игры. Числа\n`
+    + `    читать нельзя, пока эта строка здесь.`,
+  );
+}
 for (const kind of ['stone', 'wood'] as const) {
   console.log(`  ${kind === 'stone' ? 'камня' : 'дерева'} за заход ${num(perRaid(kind))}` +
     ` · доля в таблице добычи ${num(LOOT_SHARE[0][kind] ?? 0, 2)}`);

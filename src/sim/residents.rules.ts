@@ -36,7 +36,7 @@ import type { Resident } from './residents';
 import { totalOf } from './resources';
 import type { Resources } from './resources';
 
-const guest = (name: string): Resident => ({ name, look: 'плут', answer: 'строим' });
+const guest = (name: string): Resident => ({ name, look: 'поселенец', answer: 'строим' });
 
 const rich = (): CampState => {
   const camp = createCamp();
@@ -307,9 +307,9 @@ describe('Жильцы и палатки', () => {
 
   test('оба ответа складываются каждый в свой ресурс', () => {
     const camp = rich();
-    admit(camp, { name: 'Строитель', look: 'плут', answer: 'строим' });
+    admit(camp, { name: 'Строитель', look: 'поселенец', answer: 'строим' });
     buildTent(camp);
-    admit(camp, { name: 'Ходок', look: 'маг', answer: 'ходим' });
+    admit(camp, { name: 'Ходок', look: 'торговец', answer: 'ходим' });
     buildTent(camp);
     const wood = camp.resources.wood;
     const stone = camp.resources.stone;
