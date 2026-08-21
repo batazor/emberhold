@@ -340,6 +340,18 @@ export function trainBlock(roster: Roster, hero: HeroState): TrainBlock {
   return 'ok';
 }
 
+/**
+ * Слова причины — рядом с причиной (§23.3). Панель отряда и полоса лагеря
+ * берут одну и ту же строку; раньше у них были две, и «потолок — на два
+ * уровня ниже лучшего» разошёлся с «потолок — на два ниже лучшего».
+ */
+export const TRAIN_REASON: Record<Exclude<TrainBlock, 'ok'>, string> = {
+  busy: 'Занят',
+  cap: 'Потолок — на два уровня ниже лучшего',
+  'slot-busy': 'Тренировочный слот занят',
+  max: 'Максимальный уровень',
+};
+
 export function startTraining(roster: Roster, hero: HeroState, now: number): boolean {
   if (trainBlock(roster, hero) !== 'ok') return false;
   hero.status = 'training';
@@ -438,6 +450,17 @@ export function raidBlock(hero: HeroState): RaidBlock {
   if (hero.status === 'ready') return 'ok';
   return hero.status;
 }
+
+/**
+ * Слова причины — рядом с причиной (§23.3). Полоса говорила «Рыцарь занят»
+ * на все три случая разом, а они разные: из лечения герой выйдет сам,
+ * из тренировки — тоже, а из вылазки он не выйдет, пока игрок его не вернёт.
+ */
+export const RAID_REASON: Record<Exclude<RaidBlock, 'ok'>, string> = {
+  healing: 'Лечится',
+  training: 'Тренируется',
+  raid: 'В вылазке',
+};
 
 /** Первый, кем можно пойти прямо сейчас. Ростер сортируется по готовности,
  *  а не по силе: экран отряда отвечает на вопрос «кем я иду». */

@@ -152,6 +152,14 @@ export function mineBlock(
   return 'ok';
 }
 
+/** Слова причины — рядом с причиной (§23.3). Игрок видит камень, а не «работу по клетке». */
+export const MINE_REASON: Record<Exclude<WorkBlock, 'ok'>, string> = {
+  off: 'Здесь нечего добывать',
+  gone: 'Камня здесь больше нет',
+  far: 'К этому камню не подойти',
+  bag: 'Рюкзак полон — камень некуда класть',
+};
+
 export const startMine = (cell: Cell): Work => startWork(cell, MINE_SWINGS);
 
 /**
@@ -195,7 +203,7 @@ export interface MineStep {
   /** Валун разбит, и камень уже засчитан. */
   readonly taken: boolean;
   /** Работа прервана и почему; null — идёт или ещё идут к валуну. */
-  readonly stopped: WorkBlock | null;
+  readonly stopped: Exclude<WorkBlock, 'ok'> | null;
 }
 
 /**

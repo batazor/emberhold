@@ -139,8 +139,8 @@ describe('Стройка стен: что панель не пускает', () 
       const grid = wallGrid(campArea(hq));
       assert.equal(grid, Math.floor(campArea(hq) / CASTLE_CELL), `Жильё ${hq}`);
       assert.ok(grid * CASTLE_CELL <= campArea(hq), `Жильё ${hq}: поле стены шире площади`);
-      assert.equal(wallBlock(bare(hq), { x: grid, z: 0 }), 'вне площади');
-      assert.equal(wallBlock(bare(hq), { x: -1, z: 0 }), 'вне площади');
+      assert.equal(wallBlock(bare(hq), { x: grid, z: 0 }), 'off');
+      assert.equal(wallBlock(bare(hq), { x: -1, z: 0 }), 'off');
     }
   });
 
@@ -149,7 +149,7 @@ describe('Стройка стен: что панель не пускает', () 
     const before = JSON.parse(JSON.stringify(site.layout));
     const walls = emptyWalls();
     // Жильё стоит в 1,1 — это клетка стены 0,0.
-    assert.equal(wallBlock(site, { x: 0, z: 0 }), 'занято зданием');
+    assert.equal(wallBlock(site, { x: 0, z: 0 }), 'busy');
     raiseWall(walls, site, [{ x: 0, z: 0 }, { x: 4, z: 0 }]);
     assert.ok(!walls.cells.includes(keyOf({ x: 0, z: 0 })), 'стена встала на Жильё');
     assert.deepEqual(site.layout, before, 'здание сдвинулось от стройки');
@@ -165,12 +165,12 @@ describe('Стройка стен: что панель не пускает', () 
     const walls: CampWalls = emptyWalls();
     raiseWall(walls, bare(5), [{ x: 0, z: 0 }, { x: 3, z: 0 }]);
     assert.equal(gateBlock(walls, { x: 1, z: 0 }), 'ok', 'середина прямой не пустила ворота');
-    assert.equal(gateBlock(walls, { x: 0, z: 0 }), 'не прямая', 'ворота встали в тупик');
-    assert.equal(gateBlock(walls, { x: 1, z: 2 }), 'нет стены');
+    assert.equal(gateBlock(walls, { x: 0, z: 0 }), 'bent', 'ворота встали в тупик');
+    assert.equal(gateBlock(walls, { x: 1, z: 2 }), 'none');
 
     assert.equal(stairsBlock(walls, bare(5), { x: 1, z: 1 }), 'ok');
-    assert.equal(stairsBlock(walls, bare(5), { x: 4, z: 4 }), 'нет стены');
-    assert.equal(stairsBlock(walls, bare(5), { x: 1, z: 0 }), 'занято зданием', 'лестница в стене');
+    assert.equal(stairsBlock(walls, bare(5), { x: 4, z: 4 }), 'none');
+    assert.equal(stairsBlock(walls, bare(5), { x: 1, z: 0 }), 'busy', 'лестница в стене');
   });
 });
 
@@ -304,14 +304,14 @@ describe('Стройка стен: камень и время', () => {
     const res = rich();
     assert.equal(
       startWall(walls, res, 'стена', [{ x: 0, z: 0 }], 0, true),
-      'слот занят',
+      'slot',
       'стена полезла в занятый слот',
     );
     assert.equal(res.stone, 100, 'камень списан за отказ');
     startWall(walls, res, 'стена', [{ x: 0, z: 0 }], 0, false);
     assert.equal(
       startWall(walls, res, 'стена', [{ x: 1, z: 0 }], 0, false),
-      'слот занят',
+      'slot',
       'две стройки стен разом',
     );
   });
@@ -319,7 +319,7 @@ describe('Стройка стен: камень и время', () => {
   test('без камня стройка не начинается и слот не занимает', () => {
     const walls = emptyWalls();
     const poor = emptyResources();
-    assert.equal(startWall(walls, poor, 'стена', [{ x: 0, z: 0 }], 0, false), 'не хватает камня');
+    assert.equal(startWall(walls, poor, 'стена', [{ x: 0, z: 0 }], 0, false), 'resources');
     assert.equal(walls.work, null, 'отказ занял слот');
   });
 
@@ -508,7 +508,7 @@ describe('Ограда в лагере (§6.1.7)', () => {
     const walls = emptyWalls();
     const site = bare(5);
     raiseWall(walls, site, [{ x: 0, z: 0 }, { x: 2, z: 0 }]);
-    assert.equal(fenceBlock(walls, site, { x: 1, z: 0 }), 'занято зданием');
+    assert.equal(fenceBlock(walls, site, { x: 1, z: 0 }), 'busy');
     assert.equal(fenceBlock(walls, site, { x: 1, z: 2 }), 'ok');
 
     // И обратно: клетка с оградой занята для всего остального.

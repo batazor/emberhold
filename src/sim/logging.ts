@@ -84,6 +84,18 @@ export function chopBlock(state: RaidState, cell: Cell): ChopBlock {
   return 'ok';
 }
 
+/**
+ * Слова причины — рядом с причиной (§23.3). `work.ts` держит список общим
+ * у топора и кайла нарочно нелесными словами; лес называет свои здесь,
+ * камень — свои в `stones.ts`.
+ */
+export const CHOP_REASON: Record<Exclude<ChopBlock, 'ok'>, string> = {
+  off: 'Здесь не лес — рубить нечего',
+  gone: 'Дерева здесь больше нет',
+  far: 'К этому дереву не подойти',
+  bag: 'Рюкзак полон — дерево некуда класть',
+};
+
 export const startChop = (cell: Cell): Chop => startWork(cell, CHOP_SWINGS);
 
 /**
@@ -113,7 +125,7 @@ export interface ChopStep {
   /** Дерево упало, и оно уже в сумке. */
   readonly felled: boolean;
   /** Работа прервана и почему; null — идёт или ещё идут к дереву. */
-  readonly stopped: ChopBlock | null;
+  readonly stopped: Exclude<ChopBlock, 'ok'> | null;
 }
 
 /**

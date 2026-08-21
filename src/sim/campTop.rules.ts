@@ -212,7 +212,7 @@ describe('Верх стены: лестница', () => {
     // Одиночная клетка стены — «одиночная», у неё рёбра закрыты.
     raiseWall(camp.walls!, site, [{ x: 3, z: 3 }]);
     const tops = topsOf(topOf(camp));
-    assert.equal(stairsBlock(camp.walls!, site, { x: 3, z: 4 }, tops), 'вести некуда');
+    assert.equal(stairsBlock(camp.walls!, site, { x: 3, z: 4 }, tops), 'nowhere');
     assert.ok(!putStairs(camp.walls!, site, { x: 3, z: 4 }, tops), 'лестница встала в никуда');
   });
 
