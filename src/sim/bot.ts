@@ -16,7 +16,8 @@ import {
 import type { BuildingId, CampState } from './camp';
 import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
 import { FORAGE_FOOD, TRAIL_STEP_DISCOUNT } from './heroes';
-import { distanceField, idx } from './grid';
+import { ENEMY_STATS } from './enemies';
+import { distanceField, hasLineOfSight, idx } from './grid';
 import { findPath, nearestWalkable } from './pathfinding';
 import { commandMove, createRaid, raidResult, stepFoodCost, stepRaid, useSkill } from './raid';
 import type { RaidOptions } from './raid';
@@ -58,11 +59,20 @@ export const POLICIES: Record<PolicyName, Policy> = {
 };
 
 /**
- * Сетка с запретом ходить рядом с врагом. Обходятся только те, кого игрок
+ * Сетка с запретом ходить там, где опасно. Обходятся только те, кого игрок
  * видит: бодрствующие и попавшие в радиус обзора. Обходить то, о чём не знаешь,
  * — не игра, а ясновидение, и бот перестал бы быть моделью игрока.
+ *
+ * **У ближнего и у стрелка опасность разной формы, и это не деталь.** Ближний
+ * опасен вокруг себя, и его обходят по кругу. Стрелок опасен вдоль линии
+ * (§11.3): камень между ним и героем отменяет выстрел целиком, поэтому его
+ * «обходят» не по расстоянию, а по укрытию.
+ *
+ * Держать для стрелка круговую модель означало бы мерить не игру, а бота:
+ * живой игрок за камень уходит, а такой бот шёл бы по открытому полю
+ * в шести клетках от мага и считал это обходом.
  */
-function dangerGrid(state: RaidState, keepAway: number, vision: number): Uint8Array {
+export function dangerGrid(state: RaidState, keepAway: number, vision: number): Uint8Array {
   const { loc, hero } = state;
   const size = loc.size;
   const grid = Uint8Array.from(loc.blocked);
@@ -71,6 +81,24 @@ function dangerGrid(state: RaidState, keepAway: number, vision: number): Uint8Ar
     if (e.hp <= 0) continue;
     const seen = e.awake || Math.hypot(e.x - hero.x, e.z - hero.z) <= vision;
     if (!seen) continue;
+    const stats = ENEMY_STATS[e.kind];
+
+    if (stats.ranged) {
+      // Простреливаемое — это опасное. Клетки за камнем остаются проходимыми,
+      // и путь через них бот находит сам обычным поиском.
+      const r = Math.ceil(stats.reach) + keepAway;
+      for (let z = Math.round(e.z) - r; z <= Math.round(e.z) + r; z++) {
+        for (let x = Math.round(e.x) - r; x <= Math.round(e.x) + r; x++) {
+          if (x < 0 || z < 0 || x >= size || z >= size) continue;
+          if (grid[idx(size, x, z)]) continue;
+          if (Math.hypot(x - e.x, z - e.z) > stats.reach + keepAway) continue;
+          if (!hasLineOfSight(size, loc.blocked, e.x, e.z, x, z)) continue;
+          grid[idx(size, x, z)] = 1;
+        }
+      }
+      continue;
+    }
+
     for (let z = e.z - keepAway; z <= e.z + keepAway; z++) {
       for (let x = e.x - keepAway; x <= e.x + keepAway; x++) {
         if (x < 0 || z < 0 || x >= size || z >= size) continue;

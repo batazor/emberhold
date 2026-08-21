@@ -10,6 +10,7 @@
  * Запуск: npm run measure
  */
 import { TICK } from '../src/core/loop';
+import { POLICIES, dangerGrid } from '../src/sim/bot';
 import { ENEMY_STATS } from '../src/sim/enemies';
 import { idx } from '../src/sim/grid';
 import { findPath } from '../src/sim/pathfinding';
@@ -26,28 +27,19 @@ const MAX_SECONDS = 240;
 const SAFETY = 3;
 
 /**
- * Карта опасности: клетки рядом с замеченными противниками бот считает
- * непроходимыми. Это модель того, что предписывает §15 — маг «перекрывает
- * маршрут, обходится по кругу», а воин «делает проход через комнату
- * платным». Бот, идущий напролом, меряет не игру, а собственную глупость.
+ * Карта опасности берётся у бота, а не пишется здесь заново.
+ *
+ * До §11.3 моделей было две — своя у бота и своя у этого скрипта, — и обе
+ * обходили врага по кругу. Это сходило с рук ровно до появления стрелка:
+ * его опасность имеет форму линии, а не круга, и правка круговой модели
+ * в одном месте не сдвинула замер ни на цифру. Две правды о том, как игрок
+ * обходит врага, стоили ровно одного впустую потраченного прогона.
+ *
+ * Радиус обхода тот же, что у осторожной политики бота: этим ботом
+ * калибровался §20.3, и менять его здесь значило бы менять единицу измерения.
  */
-function avoidMap(state: RaidState, vision: number): Uint8Array {
-  const { loc, hero } = state;
-  const avoid = Uint8Array.from(loc.blocked);
-  for (const e of loc.enemies) {
-    if (e.hp <= 0) continue;
-    // Замеченным считается тот, кто попал в круг света.
-    if (Math.hypot(e.x - hero.x, e.z - hero.z) > vision) continue;
-    const r = 2;
-    for (let z = Math.round(e.z) - r; z <= Math.round(e.z) + r; z++) {
-      for (let x = Math.round(e.x) - r; x <= Math.round(e.x) + r; x++) {
-        if (x < 0 || z < 0 || x >= loc.size || z >= loc.size) continue;
-        if (Math.hypot(x - e.x, z - e.z) <= r) avoid[idx(loc.size, x, z)] = 1;
-      }
-    }
-  }
-  return avoid;
-}
+const avoidMap = (state: RaidState, vision: number): Uint8Array =>
+  dangerGrid(state, POLICIES.cautious.keepAway, vision);
 
 /** Путь в обход опасности, а если обхода нет — напрямик. */
 function route(state: RaidState, avoid: Uint8Array, from: Cell, to: Cell): number {

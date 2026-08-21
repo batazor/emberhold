@@ -6,6 +6,7 @@ import {
   HERO_REACH,
   MIN_PIERCE_SHARE,
   PIERCE_STEP,
+  PROJECTILE_HIT,
   HERO_SPEED,
   TIER_RISK,
   WEIGHT_SLOWDOWN,
@@ -25,9 +26,17 @@ import type { ConsumableId } from './consumables';
 import { generateLocation } from './generate';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
-import { idx } from './grid';
+import { hasLineOfSight, idx } from './grid';
 import { findPath, nearestWalkable } from './pathfinding';
-import type { Cell, EnemyKind, GameLocation, RaidState, RaidStatus, Tier } from './types';
+import type {
+  Cell,
+  EnemyKind,
+  GameLocation,
+  Projectile,
+  RaidState,
+  RaidStatus,
+  Tier,
+} from './types';
 
 export interface RaidOptions {
   readonly seed: number;
@@ -161,6 +170,8 @@ export function createRaid(opts: RaidOptions): RaidState {
     fights: 0,
     kills: 0,
     evacOpen: opts.evacOpen ?? true,
+    projectiles: [],
+    nextProjectileId: 0,
     events: [],
   };
 }
@@ -333,6 +344,107 @@ export function woundsPerHit(attack: number, defense: number): number {
   return 1 + Math.floor(Math.max(0, pierce - 1) / PIERCE_STEP);
 }
 
+/**
+ * §11.3 — полёт снарядов. Идёт **до** боя, чтобы выстрел, сделанный в этом
+ * тике, не долетал в этом же: иначе дальний бой отличался бы от ближнего
+ * только словом, а фора, за которую игрок уходит с линии, не существовала бы.
+ *
+ * Снаряд кончается ровно тремя способами, и все три обязаны быть достижимы:
+ * попал, врезался в камень, дошёл до точки прицеливания и никого там не нашёл.
+ * Третий — и есть промах: цель ушла, пока он летел.
+ */
+function stepProjectiles(state: RaidState, dt: number): void {
+  const { loc, hero } = state;
+  if (state.projectiles.length === 0) return;
+
+  const alive: Projectile[] = [];
+  for (const p of state.projectiles) {
+    p.prevX = p.x;
+    p.prevZ = p.z;
+
+    const toAimX = p.aimX - p.x;
+    const toAimZ = p.aimZ - p.z;
+    const left = Math.hypot(toAimX, toAimZ);
+    const move = p.speed * dt;
+
+    // Дошёл до точки прицеливания и никого не задел — промах.
+    if (left <= move) {
+      continue;
+    }
+    p.x += (toAimX / left) * move;
+    p.z += (toAimZ / left) * move;
+
+    // Камень останавливает снаряд там же, где перекрывает видимость:
+    // одна и та же сетка, иначе выстрел «сквозь стену» вернулся бы
+    // с другой стороны.
+    const cell = idx(loc.size, Math.round(p.x), Math.round(p.z));
+    if (loc.blocked[cell]) continue;
+
+    if (p.from === 'enemy') {
+      if (Math.hypot(hero.x - p.x, hero.z - p.z) <= PROJECTILE_HIT) {
+        // §11.7 «Заслон» — удар отражается целиком, но снаряд всё равно
+        // прилетает: игрок должен видеть, что его отбили, а не что мимо.
+        if (skillActive(state, 'guard')) {
+          state.events.push('Заслон держит');
+        } else {
+          const took = woundsPerHit(p.power, state.loadout.defense + state.mods.defense);
+          hero.wounds -= took;
+          state.woundsTaken += took;
+          state.lastHitBy = p.kind;
+          state.lastWoundFrom = 'enemy';
+          state.events.push(`${p.kind === null ? 'Выстрел' : ENEMY_STATS[p.kind].name} бьёт`);
+        }
+        continue;
+      }
+    } else {
+      const target = loc.enemies.find((e) => e.id === p.targetId);
+      if (target !== undefined && target.hp > 0
+        && Math.hypot(target.x - p.x, target.z - p.z) <= PROJECTILE_HIT) {
+        target.hp -= p.power;
+        if (target.hp <= 0) {
+          target.awake = false;
+          state.kills += 1;
+          state.events.push(`${ENEMY_STATS[target.kind].name} падёт`);
+        }
+        continue;
+      }
+    }
+
+    alive.push(p);
+  }
+  state.projectiles = alive;
+}
+
+/** Выпустить снаряд. Точка прицеливания фиксируется здесь и больше
+ *  не меняется — в этом весь смысл: уйти с линии обязано быть возможно. */
+function shoot(
+  state: RaidState,
+  from: 'hero' | 'enemy',
+  x: number,
+  z: number,
+  aimX: number,
+  aimZ: number,
+  speed: number,
+  power: number,
+  targetId: number,
+  kind: EnemyKind | null,
+): void {
+  state.projectiles.push({
+    id: state.nextProjectileId++,
+    from,
+    x,
+    z,
+    prevX: x,
+    prevZ: z,
+    aimX,
+    aimZ,
+    speed,
+    power,
+    targetId,
+    kind,
+  });
+}
+
 function stepCombat(state: RaidState, dt: number, vision: number): void {
   const { hero, loc } = state;
   let engaged = false;
@@ -367,7 +479,14 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
       continue;
     }
 
-    if (dist <= stats.reach) {
+    // Стрелок достаёт настолько, насколько видит: камень между ним и героем
+    // отменяет выстрел целиком (§11.3). У ближнего проверять нечего — он
+    // и так стоит вплотную.
+    const inRange =
+      dist <= stats.reach
+      && (!stats.ranged || hasLineOfSight(loc.size, loc.blocked, enemy.x, enemy.z, hero.x, hero.z));
+
+    if (inRange) {
       engaged = true;
       enemy.cooldown = Math.max(0, enemy.cooldown - dt);
       if (enemy.telegraph > 0) {
@@ -376,7 +495,18 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
           // §11.7 «Заслон» — не получает урон 5 секунд. Замах при этом
           // отыгрывается целиком: игрок должен видеть, что удар был отражён,
           // а не что противник перестал бить.
-          if (skillActive(state, 'guard')) {
+          if (stats.ranged) {
+            // Замах кончился — снаряд ушёл. Урон он донесёт сам и в свой
+            // момент; целится он туда, где герой стоял сейчас, и уйти
+            // с этой точки — единственный способ не получить болт.
+            shoot(
+              state, 'enemy', enemy.x, enemy.z, hero.x, hero.z,
+              stats.projectileSpeed, stats.attack, -1, enemy.kind,
+            );
+          } else if (skillActive(state, 'guard')) {
+            // §11.7 «Заслон» — не получает урон 5 секунд. Замах отыгрывается
+            // целиком: игрок должен видеть, что удар отражён, а не что
+            // противник перестал бить.
             state.events.push('Заслон держит');
           } else {
             // §11.3 — Защита делит пробой: у героя с щитом тот же удар
@@ -413,7 +543,13 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
     // обязан доставать до неё. Иначе воин и маг не «бьют первым»
     // (§15), а просто неуязвимы: их досягаемость больше геройской, и удар
     // не проходит ни разу. Замер ловил это как 70% провалов в бою.
-    const engageAt = Math.max(HERO_REACH, stats.reach);
+    // У ближнего досягаемость героя дотягивается до его: он останавливается
+    // на длине своего оружия, и без этого воин с магом были бы не «бьют
+    // первым», а неуязвимы (§20.3.2). У стрелка правило противоположное:
+    // он стоит далеко именно затем, чтобы до него надо было дойти, и
+    // растягивать геройское оружие на всю дальность выстрела значило бы
+    // отменить его роль вместе с обходом.
+    const engageAt = stats.ranged ? HERO_REACH : Math.max(HERO_REACH, stats.reach);
     if (dist <= engageAt && hero.cooldown <= 0) {
       // §11.3 — герой снимает очки стойкости собственной Атакой. Ceil-функция
       // делает её пороговой: разница видна не всегда, а на конкретных
@@ -499,6 +635,9 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   const vision = visionRadius(knowledge, night, true) + state.mods.vision;
   stepMovement(state, dt);
   if (state.status !== 'running') return;
+  // Снаряды двигаются до боя: выстрел, сделанный в этом тике, не долетает
+  // в этом же. Иначе дальний бой отличался бы от ближнего только словом.
+  stepProjectiles(state, dt);
   stepCombat(state, dt, vision);
 
   // Голод не убивает мгновенно: провиант обязан оставаться главной причиной
