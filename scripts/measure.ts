@@ -28,8 +28,16 @@ interface TierStat {
   steps: number;
   seconds: number;
   depthShare: number;
+  /**
+   * §11.3 — глубина, на которой вылазка кончилась, отдельно у павших
+   * и у дошедших. Это и есть главная величина раздела: правило спрашивает,
+   * **где** приходит провал, а не чем он нанесён.
+   */
+  failDepth: number;
+  okDepth: number;
   foodLeft: number;
-  /** §11.3 требует соотношения причин провала 65% провиант / 35% бой. */
+  /** Чем нанесён провал. Больше не вердикт (§22.6), но читать полезно:
+   *  по нему видно, какую ручку крутить, когда глубина не сошлась. */
   byFood: number;
   byCombat: number;
   byKind: Record<string, number>;
@@ -49,6 +57,8 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     steps: 0,
     seconds: 0,
     depthShare: 0,
+    failDepth: 0,
+    okDepth: 0,
     foodLeft: 0,
     byFood: 0,
     byCombat: 0,
@@ -66,7 +76,10 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     stat.runs += 1;
     stat.steps += r.steps;
     stat.seconds += r.durationSec;
-    stat.depthShare += r.locMaxBack > 0 ? r.maxBack / r.locMaxBack : 0;
+    const depth = r.locMaxBack > 0 ? r.maxBack / r.locMaxBack : 0;
+    stat.depthShare += depth;
+    if (r.status === 'evacuated') stat.okDepth += depth;
+    else stat.failDepth += depth;
     stat.foodLeft += r.foodLeft;
     if (r.status !== 'evacuated') {
       // Причину больше не выводим здесь: её пишет сама вылазка по тому,
@@ -119,9 +132,10 @@ const stats = PLAN.map(({ tier, kitchen, storage }) => {
   return s;
 });
 
-// §22.6 — прежние 65/35 сняты на старом бое и помечены черновыми. Цель
-// назначается пересчётом модели, а не повторяется здесь числом.
-console.log('\nПричины провала (цель — §22.6, прежние 65/35 черновые)');
+// §22.6 — соотношение причин перестало быть целью: правило спрашивает,
+// где приходит провал, а не чем нанесён. Строка осталась диагностикой —
+// по ней видно, какую ручку крутить, когда глубина не сошлась.
+console.log('\nЧем нанесён провал (не цель — диагностика, §22.6)');
 console.log('─'.repeat(74));
 for (const s of stats) {
   const fails = s.runs - s.success;
@@ -130,7 +144,9 @@ for (const s of stats) {
     continue;
   }
   console.log(
-    `  ярус ${s.tier}: провалов ${((fails / s.runs) * 100).toFixed(0)}% — ` +
+    `  ярус ${s.tier}: провалов ${((fails / s.runs) * 100).toFixed(0)}% ` +
+      `на глубине ${((s.failDepth / fails) * 100).toFixed(0)}% ` +
+      `(дошедший — ${((s.okDepth / Math.max(1, s.success)) * 100).toFixed(0)}%) — ` +
       `провиант ${((s.byFood / fails) * 100).toFixed(0)}% · бой ${((s.byCombat / fails) * 100).toFixed(0)}%` +
       (s.byCombat > 0
         ? ` (${Object.entries(s.byKind)
@@ -188,23 +204,56 @@ console.log('─'.repeat(74));
   }
 
   /**
-   * 2. Бой не должен быть основным источником провалов (§11.3).
+   * 2. Провал приходит глубже середины локации (§11.3).
    *
-   * Единственное утверждение раздела, которое §22.6 прямо объявляет
-   * пережившим пересчёт: оно про порядок величин, а не про долю. Поэтому
-   * здесь нет числа из документа — здесь есть «основной», то есть больше
-   * половины.
+   * Заменило прежнее «провиант 65 / бой 35». То было неверно поставленным
+   * вопросом: оно спрашивало, **чем** нанесён провал, а решает игрок
+   * не это. Пока бой шёл сам, «умер в бою» значило «умер от арифметики
+   * за кадром», и запрет был осмыслен; с пошаговым боем (§11.3) удар, блок,
+   * позиция и отрыв — решения, и умереть от собственного решения игре
+   * запрещать незачем.
+   *
+   * Что решает — **где** провал приходит. На глубине держится §22.5:
+   * игрок продолжает, пока ожидаемая ценность выше синицы в руке, и вся
+   * эта арифметика предполагает, что риск растёт с глубиной. Провал у входа
+   * отменяет решение «глубже или назад» целиком: не игрок выбирает, докуда
+   * дойти, а встреча выбирает за него.
+   *
+   * Два утверждения, оба про порядок величин:
+   *  — павший заходил глубже середины локации;
+   *  — и не мельче, чем дошедший, иначе риск с глубиной падает.
    */
-  const loud = stats
-    .map((s) => ({ tier: s.tier, fails: s.runs - s.success, combat: s.byCombat }))
-    .filter((s) => s.fails > 0 && s.combat / s.fails > 0.5);
-  if (loud.length === 0) {
-    console.log('  ✓ Провалы ведёт провиант, а не бой (§11.3).');
-  } else {
+  const HALF = 0.5;
+  const depth = stats
+    .map((s) => {
+      const fails = s.runs - s.success;
+      return {
+        tier: s.tier,
+        fails,
+        fail: fails > 0 ? s.failDepth / fails : NaN,
+        ok: s.success > 0 ? s.okDepth / s.success : NaN,
+      };
+    })
+    .filter((s) => s.fails > 0);
+
+  const shallow = depth.filter((s) => s.fail < HALF);
+  const inverted = depth.filter((s) => s.fail < s.ok - TOLERANCE);
+
+  if (shallow.length === 0 && inverted.length === 0) {
+    console.log('  ✓ Провал приходит глубже середины локации, и глубже возвращения (§11.3).');
+  }
+  for (const s of shallow) {
     console.log(
-      `  ⚠ БОЙ ВЕДЁТ ПРОВАЛЫ на ярусах ${loud.map((s) => s.tier).join(', ')}: ` +
-        `${loud.map((s) => `${((s.combat / s.fails) * 100).toFixed(0)}%`).join(', ')}.\n` +
-        '    §11.3 требует обратного, и это требование пересчёт §22.6 переживает.',
+      `  ⚠ ЯРУС ${s.tier}: ПРОВАЛ ПРИХОДИТ У ВХОДА — ${(s.fail * 100).toFixed(0)}% глубины ` +
+        `при пороге ${(HALF * 100).toFixed(0)}%.\n` +
+        '    Решение «глубже или назад» (§22.5) принимает встреча, а не игрок.',
+    );
+  }
+  for (const s of inverted) {
+    console.log(
+      `  ⚠ ЯРУС ${s.tier}: РИСК ПАДАЕТ С ГЛУБИНОЙ — павший дошёл до ` +
+        `${(s.fail * 100).toFixed(0)}%, дошедший до ${(s.ok * 100).toFixed(0)}%.\n` +
+        '    Дальше — безопаснее, и вся ставка §11.2 обещает не то, что берёт.',
     );
   }
 
