@@ -21,6 +21,8 @@ import {
 } from './consumables';
 import type { ConsumableId } from './consumables';
 import { generateLocation } from './generate';
+import { effectOf } from './events';
+import type { EventId } from './events';
 import { RESOURCE_NAME, emptyResources } from './resources';
 import type { ResourceKind, Resources } from './resources';
 import { idx } from './grid';
@@ -96,10 +98,20 @@ export interface RaidOptions {
    * замеры, бот и золотой мастер считают вылазку без карты.
    */
   readonly lootMul?: number;
+  /**
+   * Событие локации (§11.6), объявленное картой до входа. По умолчанию нет —
+   * и это то же требование, что у `lootMul`: замеры, бот и золотой мастер
+   * считают вылазку без событий, иначе прежние числа несравнимы.
+   */
+  readonly event?: EventId | null;
 }
 
 export function createRaid(opts: RaidOptions): RaidState {
-  const loc = opts.loc ?? generateLocation(opts.seed, opts.tier, opts.lootMul ?? 1);
+  // Событие сворачивается в числа на входе — ровно как снаряжение: вылазке
+  // нужны множители, а не имя того, что происходит снаружи.
+  const event = effectOf(opts.event ?? null);
+  const loc =
+    opts.loc ?? generateLocation(opts.seed, opts.tier, (opts.lootMul ?? 1) * event.loot, event.enemies);
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
@@ -144,6 +156,9 @@ export function createRaid(opts: RaidOptions): RaidState {
     hunger: opts.hunger ?? true,
     logging: opts.logging ?? false,
     risk: opts.risk ?? true,
+    riskAdd: event.risk,
+    visionAdd: event.vision,
+    stepMul: event.step,
     consumables: [...(opts.consumables ?? [])],
     fired: [],
     smokeUntil: 0,
@@ -176,7 +191,11 @@ export function locationDepth(loc: GameLocation): number {
 export function atRisk(state: RaidState): number {
   // §11.2 — доля яруса, смягчённая кольцом (§14). Единственный предмет,
   // трогающий ставку: ей владеет один слот, иначе риск перестаёт быть риском.
-  return Math.ceil(state.bagTotal * TIER_RISK[state.loc.tier] * state.mods.risk);
+  // §11.2: доля = база[ярус] + сумма модификаторов события, и только потом
+  // снаряжение (`mods.risk`) её множит. Порядок важен: слагаемое события
+  // работает и на нулевом ярусе, где база — ноль, а множитель дал бы ноль.
+  const share = TIER_RISK[state.loc.tier] + state.riskAdd;
+  return Math.ceil(state.bagTotal * share * state.mods.risk);
 }
 
 export function commandMove(state: RaidState, target: Cell): boolean {
@@ -230,7 +249,8 @@ export function stepFoodCost(state: RaidState): number {
   return (
     FOOD_COST.step *
     (skillActive(state, 'trail') ? 1 - TRAIL_STEP_DISCOUNT : 1) *
-    state.mods.foodStep
+    state.mods.foodStep *
+    state.stepMul
   );
 }
 
@@ -455,7 +475,7 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
 
   // Базовый фонарь героя (§11.4) остаётся у всех; выкованный фонарь
   // прибавляется сверху и потому не ужесточает ярусы задним числом.
-  const vision = visionRadius(knowledge, night, true) + state.mods.vision;
+  const vision = visionRadius(knowledge, night, true) + state.mods.vision + state.visionAdd;
   stepMovement(state, dt);
   if (state.status !== 'running') return;
   stepCombat(state, dt, vision);

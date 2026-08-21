@@ -809,8 +809,12 @@ function toRaid(node: number): boolean {
   hero.status = 'raid';
   raidHero = hero;
 
-  const rich = worldAt(now, camp.visits)[node]?.rich ?? 0;
+  const state = worldAt(now, camp.visits)[node];
+  const rich = state?.rich ?? 0;
   const mul = lootMul(rich);
+  // §11.6 — событие объявлено картой до входа, и здесь оно уже принятое
+  // решение: карточка назвала ставку и добычу, игрок нажал «Войти».
+  const event = state?.event ?? null;
 
   raidView?.dispose();
   raid = createRaid({
@@ -821,6 +825,9 @@ function toRaid(node: number): boolean {
     // §4 — истощение множит добычу, а не запирает вход: плохая сделка
     // оставляет решение игроку, запрет отправляет его ждать вне игры.
     lootMul: mul,
+    // §11.6 — что здесь сегодня. Складывается с богатством: выработанная
+    // локация под бурей остаётся выработанной.
+    event,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
