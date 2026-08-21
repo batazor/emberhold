@@ -2,7 +2,7 @@
  * Замер боя. Отвечает на вопрос, который §11.3 ставит, но сам проверить
  * не может: **делают ли Атака и Защита хоть что-нибудь.**
  *
- * До замены модели боя честный ответ — «нет»: удар стоит одной раны
+ * До замены модели боя честный ответ был «нет»: удар стоил одной раны
  * независимо от того, кто бьёт и кто получает, а Атака с Защитой лежат
  * в `heroes.ts` показанными, но не посчитанными. Скрипт написан до правки
  * намеренно, чтобы эта картинка была снята прибором, а не описана словами,
@@ -19,12 +19,19 @@
  */
 import { TICK } from '../src/core/loop';
 import { ENEMY_STATS } from '../src/sim/enemies';
+import { POLICIES, botBattlePlan } from '../src/sim/bot';
 import { emptyGear } from '../src/sim/gear';
 import type { GearState } from '../src/sim/gear';
 import { CLASS_ORDER, HERO_CLASSES, createHero, loadout } from '../src/sim/heroes';
 import type { HeroClassId, HeroLoadout } from '../src/sim/heroes';
-import { POLICIES, botBattlePlan } from '../src/sim/bot';
-import { commandBattle, commandMove, createRaid, damageOf, inBattle, stepRaid } from '../src/sim/raid';
+import {
+  commandBattle,
+  commandMove,
+  createRaid,
+  inBattle,
+  stepRaid,
+  damageOf,
+} from '../src/sim/raid';
 import { distanceField } from '../src/sim/grid';
 import type { EnemyKind, GameLocation } from '../src/sim/types';
 
@@ -69,8 +76,13 @@ function duelField(kind: EnemyKind, gap: number): GameLocation {
 }
 
 interface Duel {
-  /** Секунд до падения противника; null — не упал за GIVE_UP. */
-  readonly ttk: number | null;
+  /**
+   * Раундов до падения противника; null — не упал за `GIVE_UP`.
+   *
+   * Раунды, а не секунды: бой пошаговый (§11.3), время в нём стоит, и число
+   * в секундах считало бы такты головного цикла, выдавая их за игровое время.
+   */
+  readonly rounds: number | null;
   /** Ударов героя до падения. */
   readonly swings: number;
   /** Урона, снятого с героя за дуэль. */
@@ -103,38 +115,66 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
   const enemy = state.loc.enemies[0]!;
   const startHp = state.hero.hp;
   let swings = 0;
-  let before = enemy.hp;
+  let rounds = 0;
   let t = 0;
 
-  while (t < GIVE_UP && enemy.hp > 0 && state.status === 'running') {
-    // Герой сам идёт на противника. Со стрелком иначе нельзя: он стоит
-    // далеко именно затем, чтобы до него шли, и неподвижный герой мерил бы
-    // не бой, а собственную неподвижность. Лучник по дороге стреляет —
-    // и это ровно то, чем он отличается.
-    // §11.3 — бой пошаговый, и стенд обязан в нём ходить теми же правилами,
-    // что бот. Иначе дуэль мерила бы не бой, а неподвижность героя.
+  /**
+   * Стойкость противника. Пока бой идёт, правда о ней живёт на поле:
+   * в мир поле пишет её только на выходе из боя (`closeBattle`). Чтение
+   * из `loc.enemies` показывало полную стойкость весь бой, и дуэль
+   * заканчивалась по `GIVE_UP` с нулём ударов.
+   */
+  const enemyHp = (): number =>
+    state.battle?.units.find((u) => u.id === enemy.id)?.hp ?? enemy.hp;
+
+  let before = enemyHp();
+
+  while (t < GIVE_UP && enemyHp() > 0 && state.status === 'running') {
     if (inBattle(state)) {
-      if (!commandBattle(state, botBattlePlan(state, POLICIES.cautious))) {
+      /**
+       * Ход героя. Модель игрока берётся у бота целиком, а не пишется здесь
+       * заново: своя копия тут уже была и пережила ровно до пошагового боя —
+       * герой, не умеющий ходить в бою, вешает дуэль насмерть, и прибор
+       * печатает «Атака и Защита в бой не входят» на пустом месте.
+       *
+       * Политика — `greedy`: у неё `retreatAt: 0`, то есть отступления нет.
+       * Дуэль идёт до падения одной из сторон, иначе прибор мерил бы не бой,
+       * а осторожность бота.
+       */
+      rounds = state.battle!.round;
+      if (!commandBattle(state, botBattlePlan(state, POLICIES.greedy))) {
+        // Отклонённое решение обязано кончаться ожиданием, а не повтором:
+        // иначе очередь стоит, и дуэль опять не кончается.
         commandBattle(state, { kind: 'wait' });
       }
     } else if (state.path.length === 0) {
+      // Герой сам идёт на противника. Со стрелком иначе нельзя: он стоит
+      // далеко именно затем, чтобы до него шли, и неподвижный герой мерил бы
+      // не бой, а собственную неподвижность. Лучник по дороге стреляет —
+      // и это ровно то, чем он отличается.
       commandMove(state, { x: Math.round(enemy.x), z: Math.round(enemy.z) });
     }
     stepRaid(state, TICK, false, hero.knowledge);
-    if (enemy.hp < before) {
+    const now = enemyHp();
+    if (now < before) {
       swings += 1;
-      before = enemy.hp;
+      before = now;
     }
     t += TICK;
   }
 
+  const fell = enemyHp() <= 0;
   return {
-    ttk: enemy.hp <= 0 ? t : null,
+    rounds: fell ? Math.max(1, rounds) : null,
     swings,
     damage: startHp - state.hero.hp,
-    won: enemy.hp <= 0 && state.status === 'running',
+    won: fell && state.status === 'running',
   };
 }
+
+/** Урон печатается округлённым: `Атака − Защита/2` даёт дроби, и сырое
+ *  число из плавающей точки в таблице читается хуже, чем значит. */
+const num1 = (x: number): string => (Number.isInteger(x) ? String(x) : x.toFixed(1));
 
 const KINDS = Object.keys(ENEMY_STATS) as EnemyKind[];
 
@@ -145,7 +185,7 @@ const gearAt = (level: number): GearState => {
   return g;
 };
 
-const secs = (x: number | null): string => (x === null ? '  —  ' : `${x.toFixed(2)}с`);
+const rnds = (x: number | null): string => (x === null ? '  —  ' : `${String(x).padStart(3)}р`);
 
 console.log('Дуэли: герой против одного противника, пустое поле, без провианта\n');
 
@@ -157,25 +197,25 @@ for (const level of [0, 3, 5]) {
     const def = HERO_CLASSES[cls];
     const cells = KINDS.map((k) => {
       const d = duel(cls, gear, k);
-      return `${secs(d.ttk)}/${d.damage.toFixed(0)}`.padEnd(13);
+      return `${rnds(d.rounds)}/${d.damage.toFixed(0)}`.padEnd(13);
     });
     console.log(
       `${def.name.padEnd(10)} ${String(def.base.attack).padStart(5)} ${String(def.base.defense).padStart(6)} │ ` +
         cells.join(''),
     );
   }
-  console.log('  (время до падения противника / урона снято с героя)\n');
+  console.log('  (раундов до падения противника / урона снято с героя)\n');
 }
 
 /**
- * Пробой напрямую: сколько ран стоит удар каждого типа при каждой Защите.
+ * Урон напрямую: сколько очков стоит удар каждого типа при каждой Защите.
  *
  * Дуэль показывает итог, а он лумпяный — порог переходится не всегда, — и по
  * нему нельзя понять, Защита ли не работает или просто не дотянула до порога.
  * Таблица показывает сам порог, поэтому вопрос «где начинает окупаться щит»
  * получает ответ числом, а не подбором.
  */
-console.log('══ пробой: урона за удар при разной Защите ══');
+console.log('══ урон за удар при разной Защите ══');
 {
   const defenses = [0, 2, 3, 6, 9, 12, 16];
   console.log('противник      Атака │ ' + defenses.map((d) => `З${d}`.padStart(4)).join(''));
@@ -183,7 +223,7 @@ console.log('══ пробой: урона за удар при разной �
     const a = ENEMY_STATS[k].attack;
     console.log(
       `${ENEMY_STATS[k].name.padEnd(14)}${String(a).padStart(5)} │ ` +
-        defenses.map((d) => String(damageOf(a, d)).padStart(4)).join(''),
+        defenses.map((d) => num1(damageOf(a, d)).padStart(5)).join(''),
     );
   }
   const flat = KINDS.every((k) => {
@@ -192,8 +232,8 @@ console.log('══ пробой: урона за удар при разной �
   });
   console.log(
     flat
-      ? '\n⚠ ЗАЩИТА НИЧЕГО НЕ ДЕЛИТ: строки плоские, и характеристика остаётся\n' +
-          '  числом в панели героя.'
+      ? '\n⚠ ЗАЩИТА НИЧЕГО НЕ ДЕЛИТ: строки плоские. Пока каждый удар стоит одной\n' +
+          '  раны, делить нечего, и характеристика остаётся числом в панели.'
       : '\n✓ Защита смягчает удар, и плавно: шкале пороги не нужны.',
   );
   console.log('');
@@ -228,35 +268,84 @@ const bump = (over: Partial<{ attack: number; defense: number }>): Duel[] => {
   }
 };
 
+/**
+ * Строки берут характеристику **в обе стороны от исходной**, и это не
+ * симметрии ради.
+ *
+ * Одних только прибавок мало: у Рыцаря Защита 6, а порог пробоя по таблице
+ * выше — второй раны от воина не бывает уже с тройки. Прибавка к тому, что
+ * и так за порогом, не меняет ничего ни при какой работающей Защите, и
+ * прибор печатал бы «Защита не меняет бой» на характеристике, которая
+ * работает. Убавка ставит эталон по другую сторону порога, и разница
+ * появляется там, где она есть на самом деле.
+ */
 const rows: [string, Duel[]][] = [
   ['как есть', base],
   ['Атака +3', bump({ attack: HERO_CLASSES[REF].base.attack + 3 })],
+  ['Защита 0', bump({ defense: 0 })],
   ['Защита +6', bump({ defense: HERO_CLASSES[REF].base.defense + 6 })],
-  ['Защита +12', bump({ defense: HERO_CLASSES[REF].base.defense + 12 })],
 ];
 
 console.log('вариант    │ ' + KINDS.map((k) => ENEMY_STATS[k].name.padEnd(13)).join(''));
 for (const [label, got] of rows) {
   console.log(
     `${label.padEnd(10)} │ ` +
-      got.map((d) => `${secs(d.ttk)}/${d.damage.toFixed(0)}`.padEnd(13)).join(''),
+      got.map((d) => `${rnds(d.rounds)}/${d.damage.toFixed(0)}`.padEnd(13)).join(''),
   );
 }
 
 const same = (a: Duel[], b: Duel[]): boolean =>
-  a.every((d, i) => d.ttk === b[i]!.ttk && d.damage === b[i]!.damage);
+  a.every((d, i) => d.rounds === b[i]!.rounds && d.damage === b[i]!.damage);
 
-const attackDead = same(base, rows[1]![1]);
-const defenseDead = same(base, rows[2]![1]) && same(base, rows[3]![1]);
+/**
+ * Прибор обязан сначала доказать, что он вообще что-то измерил.
+ *
+ * Без этой проверки пустой прогон неотличим от отрицательного результата:
+ * дуэли, в которых никто не бил и никто не падал, дают одинаковые строки —
+ * и «строки совпали» читается как «характеристики в бой не входят». Ровно
+ * так прибор и врал, пока вёл бой одним `stepRaid`.
+ *
+ * Поэтому вердикт молчит, пока нечего сравнивать, а прогон кончается
+ * ошибкой: пустой стенд не должен выглядеть пройденным.
+ */
+function verdict(): void {
+  const attackDead = same(base, rows[1]![1]);
+  // Защита мертва, только если бой не сдвинулся ни по одну сторону порога.
+  const defenseDead = same(base, rows[2]![1]) && same(base, rows[3]![1]);
 
-console.log('');
-if (attackDead && defenseDead) {
-  console.log(
-    '⚠ АТАКА И ЗАЩИТА В БОЙ НЕ ВХОДЯТ: три строки совпали.\n' +
-      '  Числа в панели героя — украшение, и §11.3 не выполнен.',
-  );
-} else {
+  console.log('');
+  if (attackDead && defenseDead) {
+    console.log(
+      '⚠ АТАКА И ЗАЩИТА В БОЙ НЕ ВХОДЯТ: строки вариантов совпали с исходной.\n'
+      + '  Удар стоит одного и того же кем угодно и по кому угодно, а числа\n'
+      + '  в панели героя — украшение.',
+    );
+    return;
+  }
   if (attackDead) console.log('⚠ Атака не меняет бой: строка «Атака +3» совпала с исходной.');
   if (defenseDead) console.log('⚠ Защита не меняет бой: обе её строки совпали с исходной.');
+  if (!defenseDead && same(base, rows[3]![1])) {
+    console.log(
+      '  Защита работает, но у эталона она уже за порогом пробоя: прибавка\n'
+      + '  к ней ничего не даёт, а убавка даёт. Смотреть здесь надо на строку\n'
+      + '  «Защита 0», а не на «Защита +6».',
+    );
+  }
   if (!attackDead && !defenseDead) console.log('✓ Обе характеристики двигают бой.');
+}
+
+const measuredSomething = rows.some(([, got]) =>
+  got.some((d) => d.rounds !== null || d.damage > 0),
+);
+
+if (measuredSomething) {
+  verdict();
+} else {
+  console.log(
+    '\n⛔ ПРИБОР НИЧЕГО НЕ ИЗМЕРИЛ: ни одна дуэль не кончилась и ни одно очко\n'
+    + '  не снята. Это поломка стенда, а не результат — сравнивать нечего,\n'
+    + '  и вердикта здесь не будет. Смотреть надо, ведёт ли стенд бой вообще\n'
+    + '  (§11.3: ход героя подаётся `commandBattle`, сам он не случается).',
+  );
+  process.exitCode = 1;
 }

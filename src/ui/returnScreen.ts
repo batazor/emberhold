@@ -12,6 +12,7 @@ import type { GearSlot } from '../sim/gear';
 import { TIER_NAME } from '../sim/config';
 import { CONSUMABLES, cheapestAffordable } from '../sim/consumables';
 import type { ConsumableId } from '../sim/consumables';
+import { play } from '../core/audio';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
@@ -79,6 +80,13 @@ export class ReturnScreen {
    *  секунды» на всё время сна — игрок вернулся бы к нулям на экране. */
   private shownAt = 0;
   private skipped = false;
+  /**
+   * Сколько строк добычи уже прозвучало. Звук `pick` написан ровно под этот
+   * экран — «ресурс зачислен, по одному на строку», — и не звучал нигде:
+   * начисление, ради которого экран и устроен (§20.1), шло полторы секунды
+   * молча. Самый приятный момент петли был единственным беззвучным.
+   */
+  private picked = 0;
   private suggestion: BuildingId | null = null;
   /** Что предложить, когда постройка недоступна: слот занят или не по карману. */
   private gearSuggestion: GearSlot | null = null;
@@ -199,6 +207,7 @@ export class ReturnScreen {
     this.reported = false;
     this.shownAt = performance.now();
     this.skipped = false;
+    this.picked = 0;
     this.at = now;
     this.raidNode = nextPlace(camp, node, now);
     this.suggestion = suggestUpgrade(camp);
@@ -354,6 +363,24 @@ export class ReturnScreen {
     for (const { el, target } of this.counters.values()) {
       el.textContent = String(Math.round(target * eased));
     }
+
+    /**
+     * Строки звучат по одной, вразбивку по всей анимации, а не разом
+     * в конце: одновременные щелчки слились бы в один, и «начислено четыре
+     * вида» звучало бы так же, как «начислен один».
+     *
+     * Пропуск тапом досчитывает и звук — но одним щелчком, а не очередью
+     * из четырёх: игрок, пропускающий начисление, просит короче, а не громче.
+     */
+    const rows = this.counters.size;
+    if (rows === 0) return;
+    // Потолок в число строк обязателен: без него шаг `rows + 1`, взятый
+    // ради того, чтобы первая строка не звучала в нулевой момент, даёт
+    // на полной анимации на один щелчок больше, чем строк.
+    const due = this.skipped ? rows : Math.min(rows, Math.floor(eased * (rows + 1)));
+    if (due <= this.picked) return;
+    this.picked = this.skipped ? rows : this.picked + 1;
+    play('pick');
   }
 
   hide(): void {

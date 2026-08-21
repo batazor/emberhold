@@ -138,9 +138,14 @@ export class RosterPanel {
       row.status.textContent = this.statusLine(hero, now);
       row.status.className = hero.status === 'ready' ? 'good' : 'dim';
 
+      // Три характеристики, а не четыре. «Сила» стояла здесь четвёртой
+      // и не читалась ничем: ни боем, ни обзором, ни генератором. При этом
+      // она различала классы на экране — 4 у Рыцаря, 5 у Лучника, 3
+      // у Бандита — и участвовала в выборе героя, не участвуя в игре.
+      // Показанное число обязано на что-то влиять; до тех пор строка врёт.
       const s = stats(hero);
       row.meta.textContent =
-        `Атака ${s.attack} · Защита ${s.defense} · Знание ${s.knowledge} · Сила ${s.might}`;
+        `Атака ${s.attack} · Защита ${s.defense} · Знание ${s.knowledge}`;
 
       const need = xpToNext(hero.level);
       row.xp.style.width = `${Math.min(100, (hero.xp / need) * 100).toFixed(1)}%`;

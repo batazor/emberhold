@@ -959,7 +959,7 @@ function toRaid(node: number): boolean {
     return false;
   }
   raidNode = node;
-  graveSite = null;
+  leaveWalkSites();
   const rotated = hero !== activeHero(roster);
   if (rotated) selectHero(roster, roster.heroes.indexOf(hero));
   hero.status = 'raid';
@@ -1049,14 +1049,32 @@ let castleNow: CastleSite | null = null;
 let graveSite: GraveSite | null = null;
 let readStone: string | null = null;
 
+/**
+ * Снять прогулочную сцену перед входом в любую другую.
+ *
+ * Флаг сцены живёт дольше самой сцены, и снимать его обязан **каждый вход,
+ * а не сосед**. Пока снимали соседи, `castleNow` уходил из замка в вылазку:
+ * его обнуляло только кладбище, а `toRaid` обнулял один `graveSite`. Цикл
+ * же проверяет близость к торговцу безусловно, и панель обмена всплывала
+ * посреди обычной вылазки — на клетке, где торговец стоял в замке
+ * и где в вылазке нет никого.
+ *
+ * Поэтому здесь одна функция на все флаги: добавить сцену и забыть снять
+ * её у трёх соседей больше нельзя, снимать нужно в одном месте.
+ */
+function leaveWalkSites(): void {
+  castleNow = null;
+  graveSite = null;
+  readStone = null;
+  tradePanel.setVisible(false);
+}
+
 function toGraveyard(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateGraveSite(seed);
-  castleNow = null;
-  tradePanel.setVisible(false);
+  leaveWalkSites();
   graveSite = site;
-  readStone = null;
   raidNode = node;
   // Раны здесь получить можно, а вот занимать героя незачем: добычи нет,
   // и заход не обязан снимать с ротации того, кто просто сходил посмотреть.
@@ -1094,11 +1112,10 @@ function toCastle(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateCastleSite(seed);
-  graveSite = null;
+  leaveWalkSites();
   // Площадка запоминается ради гарнизона и торговца (§13.5): и тот и другой
   // считаются из неё по ходу прогулки.
   castleNow = site;
-  tradePanel.setVisible(false);
   raidNode = node;
   // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
   // прогулка не обязана снимать его с лечения.
@@ -1138,6 +1155,7 @@ function toCastle(node: number, seed: number): boolean {
  * и тратой добычи ничего вставлять нельзя.
  */
 function toTitle(): void {
+  leaveWalkSites();
   titleView = new TitleView(rig);
   rig.world.add(titleView.group);
   campView.group.visible = false;
@@ -1429,6 +1447,7 @@ function endGlade(): void {
  */
 function toGlade(): void {
   leaveTitle();
+  leaveWalkSites();
   raidView?.dispose();
   const hero = heroForRaid() ?? roster.heroes[0]!;
   // Раны и опыт в прологе не начисляются никому: драться не с кем.
@@ -1488,6 +1507,7 @@ function toGlade(): void {
 
 function toCamp(): void {
   leaveTitle();
+  leaveWalkSites();
   chop = null;
   campMine = null;
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
@@ -1755,6 +1775,28 @@ function askTilt(): void {
     // ровно, как на любом настольном экране.
   });
 }
+
+/**
+ * Щелчок по кнопке интерфейса.
+ *
+ * `SFX.tap` живёт на шине `ui` и звучал ровно в двух местах: канвас и
+ * отпускание ползунка в настройках. Все DOM-кнопки игры молчали — лагерь,
+ * карта, экран возврата, заставка, — и это слышно рядом со сценой, которая
+ * щёлкает: интерфейс кажется неживым. В настройках при этом стоит ползунок
+ * громкости «интерфейс», управлявший почти ничем.
+ *
+ * Слушатель один и делегированный, а не по кнопке в каждой панели. Так
+ * не приходится править девять файлов и заводить девятое место, где
+ * про звук можно забыть; панель боя (§11.3) при этом не редактируется
+ * вовсе — она получает щелчок тем же слушателем.
+ *
+ * Фаза перехвата: панель может остановить всплытие своего события, но
+ * касание уже случилось, и звук отвечает на касание, а не на его судьбу.
+ */
+app.addEventListener('pointerdown', (e) => {
+  const el = e.target;
+  if (el instanceof HTMLButtonElement && !el.disabled) play('tap');
+}, true);
 
 canvas.addEventListener('pointerdown', (e) => {
   play('tap');

@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { TIER_KITCHEN_GATE, TIER_SPEC, deriveTier } from './balance';
+import { MAX_ENEMIES, TIER_KITCHEN_GATE, TIER_SPEC, deriveTier } from './balance';
 import { kitchenFood } from './camp';
 import type { Tier } from './types';
 
@@ -36,6 +36,39 @@ describe('Модель баланса (§22)', () => {
       for (const [name, ok] of Object.entries(checks)) {
         assert.ok(ok, `ярус ${tier}: нарушена гарантия ${name}`);
       }
+    }
+  });
+
+  /**
+   * §15 — состав врагов, а не только описание сложности.
+   *
+   * Проверка ниже («сложность растёт по ярусам») смотрит на `TIER_SPEC`,
+   * и все её утверждения оставались истинными, пока лестница ярусов была
+   * сломана: размер рос, ставка росла, находки прибавлялись — а на ярусе 2
+   * стояли три воина, и он выходил вдвое тяжелее третьего. Описание росло
+   * монотонно, состав — нет, и между ними не было ни одного правила.
+   */
+  test('§15 — противников не больше четырёх на локацию', () => {
+    for (const tier of TIERS) {
+      const { roster } = deriveTier(TIER_SPEC[tier]);
+      assert.ok(
+        roster.length <= MAX_ENEMIES,
+        `ярус ${tier}: ${roster.length} противников — пятый делает провал в бою нормой`,
+      );
+    }
+  });
+
+  test('§15 — ведущий на ярусе один, стаю водят скелеты', () => {
+    // Роль ведущего в §15 — «делает проход платным» и «перекрывает маршрут»,
+    // и обе про одного. Двое ведущих превращают ярус в бой на выживание
+    // независимо от того, что говорит бюджет ран.
+    for (const tier of TIERS) {
+      const { roster } = deriveTier(TIER_SPEC[tier]);
+      const leads = roster.filter((k) => k !== 'minion');
+      assert.ok(
+        leads.length <= 1,
+        `ярус ${tier}: ведущих ${leads.length} (${leads.join(', ')}) — раздел даёт одного`,
+      );
     }
   });
 

@@ -6,7 +6,17 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { TICK } from '../core/loop';
 import { createCamp, kitchenFood, storageCapacity } from './camp';
-import { atRisk, backSteps, commandMove, createRaid, raidResult, stepRaid } from './raid';
+import { POLICIES, botBattlePlan } from './bot';
+import {
+  atRisk,
+  backSteps,
+  commandBattle,
+  commandMove,
+  createRaid,
+  inBattle,
+  raidResult,
+  stepRaid,
+} from './raid';
 import type { RaidState } from './raid';
 import { addResources } from './resources';
 
@@ -81,6 +91,67 @@ describe('Вылазка', () => {
     assert.equal(r.lost, 12, '20 × 0.6');
     assert.equal(r.carriedTotal, 8);
     assert.ok(r.carried.stone > 0 && r.carried.iron > 0, 'обе кучи пострадали');
+  });
+
+  /**
+   * §11.3 — бой обязан кончаться, и обязан кончаться **тем, кто его ведёт.**
+   *
+   * Правило написано по цене конкретной поломки. Пошаговый бой ждёт решения
+   * героя (`stepBattle` возвращает `false` на его ходу), а `scripts/combat.ts`
+   * вёл дуэль одним `stepRaid` — как при автобое. Очередь вставала намертво,
+   * прибор докручивал свой лимит, ничего не измерив, и печатал вердикт
+   * «Атака и Защита в бой не входят» — про механику, которая работала.
+   *
+   * Хуже отсутствующего прибора только уверенно врущий, поэтому дальше
+   * это ловит `npm run check`, а не чтение вывода глазами.
+   */
+  describe('§11.3 — бой ведёт тот, кто его начал', () => {
+    /** Вылазка с единственным противником вплотную: бой завяжется сразу. */
+    const duel = () => {
+      const raid = createRaid({ seed: 5, tier: 1, kitchenLevel: 3, storageLevel: 2 });
+      const enemy = raid.loc.enemies[0];
+      assert.ok(enemy !== undefined, 'ярус 1 без противников — правило не о том');
+      raid.loc.enemies.length = 1;
+      enemy.x = raid.hero.x + 0.5;
+      enemy.z = raid.hero.z;
+      enemy.prevX = enemy.x;
+      enemy.prevZ = enemy.z;
+      enemy.awake = true;
+      return { raid, enemy };
+    };
+
+    test('ведомый бой кончается падением одной из сторон', () => {
+      const { raid, enemy } = duel();
+      for (let i = 0; i < 4000 && raid.status === 'running'; i++) {
+        if (inBattle(raid)) {
+          // Отклонённое решение кончается ожиданием, а не повтором: иначе
+          // очередь стоит и бой не кончается по другой причине.
+          if (!commandBattle(raid, botBattlePlan(raid, POLICIES.greedy))) {
+            commandBattle(raid, { kind: 'wait' });
+          }
+        }
+        stepRaid(raid, TICK, false, 5);
+        if (!inBattle(raid) && (enemy.hp <= 0 || raid.hero.hp <= 0)) break;
+      }
+      assert.equal(inBattle(raid), false, 'бой не кончился: очередь встала');
+      assert.ok(
+        enemy.hp <= 0 || raid.hero.hp <= 0,
+        'бой кончился, но никто не пал — значит мерили не бой',
+      );
+    });
+
+    test('неведомый бой стоит на месте, а не идёт сам', () => {
+      // Вторая половина того же правила, и она важнее первой. Прибор,
+      // забывший ход героя, обязан выглядеть зависшим — тогда его чинят.
+      // Если бы такой бой как-то доигрывался сам, поломка выше осталась бы
+      // невидимой ровно так же, как была.
+      const { raid, enemy } = duel();
+      const hp = enemy.hp;
+      for (let i = 0; i < 2000 && raid.status === 'running'; i++) stepRaid(raid, TICK, false, 5);
+      assert.equal(inBattle(raid), true, 'бой доигрался без единого решения героя');
+      assert.equal(raid.battle?.round, 1, 'раунд сдвинулся, хотя герой не ходил');
+      assert.equal(enemy.hp, hp, 'стойкость упала без единого удара героя');
+    });
   });
 
   test('добыча доезжает до лагеря', () => {
