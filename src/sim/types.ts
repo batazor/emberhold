@@ -279,6 +279,8 @@ export interface RaidState {
   woundsTaken: number;
   /** Стычек за вылазку: считается вход в контакт, а не удар. */
   fights: number;
+  /** §11.7 — сколько бойцов суммарно втянулось в бои за вылазку. */
+  joined: number;
   /** Противников, упавших за вылазку. */
   kills: number;
   /**

@@ -260,6 +260,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     lastWoundFrom: null,
     woundsTaken: 0,
     fights: 0,
+    joined: 0,
     kills: 0,
     evacOpen: opts.evacOpen ?? true,
     // §14.3 — колчан наполняется на выходе, из лагерного запаса и не выше
@@ -794,6 +795,11 @@ function reelect(state: RaidState): boolean {
  * генератором с нуля, и два счётчика не должны столкнуться.
  */
 const unitOf = (f: Fighter): number => -1 - f.id;
+
+/** Кто на поле стоит за этим бойцом. С отрядом «свой» перестал означать
+ *  «ведущий», и спрашивать колчан у ведущего стало ошибкой. */
+const fighterOf = (state: RaidState, unit: BattleUnit): Fighter | undefined =>
+  state.party.find((f) => unitOf(f) === unit.id);
 const HERO_UNIT = -1;
 
 /**
@@ -855,6 +861,10 @@ function openBattle(state: RaidState): void {
   spend(state, FOOD_COST.fight);
   state.fights += 1;
   state.paidRound = 1;
+  // §11.7 — сколько бойцов успело втянуться. Прибор спрашивает этим: если
+  // всегда трое, правило «только ближние» — украшение; если всегда один,
+  // цепочка слишком длинная.
+  state.joined += joining.length;
   state.path = [];
   state.events.push('Бой');
 }
@@ -993,7 +1003,7 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
   for (const e of battle.events) state.events.push(e);
 
   // Стрелок тратит стрелу за выстрел — там же, где раньше (§14.3).
-  const shot = state.party.find((f) => f.id === -unit.id - 1) ?? state.hero;
+  const shot = fighterOf(state, unit) ?? state.hero;
   if (action.kind === 'attack' && unit.side === 'hero' && unit.ranged && shot.arrows > 0) {
     shot.arrows -= 1;
     state.arrows = shot.arrows;
@@ -1018,9 +1028,10 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
  */
 function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): number {
   if (from.side === 'hero') {
-    // Пустой колчан бьёт слабее (§14.3). Проверка по стрелам остаётся общей,
-    // пока боец один; с отрядом колчан переедет к бойцу вместе с остальным.
-    const dry = state.hero.loadout.ranged && state.hero.arrows <= 0;
+    // Пустой колчан бьёт слабее (§14.3) — и колчан того, кто бьёт, а не
+    // ведущего: с отрядом «свой» перестал означать «единственный».
+    const f = fighterOf(state, from);
+    const dry = f !== undefined && f.loadout.ranged && f.arrows <= 0;
     return from.attack * (dry ? RANGED_MELEE_PENALTY : 1);
   }
   // Защита берётся у того, кого бьют, а не у стороны: трое бойцов держат
@@ -1117,6 +1128,9 @@ export interface RaidResult {
   /** §11.7 — сколько бойцов вернулось на ногах. Провал — это ноль, а не
    *  «ведущий пал»: остальные идут дальше меньшим числом. */
   readonly standing: number;
+  /** §11.7 — бойцов, втянутых в бои. Делённое на стычки даёт средний
+   *  размер боя: правило «только ближние» этим и проверяется. */
+  readonly joined: number;
   /** §14.3 — колчан обязан пустеть не всегда и не никогда; это меряется. */
   readonly arrowsSpent: number;
   readonly arrowsLeft: number;
@@ -1184,6 +1198,7 @@ export function raidResult(state: RaidState): RaidResult {
     kills: state.kills,
     lastHitBy: raidCause(state) === 'combat' ? state.lastHitBy : null,
     standing: standing(state).length,
+    joined: state.joined,
     arrowsSpent: state.arrowsSpent,
     arrowsLeft: state.arrows,
     dryFights: state.dryFights,
