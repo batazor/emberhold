@@ -52,7 +52,7 @@ export const ROAD_SCALE = CASTLE_CELL / ROAD_SPAN;
  * и ложится **поверх** плиты соседа; `lift` разводит их по высоте,
  * чтобы плита не мерцала о плиту.
  */
-const ROAD_TILES: Record<RoadFamily, Record<RoadTile, { model: PropModelName; turn: number; anchor: number; lift: number }>> = {
+export const ROAD_TILES: Record<RoadFamily, Record<RoadTile, { model: PropModelName; turn: number; anchor: number; lift: number }>> = {
   'камень': {
     'прямая': { model: 'Road_stone_1', turn: 0, anchor: -3, lift: 0 },
     'поворот': { model: 'Road_stone_2', turn: 1, anchor: -4.5, lift: 0.008 },

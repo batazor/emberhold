@@ -2877,7 +2877,7 @@ function writeCatalog(
 ): string {
   return JSON.stringify({
     pack: pack.title,
-    license: 'CC0',
+    license: pack.license ?? 'CC0',
     // Атласов может быть несколько: у персонажей своя картинка на каждого,
     // и страница обязана показывать их числом, а не одним «атлас 1024×1024».
     atlases: atlases.map((a) => ({ file: a.name, width: a.image.width, height: a.image.height })),
