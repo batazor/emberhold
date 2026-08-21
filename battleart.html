@@ -1,0 +1,412 @@
+<meta charset="utf-8">
+<title>Поле боя</title>
+<style>
+  :root{
+    --ground:#E6E4DE; --surface:#F5F3EE; --surface-2:#DEDBD2; --line:#C7C2B6;
+    --text:#1A1712; --dim:#5C564B; --brass:#8A6A12; --ember:#A8501E; --moss:#4C6B3A; --blood:#8E3838;
+    --shadow:0 16px 36px -20px rgba(20,18,12,.4);
+    --ff-display:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --ff-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --ff-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+      --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+      --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14120E; --surface:#1F1C16; --surface-2:#2A261E; --line:#3A352B;
+    --text:#EAE5DA; --dim:#9A9285; --brass:#D3A93A; --ember:#D2662F; --moss:#8AAE6A; --blood:#C36565;
+    --shadow:0 16px 36px -20px rgba(0,0,0,.7);
+  }
+  body{background:var(--ground);color:var(--text);font-family:var(--ff-ui);line-height:1.55;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:56px 24px 96px;display:flex;flex-direction:column;gap:64px;}
+  .eyebrow{font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  h1{font-family:var(--ff-display);font-weight:400;font-size:clamp(34px,6vw,52px);line-height:1.05;
+    margin:10px 0 0;letter-spacing:-.01em;text-wrap:balance;}
+  h1 em{font-style:italic;color:var(--brass);}
+  .lede{max-width:64ch;color:var(--dim);font-size:16px;margin:14px 0 0;}
+  .lede b{color:var(--text);font-weight:600;}
+  h2{font-family:var(--ff-display);font-weight:400;font-size:29px;margin:0;letter-spacing:-.01em;}
+  .sec{display:flex;flex-direction:column;gap:22px;}
+  .sec>p{margin:0;max-width:66ch;color:var(--dim);font-size:15px;}
+  .sec>p b{color:var(--text);font-weight:600;}
+  .hd{display:flex;flex-direction:column;gap:7px;}
+  canvas{display:block;}
+  code{font-family:var(--ff-mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;}
+  .note{font-family:var(--ff-mono);font-size:11px;color:var(--dim);margin:0;}
+  .fail{color:var(--blood);}
+
+  button{font-family:var(--ff-ui);font-size:13px;padding:6px 12px;border:1px solid var(--brass);
+    background:transparent;color:var(--brass);cursor:pointer;border-radius:4px;}
+  button:hover{background:var(--brass);color:var(--ground);}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:3px;}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  th{font-family:var(--ff-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:600;}
+  td.mono{font-family:var(--ff-mono);font-size:12px;}
+  td.num{font-family:var(--ff-mono);font-variant-numeric:tabular-nums;text-align:right;}
+  .scroll{overflow-x:auto;}
+
+  /* ---------- поле боя ---------- */
+  .board{background:#17150F;border:1px solid var(--line);box-shadow:var(--shadow);
+    padding:18px;display:flex;flex-direction:column;gap:12px;align-items:center;}
+  .board canvas{max-width:100%;height:auto;touch-action:none;cursor:crosshair;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;
+    font-family:var(--ff-mono);font-size:11px;color:#9A9285;}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;
+    vertical-align:-1px;}
+  .tools{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
+  .tools button{font-size:12px;padding:5px 10px;}
+  .tools button[aria-pressed="true"]{background:var(--brass);color:var(--ground);}
+  .readout{font-family:var(--ff-mono);font-size:12px;color:#9A9285;text-align:center;min-height:2.6em;}
+  .readout b{color:#EAE5DA;font-weight:600;}
+</style>
+
+<div class="wrap">
+  <header class="hd">
+    <p class="eyebrow">Emberhold · артбук</p>
+    <h1>Поле <em>боя</em></h1>
+    <p class="lede">Мир исследуется в реальном времени. Контакт останавливает время и открывает
+      решётку: дальше ходят по очереди. Эта страница <b>считает решётку живым кодом игры</b> —
+      те же функции, которыми поле проверяет ход, и те же цвета, которыми его рисует вылазка.
+      Разойтись с игрой она не может: расходиться нечему.</p>
+    <p class="note" id="fail"></p>
+  </header>
+
+  <section class="sec">
+    <h2>Решётка кладётся поверх местности</h2>
+    <p>Мир квадратный: путь, обзор и «путь назад» считаются по клеткам. Второй топологии он
+      не переживёт — две сетки означают два поиска пути, две функции расстояния и стену, которая
+      в одном режиме есть, а в другом нет. Поэтому <b>центр гекса лежит в мировых координатах</b>,
+      а проходимость читается из той же сетки.</p>
+    <div class="scroll"><table id="t-geom"></table></div>
+    <p class="note">Числа посчитаны на этой странице вызовом <code>hexToWorld</code> и
+      <code>hexDistance</code> из <code>src/sim/hex.ts</code>.</p>
+  </section>
+
+  <section class="sec">
+    <h2>Почему шестиугольник</h2>
+    <p>У шестиугольника <b>все шесть соседей равноудалены</b>, и «дотянулся или нет» перестаёт
+      зависеть от того, стоит ли противник по диагонали. На квадратной сетке восемь соседей,
+      и четыре из них дальше остальных в полтора раза. В бою, где ход стоит хода, это разница
+      между правилом и спором.</p>
+    <div class="scroll"><table id="t-neigh"></table></div>
+  </section>
+
+  <section class="sec">
+    <h2>Поле</h2>
+    <p>Тапните по полю. <b>Кисть выбирается кнопками:</b> поставить камень, передвинуть героя,
+      передвинуть противника. Подсветка считается теми же <code>moves</code> и
+      <code>targets</code>, которыми поле применит ход, — показать досягаемость, отличную
+      от настоящей, эта страница физически не может.</p>
+    <div class="board">
+      <div class="tools" id="tools"></div>
+      <canvas id="board" width="720" height="440"></canvas>
+      <div class="legend" id="legend"></div>
+      <p class="readout" id="readout"></p>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>Ход</h2>
+    <p>Ход — это одно перемещение и одно действие, в любом порядке. Число гексов
+      <b>выводится из скорости мира</b>, а не назначается: курс обмена один на всех, поэтому
+      скорости §17.4 в бою и вне боя означают одно и то же.</p>
+    <div class="scroll"><table id="t-move"></table></div>
+  </section>
+
+  <section class="sec">
+    <h2>Очередь</h2>
+    <p><b>Герой открывает раунд</b>, противники ходят между собой по Скорости. Правило «быстрый
+      ходит раньше» для всех выглядело честнее и было отменено замером: скелет быстрее героя,
+      и на нулевом ярусе двое убивали его за два раунда — 0% успеха там, где §15 обещает
+      «учит, что бой дёшев». Довод тот же, что §17.3 приводит про замах.</p>
+    <div class="scroll"><table id="t-init"></table></div>
+  </section>
+
+  <section class="sec">
+    <h2>Три цвета и ни одного нового</h2>
+    <p>Сетка показывает три вещи и не показывает больше ничего. Цвета взяты из тех, что игра
+      уже знает: расчерчивать местность новым словарём — значит просить игрока выучить его
+      посреди боя.</p>
+    <div class="guard" id="g-colors"></div>
+  </section>
+
+  <section class="sec">
+    <h2>Что решено и чем заплачено</h2>
+    <div class="guard">
+      <div class="key">
+        <h3>Одна геометрия на два режима</h3>
+        <p>Стена мира — это стена и в бою. Проверяется тестом, а не подразумевается:
+          <b>гекс на занятой клетке непроходим</b>.</p>
+      </div>
+      <div class="key">
+        <h3>Ближний бой — это соседство</h3>
+        <p>В мире досягаемость мерилась долями клетки: топор воина 1,5 против геройской 1,0.
+          На решётке «в полутора гексах» не встать, и разница <b>уходит в Атаку</b>.</p>
+      </div>
+      <div class="key">
+        <h3>Из боя можно выйти</h3>
+        <p>§15 строит роли врагов на выборе «обойти или пробиться». Без отрыва второй вариант
+          исчезает: замер показал <b>2,86 раны из трёх</b> за вылазку.</p>
+      </div>
+      <div class="warn">
+        <h3>Чем заплачено</h3>
+        <p>Вылазка длиннее ровно на бои, и число «1,5–3 минуты» из §0 <b>помечено черновым</b>.
+          Держать его, не измерив, значило бы притворяться, что смена формы боя ничего
+          не стоила.</p>
+      </div>
+      <div class="warn">
+        <h3>Что не сошлось</h3>
+        <p>Провалы почти целиком боевые, а §11.3 требует обратного. Причина не в числах:
+          пошаговый бой <b>убрал голодную смерть как исход</b> — вылазка кончается боем
+          раньше, чем провиантом.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+const fail = (msg) => { document.getElementById('fail').innerHTML = '<span class="fail">' + msg + '</span>'; };
+
+let hex, battle, ENEMY_STATS, PALETTE;
+try{
+  // Решётка, правила хода и палитра приходят из самой игры. Второй копии
+  // геометрии здесь нет намеренно: страница про то, что игрок видит настоящую
+  // досягаемость, а не её пересказ.
+  hex = await import('/src/sim/hex.ts');
+  battle = await import('/src/sim/battle.ts');
+  ({ ENEMY_STATS } = await import('/src/sim/enemies.ts'));
+  ({ PALETTE } = await import('/src/render/palette.ts'));
+}catch(e){
+  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /battleart.html. ' + e);
+  throw e;
+}
+
+const { HEX_R, HEX_DIRS, hexToWorld, worldToHex, hexDistance, hexKey, hexNeighbors } = hex;
+const { movePerTurn, reachInHexes, initiative, createBattle, moves, targets, current } = battle;
+const hx = (n) => '#' + n.toString(16).padStart(6, '0');
+const dec = (n, k = 3) => n.toFixed(k).replace('.', ',');
+
+/* ---------- таблица геометрии ---------- */
+{
+  const c = hexToWorld({ q: 0, r: 0 });
+  const rows = HEX_DIRS.map((d, i) => {
+    const w = hexToWorld(d);
+    return [`сосед ${i + 1}`, `${d.q}, ${d.r}`, dec(Math.hypot(w.x - c.x, w.z - c.z)), hexDistance({q:0,r:0}, d)];
+  });
+  document.getElementById('t-geom').innerHTML =
+    '<tr><th>Что</th><th>Осевые</th><th>Мировое расстояние</th><th>Шагов</th></tr>' +
+    rows.map((r) => `<tr><td>${r[0]}</td><td class="mono">${r[1]}</td><td class="num">${r[2]}</td><td class="num">${r[3]}</td></tr>`).join('') +
+    `<tr><td><b>радиус гекса</b></td><td class="mono">HEX_R</td><td class="num">${dec(HEX_R)}</td><td class="num">—</td></tr>`;
+}
+
+/* ---------- гекс против квадрата ---------- */
+{
+  const c = hexToWorld({ q: 0, r: 0 });
+  const hexD = HEX_DIRS.map((d) => { const w = hexToWorld(d); return Math.hypot(w.x - c.x, w.z - c.z); });
+  const sq = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
+  const spread = (xs) => `${dec(Math.min(...xs), 2)} … ${dec(Math.max(...xs), 2)}`;
+  document.getElementById('t-neigh').innerHTML =
+    '<tr><th>Решётка</th><th>Соседей</th><th>Расстояние до соседа</th><th>Разброс</th></tr>' +
+    `<tr><td>гекс</td><td class="num">6</td><td class="num">${spread(hexD)}</td><td class="num">${dec(Math.max(...hexD)/Math.min(...hexD), 2)}×</td></tr>` +
+    `<tr><td>квадрат, восьмисвязный</td><td class="num">8</td><td class="num">${spread(sq)}</td><td class="num">${dec(Math.SQRT2, 2)}×</td></tr>`;
+}
+
+/* ---------- ход из скорости ---------- */
+{
+  const rows = [['Герой', 1.67, 1.0, false]];
+  for (const k of Object.keys(ENEMY_STATS)) {
+    const s = ENEMY_STATS[k];
+    rows.push([s.name, s.speed, s.reach, s.ranged]);
+  }
+  document.getElementById('t-move').innerHTML =
+    '<tr><th>Кто</th><th>Скорость мира</th><th>Гексов за ход</th><th>Досягаемость</th></tr>' +
+    rows.map(([n, sp, re, ra]) =>
+      `<tr><td>${n}</td><td class="num">${dec(sp, 2)}</td><td class="num">${movePerTurn(sp)}</td>` +
+      `<td class="num">${reachInHexes(ra ? re : 1, ra)}${ra ? ' (выстрел)' : ''}</td></tr>`).join('');
+}
+
+/* ---------- очередь ---------- */
+{
+  const units = [{ side: 'hero' }, { side: 'enemy' }, { side: 'enemy' }, { side: 'enemy' }];
+  const speeds = [1.67, ENEMY_STATS.minion.speed, ENEMY_STATS.warrior.speed, ENEMY_STATS.mage.speed];
+  const names = ['Герой', ENEMY_STATS.minion.name, ENEMY_STATS.warrior.name, ENEMY_STATS.mage.name];
+  const order = initiative(units, speeds);
+  document.getElementById('t-init').innerHTML =
+    '<tr><th>Очередь</th><th>Кто</th><th>Скорость</th></tr>' +
+    order.map((i, n) => `<tr><td class="num">${n + 1}</td><td>${names[i]}</td><td class="num">${dec(speeds[i], 2)}</td></tr>`).join('');
+}
+
+/* ---------- цвета ---------- */
+{
+  const roles = [
+    ['Куда дойду', PALETTE.siteOk, 'Тот же цвет, которым лагерь говорит «здесь встанет» (§20.4).'],
+    ['Где стою', PALETTE.torch, 'Свет фонаря: это про героя, а не про землю.'],
+    ['Кого достану', PALETTE.telegraph, 'Цвет замаха (§17.3). Красное в игре значит «удар».'],
+  ];
+  document.getElementById('g-colors').innerHTML = roles.map(([n, c, why]) =>
+    `<div class="key"><h3><i style="display:inline-block;width:11px;height:11px;border-radius:2px;background:${hx(c)};margin-right:7px;vertical-align:-1px"></i>${n}</h3>` +
+    `<p>${why}<br><span class="note">${hx(c)}</span></p></div>`).join('');
+}
+
+/* ---------- интерактивное поле ---------- */
+const N = 26;
+const blocked = new Uint8Array(N * N);
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const readout = document.getElementById('readout');
+
+/** Мир→экран: гекс-радиус в пикселях и сдвиг к центру холста. */
+const PX = 26;
+const toScreen = (w) => ({ x: canvas.width / 2 + (w.x - 13) * PX, y: canvas.height / 2 + (w.z - 13) * PX });
+
+let hero = { q: 8, r: 6 };
+let foes = [{ id: 0, kind: 'warrior', hex: { q: 12, r: 6 } }, { id: 1, kind: 'mage', hex: { q: 14, r: 3 } }];
+let brush = 'stone';
+let hover = null;
+
+/** Состояние боя строится настоящим createBattle: досягаемость обязана
+ *  считаться теми же правилами, которыми поле применит ход. */
+function build() {
+  const w = hexToWorld(hero);
+  return createBattle(N, blocked, { x: w.x, z: w.z, wounds: 3, speed: 1.67, reach: 1, ranged: false },
+    foes.map((f) => { const fw = hexToWorld(f.hex); return { id: f.id, kind: f.kind, x: fw.x, z: fw.z, hp: ENEMY_STATS[f.kind].hp }; }));
+}
+
+function ring(center, scale) {
+  const p = toScreen(center);
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i;
+    const x = p.x + HEX_R * scale * PX * Math.cos(a);
+    const y = p.y + HEX_R * scale * PX * Math.sin(a);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function draw() {
+  const state = build();
+  const unit = current(state);
+  const reach = moves(state, N, blocked, unit);
+  const hit = targets(state, N, blocked, unit);
+  const hitKeys = new Set(hit.map((u) => hexKey(u.hex)));
+
+  ctx.fillStyle = '#17150F';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Вся решётка бледно — на артбуке она уместна, в игре нет: там расчерчивать
+  // всю локацию значило бы разметить местность, которую игрок изучал глазами.
+  for (let q = 0; q < 20; q++) {
+    for (let r = -6; r < 16; r++) {
+      const h = { q, r };
+      const w = hexToWorld(h);
+      const p = toScreen(w);
+      if (p.x < -20 || p.x > canvas.width + 20 || p.y < -20 || p.y > canvas.height + 20) continue;
+      const open = hex.hexOpen(N, blocked, h);
+      ring(w, 0.92);
+      ctx.fillStyle = open ? 'rgba(255,255,255,0.02)' : '#3A352B';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  for (const [, spot] of reach) {
+    ring(hexToWorld(spot.hex), 0.92);
+    ctx.strokeStyle = hx(PALETTE.siteOk);
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  for (const k of hitKeys) {
+    const f = foes.find((x) => hexKey(x.hex) === k);
+    if (f === undefined) continue;
+    ring(hexToWorld(f.hex), 0.78);
+    ctx.strokeStyle = hx(PALETTE.telegraph);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ring(hexToWorld(hero), 0.78);
+  ctx.strokeStyle = hx(PALETTE.torch);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const dot = (h, color, label) => {
+    const p = toScreen(hexToWorld(h));
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.fillStyle = '#17150F';
+    ctx.font = '600 10px ui-monospace,monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, p.x, p.y);
+  };
+  dot(hero, hx(PALETTE.torch), 'Г');
+  for (const f of foes) dot(f.hex, hx(PALETTE.heroCloak), f.kind === 'mage' ? 'М' : f.kind === 'warrior' ? 'В' : 'С');
+
+  if (hover !== null) {
+    const spot = reach.get(hexKey(hover));
+    const d = hexDistance(hero, hover);
+    const seen = hex.hexSight(N, blocked, hero, hover);
+    readout.innerHTML =
+      `гекс <b>${hover.q}, ${hover.r}</b> · расстояние <b>${d}</b> · ` +
+      (spot !== undefined ? `дойду за <b>${spot.steps}</b>` : '<b>не дойду</b>') +
+      ` · линия ${seen ? '<b>есть</b>' : '<b>перекрыта</b>'}`;
+  } else {
+    readout.innerHTML = `ход героя: <b>${unit.move}</b> гексов · достаёт <b>${hit.length}</b>`;
+  }
+}
+
+const pick = (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const sx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const sy = (e.clientY - rect.top) * (canvas.height / rect.height);
+  return worldToHex((sx - canvas.width / 2) / PX + 13, (sy - canvas.height / 2) / PX + 13);
+};
+
+canvas.addEventListener('pointermove', (e) => { hover = pick(e); draw(); });
+canvas.addEventListener('pointerleave', () => { hover = null; draw(); });
+canvas.addEventListener('pointerdown', (e) => {
+  const h = pick(e);
+  if (brush === 'stone') {
+    const w = hexToWorld(h);
+    const i = Math.round(w.z) * N + Math.round(w.x);
+    if (i >= 0 && i < N * N) blocked[i] = blocked[i] ? 0 : 1;
+  } else if (brush === 'hero') {
+    if (hex.hexOpen(N, blocked, h)) hero = h;
+  } else {
+    const f = foes.find((x) => hexKey(x.hex) === hexKey(h));
+    if (f !== undefined) foes = foes.filter((x) => x !== f);
+    else if (hex.hexOpen(N, blocked, h)) foes = [...foes, { id: foes.length + 10, kind: brush, hex: h }];
+  }
+  draw();
+});
+
+const TOOLS = [['stone', 'Камень'], ['hero', 'Герой'], ['warrior', 'Воин'], ['mage', 'Маг']];
+document.getElementById('tools').innerHTML = TOOLS.map(([id, n]) =>
+  `<button type="button" data-b="${id}" aria-pressed="${id === brush}">${n}</button>`).join('');
+document.getElementById('tools').addEventListener('click', (e) => {
+  const b = e.target.dataset?.b;
+  if (b === undefined) return;
+  brush = b;
+  for (const el of document.querySelectorAll('#tools button')) el.setAttribute('aria-pressed', String(el.dataset.b === b));
+});
+
+document.getElementById('legend').innerHTML = [
+  ['Куда дойду', PALETTE.siteOk], ['Где стою', PALETTE.torch], ['Кого достану', PALETTE.telegraph],
+].map(([n, c]) => `<span><i style="background:${hx(c)}"></i>${n}</span>`).join('') +
+  '<span><i style="background:#3A352B"></i>камень</span>';
+
+draw();
+</script>
