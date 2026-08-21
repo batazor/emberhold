@@ -39,14 +39,13 @@ import { backCost, backSteps, createRaid, stepRaid, useSkill } from './raid';
 import { load, save, wipe } from './save';
 
 describe('Отряд', () => {
-  test('§11.8 — второй герой на Жилье ур. 2, третий на ур. 4', () => {
+  test('§11.8 — Жильё никого не открывает: люди приходят встречами', () => {
     const roster = createRoster();
     assert.equal(roster.heroes.length, 1, 'на старте герой один');
-    assert.equal(syncRoster(roster, 1), null, 'Жильё ур. 1 никого не открывает');
-    assert.equal(syncRoster(roster, 2), 'archer', 'ур. 2 — второй класс');
-    assert.equal(syncRoster(roster, 3), null, 'ур. 3 не открывает третьего');
-    assert.equal(syncRoster(roster, 4), 'rogue', 'ур. 4 — третий класс');
-    assert.equal(syncRoster(roster, 6), null, 'больше трёх героев не бывает');
+    for (const hq of [1, 2, 3, 4, 6]) {
+      assert.equal(syncRoster(roster, hq), null, `Жильё ур. ${hq} не добавляет никого`);
+    }
+    assert.equal(roster.heroes.length, 1, 'отряд растёт людьми, а не порогами');
   });
 
   test('§11.8 — лечение 6 минут за рану, максимум 18', () => {
@@ -57,7 +56,7 @@ describe('Отряд', () => {
 
   test('§3 — вернувшийся герой занят лечением, и это создаёт ротацию', () => {
     const roster = createRoster();
-    syncRoster(roster, 2);
+    roster.heroes.push(createHero('archer', 1));
     const [first, second] = roster.heroes as [HeroState, HeroState];
     first.wounds = 2;
     assert.equal(startHealing(first, 1000), true);
@@ -73,8 +72,8 @@ describe('Отряд', () => {
 
   test('§11.8 — тренировка догоняет, но не обгоняет', () => {
     const roster = createRoster();
-    syncRoster(roster, 2);
-    syncRoster(roster, 4);
+    roster.heroes.push(createHero('archer', 1));
+    roster.heroes.push(createHero('rogue', 2));
     const [first, second, third] = roster.heroes as [HeroState, HeroState, HeroState];
     first.level = 5;
     assert.equal(trainCap(roster), 3, 'потолок — на два ниже лучшего');
@@ -289,7 +288,7 @@ describe('Отряд', () => {
     const camp = createCamp();
     camp.levels.hq = 2;
     const roster = createRoster();
-    syncRoster(roster, camp.levels.hq);
+    roster.heroes.push(createHero('archer', 1));
     roster.heroes[1]!.level = 3;
     roster.heroes[0]!.wounds = 2;
     startHealing(roster.heroes[0]!, 500);
