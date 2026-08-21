@@ -82,7 +82,7 @@ export class Hud {
           <button data-act="zoom-in" data-row="controls">＋</button>
           <button data-act="zoom-out" data-row="controls">－</button>
           <button data-act="skill" id="h-skill" data-row="controls">Умение</button>
-          <button data-act="evac" data-row="evac">К эвакуации</button>
+          <button data-act="evac" data-row="evac">Домой</button>
         </div>
       </div>`;
     parent.appendChild(this.root);
