@@ -21,7 +21,7 @@ import { adventurerGeometry } from './adventurers';
 import { HERO_MODELS, buildingGeometry, enemyGeometry, heroGeometry, stageOf } from './models';
 import { dwellerParts } from './models';
 import { DWELLER_LOOKS, type DwellerLook } from '../sim/garrison';
-import { FOLK_SLOTS } from './folk.data';
+import { FOLK_MODELS, FOLK_SLOTS } from './folk.data';
 import { FOREST_SLOTS } from './forest.data';
 import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
 import { CASTLE_SCALE, castleGeometry } from './castle';
@@ -271,6 +271,50 @@ describe('Артбук: бюджет треугольников', () => {
     assert.deepEqual([...FOLK_SLOTS], [...FOLK_SLOT_ORDER]);
     for (const name of FOLK_SLOTS) {
       assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  /**
+   * Обход граней у своих моделей. Проверка не про красоту, а про то, что
+   * не видно нигде, кроме игры: **Блендер рисует двусторонне, а игра лицевую
+   * сторону**, и вывернутая деталь исчезает — сквозь неё видно нутро модели.
+   * Ловилось это трижды глазом и трижды было принято за другое: за щель
+   * в оболочке, за неудачный цвет, за кривой силуэт.
+   *
+   * Мерка — согласованность, а не объём: внутреннее ребро правильной сетки
+   * пройдено дважды и в противоположных направлениях. Объём знает только
+   * замкнутая оболочка, а запекание дробит вершины по слотам, и половина
+   * кусков перестаёт быть замкнутой.
+   *
+   * Причин вывернутости было две, и обе тихие: зеркальный вызов, у которого
+   * минимум оказывался больше максимума, и фаска толще половины детали —
+   * на борте кафтана она съедала его целиком. Обе закрыты в `build.py`,
+   * и обе вернутся молча, если эту проверку убрать.
+   */
+  test('у своих моделей все грани смотрят наружу', () => {
+    for (const [name, model] of Object.entries(FOLK_MODELS)) {
+      const idx = new Uint16Array(Buffer.from(model.idx, 'base64').buffer.slice(0));
+      const pos = new Int16Array(Buffer.from(model.pos, 'base64').buffer.slice(0));
+      const key = (v: number): string => `${pos[v * 3]},${pos[v * 3 + 1]},${pos[v * 3 + 2]}`;
+      const dir = new Map<string, number>();
+      for (let t = 0; t < idx.length / 3; t++) {
+        const v = [idx[t * 3]!, idx[t * 3 + 1]!, idx[t * 3 + 2]!].map(key);
+        for (let i = 0; i < 3; i++) {
+          const a = v[i]!;
+          const b = v[(i + 1) % 3]!;
+          const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+          dir.set(k, (dir.get(k) ?? 0) + (a < b ? 1 : -1));
+        }
+      }
+      let clash = 0;
+      let border = 0;
+      for (const n of dir.values()) {
+        if (n === 0) continue;
+        if (Math.abs(n) === 1) border++;
+        else clash++;
+      }
+      assert.equal(clash, 0, `${name}: ${clash} рёбер пройдены дважды в одну сторону`);
+      assert.equal(border, 0, `${name}: ${border} рёбер без пары — оболочка не замкнута`);
     }
   });
 

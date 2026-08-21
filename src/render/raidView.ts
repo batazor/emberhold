@@ -852,7 +852,10 @@ export class RaidView {
       view.rig.root.position.set(man.x, 0, man.z);
       view.facing = RaidView.turnTo(view.facing, man.facing, dt);
       view.rig.root.rotation.y = view.facing;
-      view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+      // Рыцарь то идёт, то стоит: клип берётся у симуляции, а не назначается
+      // раз навсегда. Стоящий с клипом ходьбы шаркал бы на месте.
+      if (man.walking) view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+      else view.rig.play('покой', 1);
     }
 
     // Жильцы идут на тех же часах, что и гарнизон: одна локация — одно время,
