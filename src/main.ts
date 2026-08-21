@@ -60,6 +60,15 @@ import {
   UPGRADE_WOOD,
   siteBlock,
 } from './sim/prologue';
+import {
+  aimChop,
+  chopBlock,
+  chopProgress,
+  isEdge,
+  stepChop,
+  treeAt,
+} from './sim/logging';
+import type { Chop, ChopBlock } from './sim/logging';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
@@ -178,6 +187,36 @@ let restAcc = 0;
 let upgraded = false;
 /** Герой отдыхает у лагеря: провиант кончился и ещё не набран. */
 let resting = false;
+/**
+ * Начатая рубка (§13.3): какое дерево валят и сколько осталось. Живёт здесь,
+ * а не в `RaidState`, по той же причине, что и выбор места под здание: шаг
+ * вылазки обязан оставаться тем же самым и в замере, и у бота, где топора
+ * нет вовсе.
+ */
+let chop: Chop | null = null;
+
+/**
+ * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
+ * гаснет сама через 2,5 секунды и возвращает прежнюю — тот же канал, что
+ * у «Рюкзак полон — контейнер не вскрыт» (`raid.ts`). Копится до шага,
+ * потому что события вылазки чистятся в начале каждого тика, а тап
+ * приходит между тиками.
+ */
+let sayNext: string | null = null;
+const say = (text: string): void => {
+  sayNext = text;
+};
+
+/** Почему рубить нельзя — словами игрока. Отказ обязан называть причину:
+ *  молчащий отказ читается как поломка (§16.1). */
+const CHOP_DENY: Record<ChopBlock, string> = {
+  ok: '',
+  'no-forest': 'Здесь не лес — рубить нечего',
+  'no-tree': 'Дерева здесь больше нет',
+  far: 'К этому дереву не подойти',
+  bag: 'Рюкзак полон — дерево некуда класть',
+};
+
 /** Что сейчас написано в строке подсказки пролога. Сравнение затем, чтобы
  *  не переписывать одну и ту же строку шестьдесят раз в секунду. */
 let gladeHint = '';
@@ -729,6 +768,7 @@ function toRaid(node: number): boolean {
   const place = regionAt(day).nodes[node];
   leaveTitle();
   inGlade = false;
+  chop = null;
   campPrompt.setVisible(false);
   // Регион пересобрался, пока панель была открыта, — идти некуда.
   if (place === undefined) {
@@ -811,6 +851,7 @@ function toRaid(node: number): boolean {
  */
 function toCastle(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
+  chop = null;
   const site = generateCastleSite(seed);
   raidNode = node;
   // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
@@ -943,6 +984,63 @@ function tryPlace(cell: Cell): void {
   startPlacing(next);
 }
 
+/* ---------- вырубка (§13.3) ---------- */
+
+/** Бросить топор: игрок ушёл или дерева не стало. */
+function stopChopping(): void {
+  chop = null;
+  raidView?.hideChop();
+}
+
+/**
+ * Тап по дереву. Отказ здесь бывает только один — полный рюкзак: «далеко»
+ * не отказ, а дорога, и её герой проходит сам.
+ */
+function startChopping(cell: Cell): void {
+  if (raid === null) return;
+  const block = chopBlock(raid, cell);
+  if (block !== 'ok' && block !== 'far') {
+    play('deny');
+    say(CHOP_DENY[block]);
+    return;
+  }
+  chop = aimChop(raid, cell);
+  raidView?.showMarker(cell.x, cell.z);
+}
+
+/**
+ * Тик работы. Звук замаха играется здесь, а падение слышно ухом вылазки
+ * (`raidAudio`): оно и так озвучивает прибавку в рюкзаке, и второй звук
+ * на то же событие нарушил бы §18.1.
+ */
+function stepChopping(dt: number): void {
+  if (raid === null || chop === null) return;
+  const step = stepChop(raid, chop, dt);
+  if (step.stopped !== null) {
+    play('deny');
+    say(CHOP_DENY[step.stopped]);
+    stopChopping();
+    return;
+  }
+  // Пока герой в дороге, работы ещё нет: пятно под деревом врало бы о том,
+  // что топор уже стучит.
+  if (raid.path.length > 0) {
+    raidView?.hideChop();
+    return;
+  }
+  raidView?.showChop(chop.cell.x, chop.cell.z, chopProgress(chop));
+  if (step.swing) {
+    play('build');
+    raidView?.hitTree(chop.cell.x, chop.cell.z);
+  }
+  if (step.felled) {
+    // Кромка не открывается никогда (§12.1), и на месте упавшего дерева там
+    // встаёт следующее: рубка по краю бесконечна именно этим.
+    raidView?.fellTree(chop.cell.x, chop.cell.z, isEdge(raid.loc, chop.cell));
+    stopChopping();
+  }
+}
+
 /**
  * Второй акт пролога: лагерь стоит, палатка просит второй уровень.
  *
@@ -1060,6 +1158,9 @@ function toGlade(): void {
     // Ставку событие подбора не называет: полоса риска на поляне скрыта
     // до кадра `bait`, и слово «под угрозой» шло впереди механики.
     risk: false,
+    // Поляна стоит на поверхности, и занятые клетки на ней — деревья (§13.3):
+    // их рубят, а по краю рубят сколько угодно.
+    logging: true,
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade');
   hud.setGrass(grassPerTile);
@@ -1072,6 +1173,7 @@ function toGlade(): void {
   rig.night = 0.12;
   resultShown = false;
   inGlade = true;
+  chop = null;
   gladeTaken = -1;
   restAcc = 0;
   upgraded = false;
@@ -1089,6 +1191,7 @@ function toGlade(): void {
 
 function toCamp(): void {
   leaveTitle();
+  chop = null;
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
   // в лагере провиант ничего не отсчитывает. Взамен — единственная
   // мелодия игры, и звучит она только здесь: всё это в таблице сцены.
@@ -1261,6 +1364,15 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (raid === null || raid.status !== 'running') return;
+  // Тап по дереву — рубка (§13.3). Жест тот же, что у всего остального:
+  // герой идёт сам и начинает работать, когда дойдёт. Второго жеста
+  // («выбрать топор», «нажать рубить») здесь нет и быть не должно —
+  // в локации их всего один.
+  if (raid.logging && treeAt(raid.loc, cell)) {
+    startChopping(cell);
+    return;
+  }
+  stopChopping();
   if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
 });
 
@@ -1423,15 +1535,27 @@ startLoop({
     if (mode === 'title') return;
     if (mode === 'raid' && raid !== null) {
       stepRaid(raid, dt, rig.night > 0.5, raid.loadout.knowledge);
+      if (sayNext !== null) {
+        raid.events.push(sayNext);
+        sayNext = null;
+      }
+      // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
+      // а прибавку в рюкзаке ухо озвучивает само (§18.1).
+      stepChopping(dt);
       ear.hear(raid);
       if (inGlade) {
         hud.sync(raid, dt);
         const taken = raid.loc.containers.filter((c) => c.opened).length;
         if (taken !== gladeTaken) {
           gladeTaken = taken;
-          // Первый брусок зажигает полосу рюкзака: ей есть что показать.
-          if (taken > 0) onboarding.set('gather');
           // Кольцо переезжает на следующий брусок — и гаснет, когда их нет.
+          showOnb(onboarding.step);
+        }
+        // Полосу рюкзака зажигает первое дерево в нём, а не первый вскрытый
+        // брусок: срубленное (§13.3) попадает туда же, и полоса, молчащая
+        // на честно добытом дереве, читалась бы как поломка.
+        if (raid.bagTotal > 0 && onboarding.step === 'glade') {
+          onboarding.set('gather');
           showOnb(onboarding.step);
         }
         // Первый акт кончается тем, что дерева хватает на палатку, — а не

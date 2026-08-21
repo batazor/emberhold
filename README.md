@@ -84,7 +84,7 @@ src/
   core/      rng (mulberry32), loop (фиксированный таймстеп), clock (монотонное время)
   sim/       config, types, grid, pathfinding, generate, enemies, raid,
              resources, camp, heroes, gear (снаряжение §14), world (карта §4),
-             save, session
+             logging (вырубка леса §13.3), save, session
   render/    scene (камера, свет, ночь), raidView, campView, titleView,
              palette, baked (общее для готовых наборов), forest, skeleton,
              adventurers, *.data.ts — генерируются, не править
