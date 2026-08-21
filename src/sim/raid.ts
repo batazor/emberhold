@@ -13,7 +13,7 @@ import { ENEMY_STATS } from './enemies';
 import { DEFAULT_LOADOUT, FORAGE_FOOD, SKILLS, TRAIL_STEP_DISCOUNT } from './heroes';
 import type { HeroLoadout } from './heroes';
 import { NO_MODS, gearMods } from './gear';
-import type { GearState } from './gear';
+import type { GearState, Offhand } from './gear';
 import {
   CONSUMABLES,
   RATION_FOOD,
@@ -45,6 +45,12 @@ export interface RaidOptions {
    * измеряли при калибровке §20.3, иначе все прежние замеры несравнимы.
    */
   readonly gear?: GearState;
+  /**
+   * §14.2 — что в левой руке. Необязательно и по той же причине, что класс
+   * и снаряжение: без него вылазка обязана считаться ровно так, как её
+   * измеряли при калибровке §20.3, иначе все прежние замеры несравнимы.
+   */
+  readonly offhand?: Offhand;
   /** Что игрок купил перед входом (§21). По умолчанию — ничего. */
   readonly consumables?: readonly ConsumableId[];
   /**
@@ -103,7 +109,7 @@ export function createRaid(opts: RaidOptions): RaidState {
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
-  const mods = opts.gear === undefined ? NO_MODS : gearMods(opts.gear);
+  const mods = opts.gear === undefined ? NO_MODS : gearMods(opts.gear, opts.offhand ?? 'torch');
   return {
     loc,
     loadout,

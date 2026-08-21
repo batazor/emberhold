@@ -3,7 +3,7 @@ import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
 import { modelKitchenFood, TIER_KITCHEN_GATE as GATE } from './balance';
 import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, emptyGear } from './gear';
-import type { GearSlot, GearState } from './gear';
+import type { GearSlot, GearState, Offhand } from './gear';
 import type { Tier } from './types';
 import type { Visit } from './world';
 import { emptyWalls, type CampWalls } from './campWalls';
@@ -172,6 +172,13 @@ export interface CampState {
   construction: Construction | null;
   /** §14 — снаряжение живёт в лагере, а не в вылазке: при провале не теряется. */
   gear: GearState;
+  /**
+   * §14.2 — что в левой руке. Поле лагеря, а не шестой слот GearState:
+   * уровень предмета куётся, а рука перекладывается — бесплатно, мгновенно
+   * и перед каждым выходом. Втиснуть его в GearState значило бы поправить
+   * все циклы по слотам ради величины, которая слотом не является.
+   */
+  offhand: Offhand;
   /** Расходники, купленные к следующей вылазке (§21). Сгорают на выходе:
    *  между вылазками не переносятся, поэтому копить нечего. */
   loadout: ConsumableId[];
@@ -204,6 +211,9 @@ export function createCamp(): CampState {
     resources: emptyResources(),
     construction: null,
     gear: emptyGear(),
+    // Умолчание — фонарь: так левая рука вела себя до §14.2, и ни один
+    // прежний прогон от появления поля не сдвинулся ни на число.
+    offhand: 'torch',
     loadout: [],
     raids: 0,
     visits: [],
@@ -382,6 +392,17 @@ export function suggestGear(camp: CampState): GearSlot | null {
 
 /** Как называется то, что предлагает Мастерская: «Выковать» пустому слоту,
  *  «Улучшить» — занятому. Игрок должен понимать это до нажатия. */
+/**
+ * §14.2 — переложить предмет в левой руке. Не ковка: уровень тот же, цены нет,
+ * таймера нет. Это выбор перед выходом, и он обязан быть бесплатным — иначе
+ * игрок перестанет его пересматривать, а весь смысл слота в пересмотре.
+ */
+export function setOffhand(camp: CampState, offhand: Offhand): boolean {
+  if (camp.offhand === offhand) return false;
+  camp.offhand = offhand;
+  return true;
+}
+
 export function gearAction(camp: CampState, slot: GearSlot): string {
   return camp.gear[slot] <= 0 ? `Выковать: ${GEAR[slot].name}` : `Улучшить: ${GEAR[slot].name}`;
 }

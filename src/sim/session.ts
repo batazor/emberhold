@@ -141,6 +141,7 @@ export function playSession(seed: number): SessionResult {
         kitchenLevel: camp.levels.kitchen,
         storageLevel: camp.levels.storage,
         gear: camp.gear,
+        offhand: camp.offhand,
         consumables: camp.loadout,
       },
       POLICIES.balanced,

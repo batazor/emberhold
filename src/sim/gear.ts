@@ -89,7 +89,7 @@ export const OFFHAND: Record<Offhand, GearDef> = {
   shield: {
     slot: 'torch',
     name: 'Щит',
-    effect: (l) => `Ран +${shieldWounds(l)}`,
+    effect: (l) => `Защита +${shieldDefense(l)}`,
     tradeoff: 'Занимает левую руку: обзор не растёт вовсе',
   },
 };
@@ -114,11 +114,16 @@ export const armorFoodStep = (level: number): number => (level >= 3 ? 1.15 : 1);
 export const torchVision = (level: number): number => (level >= 4 ? 2 : level >= 2 ? 1 : 0);
 
 /**
- * Раны от щита. Раны целые (§11.3), поэтому порог, а не плавный рост.
- * Первая приходит раньше, чем у брони: щит платит дороже — не долей расхода,
- * а обзором, от которого зависит, дойдёшь ли вообще.
+ * Защита от щита (§14.2). Прежде щит давал раны — по одной с первого уровня
+ * и по две с четвёртого; §11.3 заменил модель боя, и «переживу удар» теперь
+ * покупается Защитой, которая делит пробой. Оставить щиту ещё и раны значило
+ * бы отдать ему обе стороны сделки разом, а фонарю — только обзор, и обещание
+ * §14.2 «ни один не лучше» перестало бы быть правдой.
+ *
+ * Растёт линейно, а не порогами: пороги нужны там, где величина целая
+ * и читается штуками (раны §11.3). Защита не читается штуками вовсе.
  */
-export const shieldWounds = (level: number): number => (level >= 4 ? 2 : level >= 1 ? 1 : 0);
+export const shieldDefense = (level: number): number => 2 * Math.max(0, level);
 
 /** Прибавка к рюкзаку. Уровень Склада даёт больше — сумка догоняет, не заменяет. */
 export const bagCapacity = (level: number): number => Math.max(0, level);
@@ -164,6 +169,14 @@ export interface GearMods {
   readonly vision: number;
   /** Множитель доли под угрозой. */
   readonly risk: number;
+  /**
+   * §11.3 — Защита делит пробой. Пока модель боя старая, величина считается
+   * и хранится, но в бой не входит: связывать её наполовину значило бы
+   * получить два источника правды о том, кто кого бьёт.
+   */
+  readonly defense: number;
+  /** §14.3 — вместимость колчана. У ближника не значит ничего. */
+  readonly arrows: number;
 }
 
 export const NO_MODS: GearMods = {
@@ -173,6 +186,8 @@ export const NO_MODS: GearMods = {
   attackInterval: 1,
   vision: 0,
   risk: 1,
+  defense: 0,
+  arrows: 0,
 };
 
 /**
@@ -185,11 +200,15 @@ export function gearMods(gear: GearState, offhand: Offhand = 'torch'): GearMods 
     // Оружие тяжёлое всегда, а не с какого-то уровня: компромисс обязан
     // существовать с первой же ковки, иначе первый предмет — бесплатный.
     capacity: bagCapacity(gear.bag) - (gear.weapon > 0 ? 1 : 0),
-    wounds: armorWounds(gear.armor) + (shield ? shieldWounds(gear.torch) : 0),
+    // Раны остаются за бронёй целиком: щит платит за живучесть Защитой
+    // (§14.2), и два способа купить одно и то же в одном слоте не нужны.
+    wounds: armorWounds(gear.armor),
     foodStep: armorFoodStep(gear.armor),
     attackInterval: weaponInterval(gear.weapon),
     vision: shield ? 0 : torchVision(gear.torch),
     risk: 1 - ringRisk(gear.ring),
+    defense: shield ? shieldDefense(gear.torch) : 0,
+    arrows: 0,
   };
 }
 

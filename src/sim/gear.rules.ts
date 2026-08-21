@@ -146,19 +146,31 @@ describe('Снаряжение в вылазке', () => {
     const held = gearMods(gear, 'shield');
 
     assert.equal(lit.vision, 2, 'фонарь светит');
-    assert.equal(lit.wounds, 0, 'и только светит');
+    assert.equal(lit.defense, 0, 'и только светит');
     assert.equal(held.vision, 0, 'щит не светит вовсе');
-    assert.equal(held.wounds, 2, 'щит держит удар');
-    assert.ok(held.wounds > lit.wounds && lit.vision > held.vision, 'выбор существует');
+    assert.ok(held.defense > 0, 'щит держит удар');
+    assert.ok(held.defense > lit.defense && lit.vision > held.vision, 'выбор существует');
 
     assert.deepEqual(gearMods(gear), lit, 'умолчание — фонарь, как было до §14.2');
 
-    // Щит и броня покупают одно, но платят разным: броня — провиантом,
-    // щит — обзором. Одинаковой ценой они бы дублировали друг друга.
+    // Щит и броня покупают одно — «переживу удар», — но платят разным:
+    // броня провиантом на каждом шаге, щит обзором. Одинаковой ценой они бы
+    // дублировали друг друга; разной — дают выбор.
     const both = gearMods({ ...emptyGear(), armor: 3, torch: 2 }, 'shield');
-    assert.equal(both.wounds, 2, 'раны складываются');
+    assert.equal(both.wounds, 1, 'раны — целиком за бронёй (§14.2)');
+    assert.ok(both.defense > 0, 'живучесть щита приходит Защитой, а не раной');
     assert.ok(both.foodStep > 1, 'платит только броня — шагом');
     assert.equal(both.vision, 0, 'и только щит — темнотой');
+  });
+
+  test('§14.2 — щит доходит до вылазки, а не только до сводки', () => {
+    const gear = { ...emptyGear(), torch: 4 };
+    const opts = { seed: 5, tier: 2, kitchenLevel: 3, storageLevel: 3, gear } as const;
+    // До §14.2 вылазка звала gearMods без второго аргумента, и щит был
+    // недостижим из игры: посчитан, покрыт тестами и никому не виден.
+    assert.equal(createRaid({ ...opts }).mods.vision, 2, 'без указания руки — фонарь');
+    assert.equal(createRaid({ ...opts, offhand: 'shield' }).mods.vision, 0, 'со щитом не светит');
+    assert.ok(createRaid({ ...opts, offhand: 'shield' }).mods.defense > 0, 'и держит удар');
   });
 
   test('§11.2 — кольцо смягчает ставку, но не отменяет её', () => {

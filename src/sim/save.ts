@@ -54,6 +54,9 @@ interface SaveV1 {
    * каждом шаге разработки, а мы — возможность сравнить замеры до и после.
    */
   gear?: Partial<Record<GearSlot, number>>;
+  /** §14.2 — левая рука. Необязательное: сейв прежних этапов обязан
+   *  открываться, и отсутствие поля читается фонарём. */
+  offhand?: 'torch' | 'shield';
   /**
    * Кадр онбординга (`onboarding.html`). Тоже необязательное поле: сейв,
    * записанный до онбординга, принадлежит игроку, который уже играл, —
@@ -94,6 +97,7 @@ export function save(
     loadout: camp.loadout,
     raids: camp.raids,
     gear: camp.gear,
+    offhand: camp.offhand,
     // Заходы старше окна на богатство уже не влияют — в сохранение они
     // не едут, иначе список растёт без предела.
     visits: liveVisits(camp.visits, watermark).map((v) => ({ n: v.node, s: v.shift })),
@@ -193,6 +197,10 @@ export function load(): LoadResult {
         camp.gear[slot] = Math.floor(level);
       }
     }
+    // §14.2 — незнакомое значение и отсутствие поля читаются одинаково:
+    // фонарём. Так вёл себя лагерь до появления левой руки, и сейв прежних
+    // этапов открывается ровно тем, чем закрывался.
+    camp.offhand = data.offhand === 'shield' ? 'shield' : 'torch';
 
     readRoster(roster, data.heroes);
     // Состав догоняется до уровня Жилья: сейв мог быть записан правилами,
