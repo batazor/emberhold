@@ -359,15 +359,14 @@ export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeo
  * не нарушено, а исполнено: примитив был утверждён и стоит рядом — модель
  * приводится к его росту, а не наоборот.
  *
- * ВРЕМЕННОЕ: в бандле лежит один `Barbarian`, и его получают оба класса,
- * которыми успевают поиграть до открытия третьего. Так сделано затем, чтобы
- * переименование классов не отняло у первого героя анимацию: до него модель
- * висела на Следопыте, а первым теперь выходит Рыцарь (§11.7). Строка
- * распадается на три, когда `Knight`, `Ranger` и `Rogue` поедут в бандл.
+ * §11.7 — классов трое, и различает их в бою то, как они дерутся; значит
+ * различать их обязан и силуэт. Примитивов среди героев больше не осталось:
+ * у каждого есть скелет, а значит и все клипы §17.1.
  */
 export const HERO_MODELS: Partial<Record<HeroClassId, AdventurerModelName>> = {
-  knight: 'Barbarian',
-  archer: 'Barbarian',
+  knight: 'Knight',
+  archer: 'Ranger',
+  rogue: 'Rogue_Hooded',
 };
 
 /**
@@ -389,14 +388,29 @@ function heroHeight(cls: HeroClassId): number {
 }
 
 /**
- * Что у героя в руке. Оружие §14 зовётся «Кайло»; кирки в наборе нет, поэтому
- * взят одноручный топор — ближайшее по чтению. Это замена палке примитива:
- * уровень предмета из Мастерской моделью пока не читается, и когда начнёт,
- * здесь появится не строка, а таблица.
+ * Что у героя в правой руке — то, чем он дерётся (§11.7). Рыцарь с мечом,
+ * Лучник с луком, Бандит с кинжалом: оружие названо тем, что делает класс
+ * в бою, а не наоборот.
+ *
+ * Уровень предмета из Мастерской моделью по-прежнему не читается: слот
+ * растёт числом, а не видом. Когда начнёт, здесь появится не строка,
+ * а таблица.
  */
 const HERO_HELD: Partial<Record<HeroClassId, AdventurerModelName>> = {
-  knight: 'axe_1handed',
-  archer: 'axe_1handed',
+  knight: 'sword_1handed',
+  archer: 'bow',
+  rogue: 'dagger',
+};
+
+/**
+ * §14.2 — левая рука. У Рыцаря щит, у Бандита второй кинжал — та же
+ * геометрия, и байт он не стоит. У Лучника левая занята луком: §14.2 прямо
+ * пишет, что лук платит дороже обоих — забирает руку целиком, и ни щита,
+ * ни фонаря со стрелком нет.
+ */
+const HERO_OFFHAND: Partial<Record<HeroClassId, AdventurerModelName>> = {
+  knight: 'shield_round',
+  rogue: 'dagger',
 };
 
 export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
@@ -432,6 +446,6 @@ export function heroParts(cls: HeroClassId): RiggedParts | null {
   const model = HERO_MODELS[cls];
   return model === undefined
     ? null
-    : adventurerParts(model, heroHeight(cls), HERO_HELD[cls]);
+    : adventurerParts(model, heroHeight(cls), HERO_HELD[cls], HERO_OFFHAND[cls]);
 }
 

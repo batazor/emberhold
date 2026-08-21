@@ -41,8 +41,9 @@ export function skeletonGeometry(
   const model: SkeletonModel = SKELETON_MODELS[name];
   const parts: Part[] = [{ model, palette: SKELETON_PALETTE }];
   if (holds !== undefined) {
-    if (model.hand === undefined) throw new Error(`у модели ${name} нет узла руки`);
-    parts.push({ model: SKELETON_MODELS[holds], palette: SKELETON_PALETTE, matrix: model.hand });
+    const hand = model.hand?.['handslot.r'];
+    if (hand === undefined) throw new Error(`у модели ${name} нет узла правой руки`);
+    parts.push({ model: SKELETON_MODELS[holds], palette: SKELETON_PALETTE, matrix: hand });
   }
 
   const geometry = bakedGeometry(parts, fitOf(model, height));
@@ -71,7 +72,7 @@ export function skeletonParts(
     body: skinnedGeometry([{ model, palette: SKELETON_PALETTE }]),
     ...(holds === undefined
       ? {}
-      : { held: bakedGeometry([{ model: SKELETON_MODELS[holds], palette: SKELETON_PALETTE }]) }),
+      : { hold: { 'handslot.r': bakedGeometry([{ model: SKELETON_MODELS[holds], palette: SKELETON_PALETTE }]) } }),
     fit: fitOf(model, height),
   };
   rigCache.set(key, parts);

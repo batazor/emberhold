@@ -47,8 +47,9 @@ export function adventurerGeometry(
   const model: AdventurerModel = ADVENTURERS_MODELS[name];
   const parts: Part[] = [{ model, palette: ADVENTURERS_PALETTE }];
   if (holds !== undefined) {
-    if (model.hand === undefined) throw new Error(`у модели ${name} нет узла руки`);
-    parts.push({ model: ADVENTURERS_MODELS[holds], palette: ADVENTURERS_PALETTE, matrix: model.hand });
+    const hand = model.hand?.['handslot.r'];
+    if (hand === undefined) throw new Error(`у модели ${name} нет узла правой руки`);
+    parts.push({ model: ADVENTURERS_MODELS[holds], palette: ADVENTURERS_PALETTE, matrix: hand });
   }
 
   const geometry = bakedGeometry(parts, fitOf(model, height));
@@ -58,22 +59,36 @@ export function adventurerGeometry(
 
 const rigCache = new Map<string, RiggedParts>();
 
-/** Та же модель со скином: героя тоже двигают кости, а не подмена кадра. */
+/**
+ * Та же модель со скином: героя тоже двигают кости, а не подмена кадра.
+ * Рук две (§14.2) — правая держит оружие, левая щит, факел или вторую
+ * половину лука, — и обе ставятся по узлам самого набора.
+ */
 export function adventurerParts(
   name: AdventurerModelName,
   height: number,
-  holds?: AdventurerModelName,
+  right?: AdventurerModelName,
+  left?: AdventurerModelName,
 ): RiggedParts {
-  const key = `${name}+${holds ?? ''}@${height}`;
+  const key = `${name}+${right ?? ''}+${left ?? ''}@${height}`;
   const hit = rigCache.get(key);
   if (hit !== undefined) return hit;
 
   const model: AdventurerModel = ADVENTURERS_MODELS[name];
+  const held = (which?: AdventurerModelName): THREE.BufferGeometry | undefined =>
+    which === undefined
+      ? undefined
+      : bakedGeometry([{ model: ADVENTURERS_MODELS[which], palette: ADVENTURERS_PALETTE }]);
+
+  const hold: Record<string, THREE.BufferGeometry> = {};
+  const r = held(right);
+  const l = held(left);
+  if (r !== undefined) hold['handslot.r'] = r;
+  if (l !== undefined) hold['handslot.l'] = l;
+
   const parts: RiggedParts = {
     body: skinnedGeometry([{ model, palette: ADVENTURERS_PALETTE }]),
-    ...(holds === undefined
-      ? {}
-      : { held: bakedGeometry([{ model: ADVENTURERS_MODELS[holds], palette: ADVENTURERS_PALETTE }]) }),
+    ...(Object.keys(hold).length === 0 ? {} : { hold }),
     fit: fitOf(model, height),
   };
   rigCache.set(key, parts);

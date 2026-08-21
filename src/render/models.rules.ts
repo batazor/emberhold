@@ -59,6 +59,30 @@ const BUDGET = { building: 1500, hero: 900 } as const;
  */
 const PACK_KB = 260;
 
+/**
+ * Потолок набора персонажей — §6.1.4 и §11.7.
+ *
+ * Считается так же и по той же причине, что у противников: в gzip, по самому
+ * файлу, а не перечислением полей. Число тоже посчитано, а не выбрано, но
+ * состав другой: «весь набор» здесь — это 520 КБ gzip на шесть персонажей
+ * и тридцать один предмет, и потолком такое быть не может. Считаем то, что
+ * игре действительно нужно: **три класса §11.7 и по два предмета на каждого**.
+ * Округлено вверх.
+ *
+ * Упереться в него можно ровно один раз: за ним не «ещё предмет»,
+ * а четвёртый герой, и это отдельное решение.
+ */
+const HERO_PACK_KB = 240;
+
+/**
+ * §6.1.4 обещает, что этот потолок «проверяет models.rules.ts», — и до сих пор
+ * не проверял ничего: в файле стояли только треугольники здания и примитива.
+ * Строка держалась на том, что взят был один персонаж и запас казался
+ * бесконечным. Он не бесконечен: у самой тяжёлой модели набора запас
+ * от потолка — около процента.
+ */
+const HERO_KB = 200;
+
 
 /** По одному уровню на каждую стадию роста. */
 const LEVEL_OF_STAGE = [1, 3, 5] as const;
@@ -120,18 +144,66 @@ describe('Артбук: бюджет треугольников', () => {
     assert.ok(kb <= PACK_KB, `набор скелетов: ${kb} КБ gzip > ${PACK_KB} КБ`);
   });
 
-  test('у героя в руке есть предмет, и он стоит на узле набора', () => {
-    // Не «геометрия непустая», а именно то, ради чего узел запекается:
-    // модель героя знает матрицу руки, и с предметом она тяжелее, чем без.
-    const bare = adventurerGeometry('Barbarian', 1);
-    const armed = heroGeometry('archer');
-    assert.ok(ADVENTURERS_MODELS.Barbarian.hand !== undefined, 'у варвара нет узла руки');
-    assert.ok(
-      triangles(armed) > triangles(bare),
-      `герой с предметом ${triangles(armed)} не тяжелее безоружного ${triangles(bare)}`,
-    );
-    bare.dispose();
-    armed.dispose();
+  test('§6.1.4 — запечённый персонаж укладывается в 200 КБ', () => {
+    // По каждой модели отдельно, а не суммой: потолок про одного персонажа,
+    // и сумма скрыла бы, что одна модель его пробила, а другие лёгкие.
+    const source = readFileSync(new URL('./adventurers.data.ts', import.meta.url), 'utf8');
+    const models = [...source.matchAll(/^  '([A-Za-z0-9_]+)': \{([\s\S]*?)^  \},$/gm)];
+    assert.ok(models.length > 0, 'в данных персонажей не найдено ни одной модели');
+    for (const [, name, body] of models) {
+      const blobs = [...body!.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+      if (blobs.length === 0) continue;
+      const kb = Math.round((blobs.length / 1024) * 10) / 10;
+      assert.ok(kb <= HERO_KB, `${name}: ${kb} КБ base64 > ${HERO_KB} КБ`);
+    }
+  });
+
+  test('§6.1.4 — набор персонажей укладывается в свой потолок', () => {
+    const source = readFileSync(new URL('./adventurers.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    assert.ok(kb <= HERO_PACK_KB, `набор персонажей: ${kb} КБ gzip > ${HERO_PACK_KB} КБ`);
+  });
+
+  test('§14.2 — у героя две руки, и обе стоят на узлах набора', () => {
+    // Не «геометрия непустая», а именно то, ради чего узлы запекаются:
+    // модель знает матрицу каждой руки, и вооружённая тяжелее безоружной.
+    for (const cls of CLASS_ORDER) {
+      const model = HERO_MODELS[cls];
+      if (model === undefined) continue;
+      const hand = (ADVENTURERS_MODELS[model] as {
+        hand?: Readonly<Record<string, readonly number[]>>;
+      }).hand;
+      assert.ok(hand?.['handslot.r'] !== undefined, `${cls}: нет узла правой руки`);
+      assert.ok(hand?.['handslot.l'] !== undefined, `${cls}: нет узла левой руки`);
+
+      const bare = adventurerGeometry(model, 1);
+      const armed = heroGeometry(cls);
+      assert.ok(
+        triangles(armed) > triangles(bare),
+        `${cls}: с предметом ${triangles(armed)} не тяжелее безоружного ${triangles(bare)}`,
+      );
+      bare.dispose();
+      armed.dispose();
+    }
+  });
+
+  test('§14.2 — матрица руки одна и та же у всех персонажей набора', () => {
+    // На этом стоит вся конструкция двух рук: риг общий, поза общая, ключ
+    // общий, — поэтому предмет, вложенный одному, встаёт в руку любому
+    // без единого нового числа. Разъедься матрицы, и щит поехал бы
+    // у одного класса, оставшись на месте у другого.
+    const hands = Object.values(ADVENTURERS_MODELS)
+      .map((m) => (m as { hand?: Readonly<Record<string, readonly number[]>> }).hand)
+      .filter((h): h is Readonly<Record<string, readonly number[]>> => h !== undefined);
+    assert.ok(hands.length >= 2, 'персонажей с руками меньше двух — сверять нечего');
+    for (const slot of ['handslot.r', 'handslot.l'] as const) {
+      const first = hands[0]![slot];
+      assert.ok(first !== undefined, `узла ${slot} нет ни у кого`);
+      for (const h of hands) {
+        assert.deepEqual(h[slot], first, `узел ${slot} разъехался между персонажами`);
+      }
+    }
   });
 
   test('шесть уровней укладываются в три стадии', () => {

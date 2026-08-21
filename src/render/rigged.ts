@@ -26,6 +26,14 @@ const STATE = {
   'удар': { loop: false },
   'урон': { loop: false },
   'падение': { loop: false, hold: true },
+  // §14.3 — натяжение держит последний кадр: лук остаётся натянутым, пока
+  // не придёт выстрел. Отпустить его самому означало бы показать выстрел,
+  // которого не было.
+  'натяжение': { loop: false, hold: true },
+  'выстрел': { loop: false },
+  'блок': { loop: false },
+  // §15 — подъём играется один раз на пробуждение и переходит в покой сам.
+  'подъём': { loop: false },
 } as const satisfies Record<RigClipName, { loop: boolean; hold?: boolean }>;
 
 /** §17.1 — переходы смешиванием, а не подменой: резкая смена читается как сбой. */
@@ -98,11 +106,19 @@ function clipOf(name: RigClipName): THREE.AnimationClip {
   return clip;
 }
 
-/** Что нужно, чтобы поставить особь: тело со скином, предмет в руку и рост. */
+/** Узлы рук набора. Их два, и оба живут на одном риге (§14.2). */
+export type HandSlot = 'handslot.r' | 'handslot.l';
+
+/** Что нужно, чтобы поставить особь: тело со скином, предметы в руки и рост. */
 export interface RiggedParts {
   /** Вершины в единицах набора: приводит их трансформ, а не правка вершин. */
   readonly body: THREE.BufferGeometry;
-  readonly held?: THREE.BufferGeometry;
+  /**
+   * Что в какой руке. Карта, а не одно поле: §14.2 отдаёт левую руку под
+   * щит, факел или вторую половину лука, и «предмет» в единственном числе
+   * этот выбор попросту не выражает.
+   */
+  readonly hold?: Partial<Record<HandSlot, THREE.BufferGeometry>>;
   readonly fit: Fit;
 }
 
@@ -153,6 +169,9 @@ export class Rigged {
   private current: RigClipName | null = null;
   private action: THREE.AnimationAction | null = null;
   private readonly skins: THREE.Mesh[] = [];
+  /** Что сейчас в руках. Нужно, чтобы предмет можно было сменить, не собирая
+   *  особь заново: §14.2 разрешает перекладывать левую руку перед выходом. */
+  private readonly hands = new Map<HandSlot, THREE.Mesh>();
 
   constructor(parts: RiggedParts, material: THREE.Material) {
     this.bones = makeBones();
@@ -167,14 +186,17 @@ export class Rigged {
     // к ним дважды.
     mesh.bind(this.skeleton);
 
-    if (parts.held !== undefined) {
+    for (const slot of ['handslot.r', 'handslot.l'] as const) {
+      const geometry = parts.hold?.[slot];
+      if (geometry === undefined) continue;
       // Предмет висит на кости кисти. В позе привязки её мировая матрица и есть
       // та, по которой предмет ставился неподвижным, — поэтому местный
-      // трансформ единичный, а рука уносит топор сама.
-      const hand = this.bones[RIG_BONES.indexOf('handslot.r')]!;
-      const held = new THREE.Mesh(parts.held, material);
+      // трансформ единичный, а рука уносит его сама.
+      const hand = this.bones[RIG_BONES.indexOf(slot)]!;
+      const held = new THREE.Mesh(geometry, material);
       held.castShadow = true;
       this.skins.push(held);
+      this.hands.set(slot, held);
       hand.add(held);
     }
 
@@ -230,7 +252,29 @@ export class Rigged {
     return this.action.time >= clipOf(this.current).duration - 1e-3;
   }
 
-  /** Материал целиком, вместе с предметом в руке: телеграф §17.3 красит
+  /**
+   * Сменить предмет в руке, не пересобирая особь. Геометрия общая и лежит
+   * в кэше набора, поэтому снятая **не уничтожается**: её держат другие.
+   */
+  setHeld(slot: HandSlot, geometry: THREE.BufferGeometry | null): void {
+    const had = this.hands.get(slot);
+    if (had !== undefined) {
+      had.removeFromParent();
+      const at = this.skins.indexOf(had);
+      // Из skins тоже вычёркиваем: setMaterial иначе красил бы снятый меш,
+      // а он уже ничей.
+      if (at >= 0) this.skins.splice(at, 1);
+      this.hands.delete(slot);
+    }
+    if (geometry === null) return;
+    const mesh = new THREE.Mesh(geometry, this.skins[0]?.material ?? undefined);
+    mesh.castShadow = true;
+    this.skins.push(mesh);
+    this.hands.set(slot, mesh);
+    this.bones[RIG_BONES.indexOf(slot)]!.add(mesh);
+  }
+
+  /** Материал целиком, вместе с предметами в руках: телеграф §17.3 красит
    *  противника, а не половину противника. */
   setMaterial(material: THREE.Material): void {
     for (const mesh of this.skins) mesh.material = material;

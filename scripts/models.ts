@@ -279,6 +279,18 @@ const RIG = {
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatMelee.glb', clip: 'Melee_1H_Attack_Chop', as: 'удар' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Hit_A', as: 'урон' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Death_A', as: 'падение' },
+    // §14.3 — у дальнего боя не было замаха вовсе. Клипы выбраны не на глаз:
+    // npm run clips печатает, какой годится какому актору по таймингу,
+    // и оба помечены годными герою.
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatRanged.glb', clip: 'Ranged_Bow_Draw', as: 'натяжение' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatRanged.glb', clip: 'Ranged_Bow_Release', as: 'выстрел' },
+    // §14.2 — щит без клипа остаётся цифрой. Взят Block_Hit, а не Block:
+    // у второго замах 0,15–0,22 с, то есть это стойка, а не отдача, — а
+    // читается на пяти сантиметрах экрана именно отдача. И он дешевле.
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatMelee.glb', clip: 'Melee_Block_Hit', as: 'блок' },
+    // §15 строит цену прохода на том, что игрок видит, кого разбудил.
+    // Сейчас пробуждение не видно: противник просто начинает идти.
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_Special.glb', clip: 'Skeletons_Awaken_Standing', as: 'подъём' },
   ],
 } as const;
 
@@ -443,22 +455,41 @@ const ADVENTURERS: Pack = {
    * `kaykit-animations` — тот же риг, те же дорожки.
    */
   pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
-  attach: ['handslot.r'],
+  // §14.2 — рук две, и обе узлы набора. Матрица правой побайтно одна и та же
+  // у всех пяти персонажей, левая нужна тем же и стоит только самой матрицы.
+  attach: ['handslot.r', 'handslot.l'],
   rigged: true,
   categoryOf: (name) => ADVENTURER_CATEGORIES[name.split('_')[0]!.toLowerCase()] ?? 'Прочее',
   /**
-   * Герой, которым играют с первой вылазки, и то, что у него в руке.
+   * Три класса §11.7 и по два предмета на каждого.
    *
-   * Оружие §14 зовётся «Кайло», и кирки в наборе нет — `axe_1handed` взят
-   * как ближайшее по чтению: одноручное, с рукоятью в начале координат,
-   * 274 треугольника. Это замена палке примитива, а не выбор оружия героя:
-   * уровень предмета из Мастерской моделью пока не читается.
+   * До §11.7 здесь стоял один `Barbarian` с топором: играли одним классом,
+   * и остальные были примитивами без скелета, то есть не анимировались вовсе.
+   * Теперь классов трое, и различает их в бою то, как они дерутся, — значит
+   * различать их обязан и силуэт.
    *
-   * Остальные пять персонажей и тридцать предметов измерены и ждут: персонаж
-   * тяжелее камня в тридцать раз, и «весь набор на всякий случай» тут дороже,
-   * чем в лесу.
+   * Что взято и почему именно это:
+   *
+   * - **`Rogue_Hooded`, а не `Rogue`** — он на 11 КБ дешевле и несёт съёмную
+   *   маску; капюшон с маской читаются «Бандитом» точнее открытой головы.
+   * - **`bow`, а не `bow_withString`** — дело не в 7 КБ. Тетива у набора
+   *   часть той же жёсткой геометрии без скина: при клипе натяжения рука
+   *   уедет назад, а тетива останется прямой. Лук без тетивы читается лучше
+   *   лука с нетянущейся.
+   * - **`arrow_bow`** — 52 треугольника, самая дешёвая модель обоих наборов.
+   *   Лежит вдоль своей оси Z и центрирована, поэтому ориентируется одним
+   *   поворотом, без подгонки.
+   * - **`dagger` один на обе руки Бандита** — та же геометрия, второй
+   *   экземпляр байт не стоит.
+   *
+   * Цена решения — килобайты в бандле у всех игроков, и её сторожат два
+   * потолка в `models.rules.ts`: на персонажа и на набор.
    */
-  adopted: ['Barbarian', 'axe_1handed'],
+  adopted: [
+    'Knight', 'sword_1handed', 'shield_round',
+    'Ranger', 'bow', 'arrow_bow',
+    'Rogue_Hooded', 'dagger',
+  ],
   data: { file: 'src/render/adventurers.data.ts', prefix: 'ADVENTURERS', type: 'Adventurer' },
 };
 
@@ -2042,10 +2073,14 @@ function writeData(pack: Pack, models: Baked[], rig: Rig | null): string {
         fields.push(`    bone: '${b64(m.index.bone)}',`);
         fields.push(`    weight: '${b64(m.index.weight)}',`);
       }
-      for (const name of held) {
-        const matrix = m.attach[name];
-        if (matrix !== undefined) fields.push(`    hand: [${matrix.map(round).join(', ')}],`);
-      }
+      // Узлов рук может быть несколько (§14.2), поэтому они пишутся картой
+      // по имени узла, а не одним полем: с фиксированным именем два узла
+      // давали два свойства `hand` в одном литерале — TypeScript такое
+      // не собирает, и поймал это он, а не глаз.
+      const hands = held
+        .filter((name) => m.attach[name] !== undefined)
+        .map((name) => `      '${name}': [${m.attach[name]!.map(round).join(', ')}],`);
+      if (hands.length > 0) fields.push(`    hand: {\n${hands.join('\n')}\n    },`);
       return `  '${m.name}': {\n${fields.join('\n')}\n  },`;
     })
     .join('\n');
@@ -2054,11 +2089,13 @@ function writeData(pack: Pack, models: Baked[], rig: Rig | null): string {
     ? ''
     : `
   /**
-   * Мировая матрица узла ${held.join(', ')} в позе запекания и в единицах
-   * набора: столбцами, как её задаёт glTF. Предмет, умноженный на неё,
+   * Мировые матрицы узлов ${held.join(', ')} в позе запекания и в единицах
+   * набора: столбцами, как их задаёт glTF. Предмет, умноженный на матрицу,
    * оказывается в руке — там, где его держит сам набор.
+   *
+   * Карта, а не одно поле: рук две (§14.2), и обе живут на одном риге.
    */
-  readonly hand?: readonly number[];
+  readonly hand?: Readonly<Record<string, readonly number[]>>;
 `;
 
   return `/* СГЕНЕРИРОВАНО \`npm run models -- --write\`. Руками не править. */
