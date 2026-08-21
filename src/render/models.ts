@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
+import type { DwellerLook } from '../sim/garrison';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind, RaidEnemyKind } from '../sim/types';
 import { adventurerGeometry, adventurerHeld, adventurerParts } from './adventurers';
@@ -453,6 +454,28 @@ const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {
 
 /** Скелет есть только у ярусных: привидение набора не скиновано вовсе. */
 export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind]();
+
+/**
+ * Жильцы двора (§6.1.6.1). Гарнизон стережёт, а живёт в замке кто-то ещё,
+ * и отличить одно от другого можно только силуэтом — тем же правилом, каким
+ * различаются скелеты (§15) и сам гарнизон: снаряжение, а не порода.
+ *
+ * Предмет у обоих правый: набор отдаёт узел `handslot.r` и только его,
+ * поэтому щита в левой руке не бывает ни у кого. Это ответ набора, а не
+ * выбор снаряжения: числами жильцы не описаны вовсе.
+ */
+const DWELLER_MODEL: Record<DwellerLook, readonly [AdventurerModelName, AdventurerModelName]> = {
+  маг: ['Mage', 'staff'],
+  плут: ['Rogue', 'dagger'],
+};
+
+export const dwellerParts = (look: DwellerLook): RiggedParts => {
+  const [model, held] = DWELLER_MODEL[look];
+  // Рост берётся у героя по той же причине, что у гарнизона: жильцы и герой —
+  // люди одного мира, и разный рост читался бы не «другой человек»,
+  // а «другой масштаб сцены».
+  return adventurerParts(model, heroHeight(GUARD_LIKE), adventurerHeld(held));
+};
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
 export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {

@@ -20,14 +20,17 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CASTLE_CELL, DIRS, deckOf, keyOf, partOf } from './castle';
-import { generateCastleSite } from './castleSite';
+import { atTrader, generateCastleSite, inYard } from './castleSite';
 import {
   ARCHER_CYCLE,
   ARCHER_SPEED,
+  DWELLER_SPEED,
+  DWELLER_STAND,
   PATROL_SPEED,
   SQUAD,
   SQUAD_STEP,
   archerAt,
+  dwellersAt,
   garrisonOf,
   patrolAt,
 } from './garrison';
@@ -290,6 +293,147 @@ describe('Гарнизон: стрелок на стене', () => {
       for (let t = 0; t < ARCHER_CYCLE * 3; t += 1.7) {
         assert.deepEqual(archerAt(a, t), archerAt(b, t), `сид ${site.loc.seed}: смены разошлись`);
         assert.deepEqual(patrolAt(a, t), patrolAt(b, t), `сид ${site.loc.seed}: обход разошёлся`);
+      }
+    }
+  });
+});
+
+/**
+ * Жильцы двора (§6.1.6.1). Гарнизон отвечает на вопрос «замок чей-то»,
+ * жильцы — на вопрос «в замке живут». Проверяется здесь то же, что у отряда,
+ * и той же меркой: обход замкнут, лежит там, где ему положено, и считается
+ * из времени, а не из состояния.
+ */
+describe('Замок: жильцы двора', () => {
+  test('жильцы есть, и двор ими не забит', () => {
+    for (const { site, g } of guards) {
+      assert.ok(g.yard.length >= 2, `сид ${site.loc.seed}: двор пуст`);
+      assert.ok(g.yard.length <= 4, `сид ${site.loc.seed}: жильцов ${g.yard.length} — это толпа`);
+      let free = 0;
+      for (let z = 0; z < site.loc.size; z++) {
+        for (let x = 0; x < site.loc.size; x++) {
+          if (inYard(site, { x, z }) && site.loc.blocked[idx(site.loc.size, x, z)] === 0) free++;
+        }
+      }
+      /**
+       * Десять — измеренный минимум, и берётся он не плотностью, а нижним
+       * порогом в двоих: на самом тесном дворе порог плотность перебивает.
+       * Порог сохранён потому, что двор без жильцов не выполняет обещания
+       * карточки, а двое на два десятка клеток — всё ещё двор, а не толпа.
+       */
+      assert.ok(
+        free / g.yard.length >= 10,
+        `сид ${site.loc.seed}: ${free} свободных клеток двора на ${g.yard.length} жильцов`,
+      );
+    }
+  });
+
+  test('обход замкнут, лежит во дворе и не идёт сквозь занятое', () => {
+    for (const { site, g } of guards) {
+      for (const w of g.yard) {
+        // Обход из одной клетки бывает ровно у одного жильца — торговца:
+        // он стоит на месте, и это его работа (§13.5).
+        if (w.path.length === 1) {
+          assert.ok(site.trader !== null, `сид ${site.loc.seed}: стоящий жилец без лавки`);
+          assert.deepEqual(w.path[0], site.trader, `сид ${site.loc.seed}: стоит не на лавке`);
+          continue;
+        }
+        assert.ok(w.path.length >= 2, `сид ${site.loc.seed}: обход из одной клетки`);
+        for (const c of w.path) {
+          assert.ok(inYard(site, c), `сид ${site.loc.seed}: обход вышел за двор в ${c.x},${c.z}`);
+          assert.equal(
+            site.loc.blocked[idx(site.loc.size, c.x, c.z)],
+            0,
+            `сид ${site.loc.seed}: обход идёт сквозь занятую клетку ${c.x},${c.z}`,
+          );
+        }
+        assert.ok(w.cycle > 0, `сид ${site.loc.seed}: круг нулевой длины`);
+      }
+    }
+  });
+
+  test('облики разные: двор не собран из одинаковых', () => {
+    const seen = new Set(guards.flatMap(({ g }) => g.yard.map((w) => w.look)));
+    assert.equal(seen.size, 2, `обликов встретилось ${seen.size}`);
+  });
+
+  test('за круг жилец не покидает двора и возвращается к началу', () => {
+    for (const { site, g } of guards) {
+      for (let i = 0; i < g.yard.length; i++) {
+        const w = g.yard[i]!;
+        const start = dwellersAt(g, 0)[i]!;
+        // Полный круг: тот же кадр, и это и есть смысл слова «замкнут».
+        const round = dwellersAt(g, w.cycle)[i]!;
+        assert.ok(
+          Math.hypot(round.x - start.x, round.z - start.z) < 1e-6,
+          `сид ${site.loc.seed}: за круг жилец ${i} не вернулся`,
+        );
+        for (let t = 0; t < w.cycle; t += 0.25) {
+          const man = dwellersAt(g, t)[i]!;
+          assert.ok(
+            inYard(site, { x: Math.round(man.x), z: Math.round(man.z) }),
+            `сид ${site.loc.seed}: на ${t.toFixed(2)} с жилец ${i} вне двора`,
+          );
+        }
+      }
+    }
+  });
+
+  test('жилец идёт своим шагом и стоит на углах', () => {
+    for (const { site, g } of guards) {
+      for (let i = 0; i < g.yard.length; i++) {
+        const w = g.yard[i]!;
+        let stood = 0;
+        let moved = 0;
+        const STEP = 1 / 60;
+        for (let t = 0; t + STEP <= w.cycle; t += STEP) {
+          const a = dwellersAt(g, t)[i]!;
+          const b = dwellersAt(g, t + STEP)[i]!;
+          const step = Math.hypot(b.x - a.x, b.z - a.z);
+          assert.ok(
+            step <= DWELLER_SPEED * STEP + 1e-6,
+            `сид ${site.loc.seed}: жилец ${i} прыгнул на ${step.toFixed(3)}`,
+          );
+          if (a.walking) moved += step; else stood += STEP;
+        }
+        if (w.path.length === 1) {
+          // Торговец не ходит вовсе, и это проверяется, а не подразумевается:
+          // ушедшая лавка — это панель, открывающаяся от пустого места.
+          assert.equal(moved, 0, `сид ${site.loc.seed}: торговец сошёл с места`);
+          continue;
+        }
+        assert.ok(moved > 1, `сид ${site.loc.seed}: жилец ${i} прошёл за круг ${moved.toFixed(2)}`);
+        assert.ok(
+          stood > DWELLER_STAND,
+          `сид ${site.loc.seed}: жилец ${i} за круг ни разу не постоял`,
+        );
+      }
+    }
+  });
+
+  /**
+   * До жильцов лавка была точкой без тела, и во дворе, где никого нет, это
+   * никому не мешало. С жильцами невидимый торговец стал бы единственным
+   * невидимым человеком среди видимых. Правило держит это на месте.
+   */
+  test('у торговца есть тело, и оно стоит на его клетке', () => {
+    for (const { site, g } of guards) {
+      if (site.trader === null) continue;
+      const standing = g.yard.filter((w) => w.path.length === 1);
+      assert.equal(standing.length, 1, `сид ${site.loc.seed}: стоящих ${standing.length}`);
+      const man = dwellersAt(g, 17.3)[g.yard.indexOf(standing[0]!)]!;
+      assert.ok(
+        atTrader(site, man.x, man.z),
+        `сид ${site.loc.seed}: тело торговца не дотягивается до его лавки`,
+      );
+      assert.equal(man.walking, false, `сид ${site.loc.seed}: торговец идёт`);
+    }
+  });
+
+  test('время, а не состояние: тот же момент даёт тот же кадр', () => {
+    for (const { g } of guards) {
+      for (const t of [0, 3.7, 41, 1000.25]) {
+        assert.deepEqual(dwellersAt(g, t), dwellersAt(g, t));
       }
     }
   });

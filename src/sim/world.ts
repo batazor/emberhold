@@ -111,15 +111,36 @@ const NAMES: readonly string[] = [
   'Битый камень',
   'Тихий брод',
   'Овражья пасть',
+  'Гнилой мост',
+  'Слепой поворот',
+  'Верхний забой',
+  'Мёрзлый склон',
+  'Пустая выработка',
+  'Сыпучий борт',
+  'Заваленный ход',
+  'Клин',
 ];
 
 /** Сколько точек бывает на карте: день на день не приходится. */
 const NODES_MIN = 16;
 const NODES_MAX = 22;
 
-/** Сетка раздачи мест: 6×4 клетки, из них и выбираются точки дня. */
-const GRID_X = 6;
-const GRID_Y = 4;
+/**
+ * Сетка раздачи мест: из её клеток и выбираются точки дня.
+ *
+ * Размер посчитан, а не выбран: клетка отдаётся ровно одной точке, и колода
+ * обязана вместить самый людный день — двадцать две вылазки плюс прогулочные
+ * точки, которых бывает до шести. Прежние 6×4 = 24 клетки вмещали двадцать
+ * две вылазки, замок и кладбище **впритык**, и лишняя точка при этом
+ * не падала с ошибкой, а молча пропадала: `cells[nodes.length]` возвращал
+ * `undefined`, и блок ничего не делал.
+ *
+ * 7×5 = 35 клеток. Соседние клетки расходятся на 0,14 по x при разбросе
+ * ±0,03 — минимум остаётся около 0,08 при пороге 0,05, который стережёт
+ * `world.rules.ts`.
+ */
+const GRID_X = 7;
+const GRID_Y = 5;
 
 /**
  * Что это за место. Вылазка — то, ради чего карта и заведена (§4). Замок
@@ -129,6 +150,50 @@ const GRID_Y = 4;
  * есть.
  */
 export type NodeKind = 'вылазка' | 'замок' | 'кладбище';
+
+/**
+ * Свойства вида узла — одной таблицей, а не россыпью проверок `kind === …`.
+ *
+ * Их накопилось семь на три вида, в двух файлах, и ни одну компилятор не ловил:
+ * `NodeKind` нигде не стоял в исчерпывающей позиции. Кладбище приехало третьим
+ * и половину проверок не задело — событие ему считалось как вылазке, хотя
+ * карточка про событие молчит, а в `entryBlock` оно проходило по совпадению,
+ * потому что `tier: 0`.
+ *
+ * `Record<NodeKind, …>` это чинит раз и навсегда: следующий вид узла не
+ * соберётся, пока не будет описан здесь.
+ */
+export interface KindTraits {
+  /** Прогулка: ни добычи, ни ставки, ни богатства — ходить можно, рисковать нечем. */
+  readonly walk: boolean;
+  /** Бывает ли здесь событие (§11.6). Модифицировать прогулке нечего. */
+  readonly events: boolean;
+  /** Запирает ли ярус Кухней (§22). У прогулки яруса нет. */
+  readonly gated: boolean;
+  /** Годится ли как цель «ещё вылазка» и как запасной вход при перезапуске. */
+  readonly raidable: boolean;
+}
+
+/**
+ * Сколько прогулочных точек бывает в день. Разброс, а не число: постоянного
+ * соотношения на карте нет нигде, и заводить его здесь значило бы сделать
+ * из карты расписание — ровно то, чего §4 избегает у ярусов.
+ */
+const STROLL: readonly {
+  readonly kind: NodeKind;
+  readonly label: string;
+  readonly min: number;
+  readonly max: number;
+}[] = [
+  { kind: 'замок', label: 'Замок', min: 1, max: 3 },
+  { kind: 'кладбище', label: 'Кладбище', min: 1, max: 3 },
+];
+
+export const KIND: Record<NodeKind, KindTraits> = {
+  'вылазка': { walk: false, events: true, gated: true, raidable: true },
+  'замок': { walk: true, events: false, gated: false, raidable: false },
+  'кладбище': { walk: true, events: false, gated: false, raidable: false },
+};
 
 export interface WorldNode {
   readonly id: number;
@@ -211,53 +276,39 @@ export function regionAt(day: number): Region {
   }
 
   /**
-   * Замок дня (§6.1.6). Одна точка, и она добавляется сверх раздачи вылазок,
-   * а не вместо одной из них: ярусы, богатство и весь счёт §4 обязаны остаться
-   * такими же, какими были до замка.
+   * Прогулочные точки дня — замок (§6.1.6) и кладбище (§6.1.7). Их несколько,
+   * и сколько именно, решает раздача, а не таблица расписания: день, в котором
+   * рядом три замка и одно кладбище, обязан быть возможен ровно так же, как
+   * день, где рядом только третий ярус.
    *
-   * Клетка сетки берётся следующая из той же перетасованной колоды — значит,
-   * поверх вылазки замок не сядет никогда. Имя — та же рабочая подпись
-   * местности (§0.1), в кавычках: склонять её было бы враньём про язык мира,
-   * которого нет.
+   * Правило, ради которого эти точки писались, остаётся дословно: **они
+   * добавляются сверх раздачи вылазок, а не вместо одной из них**. Ярусы,
+   * богатство и весь счёт §4 обязаны остаться такими же, какими были до них.
+   * Клетка берётся следующей из той же перетасованной колоды — значит, ни
+   * поверх вылазки, ни друг поверх друга они не сядут никогда.
+   *
+   * Имя — та же рабочая подпись местности (§0.1), в кавычках: склонять её
+   * было бы враньём про язык мира, которого нет.
    */
-  const keepCell = cells[nodes.length];
-  if (keepCell !== undefined) {
-    const col = keepCell % GRID_X;
-    const row = (keepCell / GRID_X) | 0;
-    const where = names.splice(Math.floor(rng() * names.length), 1)[0] ?? 'Пустошь';
-    nodes.push({
-      id: nodes.length,
-      name: `Замок «${where}»`,
-      x: (col + 0.5) / GRID_X + (rng() - 0.5) / GRID_X / 2.2,
-      y: 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6,
-      tier: 0,
-      kind: 'замок',
-    });
+  for (const spec of STROLL) {
+    const count = spec.min + Math.floor(rng() * (spec.max - spec.min + 1));
+    for (let i = 0; i < count; i++) {
+      const cell = cells[nodes.length];
+      if (cell === undefined) break;
+      const col = cell % GRID_X;
+      const row = (cell / GRID_X) | 0;
+      const where = names.splice(Math.floor(rng() * names.length), 1)[0] ?? 'Пустошь';
+      nodes.push({
+        id: nodes.length,
+        name: `${spec.label} «${where}»`,
+        x: (col + 0.5) / GRID_X + (rng() - 0.5) / GRID_X / 2.2,
+        y: 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6,
+        tier: 0,
+        kind: spec.kind,
+      });
+    }
   }
 
-  /**
-   * Кладбище дня (§6.1.7). Добавляется той же строкой и по той же причине,
-   * что замок: **сверх раздачи вылазок, а не вместо одной из них**. Ярусы,
-   * богатство и весь счёт §4 обязаны остаться такими же, какими были
-   * до обеих точек.
-   *
-   * Клетка берётся следующая из той же перетасованной колоды, поэтому ни
-   * поверх вылазки, ни поверх замка кладбище не сядет никогда.
-   */
-  const graveCell = cells[nodes.length];
-  if (graveCell !== undefined) {
-    const col = graveCell % GRID_X;
-    const row = (graveCell / GRID_X) | 0;
-    const where = names.splice(Math.floor(rng() * names.length), 1)[0] ?? 'Пустошь';
-    nodes.push({
-      id: nodes.length,
-      name: `Кладбище «${where}»`,
-      x: (col + 0.5) / GRID_X + (rng() - 0.5) / GRID_X / 2.2,
-      y: 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6,
-      tier: 0,
-      kind: 'кладбище',
-    });
-  }
   cached = { day, nodes, camp: CAMP_SPOT };
   return cached;
 }
@@ -371,7 +422,7 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
     // читает как «через сколько сюда снова стоит идти».
     const restShifts = rich >= RICH_MAX ? 0 : Math.max(1, Math.ceil((rich + 1 - v) / RICH_REST));
     const node = region.nodes[i]!;
-    const event = node.kind === 'замок' ? null : eventAt(day, node.id, t);
+    const event = KIND[node.kind].events ? eventAt(day, node.id, t) : null;
     return { rich, clan: clan[i]!, restShifts, event };
   });
 }
@@ -393,7 +444,7 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
 export function firstRaidNode(day: number, t: number): number | null {
   const region = regionAt(day);
   const world = worldAt(t, []);
-  const raids = region.nodes.filter((n) => n.kind === 'вылазка');
+  const raids = region.nodes.filter((n) => KIND[n.kind].raidable);
   if (raids.length === 0) return null;
   const rank = (n: WorldNode): number => {
     const state = world[region.nodes.indexOf(n)];
