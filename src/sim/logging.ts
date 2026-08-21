@@ -1,6 +1,6 @@
 /**
- * Вырубка леса (§13.3) — второй источник дерева и единственный, который
- * платится не риском, а временем.
+ * Вырубка леса (§13.3) — источник дерева, который платится не риском,
+ * а временем.
  *
  * Правило одно и держит всю механику: **срубленное дерево открывает клетку,
  * а кромка карты клетку не открывает никогда**. Отсюда и «рубка по краям
@@ -20,24 +20,22 @@
  * там не о чем точить. Включается рубка локацией, которая стоит на поверхности
  * (`RaidState.logging`), а не флагом рендера: правило про клетки, а не про то,
  * какую модель на них поставили.
+ *
+ * Замах, досягаемость и остаток секунд живут в `work.ts` — они же у кайла
+ * (§13.4). Здесь остаётся ровно то, что про лес: что стоит на клетке и что
+ * ложится в рюкзак.
  */
 import { distanceField, idx } from './grid';
 import { commandMove } from './raid';
 import { RESOURCE_NAME } from './resources';
+import { SWING_SECONDS, inReach as reaches, startWork, stepWork, workProgress } from './work';
+import type { Work, WorkBlock } from './work';
 import type { Cell, GameLocation, RaidState } from './types';
+
+export { SWING_SECONDS } from './work';
 
 /** Дерева за одно дерево. Один брусок — то же, что лежит на поляне. */
 export const CHOP_WOOD = 1;
-
-/**
- * Секунды на замах. Замах — это клип «удар» (§17.1), у которого удар
- * приходится на 0,583 с (`STRIKE` в `raidView.ts`), поэтому цифра здесь
- * задаёт растяжение клипа, а не подбирается на глаз: 0,8 с — тот же клип
- * в 0,73 скорости, и топор от этого читается тяжелее клинка. Звук стучит
- * ровно на замахе, то есть в момент удара, — это правило §17.3, и оно
- * общее для боя и для рубки.
- */
-export const SWING_SECONDS = 0.8;
 
 /**
  * Замахов на дерево. Число не назначено, а выведено из требования «рубка
@@ -51,17 +49,11 @@ export const CHOP_SWINGS = 10;
 /** Сколько секунд падает одно дерево. */
 export const CHOP_SECONDS = SWING_SECONDS * CHOP_SWINGS;
 
-/**
- * Досягаемость топора. Соседняя клетка вместе с диагональю (√2 ≈ 1,41):
- * герой встаёт туда, куда его привёл `nearestWalkable`, и требовать
- * от него ортогонального соседства значило бы отказывать по причине,
- * которой игрок не видит.
- */
-export const CHOP_REACH = 1.6;
+/** Почему рубить нельзя. Словарь общий с добычей камня — см. `work.ts`. */
+export type ChopBlock = WorkBlock;
 
-/** Почему рубить нельзя. Причина, а не `false`: молчащий отказ читается
- *  как поломка — то же правило, что у места под здание (`prologue.ts`). */
-export type ChopBlock = 'ok' | 'no-forest' | 'no-tree' | 'far' | 'bag';
+/** Работа топором. Тот же тип, что у кайла: разница не в замахе. */
+export type Chop = Work;
 
 /** Кромка локации — рамка в одну клетку. Она же граница мира (§12.1). */
 export function isEdge(loc: GameLocation, cell: Cell): boolean {
@@ -76,7 +68,7 @@ export function treeAt(loc: GameLocation, cell: Cell): boolean {
 
 /** Дотягивается ли герой до клетки топором. */
 export function inReach(state: RaidState, cell: Cell): boolean {
-  return Math.hypot(state.hero.x - cell.x, state.hero.z - cell.z) <= CHOP_REACH;
+  return reaches(state.hero, cell);
 }
 
 /**
@@ -85,27 +77,14 @@ export function inReach(state: RaidState, cell: Cell): boolean {
  * игрок: рюкзак наполняется подбором, а герой отходит по своей же команде.
  */
 export function chopBlock(state: RaidState, cell: Cell): ChopBlock {
-  if (!state.logging) return 'no-forest';
-  if (!treeAt(state.loc, cell)) return 'no-tree';
+  if (!state.logging) return 'off';
+  if (!treeAt(state.loc, cell)) return 'gone';
   if (state.bagTotal >= state.capacity) return 'bag';
   if (!inReach(state, cell)) return 'far';
   return 'ok';
 }
 
-/** Работа топором: клетка и остаток секунд. */
-export interface Chop {
-  readonly cell: Cell;
-  /** Секунд до падения. */
-  left: number;
-  /** Сделано замахов — по ним рендер бьёт клипом, а звук стучит. */
-  swings: number;
-}
-
-export const startChop = (cell: Cell): Chop => ({
-  cell: { x: cell.x, z: cell.z },
-  left: CHOP_SECONDS,
-  swings: 0,
-});
+export const startChop = (cell: Cell): Chop => startWork(cell, CHOP_SWINGS);
 
 /**
  * Взяться за дерево: дойти до него или встать, если топор уже достаёт.
@@ -126,8 +105,7 @@ export function aimChop(state: RaidState, cell: Cell): Chop {
 }
 
 /** Доля сделанной работы, 0..1 — её и показывает кольцо на клетке. */
-export const chopProgress = (chop: Chop): number =>
-  Math.max(0, Math.min(1, 1 - chop.left / CHOP_SECONDS));
+export const chopProgress = (chop: Chop): number => workProgress(chop);
 
 export interface ChopStep {
   /** На этом тике случился замах. */
@@ -138,38 +116,24 @@ export interface ChopStep {
   readonly stopped: ChopBlock | null;
 }
 
-const IDLE: ChopStep = { swing: false, felled: false, stopped: null };
-
 /**
  * Тик работы. Пока герой идёт к дереву, время не тратится: рубит тот, кто
  * дошёл, — иначе дерево падало бы от одного намерения.
  */
 export function stepChop(state: RaidState, chop: Chop, dt: number): ChopStep {
-  if (state.status !== 'running') return { ...IDLE, stopped: 'no-tree' };
-  const block = chopBlock(state, chop.cell);
-  if (block === 'far') {
-    // Герой ещё в дороге — ждём. Дошёл и всё равно не дотянулся (дерево
-    // в глухом углу) — работы не будет, и это надо сказать, а не молчать.
-    return state.path.length > 0 ? IDLE : { ...IDLE, stopped: 'far' };
+  if (state.status !== 'running') {
+    return { swing: false, felled: false, stopped: 'gone' };
   }
-  if (block !== 'ok') return { ...IDLE, stopped: block };
-
-  // Дровосек смотрит на дерево. Направление держит симуляция по той же
-  // причине, что и в бою: рендер его сглаживает, но не выдумывает.
-  state.hero.facing = Math.atan2(chop.cell.x - state.hero.x, chop.cell.z - state.hero.z);
-
-  chop.left -= dt;
-  // Замах считается по удару, а не по началу движения: звук и дрожь ствола
-  // приходятся на момент, когда топор вошёл в дерево (§17.3). Поэтому
-  // первый стук слышен через `SWING_SECONDS` после начала работы,
-  // а десятый совпадает с падением.
-  const swings = Math.min(CHOP_SWINGS, Math.floor((CHOP_SECONDS - chop.left) / SWING_SECONDS));
-  const swing = swings > chop.swings;
-  chop.swings = Math.max(chop.swings, swings);
-  if (chop.left > 0) return { swing, felled: false, stopped: null };
-
+  const step = stepWork(
+    state.hero,
+    state.path.length > 0,
+    chop,
+    dt,
+    chopBlock(state, chop.cell),
+  );
+  if (!step.done) return { swing: step.swing, felled: false, stopped: step.stopped };
   fell(state, chop.cell);
-  return { swing, felled: true, stopped: null };
+  return { swing: step.swing, felled: true, stopped: null };
 }
 
 /**

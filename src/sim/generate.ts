@@ -4,6 +4,7 @@ import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } fro
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
 import { rollLoot } from './resources';
+import { STONES, scatterStones } from './stones';
 import type { Cell, Container, Enemy, GameLocation, Tier } from './types';
 
 /**
@@ -311,7 +312,30 @@ export function generateLocation(
     });
   });
 
-  return { seed, tier, size, blocked, evac, containers, enemies, backSteps };
+  /**
+   * Валуны (§13.4) — последними и от своего потока случайности. Порядок
+   * здесь не вкусовщина: подмешавшись в общий `rng`, камни сдвинули бы
+   * всё, что бросается после них, и золотой мастер разошёлся бы с прежним
+   * на локациях, где ничего, кроме камней, не менялось.
+   *
+   * Клетки находок и противников исключены. Валун их не загораживает —
+   * он не занимает клетку, — но тап по такой клетке стал бы спорным:
+   * игрок целился в добычу, а герой взялся за кайло.
+   */
+  const busy = new Set<number>([
+    idx(size, evac.x, evac.z),
+    ...containers.map((c) => idx(size, c.x, c.z)),
+    ...enemies.map((e) => idx(size, e.x, e.z)),
+  ]);
+  const stones = scatterStones(
+    seed ^ (tier * 0x2545f491),
+    size,
+    blocked,
+    STONES.raid[tier]!,
+    (x, z) => !busy.has(idx(size, x, z)),
+  );
+
+  return { seed, tier, size, blocked, evac, containers, stones, enemies, backSteps };
 }
 
 /**

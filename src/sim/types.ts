@@ -2,6 +2,7 @@ import type { GearMods } from './gear';
 import type { HeroLoadout } from './heroes';
 import type { ConsumableId } from './consumables';
 import type { ResourceKind, Resources } from './resources';
+import type { Stone } from './stones';
 
 export type Tier = 0 | 1 | 2 | 3;
 
@@ -72,6 +73,13 @@ export interface GameLocation {
   readonly blocked: Uint8Array;
   readonly evac: Cell;
   readonly containers: Container[];
+  /**
+   * Валуны на проходимых клетках (§13.4). Клетку не занимают: по камню
+   * по колено ходят, и путь назад от него не меняется — иначе разбитый
+   * валун пересчитывал бы карту, как просека (§13.3), а он не проход
+   * открывает, а даёт камень.
+   */
+  readonly stones: Stone[];
   readonly enemies: Enemy[];
   /** §11.1 «путь назад»: длина кратчайшего пути до выхода, в шагах. */
   readonly backSteps: Int32Array;

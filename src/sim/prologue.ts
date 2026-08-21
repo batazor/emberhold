@@ -173,6 +173,11 @@ export function generateGlade(seed: number): GameLocation {
     blocked,
     evac: start,
     containers: gladeLogs(size, reach, rng),
+    // Валунов на поляне нет (§13.4): в первые три минуты жест ровно один,
+    // и учит ему кольцо над бруском. Второй предмет, по которому надо
+    // стучать, отнимал бы у кольца внимание ради камня, который в прологе
+    // некуда потратить.
+    stones: [],
     enemies: [],
     backSteps: distanceField(size, blocked, start),
   };

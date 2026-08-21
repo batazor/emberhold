@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  KIND,
   CLANS,
   DAY_SEC,
   RICH_MAX,
@@ -242,5 +243,44 @@ describe('Мир: карта локаций', () => {
       worldAt(t, visits).map((n) => n.rich),
       'чистка не меняет мир: выброшено то, что уже ни на что не влияет',
     );
+  });
+
+  /*
+   * Виды узла описаны таблицей, а не россыпью проверок `kind === …`.
+   *
+   * Проверок было семь на три вида, в двух файлах, и ни одну компилятор
+   * не ловил. Кладбище приехало третьим и половину не задело: событие ему
+   * считалось как вылазке, а гейт Кухни пропускал по совпадению — у него
+   * `tier: 0`. Правило ниже держит таблицу полной: новый вид узла упрётся
+   * в него раньше, чем в игрока.
+   */
+  test('каждый вид узла описан в таблице, и прогулки честно помечены', () => {
+    const kinds = new Set(regionAt(DAY0).nodes.map((n) => n.kind));
+    for (let d = 1; d < 30; d++) {
+      for (const n of regionAt(DAY0 + d).nodes) kinds.add(n.kind);
+    }
+    for (const kind of kinds) {
+      assert.notEqual(KIND[kind], undefined, `вид «${kind}» не описан в KIND`);
+    }
+    // Прогулка — это разом четыре свойства, и врозь они не бывают: место
+    // без добычи не запирается ярусом, не носит событий и не годится
+    // в «ещё вылазку».
+    for (const [kind, t] of Object.entries(KIND)) {
+      if (!t.walk) continue;
+      assert.equal(t.events, false, `${kind}: прогулка с событием — модифицировать нечего`);
+      assert.equal(t.gated, false, `${kind}: прогулку запирает Кухня, хотя провианта ей не нужно`);
+      assert.equal(t.raidable, false, `${kind}: прогулка предлагается как вылазка`);
+    }
+    assert.ok(KIND['вылазка'].raidable, 'вылазка перестала быть вылазкой');
+  });
+
+  test('прогулочные места не попадают туда, где ждут добычу', () => {
+    // `safestNode` и `nextPlace` сортируют по ярусу и богатству. У прогулки
+    // `tier: 0` и богатство всегда полное — без фильтра обе звали в замок.
+    const nodes = regionAt(DAY0).nodes;
+    const raidable = nodes.filter((n) => KIND[n.kind].raidable);
+    assert.ok(raidable.length > 0, 'вылазок в дне не осталось');
+    assert.ok(raidable.length < nodes.length, 'в дне нет ни одной прогулки — проверять нечего');
+    for (const n of raidable) assert.equal(n.kind, 'вылазка');
   });
 });

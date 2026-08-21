@@ -287,7 +287,12 @@ function yardTiles(castle: Castle, at: Spot, loc: GameLocation): Cell[] {
  * жильцу право пройти там, где герой не пройдёт, и это читалось бы
  * как ошибка стены, а не как выбор маршрута.
  */
-function yardWalks(castle: Castle, at: Spot, loc: GameLocation): YardWalk[] {
+function yardWalks(
+  castle: Castle,
+  at: Spot,
+  loc: GameLocation,
+  trader: Cell | null,
+): YardWalk[] {
   const tiles = yardTiles(castle, at, loc);
   if (tiles.length === 0) return [];
 
@@ -304,7 +309,29 @@ function yardWalks(castle: Castle, at: Spot, loc: GameLocation): YardWalk[] {
   const apart = Math.max(2, Math.round(Math.sqrt(tiles.length) / 2));
 
   const out: YardWalk[] = [];
-  for (let i = 0; i < count; i++) {
+
+  /**
+   * Торговец (§13.5) — один из жильцов, и стоит он на месте. До сих пор
+   * лавка была точкой без тела: во дворе, где никого нет, невидимый торговец
+   * никому не мешал. С жильцами он стал единственным невидимым человеком
+   * среди видимых — игрок подходил бы к магу и ничего не получал, а панель
+   * открывалась бы от пустого места.
+   *
+   * **Стоящий и есть указатель.** Во дворе, где остальные гуляют, тот, кто
+   * не двигается, — это тот, к кому подходят; панель на подходе только
+   * подтверждает прочитанное. Второго органа — значка над головой,
+   * подсветки — не заводится: жест здесь один, как и в вылазке.
+   */
+  if (trader !== null) {
+    out.push({
+      look: 'плут',
+      path: [trader],
+      stops: [0],
+      cycle: DWELLER_STAND,
+    });
+  }
+
+  for (let i = out.length; i < count; i++) {
     const corners: Cell[] = [];
     for (let c = 0; c < YARD_CORNERS; c++) {
       let pick: Cell | null = null;
@@ -399,7 +426,12 @@ function walkYard(w: YardWalk, t: number): Dweller {
  * Гарнизон площадки. Считается один раз на заход: ни одно из этих чисел
  * не меняется, пока стоит замок.
  */
-export function garrisonOf(site: { castle: Castle; at: Spot; loc: GameLocation }): Garrison {
+export function garrisonOf(site: {
+  castle: Castle;
+  at: Spot;
+  loc: GameLocation;
+  trader?: Cell | null;
+}): Garrison {
   const { castle, at } = site;
   const x0 = at.x - PATROL_GAP;
   const z0 = at.z - PATROL_GAP;
@@ -419,7 +451,7 @@ export function garrisonOf(site: { castle: Castle; at: Spot; loc: GameLocation }
     length,
     way: randInt(rng, 2) === 0 ? 1 : -1,
     runs: runsOf(castle, at),
-    yard: yardWalks(castle, at, site.loc),
+    yard: yardWalks(castle, at, site.loc, site.trader ?? null),
   };
 }
 

@@ -433,6 +433,9 @@ export function generateGraveSite(seed: number): GraveSite {
     blocked,
     evac,
     containers: [],
+    // Валунов на кладбище нет (§13.4): это прогулка, и добывать на ней
+    // нечего — ровно как нет здесь ни находок, ни ярусной добычи.
+    stones: [],
     enemies,
     backSteps: distanceField(size, blocked, evac),
   };

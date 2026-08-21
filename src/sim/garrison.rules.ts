@@ -20,7 +20,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CASTLE_CELL, DIRS, deckOf, keyOf, partOf } from './castle';
-import { generateCastleSite, inYard } from './castleSite';
+import { atTrader, generateCastleSite, inYard } from './castleSite';
 import {
   ARCHER_CYCLE,
   ARCHER_SPEED,
@@ -331,6 +331,13 @@ describe('Замок: жильцы двора', () => {
   test('обход замкнут, лежит во дворе и не идёт сквозь занятое', () => {
     for (const { site, g } of guards) {
       for (const w of g.yard) {
+        // Обход из одной клетки бывает ровно у одного жильца — торговца:
+        // он стоит на месте, и это его работа (§13.5).
+        if (w.path.length === 1) {
+          assert.ok(site.trader !== null, `сид ${site.loc.seed}: стоящий жилец без лавки`);
+          assert.deepEqual(w.path[0], site.trader, `сид ${site.loc.seed}: стоит не на лавке`);
+          continue;
+        }
         assert.ok(w.path.length >= 2, `сид ${site.loc.seed}: обход из одной клетки`);
         for (const c of w.path) {
           assert.ok(inYard(site, c), `сид ${site.loc.seed}: обход вышел за двор в ${c.x},${c.z}`);
@@ -389,12 +396,37 @@ describe('Замок: жильцы двора', () => {
           );
           if (a.walking) moved += step; else stood += STEP;
         }
+        if (w.path.length === 1) {
+          // Торговец не ходит вовсе, и это проверяется, а не подразумевается:
+          // ушедшая лавка — это панель, открывающаяся от пустого места.
+          assert.equal(moved, 0, `сид ${site.loc.seed}: торговец сошёл с места`);
+          continue;
+        }
         assert.ok(moved > 1, `сид ${site.loc.seed}: жилец ${i} прошёл за круг ${moved.toFixed(2)}`);
         assert.ok(
           stood > DWELLER_STAND,
           `сид ${site.loc.seed}: жилец ${i} за круг ни разу не постоял`,
         );
       }
+    }
+  });
+
+  /**
+   * До жильцов лавка была точкой без тела, и во дворе, где никого нет, это
+   * никому не мешало. С жильцами невидимый торговец стал бы единственным
+   * невидимым человеком среди видимых. Правило держит это на месте.
+   */
+  test('у торговца есть тело, и оно стоит на его клетке', () => {
+    for (const { site, g } of guards) {
+      if (site.trader === null) continue;
+      const standing = g.yard.filter((w) => w.path.length === 1);
+      assert.equal(standing.length, 1, `сид ${site.loc.seed}: стоящих ${standing.length}`);
+      const man = dwellersAt(g, 17.3)[g.yard.indexOf(standing[0]!)]!;
+      assert.ok(
+        atTrader(site, man.x, man.z),
+        `сид ${site.loc.seed}: тело торговца не дотягивается до его лавки`,
+      );
+      assert.equal(man.walking, false, `сид ${site.loc.seed}: торговец идёт`);
     }
   });
 
