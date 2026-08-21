@@ -526,13 +526,22 @@ export class WorldMap {
     this.walkButton(node);
   }
 
+  /**
+   * Замок (§6.1.6). Карточка перестала обещать пустую прогулку: во дворе
+   * стоит торговец (§13.4), и это единственное место, где железо берут
+   * не глубиной.
+   *
+   * Ставки и добычи здесь по-прежнему нет — а курс не называется: он плохой
+   * и меняется замером, а карточка обязана оставаться правдой без правок.
+   * Числа игрок увидит у самого торговца.
+   */
   private paintKeepCard(node: WorldNode): void {
     this.card.innerHTML =
       `<div class="t"><b>${node.name}</b><i>постройка</i></div>` +
       '<div class="line"><span>Что там</span><b>стены, башни, двор</b></div>' +
-      '<div class="line"><span>Добыча</span><b>нет</b></div>' +
-      '<div class="line"><span>Кто здесь</span><b class="good">никого</b></div>';
-    this.note.textContent = 'Прогулка: ни добычи, ни противников. Выход открыт сразу.';
+      '<div class="line"><span>Кто здесь</span><b class="good">торговец</b></div>' +
+      '<div class="line"><span>Меняет на</span><b>железо</b></div>';
+    this.note.textContent = 'Прогулка: добычи и противников нет. Торговец во дворе, за воротами.';
     this.walkButton(node);
   }
 

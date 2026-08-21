@@ -43,6 +43,26 @@ export interface CastleSite {
   readonly trees: readonly Spot[];
   /** Ворота в клетках локации — сюда приходят снаружи. */
   readonly gate: Cell;
+  /**
+   * Где стоит торговец (§13.4). Во дворе, а не у ворот: двор достижим только
+   * через них (`castleSite.rules.ts`), и обмен поэтому стоит прогулки внутрь,
+   * а не одного шага от выхода. `null` — двора у этого плана не нашлось.
+   */
+  readonly trader: Cell | null;
+}
+
+/**
+ * Насколько близко надо подойти, чтобы торговец заговорил. Тот же порядок,
+ * что у чтения эпитафий на кладбище (§6.1.7): точность тапа на телефоне
+ * кончается раньше терпения.
+ */
+export const TRADER_REACH = 2.2;
+
+/** Стоит ли герой у торговца. */
+export function atTrader(site: CastleSite, x: number, z: number): boolean {
+  const t = site.trader;
+  if (t === null) return false;
+  return (t.x - x) ** 2 + (t.z - z) ** 2 <= TRADER_REACH * TRADER_REACH;
 }
 
 /** Клетка локации, в которую попадает деталь плана. */
@@ -118,6 +138,25 @@ export function generateCastleSite(seed: number): CastleSite {
   // Точка выхода обязана быть свободной: она же место, куда игрок приходит.
   blocked[idx(size, evac.x, evac.z)] = 0;
 
+  /*
+   * Торговец — в глубине двора, дальше всех от ворот. Ближняя к воротам
+   * клетка сделала бы обмен придорожным ларьком: игрок вошёл бы под арку,
+   * поменял и вышел, и замок остался бы тем же коридором, каким был.
+   * Дальняя заставляет пройти двор — то есть увидеть постройку, ради которой
+   * место и заведено.
+   */
+  let trader: Cell | null = null;
+  let far = -1;
+  for (const spot of castle.yard) {
+    const cell = spotAt({ at }, spot);
+    // Середина клетки набора: деталь занимает CASTLE_CELL клеток локации.
+    const c: Cell = { x: cell.x + (CASTLE_CELL >> 1), z: cell.z + (CASTLE_CELL >> 1) };
+    if (c.x < 0 || c.z < 0 || c.x >= size || c.z >= size) continue;
+    if (blocked[idx(size, c.x, c.z)]) continue;
+    const d = (c.x - gate.x) ** 2 + (c.z - gate.z) ** 2;
+    if (d > far) { far = d; trader = c; }
+  }
+
   const loc: GameLocation = {
     seed,
     tier: 0,
@@ -128,5 +167,5 @@ export function generateCastleSite(seed: number): CastleSite {
     enemies: [],
     backSteps: distanceField(size, blocked, evac),
   };
-  return { loc, castle, at, trees, gate };
+  return { loc, castle, at, trees, gate, trader };
 }

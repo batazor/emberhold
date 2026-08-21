@@ -416,6 +416,26 @@ button[disabled] { opacity: 0.4; cursor: default; }
   pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
 }
 
+/* ---------- лавка торговца (§13.4) ---------- */
+/* Строки, а не магазин: то же решение, что у припасов (§21) — «отдельный
+   экран превратил бы лагерь в витрину». Здесь витрина отменила бы прогулку
+   по двору, ради которой во двор и шли. Панель стоит внизу, как приглашение
+   разбить лагерь, и гаснет, стоит отойти. */
+#trade {
+  position: fixed; inset: auto 0 0 0; display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+  padding: 0 16px calc(26px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+#trade .t {
+  margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink);
+}
+#trade .wallet { margin: 0; font-size: 12px; color: var(--dim); }
+#trade .row { display: flex; align-items: center; gap: 8px; }
+#trade button { pointer-events: auto; font-size: 14px; padding: 10px 22px; }
+#trade .why { font-size: 11px; color: var(--bad); min-width: 64px; }
+
 /* ---------- панель стройки стен (§12, §6.1.6) ---------- */
 #camp .build { gap: 10px; align-self: stretch; }
 .build-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 6px; }

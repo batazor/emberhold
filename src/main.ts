@@ -106,8 +106,12 @@ import {
 } from './sim/campWalls';
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
-import { generateCastleSite } from './sim/castleSite';
+import { atTrader, generateCastleSite } from './sim/castleSite';
+import type { CastleSite } from './sim/castleSite';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
+import { trade } from './sim/trade';
+import type { OfferId } from './sim/trade';
+import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
@@ -333,7 +337,9 @@ const campHud = new CampHud(app, {
     // отсюда, а не из локации — в локацию он уже приезжает начатым.
     if (onboarding.step === 'world') onboarding.set('move');
     // Вторая вылазка — конец раскадровки: дальше игра работает как обычно.
-    else if (onboarding.step === 'craft') onboarding.set('done');
+    // Кадр `craft` кончается первой ковкой, а не входом в вылазку: она и есть
+    // то, ради чего Мастерская строилась. Раньше он висел до следующего входа,
+    // то есть до того, как игрок сделает обещанное.
     toRaid(node);
   },
   onCraft: (slot) => forge(slot),
@@ -560,6 +566,8 @@ function forge(slot: GearSlot): boolean {
   }
   const level = camp.gear[slot];
   track({ t: 'craft', at: clock.now(), slot, toLevel: level });
+  // Раскадровка кончается здесь: игрок сковал первое, что обещала Мастерская.
+  if (onboarding.step === 'craft') onboarding.set('done');
   campHud.notify(`${GEAR[slot].name} ур. ${level}`);
   persist();
   return true;
@@ -579,6 +587,29 @@ const campPrompt = new CampPrompt(app, {
     // остался, — и первое здание вырастает у него на глазах, а не за
     // загрузочным экраном.
     startPlacing(PITCH_ORDER[0]!);
+  },
+});
+
+/**
+ * Лавка торговца (§13.4). Открывается подходом во дворе замка, гаснет уходом.
+ *
+ * Обмен ничего не пишет в мир и никуда не ведёт: он меняет только кошелёк,
+ * и поэтому сохраняется тем же `persist`, что и всякая трата. Прибавка
+ * говорится строкой события — той же, в которой вылазка сообщает о подобранном
+ * (§18.1): игрок обязан увидеть, что именно у него прибавилось.
+ */
+const tradePanel = new TradePanel(app, {
+  onTrade: (id: OfferId) => {
+    if (!trade(camp, id)) {
+      // Отказ обязан быть слышен так же, как виден (§18.3).
+      play('deny');
+      return;
+    }
+    play('build');
+    track({ t: 'trade', at: clock.now(), offer: id });
+    if (raid !== null) raid.events.push(TradePanel.gained(id));
+    tradePanel.sync(camp);
+    persist();
   },
 });
 
@@ -923,11 +954,15 @@ function toRaid(node: number): boolean {
  */
 let graveSite: GraveSite | null = null;
 let readStone: string | null = null;
+/** Площадка замка, пока игрок в ней. Нужна ради торговца (§13.4). */
+let keepSite: CastleSite | null = null;
 
 function toGraveyard(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateGraveSite(seed);
+  keepSite = null;
+  tradePanel.setVisible(false);
   graveSite = site;
   readStone = null;
   raidNode = node;
@@ -967,6 +1002,8 @@ function toCastle(node: number, seed: number): boolean {
   chop = null;
   const site = generateCastleSite(seed);
   graveSite = null;
+  keepSite = site;
+  tradePanel.setVisible(false);
   raidNode = node;
   // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
   // прогулка не обязана снимать его с лечения.
@@ -1775,6 +1812,16 @@ startLoop({
         const read = readEpitaph(graveSite, raid.hero.x, raid.hero.z, readStone);
         readStone = read.last;
         if (read.say !== null) raid.events.push(read.say);
+      }
+      /**
+       * Лавка открывается подходом и гаснет уходом (§13.4) — тем же жестом,
+       * что и надпись на камне. Кнопки «закрыть» нет: игрок отходит, и лавки
+       * больше нет.
+       */
+      if (keepSite !== null) {
+        const near = atTrader(keepSite, raid.hero.x, raid.hero.z);
+        if (near !== tradePanel.visible) tradePanel.setVisible(near);
+        if (near) tradePanel.sync(camp);
       }
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).

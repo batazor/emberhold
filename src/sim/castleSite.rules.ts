@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CASTLE_CELL } from './castle';
-import { FIELD, WOOD, generateCastleSite, spotAt } from './castleSite';
+import { FIELD, TRADER_REACH, WOOD, atTrader, generateCastleSite, spotAt } from './castleSite';
 import { distanceField, idx } from './grid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
@@ -142,5 +142,42 @@ describe('Замок на карте: чего в нём нет', () => {
       assert.deepEqual([...a.loc.blocked], [...b.loc.blocked], `сид ${seed}`);
       assert.deepEqual(a.loc.evac, b.loc.evac, `сид ${seed}`);
     }
+  });
+
+  /*
+   * Торговец (§13.4). Замок до него был местом без назначения — «ни добычи,
+   * ни противников, по нему пока только ходят». Обмен даёт ему смысл, и
+   * поэтому стоит он во дворе: двор достижим только через ворота (правило
+   * выше), и обмен обязан стоить прогулки внутрь, а не шага от выхода.
+   */
+  test('торговец есть на каждом сиде, и до него можно дойти', () => {
+    for (const seed of SEEDS) {
+      const site = generateCastleSite(seed);
+      assert.notEqual(site.trader, null, `сид ${seed}: торговца нет`);
+      const t = site.trader!;
+      const { loc } = site;
+      assert.equal(loc.blocked[idx(loc.size, t.x, t.z)], 0, `сид ${seed}: торговец в стене`);
+      const reach = distanceField(loc.size, loc.blocked, loc.evac);
+      assert.ok(reach[idx(loc.size, t.x, t.z)]! >= 0, `сид ${seed}: до торговца не дойти`);
+      assert.ok(atTrader(site, t.x, t.z), `сид ${seed}: торговец не отзывается в своей же клетке`);
+    }
+  });
+
+  test('торговец стоит в глубине двора, а не у ворот', () => {
+    // Замер на 300 сидах: 11–27 шагов от выхода, в среднем 19. Ближняя
+    // к воротам клетка сделала бы обмен придорожным ларьком — вошёл под арку,
+    // поменял, вышел, и замка игрок так и не увидел.
+    let worst = Infinity;
+    for (const seed of SEEDS) {
+      const site = generateCastleSite(seed);
+      const t = site.trader!;
+      const reach = distanceField(site.loc.size, site.loc.blocked, site.loc.evac);
+      worst = Math.min(worst, reach[idx(site.loc.size, t.x, t.z)]!);
+      // Радиус отклика не должен доставать до ворот: иначе панель откроется
+      // с порога и двор снова окажется декорацией.
+      const toGate = Math.hypot(t.x - site.gate.x, t.z - site.gate.z);
+      assert.ok(toGate > TRADER_REACH, `сид ${seed}: торговец слышен от ворот`);
+    }
+    assert.ok(worst >= 8, `ближайший торговец в ${worst} шагах от выхода — это ларёк, а не двор`);
   });
 });
