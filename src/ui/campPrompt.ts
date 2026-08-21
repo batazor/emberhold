@@ -14,13 +14,22 @@
  */
 export interface CampPromptCallbacks {
   onPitch(): void;
+  /**
+   * Приглашение появилось или ушло. Через это HUD узнаёт, уступать ли место
+   * подсказке и кнопкам (§6.2.6).
+   *
+   * Callback, а не три вызова на местах: гасят приглашение уже из трёх точек,
+   * и одна из них про это забыла — вылазка после неё шла без подсказки
+   * и без кнопок. Забыть здесь больше негде.
+   */
+  onShown(visible: boolean): void;
 }
 
 export class CampPrompt {
   private readonly root: HTMLElement;
   private readonly reason: HTMLElement;
 
-  constructor(parent: HTMLElement, cb: CampPromptCallbacks) {
+  constructor(parent: HTMLElement, private readonly cb: CampPromptCallbacks) {
     this.root = document.createElement('div');
     this.root.id = 'pitch';
     // Строка — та же `.chip`, что и подсказка вылазки: они стоят в одном
@@ -53,5 +62,6 @@ export class CampPrompt {
 
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
+    this.cb.onShown(visible);
   }
 }

@@ -753,9 +753,9 @@ const startScreen = new StartScreen(app, {
 // Приглашение вселяется в нижнюю панель вылазки, а не приходит отдельным
 // слоем: два нижних угла не знали друг о друге и налезали (§6.2.6).
 const campPrompt = new CampPrompt(hud.promptSlot, {
+  onShown: (visible) => hud.setPrompting(visible),
   onPitch: () => {
     campPrompt.setVisible(false);
-    hud.setPrompting(false);
     // Лагерь встаёт прямо здесь. Никакого перехода в отдельную сцену:
     // поляна, по которой игрок только что ходил, и есть место, где он
     // остался, — и первое здание вырастает у него на глазах, а не за
@@ -1050,7 +1050,6 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   statsPanel.setVisible(panels.stats);
   startScreen.setVisible(panels.startScreen);
   campPrompt.setVisible(panels.campPrompt);
-  if (!panels.campPrompt) hud.setPrompting(false);
   if (!panels.returnScreen) returnScreen.hide();
 
   const sound = soundFor(scene, tier);
@@ -2771,7 +2770,6 @@ startLoop({
           resultShown = true;
           campPrompt.setReason(enough ? 'Дерево собрано' : 'Провиант кончился');
           campPrompt.setVisible(true);
-          hud.setPrompting(true);
           // Пульс отработал своё: он вёл к этой секунде и молчит после неё.
           stopPulse();
         }
