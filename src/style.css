@@ -178,7 +178,12 @@ button:active { background: rgba(255, 255, 255, 0.12); }
    здесь, а не в разметке, — карта обязана влезать в лист вместе с карточкой
    на 360×780, иначе решение принимается вслепую. */
 #camp .map { gap: 8px; }
-.map-cv { width: 100%; aspect-ratio: 3 / 2; max-height: 30vh; display: block; }
+/* Земля под точками (§4.2) даёт карте край, которого у чёрного экрана
+   не было: рамка и скругление отделяют лист от панели под ним. */
+.map-cv {
+  width: 100%; aspect-ratio: 3 / 2; max-height: 30vh; display: block;
+  border: 1px solid var(--line); border-radius: 8px;
+}
 .map-card {
   display: flex; flex-direction: column; gap: 4px;
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;

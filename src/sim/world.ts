@@ -27,8 +27,14 @@ import { EVENT_WINDOW_SHIFTS, eventFor, isGentle } from './events';
 import type { EventId } from './events';
 import type { Tier } from './types';
 
-/** Сид региона. Один на игру: карта у всех одна, как и требует §4. */
-const SEED = 20260820;
+/**
+ * Сид региона. Один на игру: карта у всех одна, как и требует §4.
+ *
+ * Наружу он выставлен ради местности (`terrain.ts`): холмы и реки обязаны
+ * расти из того же сида, что и раздача точек. Со своим сидом они разошлись бы
+ * с картой молча — регион пересобрался бы, а земля под ним осталась вчерашней.
+ */
+export const SEED = 20260820;
 
 /**
  * Начало отсчёта мира — 20 августа 2026. От него растут кланы: мир был
@@ -141,8 +147,11 @@ export interface Region {
   readonly camp: { readonly x: number; readonly y: number };
 }
 
-/** Сид + идентификаторы → 32 бита. Тот же FNV, что в артбуке. */
-function hash(...parts: readonly number[]): number {
+/**
+ * Сид + идентификаторы → 32 бита. Тот же FNV, что в артбуке. Выставлен
+ * наружу по той же причине, что и `SEED`: местность считается из него же.
+ */
+export function hash(...parts: readonly number[]): number {
   let h = 2166136261 >>> 0;
   for (const part of parts) {
     const x = part | 0;
