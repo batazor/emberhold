@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { buildingGeometry, heroGeometry, residentGeometry } from './models';
+import { buildingGeometry, dwellerParts, heroGeometry, heroParts } from './models';
+import { Rigged } from './rigged';
+import { CAMP_SPEED } from '../sim/campWalk';
+import type { HeroClassId } from '../sim/heroes';
 import { Fire } from './fire';
 import { BUILDING_ORDER, builtBuildings, campArea } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
@@ -35,6 +38,28 @@ import { PALETTE } from './palette';
 const BUILDING_SCALE = 0.55;
 /** Житель ростом с клетку читается рядом со зданием, а не как игрушка. */
 const VILLAGER_SCALE = 0.62;
+
+/**
+ * Растяжение клипа ходьбы — то же правило и то же число, что в вылазке
+ * (`raidView.ts`): шаг клипа обязан совпасть со скоростью, иначе ноги едут
+ * по полу. `SLIDE` — сколько единиц набора проходит нога за секунду в клипе,
+ * замер лежит в каталоге анимаций (`npm run clips`).
+ *
+ * Масштаб входит в делитель, потому что клип живёт в единицах модели:
+ * уменьшенная фигура за тот же кадр проходит меньше, и без поправки
+ * житель лагеря семенил бы вдвое чаще героя вылазки при одной скорости.
+ */
+const SLIDE = 0.855;
+const MAX_RATE = 3;
+const walkRate = (speed: number, scale: number): number =>
+  Math.min(MAX_RATE, speed / Math.max(1e-3, SLIDE * scale));
+
+/**
+ * Насколько должен сдвинуться герой за кадр, чтобы считаться идущим.
+ * Не ноль: положение приходит из симуляции числами с плавающей точкой,
+ * и стоящий на месте иначе дёргался бы между «идёт» и «стоит».
+ */
+const WALK_EPS = 1e-4;
 
 /**
  * Лес вокруг поляны (§6.1, набор KayKit Forest). Лагерь стоит на поляне
@@ -77,9 +102,21 @@ export class CampView {
   /** Палатки жильцов: без имени, потому что различать их нечем и незачем —
    *  тап по палатке ничего не открывает. */
   private readonly tents: THREE.Group[] = [];
-  private readonly folk: THREE.Mesh[] = [];
+  /**
+   * Жильцы лагеря. Со скелетом — как все прочие тела игры: пока герой в лагере
+   * стоял неподвижной геометрией, неподвижными держались и они, чтобы
+   * анимированный жилец не сделал героя рядом с собой хуже, чем он есть.
+   * Теперь риг у обоих, и держаться этого правила больше не за что.
+   */
+  private readonly folk: Rigged[] = [];
   private readonly disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
-  private hero!: THREE.Mesh;
+  /** Тело героя: риг, если у класса есть модель набора, иначе примитив. */
+  private hero!: THREE.Object3D;
+  private heroRig: Rigged | null = null;
+  /** Кем сейчас ведут отряд (§11.8): в лагере стоит тот же, кто пойдёт. */
+  private heroClass: HeroClassId = 'archer';
+  /** Где герой был на прошлом кадре — по этому и видно, идёт он или стоит. */
+  private heroWas = { x: 0, z: 0 };
   /** Уровень оружия, которым собран клинок в руке: ниже он же и сверяется. */
   private heroWeapon = 0;
   /** Где герой стоит: мировые координаты, их ведёт симуляция. */
@@ -267,13 +304,44 @@ export class CampView {
     this.group.add(this.meadow.group);
   }
 
-  /** Герой в лагере — та же модель, что уходит в вылазку (артбук, 04). */
+  /**
+   * Герой в лагере — та же модель, что уходит в вылазку (артбук, 04),
+   * и с тем же скелетом: лагерь был единственным местом игры, где человек
+   * ездил по земле не переставляя ног.
+   *
+   * Классу без модели набора достаётся неподвижный примитив — скелета у него
+   * нет, и выдумывать его нечем. Правило то же, что в вылазке.
+   */
   private buildHero(): void {
     this.heroWeapon = this.camp.gear.weapon;
-    this.hero = new THREE.Mesh(this.track(heroGeometry('archer', this.heroWeapon)), this.blocking);
-    this.hero.castShadow = true;
+    this.heroRig?.dispose();
+    this.heroRig = null;
+    const parts = heroParts(this.heroClass, this.heroWeapon);
+    if (parts === null) {
+      const mesh = new THREE.Mesh(this.track(heroGeometry(this.heroClass, this.heroWeapon)), this.blocking);
+      mesh.castShadow = true;
+      this.hero = mesh;
+    } else {
+      this.heroRig = new Rigged(parts, this.blocking);
+      this.hero = this.heroRig.root;
+      this.heroRig.play('покой');
+    }
     this.hero.scale.setScalar(VILLAGER_SCALE);
     this.group.add(this.hero);
+  }
+
+  /**
+   * Кем ведут отряд. Пока веера не было, в лагере всегда стоял Лучник —
+   * класс был вписан в сцену числом, а ведущего выбирали в списке. Теперь
+   * ведущего меняют лицом под пальцем (§11.8), и лагерь обязан показывать
+   * того, кто пойдёт: иначе выбор виден только в карточке, а на площадке
+   * стоит кто-то другой.
+   */
+  setHeroClass(cls: HeroClassId): void {
+    if (cls === this.heroClass) return;
+    this.heroClass = cls;
+    this.hero.removeFromParent();
+    this.buildHero();
   }
 
   /**
@@ -283,8 +351,11 @@ export class CampView {
    */
   private rebuildHero(): void {
     if (this.camp.gear.weapon === this.heroWeapon) return;
-    this.heroWeapon = this.camp.gear.weapon;
-    this.hero.geometry = this.track(heroGeometry('archer', this.heroWeapon));
+    // С ригом клинок висит на кости кисти, и менять его пересборкой всей
+    // особи незачем — но собрать заново дешевле, чем держать здесь второй
+    // путь: ковка случается раз в несколько минут, а не каждый кадр.
+    this.hero.removeFromParent();
+    this.buildHero();
   }
 
   /**
@@ -338,7 +409,10 @@ export class CampView {
     this.buildings.clear();
     for (const g of this.tents) g.removeFromParent();
     this.tents.length = 0;
-    for (const m of this.folk) m.removeFromParent();
+    for (const rig of this.folk) {
+      rig.root.removeFromParent();
+      rig.dispose();
+    }
     this.folk.length = 0;
 
     // Уровень 0 — это пустое место, а не здание нулевого размера: Мастерская
@@ -377,9 +451,8 @@ export class CampView {
     const fire = this.camp.levels.kitchen > 0 ? this.camp.layout.kitchen : this.camp.layout.hq;
     this.camp.residents.forEach((r, i) => {
       const tent = this.camp.tents[i];
-      const mesh = new THREE.Mesh(this.track(residentGeometry(r.look)), this.blocking);
-      mesh.castShadow = true;
-      mesh.scale.setScalar(VILLAGER_SCALE);
+      const rig = new Rigged(dwellerParts(r.look), this.blocking);
+      rig.root.scale.setScalar(VILLAGER_SCALE);
       // Шаг в сторону от следа: стоящий ровно в центре клетки палатки
       // оказывается внутри неё, и снаружи это читается пропавшим жильцом.
       // Обе точки лежат **за** следом, а не в нём. У костра это особенно
@@ -389,11 +462,18 @@ export class CampView {
       const at = tent === undefined
         ? { x: fire.x + 1, z: fire.z + 2.6 }
         : { x: tent.x + 0.5, z: tent.z + 1.1 };
-      mesh.position.set(at.x, 0.55, at.z);
+      // Ноги на земле. Раньше здесь стояло 0.55 — начало старой модели,
+      // у которой точка отсчёта была в поясе. Модели давно ставятся
+      // основанием на ноль, а число осталось: жилец висел над площадкой
+      // на 0,55 клетки — больше половины собственного роста. Глазом это
+      // читалось не «парит», а «стоит на чём-то невидимом», потому и дожило
+      // до замера.
+      rig.root.position.set(at.x, 0, at.z);
       // Лицом к костру: люди в лагере смотрят на огонь, а не в лес.
-      mesh.rotation.y = Math.atan2(fire.x + 1 - at.x, fire.z + 1 - at.z);
-      this.group.add(mesh);
-      this.folk.push(mesh);
+      rig.root.rotation.y = Math.atan2(fire.x + 1 - at.x, fire.z + 1 - at.z);
+      rig.play('покой');
+      this.group.add(rig.root);
+      this.folk.push(rig);
     });
 
     // Земля показывает ровно текущую площадь: рост Жилья виден как рост лагеря.
@@ -534,10 +614,29 @@ export class CampView {
 
     // Герой стоит там, куда пришёл. Раньше он каждый кадр возвращался
     // к Жилью — и лагерь был единственным местом игры, где не ходят.
-    // 0.55 — начало модели, `heroAt.y` — ярус: на стене герой стоит выше
-    // ровно на измеренную высоту настила.
-    this.hero.position.set(this.heroAt.x, 0.55 + this.heroAt.y, this.heroAt.z);
+    // `heroAt.y` — ярус: на стене герой стоит выше ровно на измеренную
+    // высоту настила. Слагаемого 0.55 здесь больше нет — оно поднимало
+    // фигуру над землёй (см. `buildFolk`).
+    this.hero.position.set(this.heroAt.x, this.heroAt.y, this.heroAt.z);
     this.hero.rotation.y = this.heroFacing;
+
+    // Ноги переставляются, только когда человек вправду сдвинулся. Клип
+    // выбирается по пройденному за кадр, а не по наличию пути: путь бывает
+    // и у стоящего — он упёрся в стену или ждёт конца поворота.
+    const moved = Math.hypot(this.heroAt.x - this.heroWas.x, this.heroAt.z - this.heroWas.z);
+    this.heroWas.x = this.heroAt.x;
+    this.heroWas.z = this.heroAt.z;
+    const rig = this.heroRig;
+    if (rig !== null) {
+      // Тик миксера — безусловно и первым: без него клип не играется вовсе,
+      // и герой остаётся в позе привязки, то есть стоит навытяжку с видом
+      // «анимация сломана».
+      rig.update(dt);
+      if (moved > WALK_EPS) rig.play('ходьба', walkRate(CAMP_SPEED, VILLAGER_SCALE));
+      else rig.play('покой');
+    }
+    // Жильцы стоят, но кадр у них обязан стареть: дыхание покоя — тоже клип.
+    for (const man of this.folk) man.update(dt);
 
     this.syncSite(now);
     this.syncFire(now, day);
@@ -746,6 +845,12 @@ export class CampView {
 
   dispose(): void {
     this.group.removeFromParent();
+    // Скелеты освобождаются поимённо: у рига свои буферы, и общий обход
+    // `disposables` про них не знает.
+    this.heroRig?.dispose();
+    this.heroRig = null;
+    for (const man of this.folk) man.dispose();
+    this.folk.length = 0;
     this.meadow?.dispose();
     this.fire.dispose();
     this.meadow = null;

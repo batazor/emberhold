@@ -2883,6 +2883,10 @@ startLoop({
       // симуляцией, потом ставится в сцену.
       stepCampHero(camp, campHero, campDt);
       stepCampMining(campDt);
+      // На площадке стоит тот, кем сейчас ведут отряд (§11.8): его же лицо
+      // отмечено кольцом в веере. Смена ведущего обязана быть видна в лагере,
+      // а не только в карточке.
+      campView.setHeroClass(activeHero(roster).cls);
       campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
       campView.update(campDt, now, rig.dayFactor);
       const c = campView.center;
