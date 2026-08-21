@@ -63,6 +63,8 @@ export class CampView {
   private readonly buildings = new Map<BuildingId, THREE.Group>();
   private readonly disposables: (THREE.BufferGeometry | THREE.Material)[] = [];
   private hero!: THREE.Mesh;
+  /** Уровень оружия, которым собран клинок в руке: ниже он же и сверяется. */
+  private heroWeapon = 0;
   /** Где герой стоит: мировые координаты, их ведёт симуляция. */
   private heroAt = { x: 0, y: 0, z: 0 };
   private heroFacing = 0;
@@ -242,10 +244,22 @@ export class CampView {
 
   /** Герой в лагере — та же модель, что уходит в вылазку (артбук, 04). */
   private buildHero(): void {
-    this.hero = new THREE.Mesh(this.track(heroGeometry('ranger')), this.blocking);
+    this.heroWeapon = this.camp.gear.weapon;
+    this.hero = new THREE.Mesh(this.track(heroGeometry('ranger', this.heroWeapon)), this.blocking);
     this.hero.castShadow = true;
     this.hero.scale.setScalar(VILLAGER_SCALE);
     this.group.add(this.hero);
+  }
+
+  /**
+   * Выкованное видно там же, где ковалось. Клинок §14 меняется только по ковке,
+   * поэтому геометрия пересобирается по уровню, а не каждый кадр: у моделей
+   * набора свой кэш, и второй раз тот же уровень ничего не стоит.
+   */
+  private rebuildHero(): void {
+    if (this.camp.gear.weapon === this.heroWeapon) return;
+    this.heroWeapon = this.camp.gear.weapon;
+    this.hero.geometry = this.track(heroGeometry('ranger', this.heroWeapon));
   }
 
   /**
@@ -325,6 +339,7 @@ export class CampView {
     this.camp = camp;
     this.builtLevels = '';
     this.rebuildBuildings();
+    this.rebuildHero();
   }
 
   /** Порыв от курсора; null — ветра нет (render/cursorWind.ts). */

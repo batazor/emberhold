@@ -30,7 +30,11 @@ import {
   GRAVEYARD_SLOT_ORDER,
   MATERIAL,
   SKELETON_SLOT_ORDER,
+  WEAPONS_SLOT_ORDER,
 } from './palette';
+import { WEAPONS_MODELS, WEAPONS_SLOTS } from './weapons.data';
+import { WEAPON_LADDER, weaponOf } from './weapons';
+import { MAX_ITEM_LEVEL } from '../sim/gear';
 import { GRAVEYARD_SLOTS } from './graveyard.data';
 import { FENCE_SCALE, fenceGeometry } from './graveyard';
 import { FENCE, FENCE_MATERIALS } from '../sim/fence';
@@ -141,6 +145,48 @@ describe('Артбук: бюджет треугольников', () => {
     );
     bare.dispose();
     armed.dispose();
+  });
+
+  /**
+   * Оружие §14 (§6.1.8). Проверяется не то, красив ли клинок, а три обещания,
+   * которые протухают молча: что у каждого уровня есть модель, что ковка
+   * действительно меняет фигуру героя и что слоты набора не разъехались
+   * с палитрой.
+   */
+  test('у каждого уровня оружия §14 есть клинок из набора', () => {
+    for (let level = 0; level <= MAX_ITEM_LEVEL; level++) {
+      const name = weaponOf(level);
+      assert.ok(name in WEAPONS_MODELS, `уровень ${level}: «${name}» в бандл не поехал`);
+    }
+  });
+
+  /**
+   * Ступени обязаны различаться геометрией, иначе лестница есть в коде
+   * и её нет на экране. Последняя ступень держит два уровня намеренно
+   * (§6.1.8): после двуручного в наборе ничего нет.
+   */
+  test('ковка меняет фигуру героя, а не только число', () => {
+    const seen = new Map<number, number>();
+    for (let level = 0; level < WEAPON_LADDER.length; level++) {
+      const geo = heroGeometry('ranger', level);
+      const t = triangles(geo);
+      geo.dispose();
+      const clash = [...seen].find(([, count]) => count === t);
+      assert.ok(clash === undefined, `уровни ${clash?.[0]} и ${level} дают одну фигуру: ${t}`);
+      seen.set(level, t);
+    }
+    const top = heroGeometry('ranger', WEAPON_LADDER.length - 1);
+    const over = heroGeometry('ranger', MAX_ITEM_LEVEL);
+    assert.equal(triangles(top), triangles(over), 'выше лестницы должна стоять её последняя ступень');
+    top.dispose();
+    over.dispose();
+  });
+
+  test('слоты оружия не разошлись с палитрой артбука', () => {
+    assert.deepEqual([...WEAPONS_SLOTS], [...WEAPONS_SLOT_ORDER]);
+    for (const name of WEAPONS_SLOTS) {
+      assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
   });
 
   test('шесть уровней укладываются в три стадии', () => {
