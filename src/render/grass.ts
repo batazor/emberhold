@@ -109,7 +109,17 @@ export interface GrassPlan {
  * плотности: mesh.count = perPass × n прореживает поле равномерно, а не
  * оставляет половину локации лысой.
  */
-export function plantGrass(loc: GameLocation, perTile: number): GrassPlan {
+export function plantGrass(
+  loc: GameLocation,
+  perTile: number,
+  /**
+   * Клетки, где траву не сеют вовсе. Пусто у вылазки и поляны; кладбище
+   * (§6.1.7) отдаёт сюда весь участок за оградой: **между могилами
+   * не косят — там не растёт**. Без этого трава закрывает надгробия,
+   * и участок читается лугом с камнями, а не кладбищем.
+   */
+  bare: ReadonlySet<number> = new Set(),
+): GrassPlan {
   const { size, blocked, evac, containers } = loc;
 
   // Клетки, где трава запрещена. Луч эвакуации и добыча обязаны читаться
@@ -127,7 +137,7 @@ export function plantGrass(loc: GameLocation, perTile: number): GrassPlan {
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {
       const i = idx(size, x, z);
-      if (blocked[i] === 1 || banned.has(i)) continue;
+      if (blocked[i] === 1 || banned.has(i) || bare.has(i)) continue;
       tiles.push(i);
     }
   }
@@ -218,10 +228,15 @@ export class Grass {
     uGrassGustDir: { value: new THREE.Vector2(1, 0) },
   };
 
-  constructor(loc: GameLocation, perTile: number, maxPerTile = GRASS_MAX_PER_TILE) {
+  constructor(
+    loc: GameLocation,
+    perTile: number,
+    maxPerTile = GRASS_MAX_PER_TILE,
+    bare: ReadonlySet<number> = new Set(),
+  ) {
     // Ёмкость отдельным доводом: у заставки поле вчетверо больше локации,
     // и держать под ним запас на 64 травинки с клетки — впустую занятая память.
-    this.plan = plantGrass(loc, Math.max(perTile, maxPerTile));
+    this.plan = plantGrass(loc, Math.max(perTile, maxPerTile), bare);
     this.geometry = bladeGeometry();
     this.material = new THREE.MeshLambertMaterial({
       // Травинка плоская, и её видно с обеих сторон. Прозрачности нет
