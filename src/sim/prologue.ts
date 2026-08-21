@@ -140,7 +140,7 @@ export const REST_REACH = 2;
 
 /**
  * Поляна по сиду. Кромка — сплошной лес: уйти с поляны нельзя, и это
- * то же решение, что «вход и точка эвакуации — одно место» (§12.1) —
+ * то же решение, что «вход и точка выхода — одно место» (§12.1) —
  * кадр обязан кончаться провиантом, а не краем карты.
  */
 export function generateGlade(seed: number): GameLocation {
@@ -173,6 +173,11 @@ export function generateGlade(seed: number): GameLocation {
     blocked,
     evac: start,
     containers: gladeLogs(size, reach, rng),
+    // Валунов на поляне нет (§13.4): в первые три минуты жест ровно один,
+    // и учит ему кольцо над бруском. Второй предмет, по которому надо
+    // стучать, отнимал бы у кольца внимание ради камня, который в прологе
+    // некуда потратить.
+    stones: [],
     enemies: [],
     backSteps: distanceField(size, blocked, start),
   };

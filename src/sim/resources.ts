@@ -29,6 +29,18 @@ const LOOT_TABLE: Record<Tier, readonly (readonly [ResourceKind, number])[]> = {
   3: [['stone', 0.3], ['iron', 0.45], ['crystal', 0.25]],
 };
 
+/**
+ * Та же таблица долей, но читаемая по виду. Нужна замеру (`npm run fence`):
+ * чтобы взять одну единицу камня, надо вскрыть 1/долю находок — остальные
+ * выпадут не камнем, и цена ресурса в секундах считается отсюда.
+ */
+export const LOOT_SHARE: Record<Tier, Partial<Record<ResourceKind, number>>> = {
+  0: Object.fromEntries(LOOT_TABLE[0]),
+  1: Object.fromEntries(LOOT_TABLE[1]),
+  2: Object.fromEntries(LOOT_TABLE[2]),
+  3: Object.fromEntries(LOOT_TABLE[3]),
+};
+
 export function rollLoot(rng: Rng, tier: Tier): ResourceKind {
   const roll = rng();
   let acc = 0;

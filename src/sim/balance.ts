@@ -1,4 +1,4 @@
-import type { EnemyKind, Tier } from './types';
+import type { RaidEnemyKind, Tier } from './types';
 
 /**
  * Базовые стоимости живут здесь, а не в config: модель на них опирается,
@@ -41,7 +41,7 @@ export const DETOUR = 1.15;
  *
  * Для модели эти числа не годятся, и это важный урок: дуэль не равна вылазке.
  */
-export const WOUND_COST: Record<EnemyKind, number> = {
+export const WOUND_COST: Record<RaidEnemyKind, number> = {
   minion: 0,
   warrior: 1,
   mage: 2,
@@ -66,7 +66,7 @@ export const WOUND_COST: Record<EnemyKind, number> = {
  *   идти шесть гексов под выстрелами при ходе героя в три. Это не «сильный
  *   противник», это дистанция, которую нечем закрыть.
  */
-export const ENCOUNTER_WOUND: Record<EnemyKind, number> = {
+export const ENCOUNTER_WOUND: Record<RaidEnemyKind, number> = {
   minion: 0.47,
   warrior: 0.47,
   mage: 1.55,
@@ -99,7 +99,7 @@ export interface TierNumbers {
   readonly food: number;
   readonly capacity: number;
   readonly containers: number;
-  readonly roster: readonly EnemyKind[];
+  readonly roster: readonly RaidEnemyKind[];
   readonly geometry: { depth: number; hop: number; deepAndBack: number; fullTour: number };
   readonly expected: { haul: number; reachable: number; woundsTaken: number };
   readonly checks: { deepReachable: boolean; fullTourImpossible: boolean; survivable: boolean };
@@ -138,10 +138,10 @@ export function deriveTier(spec: TierSpec): TierNumbers {
   // Бюджет считается ценой присутствия, а не дуэли: иначе непреследующий
   // маг съедает вдвое больше бюджета, чем стоит на деле.
   const woundPoints = spec.woundBudget * HERO_WOUNDS;
-  const roster: EnemyKind[] = [];
+  const roster: RaidEnemyKind[] = [];
   let spent = 0;
-  const afford = (kind: EnemyKind): boolean => spent + ENCOUNTER_WOUND[kind] <= woundPoints;
-  const put = (kind: EnemyKind): void => {
+  const afford = (kind: RaidEnemyKind): boolean => spent + ENCOUNTER_WOUND[kind] <= woundPoints;
+  const put = (kind: RaidEnemyKind): void => {
     roster.push(kind);
     spent += ENCOUNTER_WOUND[kind];
   };
@@ -153,7 +153,7 @@ export function deriveTier(spec: TierSpec): TierNumbers {
    * сравнялась (0,47 против 0,47), и «дороже» перестало значить «реже».
    * Роль назначает раздел, бюджет только ограничивает число.
    */
-  const lead: EnemyKind | null =
+  const lead: RaidEnemyKind | null =
     spec.size >= 18 ? 'mage' : spec.size >= 12 ? 'warrior' : null;
   if (lead !== null && afford(lead)) put(lead);
   // Воин водит стаю только со своего яруса (§15 отдаёт ему второй): на
@@ -284,7 +284,7 @@ export const TIER_CONTAINERS: Record<Tier, number> = {
   0: TIER_SPEC[0].containers, 1: TIER_SPEC[1].containers,
   2: TIER_SPEC[2].containers, 3: TIER_SPEC[3].containers,
 };
-export const TIER_ROSTER: Record<Tier, readonly EnemyKind[]> = {
+export const TIER_ROSTER: Record<Tier, readonly RaidEnemyKind[]> = {
   0: derived[0].roster, 1: derived[1].roster, 2: derived[2].roster, 3: derived[3].roster,
 };
 /** Запас провианта, который модель считает правильным для яруса. */

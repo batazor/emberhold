@@ -120,6 +120,20 @@ interface Pack {
    */
   readonly grid?: { readonly cols: number; readonly rows: number };
   /**
+   * Набор без атласа: цвет лежит не в картинке, а в именованных материалах
+   * glTF. Такой набор впервые пришёл строителем (§6.1.9), и для конвейера
+   * это не помеха, а упрощение: угадывать по окну оттенка нечего, набор
+   * сам называет материал словом.
+   *
+   * Таблица объявляется здесь — «материал → слот палитры», — а измеряется
+   * то, чего в ней нет: какой ровно цвет у материала в файлах, сколько
+   * треугольников он держит и в каких моделях встречается. Из таблицы
+   * собирается атлас шириной в один пиксель на материал, и дальше по коду
+   * набор ничем не отличается от атласного: те же UV, тот же сэмплер,
+   * тот же каталог.
+   */
+  readonly materials?: Readonly<Record<string, string>>;
+  /**
    * Модульный набор: деталь ставится в клетку сетки, и главный вопрос к ней
    * не «какого она цвета», а «чем она стыкуется с соседней». Объявляется
    * размер клетки; меряется остальное — высота хода поверху и то, какие рёбра
@@ -468,27 +482,35 @@ const ADVENTURERS: Pack = {
    * Теперь классов трое, и различает их в бою то, как они дерутся, — значит
    * различать их обязан и силуэт.
    *
-   * Что взято и почему именно это:
+   * **Состав сведён из двух решений, и он общий, а не сумма.** Гарнизон
+   * замка (§6.1.6) просил рыцаря с мечом и стрелка на стене; жильцы двора
+   * (§6.1.6.1) — мага и плута; три класса §11.7 — рыцаря, лучника и бандита.
+   * Порознь это шесть персонажей и полтора мегабайта. Вместе — четыре:
    *
-   * - **`Rogue_Hooded`, а не `Rogue`** — он на 11 КБ дешевле и несёт съёмную
-   *   маску; капюшон с маской читаются «Бандитом» точнее открытой головы.
-   * - **`bow`, а не `bow_withString`** — дело не в 7 КБ. Тетива у набора
-   *   часть той же жёсткой геометрии без скина: при клипе натяжения рука
-   *   уедет назад, а тетива останется прямой. Лук без тетивы читается лучше
-   *   лука с нетянущейся.
-   * - **`arrow_bow`** — 52 треугольника, самая дешёвая модель обоих наборов.
-   *   Лежит вдоль своей оси Z и центрирована, поэтому ориентируется одним
-   *   поворотом, без подгонки.
-   * - **`dagger` один на обе руки Бандита** — та же геометрия, второй
-   *   экземпляр байт не стоит.
+   * - **`Knight`** служит и Рыцарем игрока, и гарнизоном. Один и тот же
+   *   человек в доспехе, и различать их незачем.
+   * - **`Ranger`** — Лучник игрока, он же стрелок на стене. Стрелок замка
+   *   был рыцарем с луком, потому что следопыта в бандле не было; теперь он
+   *   есть, и лучник на стене читается лучше рыцаря, держащего лук.
+   * - **`Rogue`** — Бандит игрока и плут во дворе. Взят открытый, а не
+   *   `Rogue_Hooded`: капюшон читался бы «Бандитом» точнее, но второй
+   *   персонаж ради оттенка роли стоит своих килобайтов, а замку нужен
+   *   именно этот.
+   * - **`Mage`** — только жилец двора. Игроку он не класс, но замку нужен,
+   *   и заменить его некем.
    *
-   * Цена решения — килобайты в бандле у всех игроков, и её сторожат два
-   * потолка в `models.rules.ts`: на персонажа и на набор.
+   * `Barbarian` выбывает: он был единственным героем, пока классов было
+   * не разведено, и теперь его роль занял `Knight`.
+   *
+   * Предметы стоят копейки против персонажа. `bow_withString` служит обеим
+   * рукам: у него есть тетива, и на стене замка лук виден целиком, а клип
+   * натяжения в вылазке её не тянет — это записанный долг, а не недосмотр.
    */
   adopted: [
     'Knight', 'sword_1handed', 'shield_round',
-    'Ranger', 'bow', 'arrow_bow',
-    'Rogue_Hooded', 'dagger',
+    'Ranger', 'bow_withString', 'arrow_bow',
+    'Rogue', 'dagger',
+    'Mage', 'staff',
   ],
   data: { file: 'src/render/adventurers.data.ts', prefix: 'ADVENTURERS', type: 'Adventurer' },
 };
@@ -742,7 +764,313 @@ const CASTLE: Pack = {
   data: { file: 'src/render/castle.data.ts', prefix: 'CASTLE', type: 'CastlePart' },
 };
 
-const PACKS: readonly Pack[] = [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE];
+/**
+ * Категория кладбища — по первому слову имени файла набора. Разделитель тот же
+ * дефис, что у замка: набор от того же автора и назван по тем же правилам.
+ */
+const GRAVEYARD_CATEGORIES: Record<string, string> = {
+  fence: 'Ограды', iron: 'Ограды', brick: 'Ограды', stone: 'Ограды', border: 'Ограды',
+  grave: 'Могилы', gravestone: 'Могилы', cross: 'Могилы', coffin: 'Могилы',
+  crypt: 'Склепы',
+  pine: 'Деревья', trunk: 'Деревья',
+  character: 'Существа',
+  altar: 'Обряд', candle: 'Обряд', urn: 'Обряд', detail: 'Обряд', fire: 'Обряд',
+  lantern: 'Свет', lightpost: 'Свет',
+  pillar: 'Столбы', column: 'Столбы',
+  bench: 'Утварь', shovel: 'Утварь', hay: 'Утварь', pumpkin: 'Утварь', debris: 'Утварь',
+  rocks: 'Ландшафт', road: 'Ландшафт',
+};
+
+/**
+ * Седьмой набор — кладбище (§6.1.7), второй от Kenney и второй модульный.
+ * Атлас расчерчен так же, как у замка: восемь колонок на четыре ряда,
+ * в клетке вертикальный градиент. Отличий от замка два, и оба меняют окна.
+ *
+ * Первое. Главный материал здесь не песчаник, а холодный камень — тон
+ * 228–240°, насыщенность 4–28%. Это ровно тот серый, которым артбук красит
+ * камень и соль, и впервые чужой набор попадает в него без натяжки.
+ *
+ * Второе. У набора есть цвета, которых не бывает у материала: сиреневый,
+ * лиловый и розовый столбцы атласа — это цветовые варианты, а не породы.
+ * Куда они лягут, решает замер: слота под них не заводится, пока не видно,
+ * какие модели их задевают.
+ */
+const GRAVEYARD: Pack = {
+  id: 'graveyard',
+  title: 'Kenney Graveyard Kit 5.0',
+  dir: 'assets/kenney-graveyard-kit',
+  atlas: 'colormap.png',
+  sources: ['glb'],
+  ramps: [
+    // Огонь свечей, фонарей и прорезанных тыкв — единственная клетка атласа,
+    // которая светится. От дерева её отделяет не тон (оба оранжевые,
+    // окна по тону перекрываются), а насыщенность: 0,61–0,81 против 0,48–0,54
+    // у самого яркого дерева. Поэтому огонь меряется первым, и порядок здесь
+    // решает — ровно как золото раньше дерева у подземелья.
+    { id: 'flame', title: 'огонь', slots: ['пламя', 'латунь'], hue: [26, 60], sat: [0.6, 1] },
+    // Дерево оград, скамей, гробов и осенней хвои. Осенняя хвоя набора лежит
+    // в той же клетке, что тыквы, и оранжевой листвы в палитре нет: она
+    // уходит в дерево — тот же ответ, каким сукно знамён ушло в камень.
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома'], hue: [8, 60], sat: [0.3, 1] },
+    // Кирпич кладки — единственное алое набора, и ступень ему одна:
+    // алый в палитре один, краска бочек (§6.1.5).
+    { id: 'brick', title: 'кирпич', slots: ['краска-алая'], hue: [330, 8], sat: [0.3, 1] },
+    // Зелень. Ею же покрашены ковка и фонарные столбы: набор красит хвою
+    // и крашеное железо одной клеткой атласа, и окном по цвету их не развести.
+    { id: 'moss', title: 'зелень', slots: ['хвоя-тень', 'хвоя', 'мох', 'трава'], hue: [90, 190], sat: [0.25, 1] },
+    // Камень — главный материал набора: почти половина его треугольников.
+    // Ступеней восемь, и это не щедрость: холодный камень занимает четыре
+    // клетки атласа, от белой простыни привидения до чёрной ткани.
+    {
+      id: 'stone', title: 'камень',
+      slots: ['камень-тень', 'камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет', 'иней'],
+      hue: [0, 360], sat: [0, 0.3],
+    },
+  ],
+  slots: [
+    'камень-тень', 'камень', 'камень-свет', 'скол', 'соль-тень', 'соль', 'соль-свет', 'иней',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома',
+    'хвоя-тень', 'хвоя', 'мох', 'трава',
+    'пламя', 'латунь',
+    'краска-алая',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  /** Восемь колонок на четыре ряда — так расчерчена картинка набора. */
+  grid: { cols: 8, rows: 4 },
+  /** Клетка набора — единица, как у замка. Объявлено; остальное меряется. */
+  modular: { cell: 1 },
+  /** Порог серого опущен: холодный камень набора и есть его главный материал. */
+  grey: 0.005,
+  categoryOf: (name) => GRAVEYARD_CATEGORIES[name.split('-')[0]!] ?? 'Прочее',
+  /**
+   * Взятое в игру — словарь конструктора оград, лес и наполнение кладбища.
+   * Список не выбирался на глаз: ограды — ровно те детали, которые
+   * конструктор умеет поставить на каждую форму стыка (`src/sim/fence.ts`),
+   * и что список с ним не разошёлся, проверяет `fence.rules.ts`.
+   *
+   * Ковка взята одной семьёй — той, что с каменным цоколем: у неё в наборе
+   * есть и пролёт, и столб, и створка. Ковка без цоколя не взята не потому,
+   * что хуже, а потому, что рядом с цокольной читалась бы как та же ограда,
+   * просевшая в землю.
+   *
+   * **Угловых дуг не взято ни одной**, и это главное, что решил обмер.
+   * Деталь ограды — панель на линии, а не блок в клетку: пролёт ставится
+   * на отрезок между центрами соседних клеток, и в угловой клетке два
+   * отрезка смыкаются сами. Три дуги набора решают задачу, которой
+   * у конструктора нет, и стоили бы 1190 треугольников у каждого игрока.
+   *
+   * Не взято: склепы, фонари, тыквы, сено, утварь и четверо существ
+   * из пяти. Кладбище — локация без наполнения (§4), и всё это ждёт того же
+   * дня, что и наполнение замка.
+   */
+  adopted: [
+    // Ограда: дерево. Столб — на изломе.
+    'fence', 'fence-damaged', 'fence-gate', 'border-pillar',
+    // Ограда: ковка на цоколе — два пролёта и проезд.
+    'iron-fence-border', 'iron-fence-border-column', 'iron-fence-border-gate',
+    // Ограда: кирпич. Створки в наборе нет, и проезд — это проём.
+    'brick-wall', 'brick-wall-end',
+    // Ограда: камень.
+    'stone-wall', 'stone-wall-damaged', 'stone-wall-column',
+    // Лес: хвоя, осенняя хвоя и два пенька.
+    'pine', 'pine-crooked', 'pine-fall', 'pine-fall-crooked',
+    'trunk', 'trunk-long',
+    // Кладбище: могила, надгробия, крест, склеп, гроб.
+    'grave', 'gravestone-cross', 'gravestone-round', 'gravestone-bevel',
+    'cross', 'crypt', 'coffin',
+    // Единственный противник локации (§15).
+    'character-ghost',
+  ],
+  data: { file: 'src/render/graveyard.data.ts', prefix: 'GRAVEYARD', type: 'GraveyardPart' },
+};
+
+/** Категория оружия — по первому слову имени файла набора. */
+const WEAPON_CATEGORIES: Record<string, string> = {
+  sword: 'Мечи', dagger: 'Мечи',
+  axe: 'Топоры', hammer: 'Молоты',
+  spear: 'Древковое', halberd: 'Древковое',
+  bow: 'Стрелковое', arrow: 'Стрелковое',
+  staff: 'Посохи', wand: 'Посохи',
+  shield: 'Щиты',
+  fistweapon: 'Кулачное',
+};
+
+/**
+ * Восьмой набор — оружие (§6.1.8). Первый набор, в котором нет ни одной
+ * модели, стоящей на земле: всё, что в нём есть, держат в руке.
+ *
+ * Атлас расчерчен восьмой раз тем же способом, что у ресурсов, замка
+ * и кладбища: восемь колонок на четыре ряда, в клетке вертикальный градиент.
+ * Разлиновка объявлена; какие клетки набор задел — меряется.
+ */
+const WEAPONS: Pack = {
+  id: 'weapons',
+  title: 'KayKit Fantasy Weapons Bits 1.0 FREE',
+  dir: 'assets/kaykit-weapons',
+  atlas: 'weapons_bits_texture.png',
+  ramps: [
+    // Золото навершия и оковки — одна ступень: золотого в палитре один, латунь.
+    // От дерева его отделяет не тон (оба тёплые, окна по тону совпадают),
+    // а насыщенность: 0,61–0,75 против 0,44–0,59 у самого яркого дерева.
+    // Порог 0,6 — тот же, которым разведены золото и дерево у ресурсов.
+    { id: 'gold', title: 'золото', slots: ['латунь'], hue: [8, 52], sat: [0.6, 1] },
+    // Дерево древков и рукоятей — три клетки атласа. Ступеней четыре, и лежит
+    // набор в двух нижних: 15,7% его треугольников против 1,1% в двух верхних.
+    // Перекос не выправляется и выправлять его нечем: светлое дерево у набора
+    // есть (яркость 0,79), но его 204 треугольника на весь набор. Пятая
+    // ступень, солома, была заведена и убрана — на неё пришлось 0,3%.
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [8, 60], sat: [0.37, 0.6] },
+    // Кожа обмоток, тетива и верёвка. Тон у неё общий с деревом, и порог опять
+    // по насыщенности: тёмный конец кожи 0,35, тёмный конец дерева 0,39.
+    // Разница в четыре сотых — это замер, а не выбор; набор развёл их клетками.
+    { id: 'hide', title: 'кожа', slots: ['сукно-тень', 'сукно', 'сукно-свет', 'кожа'], hue: [8, 60], sat: [0.005, 0.37] },
+    // Синее — сукно рукоятей, оперение стрел и полотнище на древке.
+    // Ступень одна: синего в палитре ровно один, краска бочек (§6.1.5).
+    // От стали его отделяет насыщенность 0,76–0,82 против 0,43 у самой
+    // тёмной стали — единственная пара окон набора, которую видно глазом.
+    { id: 'blue', title: 'синее', slots: ['краска-синяя'], hue: [170, 300], sat: [0.6, 1] },
+    // Сталь клинков — главный материал набора: 42% его треугольников
+    // в одной клетке атласа, больше, чем у любого набора до него.
+    { id: 'steel', title: 'металл', slots: ['металл-тень', 'металл', 'сталь', 'иней'], hue: [170, 300], sat: [0, 0.6] },
+  ],
+  slots: [
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'сукно-тень', 'сукно', 'сукно-свет', 'кожа',
+    'металл-тень', 'металл', 'сталь', 'иней',
+    'латунь',
+    'краска-синяя',
+  ],
+  range: 'used',
+  /**
+   * Запасной градиент — сталь, а не камень: камня в наборе нет вовсе.
+   * Зелёного и алого он тоже не знает, и окна под них не заведены:
+   * пустая ступень в артбуке — это враньё про то, чего набор не красит.
+   */
+  fallback: 'steel',
+  /** Восемь колонок на четыре ряда — так расчерчена картинка набора. */
+  grid: { cols: 8, rows: 4 },
+  /** Порог серого опущен: светлая сталь и белила щита — материал, а не пустота. */
+  grey: 0.005,
+  categoryOf: (name) => WEAPON_CATEGORIES[name.split('_')[0]!] ?? 'Прочее',
+  /**
+   * Взятое в игру — лестница уровней оружия §14, и ничего сверх неё. Слот
+   * растёт от первого уровня к пятому, и до этого набора рост был виден только
+   * числом в подсказке: в руке стоял `axe_1handed` из набора персонажей,
+   * один на все уровни.
+   *
+   * Взят один род — мечи, и это замер, а не вкус. Тот же подъём на топорах
+   * и молотах стоил бы 4706 треугольников против 2447: набор рисует лезвие
+   * втрое дороже клинка. Пять ступеней внутри одного рода читаются как
+   * «тот же предмет стал лучше», пять разных родов — как «дали другое».
+   *
+   * Порядок — авторский, A…E, и он же порядок уровней. Длина растёт
+   * с 1,77 до 3,25 единицы, но не монотонно: у четвёртой ступени клинок
+   * на 0,09 короче третьей и вдвое тяжелее по треугольникам — на дистанции
+   * вылазки это читается как масса, а не как убыль.
+   *
+   * Щитов, луков и посохов не взято ни одного: левая рука на фигуре
+   * не появляется вовсе (§14.2 живёт числами), а лука и посоха у героя нет.
+   */
+  adopted: ['sword_A', 'sword_B', 'sword_C', 'sword_D', 'sword_E'],
+  data: { file: 'src/render/weapons.data.ts', prefix: 'WEAPONS', type: 'Weapon' },
+};
+
+
+/**
+ * Девятый набор: KayKit Medieval Builder (§6.1.9) — карта мира, а не лагерь.
+ * Плитка два на два, дом ниже героя: набор рисует местность сверху, и его
+ * дома — фишки на плитке, а не постройки, между которыми ходят.
+ *
+ * **Атласа у него нет вовсе**, и это первый такой набор: цвет лежит в
+ * четырнадцати именованных материалах. Поэтому таблица ниже объявлена, а не
+ * выведена окнами оттенка: набор сам называет материал словом, и угадывать
+ * по цвету значило бы выбросить то, что он уже сказал.
+ */
+const BUILDER_MATERIALS: Record<string, string> = {
+  // Земля и дерево — 54% треугольников набора: бока плиток, дороги, брёвна,
+  // крыши. Beige держит песчаный биом и солому, поэтому уходит в солому.
+  BrownDark: 'дерево-тень',
+  Brown: 'дерево',
+  Beige: 'солома',
+  // Зелень. Тёмная у набора бирюзовая (это его хвоя), светлая — трава плиток.
+  GreenDark: 'хвоя',
+  Green: 'трава',
+  // Камень: стены, скалы, горы. У набора он холодный, у нас тёплый, и это
+  // расхождение снимается ремапом — тем же, каким снято оно у замка.
+  StoneDark: 'камень',
+  Stone: 'камень-свет',
+  WoodDark: 'скол',
+  Metal: 'сталь',
+  White: 'иней',
+  // Тёмные прорези — окна, проёмы, тень под навесом. Цвет набора (#263236)
+  // и наш слот (#2b3138) отличаются на глаз неразличимо.
+  Black: 'металл-тень',
+  // Вода. Отдельного слота под неё в палитре нет, и заводить его сейчас
+  // не за чем: единственная вода в игре — реки на карте региона (§4.2),
+  // и нарисованы они как раз этим цветом.
+  Water: 'металл',
+  // Акценты: мишень, флажки, золото.
+  Red: 'краска-алая',
+  Yellow: 'латунь',
+};
+
+/** Что за деталь. Категория набора, а не игры: куда что пойдёт — §6.1.9. */
+const builderCategory = (name: string): string => {
+  if (name.startsWith('hex_')) return 'Плитка-гекс';
+  if (name.startsWith('square_')) return 'Плитка-квадрат';
+  if (name.startsWith('wall_')) return 'Стена';
+  if (name.startsWith('bridge')) return 'Мост';
+  if (name.startsWith('detail_tree') || name.startsWith('detail_forest') || name === 'forest') {
+    return 'Растительность';
+  }
+  if (name.startsWith('detail_rocks') || name === 'detail_hill' || name === 'mountain') return 'Рельеф';
+  return 'Постройка';
+};
+
+const BUILDER: Pack = {
+  id: 'builder',
+  title: 'KayKit Medieval Builder Pack 1.0',
+  dir: 'assets/kaykit-builder',
+  // Поле про атлас, которого у набора нет: цвет берётся из материалов.
+  atlas: '',
+  sources: ['glb/objects', 'glb/square', 'glb/hex'],
+  materials: BUILDER_MATERIALS,
+  ramps: [
+    { id: 'wood', title: 'дерево', slots: ['дерево-тень', 'дерево', 'солома'], hue: [0, 60], sat: [0.3, 1] },
+    { id: 'moss', title: 'зелень', slots: ['хвоя', 'трава'], hue: [90, 190], sat: [0.25, 1] },
+    { id: 'water', title: 'вода', slots: ['металл'], hue: [175, 200], sat: [0.5, 1] },
+    { id: 'paint', title: 'краска', slots: ['краска-алая', 'латунь'], hue: [330, 60], sat: [0.6, 1] },
+    { id: 'stone', title: 'камень', slots: ['металл-тень', 'камень', 'камень-свет', 'скол', 'сталь', 'иней'], hue: [0, 360], sat: [0, 0.3] },
+  ],
+  slots: [
+    'дерево-тень', 'дерево', 'солома',
+    'хвоя', 'трава',
+    'металл-тень', 'камень', 'камень-свет', 'скол', 'сталь', 'иней',
+    'металл',
+    'краска-алая', 'латунь',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  /**
+   * Модульным набор не объявлен, хотя плитка у него два на два. Обмер стыков
+   * написан под стену: он меряет, где у детали зубцы и какое ребро она
+   * оставляет открытым соседу. У плитки местности ребро открыто всегда,
+   * и тот же отчёт на ней выдаёт полторы сотни имён, ни одно из которых
+   * ничего не решает.
+   */
+  /** Серого поля у набора нет: серое здесь — камень, полноценный материал. */
+  grey: 0,
+  categoryOf: builderCategory,
+  /**
+   * Пусто: набор измерен, решение не принято (§6.1.9). Что куда подходит —
+   * там же, таблицей; в бандл пока не едет ни одна модель.
+   */
+  adopted: [],
+};
+
+const PACKS: readonly Pack[] =
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, BUILDER];
 
 /* ---------- png ---------- */
 
@@ -888,7 +1216,8 @@ interface Gltf {
   images?: { name?: string; uri?: string; bufferView?: number }[];
   bufferViews: { buffer: number; byteOffset?: number; byteLength: number; byteStride?: number }[];
   buffers: { uri?: string; byteLength: number }[];
-  meshes: { primitives: { attributes: Record<string, number>; indices?: number }[] }[];
+  materials?: { name?: string; pbrMetallicRoughness?: { baseColorFactor?: number[] } }[];
+  meshes: { primitives: { attributes: Record<string, number>; indices?: number; material?: number }[] }[];
   nodes?: Node[];
   skins?: Skin[];
   animations?: Animation[];
@@ -1284,7 +1613,82 @@ interface Mesh {
  */
 const atlasCache = new Map<string, Image>();
 
+/* ---------- набор без атласа: цвет в именованных материалах ---------- */
+
+interface MaterialTable {
+  /** Порядок колонок синтетического атласа — порядок объявления в наборе. */
+  readonly names: readonly string[];
+  /** Измеренный цвет материала, sRGB 0…255. */
+  readonly color: ReadonlyMap<string, readonly [number, number, number]>;
+  /** Атлас шириной в пиксель на материал: дальше по коду набор обычный. */
+  readonly image: Image;
+  /** Ключ цвета (r<<16|g<<8|b) → слот палитры. */
+  readonly slot: ReadonlyMap<number, string>;
+}
+
+const materialTables = new Map<string, MaterialTable>();
+
+const colorKey = (r: number, g: number, b: number): number => (r << 16) | (g << 8) | b;
+
+/** Линейный цвет glTF → sRGB, как его показывает любой просмотрщик. */
+const toSrgb = (v: number): number => {
+  const c = v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(c * 255)));
+};
+
+/**
+ * Таблица материалов набора. Цвет **измеряется**, а не берётся из объявления:
+ * объявлено только то, в какой слот палитры материал ложится. Расхождение
+ * имени с файлами — ошибка, а не мелочь: молча пропущенный материал уехал бы
+ * в запасной слот и покрасил бы им половину набора.
+ */
+function materialTableOf(pack: Pack, files: readonly string[]): MaterialTable {
+  const declared = pack.materials!;
+  const color = new Map<string, readonly [number, number, number]>();
+  for (const file of files) {
+    const { gltf } = loadDoc(file);
+    for (const material of gltf.materials ?? []) {
+      const name = material.name ?? '';
+      const factor = material.pbrMetallicRoughness?.baseColorFactor ?? [1, 1, 1, 1];
+      const rgb = [toSrgb(factor[0]!), toSrgb(factor[1]!), toSrgb(factor[2]!)] as const;
+      const known = color.get(name);
+      if (known === undefined) {
+        color.set(name, rgb);
+        continue;
+      }
+      if (known[0] !== rgb[0] || known[1] !== rgb[1] || known[2] !== rgb[2]) {
+        throw new Error(`${basename(file)}: материал «${name}» другого цвета, чем в остальном наборе`);
+      }
+    }
+  }
+  const names = Object.keys(declared);
+  for (const name of names) {
+    if (!color.has(name)) throw new Error(`${pack.title}: материала «${name}» в файлах нет`);
+  }
+  for (const name of color.keys()) {
+    if (declared[name] === undefined) throw new Error(`${pack.title}: материал «${name}» не назван слотом`);
+  }
+
+  const rgba = new Uint8Array(names.length * 4);
+  const slot = new Map<number, string>();
+  names.forEach((name, i) => {
+    const [r, g, b] = color.get(name)!;
+    rgba[i * 4] = r;
+    rgba[i * 4 + 1] = g;
+    rgba[i * 4 + 2] = b;
+    rgba[i * 4 + 3] = 255;
+    slot.set(colorKey(r, g, b), declared[name]!);
+  });
+  return { names, color, image: { width: names.length, height: 1, rgba }, slot };
+}
+
+const tableOf = (pack: Pack): MaterialTable | undefined =>
+  pack.materials === undefined ? undefined : materialTables.get(pack.id);
+
 function atlasOf(doc: Doc, pack: Pack, packDir: string): { name: string; image: Image } {
+  // Набор без картинки: атлас собран из его же материалов (см. `materialTableOf`).
+  const table = tableOf(pack);
+  if (table !== undefined) return { name: 'материалы', image: table.image };
   const image = doc.gltf.images?.[0];
   const uri = image?.uri ?? (image === undefined ? pack.atlas : undefined);
   if (uri !== undefined) {
@@ -1323,6 +1727,7 @@ function loadMesh(
 ): Mesh {
   const doc = loadDoc(file);
   const { gltf, bin } = doc;
+  const table = tableOf(pack);
   const { name: atlas, image: atlasImage } = atlasOf(doc, pack, packDir);
 
   const positions: number[] = [];
@@ -1397,10 +1802,24 @@ function loadMesh(
     for (const prim of gltf.meshes[index]!.primitives) {
       const posIndex = prim.attributes['POSITION'];
       const uvIndex = prim.attributes['TEXCOORD_0'];
-      if (posIndex === undefined || uvIndex === undefined || prim.indices === undefined) continue;
+      if (posIndex === undefined || prim.indices === undefined) continue;
+      /**
+       * Набор без атласа: UV примитива никуда не показывают — цвет назван
+       * материалом. Тогда UV назначаются здесь, серединой его колонки
+       * в синтетическом атласе, и дальше по коду ничего не меняется.
+       */
+      const column = table === undefined
+        ? -1
+        : table.names.indexOf(gltf.materials?.[prim.material ?? -1]?.name ?? '');
+      if (table !== undefined && column < 0) {
+        throw new Error(`${basename(file)}: примитив без материала — красить его нечем`);
+      }
+      if (uvIndex === undefined && table === undefined) continue;
       const pos = readAccessor(gltf, bin, posIndex);
-      const uv = readAccessor(gltf, bin, uvIndex);
+      const uv = uvIndex === undefined ? null : readAccessor(gltf, bin, uvIndex);
       const idx = readAccessor(gltf, bin, prim.indices);
+      const uvAt = (v: number): [number, number] =>
+        table === undefined ? [uv![v * 2]!, uv![v * 2 + 1]!] : [(column + 0.5) / table.names.length, 0.5];
       verts += gltf.accessors[posIndex]!.count;
 
       /**
@@ -1442,8 +1861,9 @@ function loadMesh(
           const v = idx[i + k]!;
           const p = [pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!];
           put(vertexMatrix === null ? model : vertexMatrix(v), p);
-          cu += uv[v * 2]!;
-          cv += uv[v * 2 + 1]!;
+          const [tu, tv] = uvAt(v);
+          cu += tu;
+          cv += tv;
         }
         uvs.push(cu / 3, cv / 3);
       }
@@ -1461,7 +1881,7 @@ function loadMesh(
         for (let c = 0; c < 3; c++) {
           rawPos.push(m[c]! * p[0]! + m[4 + c]! * p[1]! + m[8 + c]! * p[2]! + m[12 + c]!);
         }
-        rawUv.push(uv[v * 2]!, uv[v * 2 + 1]!);
+        rawUv.push(...uvAt(v));
         for (let k = 0; k < 3; k++) {
           rawBone.push(joints === null ? rigid : joints[v * 4 + k]!);
           rawWeight.push(weights === null ? (k === 0 ? 1 : 0) : weights[v * 4 + k]!);
@@ -1543,6 +1963,15 @@ const greyOf = (pack: Pack): number => pack.grey ?? GREY;
  * ничего не решает; всё, что мимо окон, — включая серое — идёт в запасной.
  */
 function rampOf(pack: Pack, r: number, g: number, b: number): string {
+  // Набор назвал материал словом — угадывать по окну оттенка нечего. Слот
+  // известен, остаётся найти градиент, в котором он стоит: этим одним местом
+  // ветка и ограничивается, всё остальное считает тот же код, что и раньше.
+  const table = tableOf(pack);
+  if (table !== undefined) {
+    const named = table.slot.get(colorKey(r, g, b));
+    const ramp = pack.ramps.find((x) => x.slots.includes(named ?? ''));
+    return ramp?.id ?? pack.ramps[pack.ramps.length - 1]!.id;
+  }
   const { hue, sat } = hueSat(r, g, b);
   const lum = luminance(r, g, b);
   for (const ramp of pack.ramps) {
@@ -1688,6 +2117,17 @@ interface Deck {
   readonly deck: number | null;
   /** Рёбра клетки в порядке −x, +x, −z, +z: `true` — ход продолжается. */
   readonly open: readonly boolean[];
+  /**
+   * Те же рёбра, но про другую модульность: `true` — деталь **пересекает**
+   * это ребро, то есть её линия уходит к соседу.
+   *
+   * Заведено седьмым набором (§6.1.7) и меряется у всех модульных: чем набор
+   * модулен, теперь не объявляется, а видно из замера. У замка деталь — блок
+   * в клетку, она подпирает все четыре ребра и не пересекает ни одного;
+   * у кладбища деталь — панель, она стоит на линии и пересекает ровно те
+   * рёбра, между которыми эта линия идёт.
+   */
+  readonly rim: readonly boolean[];
 }
 
 /**
@@ -1757,7 +2197,9 @@ function deckOf(mesh: Mesh, cell: number): Deck {
   const map = reliefOf(mesh, cell);
   let top = -Infinity;
   for (const y of map) if (y > top) top = y;
-  if (!Number.isFinite(top)) return { top: 0, deck: null, open: [false, false, false, false] };
+  if (!Number.isFinite(top)) {
+    return { top: 0, deck: null, open: [false, false, false, false], rim: [false, false, false, false] };
+  }
 
   // Мода высот в полосе под верхом — это и есть площадка. Голосуют отсчёты:
   // у прямой стены ход занимает две трети клетки, скаты зубцов — остальное.
@@ -1776,9 +2218,10 @@ function deckOf(mesh: Mesh, cell: number): Deck {
     }
   }
 
+  const at = (gx: number, gz: number): number => map[gz * RELIEF + gx]!;
+
   const open = [false, false, false, false];
   if (deck !== null) {
-    const at = (gx: number, gz: number): number => map[gz * RELIEF + gx]!;
     const side = (pick: (i: number) => number): boolean => {
       let walk = 0;
       let filled = 0;
@@ -1795,14 +2238,44 @@ function deckOf(mesh: Mesh, cell: number): Deck {
     open[2] = side((i) => at(i, 0));
     open[3] = side((i) => at(i, RELIEF - 1));
   }
-  return { top: Math.round(top * 100) / 100, deck, open };
+
+  /**
+   * Пересекает ли деталь ребро клетки. Считается по крайней линии отсчётов:
+   * панель выходит на ребро торцом, и занимает там столько, какова её
+   * толщина, — единицы отсчётов из шестнадцати. Стена, которая вдоль
+   * этого ребра лежит, занимает всю линию, и пересечением это не считается:
+   * иначе кладка, прижатая к краю клетки, звалась бы уходящей к соседу
+   * во все стороны сразу.
+   */
+  const crosses = (pick: (i: number) => number): boolean => {
+    let filled = 0;
+    for (let i = 0; i < RELIEF; i++) if (Number.isFinite(pick(i))) filled++;
+    return filled > 0 && filled * 2 <= RELIEF;
+  };
+  const rim = [
+    crosses((i) => at(0, i)),
+    crosses((i) => at(RELIEF - 1, i)),
+    crosses((i) => at(i, 0)),
+    crosses((i) => at(i, RELIEF - 1)),
+  ];
+
+  return { top: Math.round(top * 100) / 100, deck, open, rim };
 }
 
 function makeSampler(pack: Pack, atlases: readonly Image[], usage: Usage | undefined): Sampler {
-  const ranges = rampRanges(pack, atlases, usage);
+  const ranges = pack.materials === undefined ? rampRanges(pack, atlases, usage) : {};
   const index = new Map(pack.slots.map((s, i) => [s, i]));
 
+  const table = tableOf(pack);
   const slotOfColor = (r: number, g: number, b: number): number => {
+    // У набора с материалами ступень не выводится из яркости: она названа.
+    // Запасной путь недостижим — таблица проверена на все материалы файлов, —
+    // но написан правильно: `fallback` у набора это градиент, а не слот.
+    if (table !== undefined) {
+      const named = table.slot.get(colorKey(r, g, b));
+      const spare = pack.ramps.find((x) => x.id === pack.fallback)!.slots[0]!;
+      return index.get(named ?? spare) ?? index.get(spare)!;
+    }
     const ramp = pack.ramps.find((x) => x.id === rampOf(pack, r, g, b))!;
     const steps = ramp.slots.length;
     const { min, max } = ranges[ramp.id]!;
@@ -2255,7 +2728,9 @@ function writeCatalog(
       ...(m.skinned > 0 ? { skinned: m.skinned } : {}),
       // Рельеф детали модульного набора: высота хода поверху и рёбра клетки,
       // через которые ход продолжается к соседу.
-      ...(decks === undefined ? {} : { deck: decks.get(m.name)!.deck, open: decks.get(m.name)!.open }),
+      ...(decks === undefined
+        ? {}
+        : { deck: decks.get(m.name)!.deck, open: decks.get(m.name)!.open, rim: decks.get(m.name)!.rim }),
       ...(Object.keys(m.attach).length === 0
         ? {}
         : { attach: Object.fromEntries(
@@ -2297,6 +2772,10 @@ function report(pack: Pack, write: boolean): void {
 
   // Два прохода: сначала геометрия, потом цвет. Шкала градиента может зависеть
   // от того, что набор задел, а это известно только после чтения всех моделей.
+  // Таблица материалов — до чтения мешей: из неё собирается атлас, а без
+  // атласа модель прочитать нечем.
+  if (pack.materials !== undefined) materialTables.set(pack.id, materialTableOf(pack, files));
+
   const meshes = files.map((f) => ({
     name: basename(f).replace(/\.(gltf|glb)$/, ''),
     rel: f.slice(dir.length + 1),
@@ -2326,7 +2805,7 @@ function report(pack: Pack, write: boolean): void {
   // и «открытое ребро» у них ничего не значит.
   const decks = pack.modular === undefined
     ? undefined
-    : new Map(meshes.map((m) => [m.name, deckOf(m.mesh, pack.modular!.cell)]));
+: new Map(meshes.map((m) => [m.name, deckOf(m.mesh, pack.modular!.cell)]));
   const slots = pack.slots;
 
 
@@ -2410,6 +2889,30 @@ function report(pack: Pack, write: boolean): void {
     console.log('  рёбра под соседа (−x +x −z +z):');
     for (const [key, names] of [...byOpen].sort((a, b) => b[1].length - a[1].length)) {
       console.log(`    ${key}  ${(SHAPE[key] ?? '?').padEnd(15)} ${names.join(', ')}`);
+    }
+
+    // Вторая модульность: деталь не блок в клетку, а панель на линии.
+    // Печатается тем же способом, и по тому, какая из двух таблиц у набора
+    // непустая, видно, чем набор модулен.
+    const LINE: Record<string, string> = {
+      '1100': 'прямая вдоль x', '0011': 'прямая вдоль z',
+      '1010': 'угол −x→−z', '1001': 'угол −x→+z', '0110': 'угол +x→−z', '0101': 'угол +x→+z',
+      '1000': 'торец в −x', '0100': 'торец в +x', '0010': 'торец в −z', '0001': 'торец в +z',
+      '1110': 'тройник без +z', '1101': 'тройник без −z', '1011': 'тройник без +x', '0111': 'тройник без −x',
+      '1111': 'перекрёсток', '0000': 'линии нет',
+    };
+    const byRim = new Map<string, string[]>();
+    for (const [name, d] of decks) {
+      const key = d.rim.map((o) => (o ? '1' : '0')).join('');
+      byRim.set(key, [...(byRim.get(key) ?? []), name]);
+    }
+    console.log('  линия детали — какие рёбра она пересекает (−x +x −z +z):');
+    for (const [key, names] of [...byRim].sort((a, b) => b[1].length - a[1].length)) {
+      if (key === '0000') {
+        console.log(`    0000  линии нет       ${names.length} моделей`);
+        continue;
+      }
+      console.log(`    ${key}  ${(LINE[key] ?? '?').padEnd(15)} ${names.join(', ')}`);
     }
   }
 

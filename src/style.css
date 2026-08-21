@@ -178,7 +178,12 @@ button:active { background: rgba(255, 255, 255, 0.12); }
    здесь, а не в разметке, — карта обязана влезать в лист вместе с карточкой
    на 360×780, иначе решение принимается вслепую. */
 #camp .map { gap: 8px; }
-.map-cv { width: 100%; aspect-ratio: 3 / 2; max-height: 30vh; display: block; }
+/* Земля под точками (§4.2) даёт карте край, которого у чёрного экрана
+   не было: рамка и скругление отделяют лист от панели под ним. */
+.map-cv {
+  width: 100%; aspect-ratio: 3 / 2; max-height: 30vh; display: block;
+  border: 1px solid var(--line); border-radius: 8px;
+}
 .map-card {
   display: flex; flex-direction: column; gap: 4px;
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
@@ -199,7 +204,48 @@ button:active { background: rgba(255, 255, 255, 0.12); }
 .map-card .pips s { width: 22px; height: 4px; background: var(--good); border-radius: 2px; }
 .map-card .pips s.off { background: rgba(232, 226, 212, 0.16); }
 .map-note { font-size: 11px; color: var(--dim); min-height: 14px; }
-#camp .map > button { padding: 11px; }
+
+/* Кнопка входа — по артбуку `world.html` (`.cta`), а не общая `button`.
+   Это не украшение: вход в локацию — единственное необратимое действие
+   на экране, и выглядеть оно обязано иначе, чем «Отряд» и «Припасы».
+   До сих пор кнопка носила класс `primary`, для которого правила в карте
+   не было вовсе, — и падала на общую `button`: 12 пикселей, серая панель,
+   тонкая рамка. То есть самое дорогое действие игры выглядело как вкладка.
+
+   Числа взяты из артбука дословно: заливка градиентом, засечный шрифт,
+   16 пикселей, скругление 9. Тёмный текст на светлом — единственное такое
+   место в интерфейсе, и в этом весь смысл. */
+.cta {
+  display: block; width: 100%; text-align: center;
+  padding: 12px 18px; border-radius: 9px;
+  border: 1px solid #e0bc3c;
+  background: linear-gradient(180deg, #d5ac2c, #a8811a);
+  color: #140f02;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px; font-weight: 600;
+}
+.cta:active { background: linear-gradient(180deg, #c39c26, #8f6e16); }
+/* Ставка перестала быть посильной. Порог — 60%: артбук красит оранжевым
+   ровно два входа, «В Сухое русло — ставка 60%» и «Войти в бурю» (60% → 85%),
+   и оба стоят на `TIER_RISK[2]` и выше. Ниже кнопка остаётся золотой:
+   если оранжевой станет каждая вылазка, оранжевый перестанет значить что-либо. */
+.cta.danger {
+  border-color: #e07c46;
+  background: linear-gradient(180deg, #d2662f, #9e4620);
+  color: #150802;
+}
+.cta.danger:active { background: linear-gradient(180deg, #bb5a29, #8a3c1b); }
+/* Заперто. Не серая версия золотой, а другая кнопка: заливка снимается
+   совсем, иначе «нельзя» читается как «сломалось». Причину говорит строка
+   под ней (`.map-note`), а не сама кнопка. */
+.cta:disabled {
+  background: transparent; border-color: var(--line); color: var(--dim);
+  cursor: default;
+}
+/* Правило `#camp .map > button { padding: 11px }` отсюда убрано: оно было
+   написано под прежнюю кнопку и по специфичности перебивало отступы `.cta`,
+   то есть отменяло артбук молча — в демо вне `#camp` всё выглядело верно,
+   а в игре нет. Размер кнопки задаёт `.cta`, и только он. */
 /* Перестановка — второе действие карточки, поэтому тише главного. */
 #camp .b .move { align-self: flex-start; font-size: 11px; padding: 5px 9px; }
 /* Нижняя строка: три входа и ничего больше. Главный — вылазка.
@@ -374,6 +420,26 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #pitch button {
   pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
 }
+
+/* ---------- лавка торговца (§13.4) ---------- */
+/* Строки, а не магазин: то же решение, что у припасов (§21) — «отдельный
+   экран превратил бы лагерь в витрину». Здесь витрина отменила бы прогулку
+   по двору, ради которой во двор и шли. Панель стоит внизу, как приглашение
+   разбить лагерь, и гаснет, стоит отойти. */
+#trade {
+  position: fixed; inset: auto 0 0 0; display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+  padding: 0 16px calc(26px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+#trade .t {
+  margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink);
+}
+#trade .wallet { margin: 0; font-size: 12px; color: var(--dim); }
+#trade .row { display: flex; align-items: center; gap: 8px; }
+#trade button { pointer-events: auto; font-size: 14px; padding: 10px 22px; }
+#trade .why { font-size: 11px; color: var(--bad); min-width: 64px; }
 
 /* ---------- панель стройки стен (§12, §6.1.6) ---------- */
 #camp .build { gap: 10px; align-self: stretch; }

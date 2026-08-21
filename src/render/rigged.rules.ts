@@ -16,12 +16,14 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import * as THREE from 'three';
 import { CLASS_ORDER } from '../sim/heroes';
-import type { EnemyKind } from '../sim/types';
+import type { RaidEnemyKind } from '../sim/types';
 import { enemyParts, heroParts } from './models';
+import { WEAPON_LADDER } from './weapons';
+import { WEAPONS_MODELS } from './weapons.data';
 import { Rigged } from './rigged';
 import type { RiggedParts } from './rigged';
 
-const ENEMY_KINDS: readonly EnemyKind[] = ['minion', 'warrior', 'mage'];
+const ENEMY_KINDS: readonly RaidEnemyKind[] = ['minion', 'warrior', 'mage'];
 
 /**
  * Сколько единиц набора вершине позволено разойтись с поставленной моделью.
@@ -117,4 +119,27 @@ describe('привязка скина', () => {
       assert.ok(bindError(parts) < EXACT);
     });
   }
+
+  /**
+   * Вылазка берёт героя со скином, а не неподвижной геометрией, и предмет
+   * в руке у неё свой меш (§6.1.8). Проверяется, что уровень доходит и сюда:
+   * иначе клинок менялся бы в лагере и не менялся в вылазке — а это ровно
+   * тот случай, когда «в игре» и «на экране» расходятся молча.
+   */
+  test('клинок §14 доезжает до вылазки, а не только до лагеря', () => {
+    const held = WEAPON_LADDER.map((_, level) => {
+      const parts = heroParts('knight', level);
+      assert.ok(parts !== null && parts.hold?.['handslot.r'] !== undefined, `уровень ${level}: рука пустая`);
+      const count = parts.hold?.['handslot.r'].index!.count / 3;
+      parts.hold?.['handslot.r'].dispose();
+      return count;
+    });
+    for (let level = 0; level < WEAPON_LADDER.length; level++) {
+      assert.equal(
+        held[level],
+        WEAPONS_MODELS[WEAPON_LADDER[level]!].tris,
+        `уровень ${level}: в руке не та модель`,
+      );
+    }
+  });
 });

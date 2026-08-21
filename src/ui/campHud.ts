@@ -19,6 +19,7 @@ import {
 } from '../sim/consumables';
 import type { ConsumableId } from '../sim/consumables';
 import { ONB_HINT } from '../sim/onboarding';
+import { dayAt, firstRaidNode } from '../sim/world';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
@@ -359,6 +360,11 @@ export class CampHud {
     this.sheetTitle.textContent = this.titleFor(kind);
     if (kind === 'tiers' && this.last !== null) {
       this.map.open(this.last.camp, this.last.now);
+      // Кадр мог встать до первого `sync`, когда выбирать было ещё не из чего:
+      // тогда запирание случается здесь, на открытии листа.
+      if (this.onb === 'world') {
+        this.map.setOnly(firstRaidNode(dayAt(this.last.now), this.last.now));
+      }
     }
     this.paintOpen();
     // Кнопка перестановки принадлежит карточке здания и переезжает в неё:
@@ -526,6 +532,14 @@ export class CampHud {
   setOnboarding(step: OnbStep): void {
     if (this.onb === step) return;
     this.onb = step;
+    // §16.2 — на кадре `world` карта открыта одним местом: игрок не видел
+    // ни боя, ни ран, и «выбирай из двадцати» здесь не выбор, а рулетка.
+    // Место называет `firstRaidNode`, а не карта: она про кадры не знает.
+    if (step === 'world' && this.last !== null) {
+      this.map.setOnly(firstRaidNode(dayAt(this.last.now), this.last.now));
+    } else if (step !== 'world') {
+      this.map.setOnly(null);
+    }
     // Кадры 9 и 10 сами решают, что открыто: на экране ровно одно действие.
     // Оба последних кадра говорят одной карточкой — Мастерской: сначала она
     // просит камень, потом показывает, что на него куплено. Разводить их
@@ -552,7 +566,16 @@ export class CampHud {
      */
     const affordable =
       this.last !== null && upgradeBlock(this.last.camp, 'forge') === 'ok';
-    const quiet = (this.onb === 'build' && affordable) || this.onb === 'craft';
+    /*
+     * У кадра `craft` тот же капкан, и он злее: ковать нечем по построению —
+     * первый предмет стоит железа, а ярус 1 ещё заперт Кухней (§13.5).
+     * Спрятанная строка отняла бы «В мир», то есть единственный путь
+     * к торговцу, у которого это железо и берут. Кадр молчит только тогда,
+     * когда ковка вправду доступна.
+     */
+    const canForge =
+      this.last !== null && GEAR_ORDER.some((slot) => gearBlock(this.last!.camp, slot) === 'ok');
+    const quiet = (this.onb === 'build' && affordable) || (this.onb === 'craft' && canForge);
 
     // Подсказка кадра держится, пока кадр не сменится.
     const hint = ONB_HINT[this.onb];

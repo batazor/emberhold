@@ -48,6 +48,7 @@ function duelField(kind: EnemyKind, gap: number): GameLocation {
     blocked,
     evac,
     containers: [],
+    stones: [],
     enemies: [
       {
         id: 0,

@@ -7,6 +7,7 @@ import type { GearSlot, GearState, Offhand } from './gear';
 import type { Tier } from './types';
 import type { Visit } from './world';
 import { emptyWalls, type CampWalls } from './campWalls';
+import { STONES, scatterStones, type Stone } from './stones';
 
 /**
  * Прототип v0 (§7): три здания плюс Мастерская. Лазарет и Плац ждут — они
@@ -201,19 +202,62 @@ export interface CampState {
    * сохранения, сделанные до стройки стен, обязаны открываться.
    */
   walls?: CampWalls;
+  /**
+   * Валуны на площадке (§13.4). Разбитые из списка не выпадают, а помечаются
+   * — сохранение пишет остаток, и разобранный лагерь после перезагрузки
+   * остаётся разобранным.
+   */
+  stones: Stone[];
+}
+
+/**
+ * Раскладка, с которой лагерь начинается. След здания 2×2, площадь при Жилье
+ * ур. 1 — 6×6, поэтому левый верхний угол не может быть правее 4 (§20.4).
+ * Мастерская появляется вместе с Жильём ур. 2, когда площадь уже 7×7.
+ *
+ * Отдельной константой она стала ради валунов: их кладут мимо зданий,
+ * и вторая копия начальных мест разошлась бы с первой молча.
+ */
+const START_LAYOUT: Record<BuildingId, { x: number; z: number }> = {
+  hq: { x: 1, z: 1 },
+  kitchen: { x: 4, z: 1 },
+  storage: { x: 1, z: 4 },
+  forge: { x: 4, z: 4 },
+};
+
+/**
+ * Валуны лагеря. Раскладка одна на всех и не зависит ни от чего: лагерь
+ * у всех начинается одинаковым — с той же планировкой и теми же уровнями,
+ * — и камни на нём такая же часть стартовой площадки, как след Жилья.
+ *
+ * Разбрасываются они по **самой большой** площадке, а не по нынешней:
+ * площадь растёт с Жильём (§20.4), и валун за нынешней кромкой — это
+ * не ошибка, а камень, до которого лагерь ещё не дорос. Первые три уровня
+ * он лежит в лесу вокруг, и это ровно то, что видно глазом.
+ *
+ * Следы зданий исключены: тап по зданию открывает его карточку, и валун
+ * под Жильём был бы камнем, по которому нельзя ударить.
+ */
+export function campStones(): Stone[] {
+  const area = campArea(MAX_LEVEL);
+  const under = (x: number, z: number): boolean =>
+    BUILDING_ORDER.some((id) => {
+      const p = START_LAYOUT[id];
+      return x >= p.x && z >= p.z && x < p.x + 2 && z < p.z + 2;
+    });
+  // Сид назван, а не выведен: выводить его не из чего — лагерь один
+  // и у всех одинаковый.
+  return scatterStones(0x5ca3, area, new Uint8Array(area * area), STONES.camp, (x, z) => !under(x, z));
 }
 
 export function createCamp(): CampState {
   return {
     levels: { hq: 1, kitchen: 1, storage: 1, forge: 0 },
-    // След здания 2×2, площадь при Жилье ур. 1 — 6×6, поэтому левый
-    // верхний угол не может быть правее 4 (§20.4). Мастерская появляется
-    // вместе с Жильём ур. 2, когда площадь уже 7×7.
     layout: {
-      hq: { x: 1, z: 1 },
-      kitchen: { x: 4, z: 1 },
-      storage: { x: 1, z: 4 },
-      forge: { x: 4, z: 4 },
+      hq: { ...START_LAYOUT.hq },
+      kitchen: { ...START_LAYOUT.kitchen },
+      storage: { ...START_LAYOUT.storage },
+      forge: { ...START_LAYOUT.forge },
     },
     resources: emptyResources(),
     construction: null,
@@ -226,6 +270,7 @@ export function createCamp(): CampState {
     raids: 0,
     visits: [],
     walls: emptyWalls(),
+    stones: campStones(),
   };
 }
 

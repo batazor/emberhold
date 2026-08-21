@@ -1,9 +1,33 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { ENEMY_HEIGHT, buildingGeometry, enemyParts, heroGeometry, heroParts } from './models';
+import {
+  ENEMY_HEIGHT,
+  buildingGeometry,
+  enemyGeometry,
+  enemyParts,
+  dwellerParts,
+  guardParts,
+  heroGeometry,
+  heroParts,
+} from './models';
+import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
+import { FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
+import type { GraveyardPartModelName } from './graveyard';
 import type { CastlePartModelName } from './castle';
 import type { CastleSite } from '../sim/castleSite';
+import {
+  ARCHER_SPEED,
+  PATROL_SPEED,
+  SQUAD,
+  DWELLER_SPEED,
+  archerAt,
+  dwellersAt,
+  garrisonOf,
+  patrolAt,
+  type Garrison,
+} from '../sim/garrison';
+import type { GraveSite } from '../sim/graveSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
 import { Rigged } from './rigged';
@@ -13,13 +37,15 @@ import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
 import { ENEMY_STATS } from '../sim/enemies';
+import { inYard } from '../sim/castleSite';
 import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
 import type { EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
-import { forestGeometry, forestMaterial } from './forest';
+import { forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
+import { STUMP, STUMP_HEIGHT, WOODS, treeGeometry, type Tree } from './woods';
 import type { Gust } from './cursorWind';
 import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
 import { Grass, tileNoise } from './grass';
@@ -43,22 +69,48 @@ const RAID_ROCKS: readonly ForestModelName[] = [
 ];
 
 /**
- * Стены поляны из пролога — деревья. Тот же список, что вокруг лагеря
- * (`campView.ts`): герой выходит из этого леса и в нём же встаёт лагерем,
+ * Стены поляны из пролога — деревья. Список общий с лагерем и живёт
+ * в `woods.ts`: герой выходит из этого леса и в нём же встаёт лагерем,
  * и разными породами это выглядело бы как два разных места.
  */
-const GLADE_TREES: readonly ForestModelName[] = [
-  'Tree_1_A_Color1',
-  'Tree_2_B_Color1',
-  'Tree_4_A_Color1',
-  'Tree_Bare_2_B_Color1',
-];
+const GLADE_TREES = WOODS;
 
 /**
  * Чем застроены непроходимые клетки. Копи и поляна отличаются ровно этим
- * и точкой эвакуации: правила ходьбы, камера и трава у них общие.
+ * и точкой выхода: правила ходьбы, камера и трава у них общие.
  */
-export type RaidFlavor = 'mine' | 'glade' | 'castle';
+export type RaidFlavor = 'mine' | 'glade' | 'castle' | 'grave';
+
+/**
+ * Деревья кладбища — хвоя и осенняя хвоя набора (§6.1.7). Список свой,
+ * а не общий с поляной, и это решение: у лагеря и пролога лес один, потому
+ * что герой выходит из него и в нём же встаёт лагерем; кладбище стоит
+ * в другом месте, и другая порода по краю говорит об этом без подписи.
+ */
+const GRAVE_TREES: readonly GraveyardPartModelName[] = [
+  'pine',
+  'pine-crooked',
+  'pine-fall',
+  'pine-fall-crooked',
+];
+
+/** Пеньки по краю участка: вырубленный когда-то лес, и по нему ходят. */
+const GRAVE_STUMPS: readonly GraveyardPartModelName[] = ['trunk', 'trunk-long'];
+
+/**
+ * Рост отметок участка в клетках локации. Числа не назначены на глаз:
+ * герой — 1,38, и надгробие по пояс это 0,8, крест в рост человека — 1,3,
+ * склеп выше героя вдвое. Гроб лежит, и рост у него толщина.
+ */
+const MARK_HEIGHT: Record<string, number> = {
+  'grave': 0.14,
+  'gravestone-bevel': 0.7,
+  'gravestone-round': 0.75,
+  'gravestone-cross': 1.15,
+  'cross': 1.3,
+  'crypt': 2.4,
+  'coffin': 0.45,
+};
 
 /**
  * Шатёр рисуется в габаритах артбука — почти четыре единицы в ширину.
@@ -73,6 +125,14 @@ const BUILDING_SCALE = 0.55;
  * ни тень, ни то, с какого расстояния добыча читается.
  */
 const CONTAINER_HEIGHT = 0.52;
+
+/**
+ * Рост валуна (§13.4) в клетках локации: герою по колено. Выше — и камень
+ * стал бы стеной, которую почему-то можно обойти; ниже — щебнем, по которому
+ * не бьют. Пенёк просеки ровно такой же (0,42), и это не совпадение: обе
+ * вещи занимают место на полу, но не в силуэте локации.
+ */
+const STONE_HEIGHT = 0.42;
 
 /**
  * Замеры клипов (`npm run clips`, каталог набора анимаций) — по ним клип
@@ -92,6 +152,9 @@ const ATTACK_RATE: Record<EnemyKind, number> = {
   minion: STRIKE / ENEMY_STATS.minion.telegraph,
   warrior: STRIKE / ENEMY_STATS.warrior.telegraph,
   mage: STRIKE / ENEMY_STATS.mage.telegraph,
+  // У привидения клипа нет вовсе: замах играется трансформом (`drifting.ts`)
+  // и длится ровно столько, сколько назначено телеграфу. Растягивать нечего.
+  ghost: 1,
 };
 
 /**
@@ -106,6 +169,13 @@ const ATTACK_RATE: Record<EnemyKind, number> = {
  * множителем в рендере.
  */
 const MAX_RATE = 3;
+
+/**
+ * До чего гаснут стены замка, пока герой во дворе. Не до нуля: замок обязан
+ * остаться постройкой, по которой ходят, а не пропасть — сквозь стену должно
+ * быть видно, что она стена.
+ */
+const CASTLE_FADE = 0.45;
 const rateFor = (speed: number, scale: number): number =>
   Math.min(MAX_RATE, speed / Math.max(1e-3, SLIDE * scale));
 const walkRate = (kind: EnemyKind, scale: number): number =>
@@ -144,7 +214,12 @@ const hash = (a: number, b: number, mod: number): number =>
   Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
 
 interface EnemyView {
-  readonly rig: Rigged;
+  /**
+   * Тело противника. У ярусных это скелет набора, у привидения — то же самое
+   * без костей (`drifting.ts`): вылазка ведёт обоих одним кодом и не знает,
+   * кто из них чем анимирован.
+   */
+  readonly rig: Rigged | Drifting;
   readonly base: THREE.MeshLambertMaterial;
   readonly hot: THREE.MeshLambertMaterial;
   /** Полоска жизни: заполнение отдельным спрайтом, чтобы расти слева. */
@@ -164,6 +239,19 @@ interface EnemyView {
 export class RaidView {
   readonly group = new THREE.Group();
   private readonly enemyViews = new Map<number, EnemyView>();
+  /**
+   * Жильцы двора (§6.1.6.1). Держатся отдельно от противников, потому что
+   * ими и не являются: ни полоски жизни, ни замаха, ни клипа падения —
+   * жилец только ходит и стоит.
+   */
+  private readonly dwellerViews: { rig: Rigged; facing: number }[] = [];
+  /**
+   * Материал замка. Держится отдельной ссылкой затем, чтобы гасить стены,
+   * пока герой во дворе (§6.1.6.1): иначе кадр показывает стену вместо того,
+   * ради чего в замок заходят.
+   */
+  private castleMat: THREE.MeshLambertMaterial | null = null;
+  private castleFade = 1;
   private readonly containerMeshes = new Map<number, THREE.Mesh>();
   private hero!: THREE.Group;
   /** Есть у класса с моделью набора; у примитивных классов остаётся null. */
@@ -188,6 +276,14 @@ export class RaidView {
    * не меняется, тап остаётся тапом.
    */
   private hoverHex: Hex | null = null;
+  /**
+   * Пеньки просеки (§13.3). Один InstancedMesh на всю локацию, заведённый
+   * заранее и пустой: срубить можно каждое внутреннее дерево, но не сразу,
+   * и заводить меш на каждый пенёк значило бы платить вызовом отрисовки
+   * за каждое движение топора.
+   */
+  private stumps: THREE.InstancedMesh | null = null;
+  private stumpCount = 0;
   private marker!: THREE.Mesh;
   /** Точка тапа из кадра 1 онбординга: единственная подсказка, которая
    *  показывает жест вместо того, чтобы называть его словами. */
@@ -209,11 +305,26 @@ export class RaidView {
   private readonly shaken = new Map<number, number>();
   /** Падающие стволы. `regrow` — кромка: на её место встаёт следующее дерево. */
   private readonly falling: { key: number; t: number; regrow: boolean }[] = [];
-  /** Пятно работы под деревом. Заводится в первую же рубку, а не на входе:
-   *  в вылазке его не будет никогда. */
-  private chopMark: THREE.Mesh | null = null;
-  /** Рубит ли герой прямо сейчас — этим он и отличается от стоящего. */
-  private chopping = false;
+  /** Пятно работы под тем, по чему бьют. Заводится в первый же замах,
+   *  а не на входе: в вылазке без валунов его не будет никогда. */
+  private workMark: THREE.Mesh | null = null;
+  /** Работает ли герой прямо сейчас — этим он и отличается от стоящего. */
+  private working = false;
+  /** Валуны (§13.4): по одному мешу на камень — их единицы, и меш на каждый
+   *  дешевле, чем поиск экземпляра в общем буфере на каждый удар. */
+  private readonly stoneMeshes = new Map<number, THREE.Mesh>();
+  /** Валуны, дрожащие после замаха, и сколько они уже дрожат. */
+  private readonly stoneHits = new Map<number, number>();
+  /**
+   * Гарнизон замка (§6.1.6): отряд на тропе и стрелок на стене. Считает их
+   * симуляция — здесь только тела, повороты и клипы. Часы свои и с нуля:
+   * `performance.now()` растёт от загрузки страницы, и на нём вторая ходка
+   * в замок начиналась бы с середины чужой смены.
+   */
+  private garrison: Garrison | null = null;
+  private readonly squad: { rig: Rigged; facing: number }[] = [];
+  private archer: { rig: Rigged; facing: number } | null = null;
+  private watch = 0;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
   /** Порыв от курсора. Считает его main — источник ветра один на игру. */
@@ -244,13 +355,20 @@ export class RaidView {
     private readonly flavor: RaidFlavor = 'mine',
     /** Площадка замка (§6.1.6): без неё вкус «замок» рисовать нечем. */
     private readonly keep: CastleSite | null = null,
+    /** Участок кладбища (§6.1.7): то же самое для вкуса «кладбище». */
+    private readonly grave: GraveSite | null = null,
+    /** §14 — уровень оружия: он выбирает клинок в руке (§6.1.8). */
+    private readonly weapon = 0,
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
     this.buildWalls();
     if (this.keep !== null) this.buildCastle(this.keep);
+    if (this.keep !== null) this.buildGarrison(this.keep);
+    if (this.grave !== null) this.buildGraveyard(this.grave);
     if (flavor !== 'glade') this.buildEvac();
     this.buildContainers();
+    this.buildStones();
     this.buildEnemies();
     this.buildHero();
     this.buildMarker();
@@ -302,8 +420,43 @@ export class RaidView {
   }
 
   private buildGrass(perTile: number): void {
-    this.grass = new Grass(this.loc, perTile);
+    this.grass = new Grass(this.loc, perTile, undefined, this.bareCells());
     this.group.add(this.grass.mesh);
+  }
+
+  /**
+   * Где траву не сеют. Пусто везде, кроме кладбища: там весь участок
+   * за оградой — **между могилами не растёт**. Иначе трава закрывает
+   * надгробия, и участок читается лугом с камнями.
+   *
+   * Границы участка берутся у самой ограды, а не назначаются: клетка
+   * набора это `FENCE_SCALE` клеток локации, и внутренность — прямоугольник
+   * между крайними её деталями.
+   */
+  private bareCells(): ReadonlySet<number> {
+    const site = this.grave;
+    if (site === null) return new Set();
+    let x0 = Infinity;
+    let z0 = Infinity;
+    let x1 = -Infinity;
+    let z1 = -Infinity;
+    for (const piece of site.fence) {
+      x0 = Math.min(x0, piece.x);
+      z0 = Math.min(z0, piece.z);
+      x1 = Math.max(x1, piece.x);
+      z1 = Math.max(z1, piece.z);
+    }
+    if (!Number.isFinite(x0)) return new Set();
+    const at = (v: number): number => site.at.x + v * FENCE_SCALE;
+    const atZ = (v: number): number => site.at.z + v * FENCE_SCALE;
+    const out = new Set<number>();
+    for (let z = Math.floor(atZ(z0)); z <= Math.ceil(atZ(z1)); z++) {
+      for (let x = Math.floor(at(x0)); x <= Math.ceil(at(x1)); x++) {
+        if (x < 0 || z < 0 || x >= this.loc.size || z >= this.loc.size) continue;
+        out.add(idx(this.loc.size, x, z));
+      }
+    }
+    return out;
   }
 
   /** Отладочный орган управления, как ползунок «Ночь»: это замер, не механика. */
@@ -326,8 +479,12 @@ export class RaidView {
    */
   private buildWalls(): void {
     const { size, blocked } = this.loc;
+    // У кладбища лес свой — из набора кладбища, и ставит его buildGraveyard.
+    if (this.flavor === 'grave') return;
     const tree = this.flavor === 'glade' || this.flavor === 'castle';
-    const models = tree ? GLADE_TREES : RAID_ROCKS;
+    const models: readonly Tree[] = tree
+      ? GLADE_TREES
+      : RAID_ROCKS.map((model) => ({ set: 'forest', model }) as const);
     const cells: number[][] = models.map(() => []);
     // У замка занятых клеток два рода: лес по краю и сам замок. Лесом
     // засаживается только лес — иначе деревья выросли бы сквозь стену.
@@ -348,7 +505,7 @@ export class RaidView {
       const list = cells[v]!;
       if (list.length === 0) continue;
       // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
-      const mesh = new THREE.InstancedMesh(forestGeometry(models[v]!, 1), mat, list.length / 2);
+      const mesh = new THREE.InstancedMesh(treeGeometry(models[v]!, 1), mat, list.length / 2);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       for (let i = 0; i < list.length; i += 2) {
@@ -403,7 +560,7 @@ export class RaidView {
     // Только если герой действительно рубит: с приходом боевого удара
     // безусловный replay перезапускал бы боевой замах на каждом стуке
     // по дереву, и удар по противнику не доигрывал бы никогда.
-    if (this.chopping) this.heroRig?.replay();
+    if (this.working) this.heroRig?.replay();
     const key = idx(this.loc.size, x, z);
     if (!this.trees.has(key)) return;
     this.shaken.set(key, 0);
@@ -422,10 +579,43 @@ export class RaidView {
     this.falling.push({ key, t: 0, regrow });
   }
 
+  /**
+   * Пенёк на клетке. Ёмкость меша — все внутренние деревья локации: больше
+   * пеньков, чем было деревьев, не бывает, и пересобирать меш на ходу
+   * не приходится ни разу.
+   */
+  private addStump(x: number, z: number): void {
+    if (this.stumps === null) {
+      const room = Math.max(1, this.trees.size + this.stumpCount + 1);
+      const mesh = new THREE.InstancedMesh(
+        treeGeometry(STUMP, STUMP_HEIGHT),
+        this.track(forestMaterial()),
+        room,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      // Пустой меш: экземпляры выключены нулевым масштабом, пока пенька нет.
+      const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+      for (let i = 0; i < room; i++) mesh.setMatrixAt(i, zero);
+      this.stumps = mesh;
+      this.group.add(mesh);
+    }
+    if (this.stumpCount >= this.stumps.count) return;
+    const dummy = new THREE.Object3D();
+    // Тот же детерминированный сдвиг, что у дерева: пенёк обязан остаться
+    // там, где стоял ствол, а не в центре клетки.
+    const t = ((Math.sin(x * 3.1 + z * 7.7) * 1000) % 1 + 1) % 1;
+    dummy.position.set(x + (t - 0.5) * 0.22, -0.04, z + (t - 0.5) * 0.18);
+    dummy.rotation.set(0, t * 6.28, 0);
+    dummy.updateMatrix();
+    RaidView.put(this.stumps, this.stumpCount, dummy.matrix);
+    this.stumpCount++;
+  }
+
   /** Работа топором: пятно под деревом растёт вместе с ней. 0 — работы нет. */
-  showChop(x: number, z: number, share: number): void {
-    if (this.chopMark === null) {
-      this.chopMark = new THREE.Mesh(
+  showWork(x: number, z: number, share: number): void {
+    if (this.workMark === null) {
+      this.workMark = new THREE.Mesh(
         this.track(new THREE.CircleGeometry(0.44, 20)),
         this.track(
           new THREE.MeshBasicMaterial({
@@ -437,20 +627,20 @@ export class RaidView {
           }),
         ),
       );
-      this.chopMark.rotation.x = -Math.PI / 2;
-      this.group.add(this.chopMark);
+      this.workMark.rotation.x = -Math.PI / 2;
+      this.group.add(this.workMark);
     }
-    this.chopMark.visible = true;
-    this.chopMark.position.set(x, 0.06, z);
-    this.chopMark.scale.setScalar(Math.max(0.08, share));
-    // Пятно и клип — одно состояние: пока пятно растёт, герой машет топором,
+    this.workMark.visible = true;
+    this.workMark.position.set(x, 0.06, z);
+    this.workMark.scale.setScalar(Math.max(0.08, share));
+    // Пятно и клип — одно состояние: пока пятно растёт, герой машет,
     // а не стоит в покое рядом с работающим индикатором.
-    this.chopping = true;
+    this.working = true;
   }
 
-  hideChop(): void {
-    if (this.chopMark !== null) this.chopMark.visible = false;
-    this.chopping = false;
+  hideWork(): void {
+    if (this.workMark !== null) this.workMark.visible = false;
+    this.working = false;
   }
 
   /** Дрожь после замаха и падение — оба живут кадрами, а не тиками симуляции. */
@@ -500,6 +690,12 @@ export class RaidView {
       } else {
         this.trees.delete(fall.key);
         RaidView.put(tree.mesh, tree.at, new THREE.Matrix4().makeScale(0, 0, 0));
+        // На месте упавшего остаётся пенёк. До набора кладбища просеке
+        // нечем было отличаться от места, где дерева не было никогда,
+        // а §13.3 обещает именно просеку: «падает один раз и оставляет
+        // после себя просеку». Кромка пенька не получает — там за упавшим
+        // сразу встаёт следующее дерево, и пеньку негде стоять.
+        this.addStump(x, z);
       }
     }
   }
@@ -526,6 +722,7 @@ export class RaidView {
     }
 
     const mat = this.track(castleMaterial());
+    this.castleMat = mat;
     const dummy = new THREE.Object3D();
     for (const [model, list] of byModel) {
       // Геометрия живёт в общем кэше castle.ts и переживает вид: её не track.
@@ -553,6 +750,200 @@ export class RaidView {
       }
       this.group.add(mesh);
     }
+  }
+
+  /**
+   * Гарнизон замка (§6.1.6): четверо в обходе и один на стене.
+   *
+   * Тел ставится пять, и все пять — сразу: скиннованный меш не инстансится,
+   * заводить и выбрасывать его в кадре дороже, чем держать погашенным.
+   * Стрелок поэтому не рождается и не умирает, а гаснет — снаружи это
+   * одно и то же, а в кадре разница в пяти вызовах отрисовки.
+   *
+   * Персонаж один на всех, а различает их предмет в руке: у обхода меч,
+   * у стрелка лук. Скелет при этом у каждого свой — иначе пятеро шагали бы
+   * в такт одной ногой.
+   */
+  private buildGarrison(site: CastleSite): void {
+    this.garrison = garrisonOf(site);
+    for (let i = 0; i < SQUAD; i++) {
+      const rig = new Rigged(guardParts('дозор'), this.blocking);
+      this.group.add(rig.root);
+      this.squad.push({ rig, facing: 0 });
+    }
+    // Стрелку выходить некуда — не заводим и тела: замок без единой
+    // проходимой клетки верха возможен только вместе с новым набором,
+    // но молча рисовать его стоящим в воздухе нельзя.
+    if (this.garrison.runs.length > 0) {
+      const rig = new Rigged(guardParts('стрелок'), this.blocking);
+      rig.root.visible = false;
+      this.group.add(rig.root);
+      this.archer = { rig, facing: 0 };
+    }
+
+    // Жильцы двора (§6.1.6.1) — тем же порядком и по той же причине: свой
+    // скелет каждому, иначе двое с одним шагали бы нога в ногу.
+    for (const walk of this.garrison.yard) {
+      const rig = new Rigged(dwellerParts(walk.look), this.blocking);
+      this.group.add(rig.root);
+      this.dwellerViews.push({ rig, facing: 0 });
+    }
+  }
+
+  /**
+   * Гарнизон на кадре. Положение и направление приходят числами из
+   * симуляции, здесь остаётся то, что умеет только рендер: разворот за кадр,
+   * а не рывком (§17.2), и клип под скорость (§17.4).
+   */
+  private syncGarrison(dt: number): void {
+    if (this.garrison === null) return;
+    this.watch += dt;
+
+    const men = patrolAt(this.garrison, this.watch);
+    for (let i = 0; i < this.squad.length; i++) {
+      const view = this.squad[i]!;
+      const man = men[i]!;
+      view.rig.update(dt);
+      view.rig.root.position.set(man.x, 0, man.z);
+      view.facing = RaidView.turnTo(view.facing, man.facing, dt);
+      view.rig.root.rotation.y = view.facing;
+      view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+    }
+
+    // Жильцы идут на тех же часах, что и гарнизон: одна локация — одно время,
+    // и отладочная перемотка `setWatch` двигает всех разом.
+    const folk = dwellersAt(this.garrison, this.watch);
+    for (let i = 0; i < this.dwellerViews.length; i++) {
+      const view = this.dwellerViews[i]!;
+      const man = folk[i];
+      if (man === undefined) continue;
+      view.rig.update(dt);
+      view.rig.root.position.set(man.x, 0, man.z);
+      view.facing = RaidView.turnTo(view.facing, man.facing, dt);
+      view.rig.root.rotation.y = view.facing;
+      if (man.walking) view.rig.play('ходьба', rateFor(DWELLER_SPEED, view.rig.root.scale.y));
+      else view.rig.play('покой');
+    }
+
+    if (this.archer === null) return;
+    const watchman = archerAt(this.garrison, this.watch);
+    this.archer.rig.root.visible = watchman !== null;
+    if (watchman === null) return;
+    this.archer.rig.update(dt);
+    this.archer.rig.root.position.set(watchman.x, watchman.y, watchman.z);
+    // Стрелок на стене разворачивается на месте — там, где ход поворачивает,
+    // и там, где он встал лицом наружу. Сглаживание то же, что у всех.
+    this.archer.facing = RaidView.turnTo(this.archer.facing, watchman.facing, dt);
+    this.archer.rig.root.rotation.y = this.archer.facing;
+    this.archer.rig.play(
+      watchman.walking ? 'ходьба' : 'покой',
+      watchman.walking ? rateFor(ARCHER_SPEED, this.archer.rig.root.scale.y) : 1,
+    );
+  }
+
+  /**
+   * Перевести часы гарнизона. Смена стрелка идёт минутами, и ждать её,
+   * чтобы посмотреть на неё, — не проверка, а высиживание: отладочная сцена
+   * (§6) отматывает часы и получает нужный кадр сразу.
+   */
+  setWatch(seconds: number): void {
+    this.watch = seconds;
+  }
+
+  /** Разворот за кадр, а не рывком (§17.2). Тот же счёт, что у героя. */
+  private static turnTo(facing: number, want: number, dt: number): number {
+    let spin = want - facing;
+    while (spin > Math.PI) spin -= Math.PI * 2;
+    while (spin < -Math.PI) spin += Math.PI * 2;
+    return facing + spin * Math.min(1, dt * 8);
+  }
+
+  /**
+   * Кладбище (§6.1.7). Три слоя, и каждый ставится своим способом, потому
+   * что приводятся они по-разному.
+   *
+   * **Ограда** — модуль: её деталь стоит на линии между клетками набора,
+   * и координата у неё бывает половинной. Отсюда и смещение на полклетки:
+   * ноль детали стоит в центре её клетки набора, а клетка набора покрывает
+   * `FENCE_SCALE` клеток локации.
+   *
+   * **Могилы, склеп и гроб** — предметы: у них никакой сетки нет, они стоят
+   * в клетке локации и приводятся высотой.
+   *
+   * **Лес и пеньки** по краю — тоже предметы, и порода у них своя, чтобы
+   * кладбище не читалось той же поляной, с которой начинается игра.
+   */
+  private buildGraveyard(site: GraveSite): void {
+    const mat = this.track(graveyardMaterial());
+    const dummy = new THREE.Object3D();
+
+    const byModel = new Map<string, { x: number; z: number; y: number; turn: number }[]>();
+    const push = (model: string, x: number, z: number, y: number, turn: number): void => {
+      const list = byModel.get(model) ?? [];
+      list.push({ x, z, y, turn });
+      byModel.set(model, list);
+    };
+
+    // Ограда: половина клетки — это половина `FENCE_SCALE` клеток локации.
+    for (const piece of site.fence) {
+      push(
+        piece.model,
+        site.at.x + piece.x * FENCE_SCALE + (FENCE_SCALE - 1) / 2,
+        site.at.z + piece.z * FENCE_SCALE + (FENCE_SCALE - 1) / 2,
+        0,
+        piece.turn,
+      );
+    }
+    for (const mark of site.marks) push(mark.model, mark.x, mark.z, 0, mark.turn);
+
+    for (const [model, list] of byModel) {
+      const fence = site.fence.some((p) => p.model === model);
+      // Геометрия живёт в общем кэше graveyard.ts и переживает вид: её не track.
+      const geo = fence
+        ? fenceGeometry(model as GraveyardPartModelName)
+        : graveyardGeometry(model as GraveyardPartModelName, MARK_HEIGHT[model] ?? 0.8);
+      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i++) {
+        const at = list[i]!;
+        dummy.position.set(at.x, at.y, at.z);
+        dummy.rotation.set(0, (at.turn * Math.PI) / 2, 0);
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      this.group.add(mesh);
+    }
+
+    /**
+     * Лес и пеньки ставятся тем же `standAt`, что лес поляны, — и потому
+     * приводятся к высоте **единица**, а не к своей: разброс роста задаёт
+     * матрица, и второй масштаб поверх неё сделал бы из ёлок башни.
+     */
+    const stand = (
+      list: readonly { x: number; z: number }[],
+      models: readonly GraveyardPartModelName[],
+      tree: boolean,
+    ): void => {
+      const buckets: { x: number; z: number }[][] = models.map(() => []);
+      for (const s of list) buckets[hash(s.x * 5.1, s.z * 9.3, models.length)]!.push(s);
+      for (let v = 0; v < models.length; v++) {
+        const bucket = buckets[v]!;
+        if (bucket.length === 0) continue;
+        const mesh = new THREE.InstancedMesh(graveyardGeometry(models[v]!, 1), mat, bucket.length);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        for (let i = 0; i < bucket.length; i++) {
+          const s = bucket[i]!;
+          mesh.setMatrixAt(i, RaidView.standAt(s.x, s.z, tree, 0));
+        }
+        this.group.add(mesh);
+      }
+    };
+    stand(site.trees, GRAVE_TREES, true);
+    // Пенёк — не дерево: у него свой разброс роста, вдвое ниже камня.
+    stand(site.stumps, GRAVE_STUMPS, false);
   }
 
   /**
@@ -707,6 +1098,79 @@ export class RaidView {
   }
 
   /**
+   * Валуны (§13.4) — те же камни набора, из которых сложена стена вылазки
+   * (§6.1.1), но ростом по колено. Это решение, а не экономия на моделях:
+   * камень на полу обязан читаться как отколовшийся от стены, а не как
+   * предмет чужого происхождения. У замка и в лагере стены из камня нет,
+   * и там та же порода говорит другое — из этого стену и сложили.
+   *
+   * Меш на валун, а не общий буфер: их единицы, зато каждый дрожит от удара
+   * и исчезает поодиночке, а искать экземпляр в общем буфере пришлось бы
+   * на каждом замахе.
+   */
+  private buildStones(): void {
+    if (this.loc.stones.length === 0) return;
+    const mat = this.track(forestMaterial());
+    for (const stone of this.loc.stones) {
+      if (stone.taken) continue;
+      // Порода и разворот выведены из координаты — тот же приём, что у стены:
+      // локация обязана совпадать сама с собой между заходами.
+      const t = ((Math.sin(stone.x * 3.1 + stone.z * 7.7) * 1000) % 1 + 1) % 1;
+      const model = RAID_ROCKS[Math.floor(t * RAID_ROCKS.length) % RAID_ROCKS.length]!;
+      const mesh = new THREE.Mesh(
+        // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
+        treeGeometry({ set: 'forest', model }, STONE_HEIGHT * (0.85 + t * 0.4)),
+        mat,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.position.set(stone.x + (t - 0.5) * 0.2, -0.04, stone.z + (t - 0.5) * 0.16);
+      mesh.rotation.y = t * 6.28;
+      this.group.add(mesh);
+      this.stoneMeshes.set(stone.id, mesh);
+    }
+  }
+
+  /**
+   * Замах пришёлся в валун: камень вздрагивает. Как и у дерева, это
+   * единственное, чем рендер отвечает на удар до конца работы, — без дрожи
+   * десять замахов читаются как зависание.
+   */
+  hitStone(id: number): void {
+    this.heroRig?.replay();
+    if (this.stoneMeshes.has(id)) this.stoneHits.set(id, 0);
+  }
+
+  /** Валун разбит: камень уходит из кадра совсем. */
+  takeStone(id: number): void {
+    const mesh = this.stoneMeshes.get(id);
+    if (mesh === undefined) return;
+    mesh.removeFromParent();
+    this.stoneMeshes.delete(id);
+    this.stoneHits.delete(id);
+  }
+
+  /** Дрожь валуна — кадрами, как и у дерева. */
+  private syncStones(dt: number): void {
+    for (const [id, t] of [...this.stoneHits]) {
+      const mesh = this.stoneMeshes.get(id);
+      if (mesh === undefined) {
+        this.stoneHits.delete(id);
+        continue;
+      }
+      const next = t + dt;
+      if (next >= SHAKE_SECONDS) {
+        this.stoneHits.delete(id);
+        mesh.position.y = -0.04;
+        continue;
+      }
+      this.stoneHits.set(id, next);
+      // Камень не кивает, как крона, а оседает: удар идёт вниз, а не вбок.
+      mesh.position.y = -0.04 - Math.sin((next / SHAKE_SECONDS) * Math.PI) * 0.06;
+    }
+  }
+
+  /**
    * Противники — три скелета набора KayKit Skeletons (§6.1.3, каталог —
    * `enemyart.html`). Различаются силуэтом раньше, чем цветом: за пределами
    * фонаря цвет пропадает первым, и разводят их снаряжение и рост,
@@ -738,7 +1202,9 @@ export class RaidView {
     for (const e of this.loc.enemies) {
       // Геометрия и материал общие на вид, скелет — свой: пятеро с одним
       // скелетом махали бы одновременно.
-      const rig = new Rigged(enemyParts(e.kind), this.blocking);
+      const rig = e.kind === 'ghost'
+        ? new Drifting(enemyGeometry('ghost'), this.blocking, ENEMY_HEIGHT.ghost)
+        : new Rigged(enemyParts(e.kind), this.blocking);
       rig.root.position.set(e.x, 0, e.z);
       this.group.add(rig.root);
 
@@ -803,10 +1269,10 @@ export class RaidView {
     // Герой стоит на том же риге, что противники (§6.1.4), и клипы у них общие.
     // Классу без модели набора достаётся неподвижный примитив — у него скелета
     // нет, и выдумывать его нечем.
-    const parts = heroParts(this.heroClass);
+    const parts = heroParts(this.heroClass, this.weapon);
     let body: THREE.Object3D;
     if (parts === null) {
-      const mesh = new THREE.Mesh(this.track(heroGeometry(this.heroClass)), this.blocking);
+      const mesh = new THREE.Mesh(this.track(heroGeometry(this.heroClass, this.weapon)), this.blocking);
       mesh.castShadow = true;
       body = mesh;
     } else {
@@ -966,7 +1432,7 @@ export class RaidView {
         // Падение держится до конца кадра: смерть — единственное состояние,
         // из которого не выходят.
         if (this.heroRig.state !== 'падение') this.heroRig.play('падение', FALL_RATE);
-      } else if (struck && !this.chopping) {
+      } else if (struck && !this.working) {
         // Удар растягивается так, чтобы уложиться в §17.6: 600 мс при
         // интервале 1,2 с. Иначе два удара подряд накладываются друг на друга.
         this.heroRig.play('удар', STRIKE / HERO_SWING_SECONDS);
@@ -981,7 +1447,7 @@ export class RaidView {
         if (heroWalking) this.heroRig.play('ходьба', rateFor(HERO_SPEED, this.heroRig.root.scale.y));
         // Рубка — тот же клип удара, растянутый под замах (§13.3): топор
         // обязан входить в ствол ровно тогда, когда стучит звук.
-        else if (this.chopping) this.heroRig.play('удар', STRIKE / SWING_SECONDS);
+        else if (this.working) this.heroRig.play('удар', STRIKE / SWING_SECONDS);
         else this.heroRig.play('покой');
       }
 
@@ -991,6 +1457,33 @@ export class RaidView {
       }
 
       this.heroWas = { wounds: state.hero.wounds, cooldown: state.hero.cooldown };
+    }
+
+    /**
+     * Стены гаснут, пока герой во дворе. Замер: стена в две клетки при камере
+     * в 30° прячет за собой около четырёх с половиной клеток земли, и на
+     * четверти двора герой оказывается скрыт целиком, на трети — наполовину.
+     * До жителей (§6.1.6.1) прятать во дворе было некого, и свойство
+     * не значило ничего.
+     *
+     * Гаснет весь замок, а не ближняя стена: детали едут одной `InstancedMesh`
+     * на модель с общим материалом, и погасить одну из них значило бы завести
+     * второй материал и делить детали по нему каждый кадр. А главное — гаснет
+     * он ровно тогда, когда игрок внутри, то есть когда смотреть снаружи уже
+     * незачем. Тень стена при этом отбрасывает прежнюю: стена не исчезла,
+     * её просто видно насквозь.
+     */
+    if (this.castleMat !== null && this.keep !== null) {
+      const inside = inYard(this.keep, { x: Math.round(hero.x), z: Math.round(hero.z) });
+      const goal = inside ? CASTLE_FADE : 1;
+      this.castleFade += (goal - this.castleFade) * Math.min(1, dt * 5);
+      const mat = this.castleMat;
+      const clear = this.castleFade < 0.995;
+      if (mat.transparent !== clear) {
+        mat.transparent = clear;
+        mat.needsUpdate = true;
+      }
+      mat.opacity = this.castleFade;
     }
 
     for (const e of this.loc.enemies) {
@@ -1084,6 +1577,8 @@ export class RaidView {
     }
 
     this.syncTrees(dt);
+    this.syncStones(dt);
+    this.syncGarrison(dt);
     this.syncGrass(hx, hz, time);
 
     if (this.evacRing !== null) {
@@ -1141,11 +1636,19 @@ export class RaidView {
     });
     // Скелет у каждой особи свой, и три не освобождает его вместе с группой.
     for (const view of this.enemyViews.values()) view.rig.dispose();
+    for (const view of this.dwellerViews) view.rig.dispose();
+    this.dwellerViews.length = 0;
+    for (const view of this.squad) view.rig.dispose();
+    this.squad.length = 0;
+    this.archer?.rig.dispose();
+    this.archer = null;
     this.heroRig?.dispose();
     this.heroRig = null;
     for (const d of this.disposables) d.dispose();
     this.disposables = [];
     this.enemyViews.clear();
     this.containerMeshes.clear();
+    this.stoneMeshes.clear();
+    this.stoneHits.clear();
   }
 }

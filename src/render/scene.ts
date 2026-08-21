@@ -156,10 +156,22 @@ export class SceneRig {
     clientX: number,
     clientY: number,
     camera: THREE.Camera = this.camera,
+    /**
+     * Высота плоскости, в которую целятся. Ноль — земля, и это прежнее
+     * поведение до буквы. Ненулевая нужна ходу поверху стены (§6.1.6):
+     * камера смотрит с 30°, и настил на высоте H смещает попадание по земле
+     * на H·ctg30° — больше чем на клетку стены, то есть промах гарантирован,
+     * а не «иногда неточен».
+     */
+    planeY = 0,
   ): { x: number; z: number } | null {
     this.ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
     this.ray.setFromCamera(this.ndc, camera);
-    if (this.ray.ray.intersectPlane(this.plane, this.hit) === null) return null;
+    // Для плоскости с нормалью +Y условие n·p + d = 0 даёт y = −d.
+    this.plane.constant = -planeY;
+    const hit = this.ray.ray.intersectPlane(this.plane, this.hit);
+    this.plane.constant = 0;
+    if (hit === null) return null;
     return { x: this.hit.x, z: this.hit.z };
   }
 

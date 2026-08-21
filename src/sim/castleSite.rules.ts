@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CASTLE_CELL } from './castle';
-import { FIELD, WOOD, generateCastleSite, spotAt } from './castleSite';
+import { FIELD, TRADER_REACH, WOOD, atTrader, generateCastleSite, inYard, spotAt } from './castleSite';
 import { distanceField, idx } from './grid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
@@ -84,6 +84,43 @@ describe('Замок на карте: по нему ходят', () => {
   });
 });
 
+/**
+ * `inYard` — не удобство, а орган кадра: по нему решается, гасить ли стены,
+ * пока герой внутри (§6.1.6.1). Ошибись он в любую сторону, и замок либо
+ * стоит прозрачным всё время, либо прячет героя ровно тогда, когда его надо
+ * показать. Проверяется поэтому здесь, без браузера.
+ */
+describe('Замок на карте: где кончается двор', () => {
+  test('выход двором не считается', () => {
+    for (const site of sites) {
+      assert.ok(!inYard(site, site.loc.evac), `сид ${site.loc.seed}: выход посчитан двором`);
+      assert.ok(!inYard(site, site.gate), `сид ${site.loc.seed}: ворота посчитаны двором`);
+    }
+  });
+
+  test('лес и поле двором не считаются', () => {
+    for (const site of sites) {
+      const edge = { x: 0, z: 0 };
+      assert.ok(!inYard(site, edge), `сид ${site.loc.seed}: угол локации посчитан двором`);
+      // Клетка поля: между лесом и стеной, двором быть не может по построению.
+      assert.ok(
+        !inYard(site, { x: WOOD, z: WOOD + 1 }),
+        `сид ${site.loc.seed}: клетка поля посчитана двором`,
+      );
+    }
+  });
+
+  test('двор непуст: иначе гасить стены было бы не для кого', () => {
+    for (const site of sites) {
+      let inside = 0;
+      for (let z = 0; z < site.loc.size; z++) {
+        for (let x = 0; x < site.loc.size; x++) if (inYard(site, { x, z })) inside++;
+      }
+      assert.ok(inside >= 16, `сид ${site.loc.seed}: во дворе ${inside} клеток`);
+    }
+  });
+});
+
 describe('Замок на карте: чего в нём нет', () => {
   test('ни добычи, ни противников — и это решение, а не пропуск', () => {
     for (const site of sites) {
@@ -142,5 +179,42 @@ describe('Замок на карте: чего в нём нет', () => {
       assert.deepEqual([...a.loc.blocked], [...b.loc.blocked], `сид ${seed}`);
       assert.deepEqual(a.loc.evac, b.loc.evac, `сид ${seed}`);
     }
+  });
+
+  /*
+   * Торговец (§13.4). Замок до него был местом без назначения — «ни добычи,
+   * ни противников, по нему пока только ходят». Обмен даёт ему смысл, и
+   * поэтому стоит он во дворе: двор достижим только через ворота (правило
+   * выше), и обмен обязан стоить прогулки внутрь, а не шага от выхода.
+   */
+  test('торговец есть на каждом сиде, и до него можно дойти', () => {
+    for (const seed of SEEDS) {
+      const site = generateCastleSite(seed);
+      assert.notEqual(site.trader, null, `сид ${seed}: торговца нет`);
+      const t = site.trader!;
+      const { loc } = site;
+      assert.equal(loc.blocked[idx(loc.size, t.x, t.z)], 0, `сид ${seed}: торговец в стене`);
+      const reach = distanceField(loc.size, loc.blocked, loc.evac);
+      assert.ok(reach[idx(loc.size, t.x, t.z)]! >= 0, `сид ${seed}: до торговца не дойти`);
+      assert.ok(atTrader(site, t.x, t.z), `сид ${seed}: торговец не отзывается в своей же клетке`);
+    }
+  });
+
+  test('торговец стоит в глубине двора, а не у ворот', () => {
+    // Замер на 300 сидах: 11–27 шагов от выхода, в среднем 19. Ближняя
+    // к воротам клетка сделала бы обмен придорожным ларьком — вошёл под арку,
+    // поменял, вышел, и замка игрок так и не увидел.
+    let worst = Infinity;
+    for (const seed of SEEDS) {
+      const site = generateCastleSite(seed);
+      const t = site.trader!;
+      const reach = distanceField(site.loc.size, site.loc.blocked, site.loc.evac);
+      worst = Math.min(worst, reach[idx(site.loc.size, t.x, t.z)]!);
+      // Радиус отклика не должен доставать до ворот: иначе панель откроется
+      // с порога и двор снова окажется декорацией.
+      const toGate = Math.hypot(t.x - site.gate.x, t.z - site.gate.z);
+      assert.ok(toGate > TRADER_REACH, `сид ${seed}: торговец слышен от ворот`);
+    }
+    assert.ok(worst >= 8, `ближайший торговец в ${worst} шагах от выхода — это ларёк, а не двор`);
   });
 });

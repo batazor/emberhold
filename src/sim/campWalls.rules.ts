@@ -23,9 +23,20 @@ import { describe, test } from 'node:test';
 import { CASTLE_CELL, DIRS, TOWER_MAX, keyOf, type Spot } from './castle';
 import { BUILD_COST, BUILD_SECONDS, campArea, createCamp, moveBuilding } from './camp';
 import { emptyResources, type Resources } from './resources';
+import { CHOP_SECONDS, CHOP_WOOD } from './logging';
+import { LOOT_SHARE } from './resources';
+import { FENCE_MATERIALS, type FenceMaterial } from './fence';
 import {
   WALL_COST,
+  WALL_SECONDS,
+  fenceAmount,
+  fenceResource,
   completeWallIfDue,
+  cycleFence,
+  fenceBlock,
+  fenceCells,
+  fenceMaterial,
+  fencePieces,
   cycleTower,
   nextTowerLevel,
   startTower,
@@ -389,5 +400,152 @@ describe('Стройка стен: всё разбирается', () => {
     assert.equal(count['стена'] + count['башня'] + count['ворота'], walls.cells.length);
     assert.equal(count['башня'], 1);
     assert.equal(count['ворота'], 1);
+  });
+});
+
+
+describe('Ограда в лагере (§6.1.7)', () => {
+  /**
+   * Мерка не объявлена в документе, а посчитана инструментом
+   * (`npm run fence`), и правило проверяет её тем же способом: приводит
+   * цены к секунде игрока по таблице добычи (§13) и по измеренной цене
+   * рубки (§13.3). Числа сюда не переписаны — они выводятся здесь заново,
+   * поэтому правка таблицы добычи роняет правило, а не тихо ломает цену.
+   */
+  const RING = 8;
+  /** Секунда за находку: замер бота, ярус 0 — 10,2 с на заход, 5,8 находки. */
+  const PER_FIND = 10.2 / 5.8;
+  const priceOf = (kind: 'stone' | 'wood'): number => {
+    const raid = PER_FIND / (LOOT_SHARE[0][kind] ?? 1);
+    return kind === 'wood' ? Math.min(raid, CHOP_SECONDS / CHOP_WOOD) : raid;
+  };
+  const ringSeconds = (material: FenceMaterial): number =>
+    fenceAmount(material, RING) * priceOf(fenceResource(material));
+
+  test('выбор материала — выбор облика, а не цены', () => {
+    const cost = FENCE_MATERIALS.map(ringSeconds);
+    const spread = (Math.max(...cost) - Math.min(...cost)) / Math.max(...cost);
+    assert.ok(
+      spread <= 0.15,
+      `кольца четырёх материалов расходятся на ${(spread * 100).toFixed(0)}% ` +
+        `(${cost.map((c) => c.toFixed(1)).join(' · ')} с) — три материала из четырёх мертвы`,
+    );
+  });
+
+  test('кольцо ограды дешевле кольца стены: она даёт меньше', () => {
+    const wall = RING * WALL_COST['стена'] * priceOf('stone');
+    for (const material of FENCE_MATERIALS) {
+      const share = ringSeconds(material) / wall;
+      assert.ok(share < 1, `${material}: кольцо ${share.toFixed(2)} стенного — ограда дороже стены`);
+      assert.ok(share > 0.3, `${material}: кольцо ${share.toFixed(2)} стенного — ограда почти даром`);
+    }
+  });
+
+  test('время идёт за ценой — той же связкой, что у стены', () => {
+    const wall = RING * WALL_COST['стена'] * priceOf('stone');
+    const share = Math.max(...FENCE_MATERIALS.map(ringSeconds)) / wall;
+    const want = Math.round((WALL_SECONDS['стена'] * share) / 5) * 5;
+    assert.equal(
+      WALL_SECONDS['ограда'],
+      want,
+      `цена говорит ${want} с на клетку, в таблице ${WALL_SECONDS['ограда']}`,
+    );
+  });
+
+  test('дощатое кольцо нарубается за один заход в лагерь', () => {
+    // §0 отводит лагерю 30 секунд — 2 минуты. Кольцо, которое не нарубается
+    // за этот заход, превращает ограду в ожидание у дерева, а не в стройку.
+    const chop = fenceAmount('дерево', RING) * (CHOP_SECONDS / CHOP_WOOD);
+    assert.ok(chop <= 120, `кольцо нарубается ${chop.toFixed(0)} с — дольше захода в лагерь`);
+  });
+
+  test('дощатая ограда платится деревом, три остальные — камнем', () => {
+    const walls = emptyWalls();
+    assert.equal(fenceMaterial(walls), 'дерево');
+    // Четыре клетки дощатой — единица дерева, восемь каменной — четыре камня.
+    assert.equal(wallPrice('ограда', 4, 'дерево').wood, 1);
+    assert.equal(wallPrice('ограда', 4, 'дерево').stone, undefined);
+    for (const material of ['ковка', 'кирпич', 'камень'] as const) {
+      assert.equal(wallPrice('ограда', 8, material).stone, 4, material);
+      assert.equal(wallPrice('ограда', 8, material).wood, undefined, material);
+    }
+    // Стена деревом не платится ни при каком материале: он к ней не относится.
+    assert.equal(wallPrice('стена', 4, 'дерево').stone, 4);
+  });
+
+  test('на сносе ограды не заработать: возврат предельный, а не поклеточный', () => {
+    for (const material of FENCE_MATERIALS) {
+      const walls = emptyWalls();
+      walls.fence = material;
+      const resources: Resources = { ...emptyResources(), wood: 50, stone: 50 };
+      const before = { ...resources };
+
+      const cells = [0, 1, 2, 3, 4, 5, 6, 7].map((x) => ({ x, z: 0 }));
+      assert.equal(startWall(walls, resources, 'ограда', cells, 0, false), 'ok');
+      completeWallIfDue(walls, wallSeconds('ограда', cells.length));
+      // Снос по клетке — самый выгодный для игрока порядок.
+      for (const spot of cells) razeWall(walls, spot, resources);
+
+      for (const kind of ['wood', 'stone'] as const) {
+        assert.ok(
+          resources[kind] <= before[kind],
+          `${material}: снос по клетке принёс ${resources[kind] - before[kind]} ${kind}`,
+        );
+      }
+      assert.deepEqual(fenceCells(walls), []);
+    }
+  });
+
+  test('материал перебирается по кругу и возвращается к первому', () => {
+    const walls = emptyWalls();
+    const seen = [fenceMaterial(walls)];
+    for (let i = 0; i < 4; i++) seen.push(cycleFence(walls));
+    assert.equal(seen[0], seen[4], 'круг не замкнулся');
+    assert.equal(new Set(seen).size, 4, 'материалов в круге не четыре');
+  });
+
+  test('ограда не встаёт на стену, стена не встаёт на ограду', () => {
+    const walls = emptyWalls();
+    const site = bare(5);
+    raiseWall(walls, site, [{ x: 0, z: 0 }, { x: 2, z: 0 }]);
+    assert.equal(fenceBlock(walls, site, { x: 1, z: 0 }), 'занято зданием');
+    assert.equal(fenceBlock(walls, site, { x: 1, z: 2 }), 'ok');
+
+    // И обратно: клетка с оградой занята для всего остального.
+    fenceCells(walls).push(keyOf({ x: 1, z: 2 }));
+    assert.ok(wallAt(walls, 1 * CASTLE_CELL, 2 * CASTLE_CELL), 'ограда не заняла клетку лагеря');
+  });
+
+  test('мазок ограды не лезет ни за площадь, ни на здание', () => {
+    const camp = createCamp();
+    const site = { area: campArea(camp.levels.hq), layout: camp.layout, levels: camp.levels };
+    const walls = emptyWalls();
+    const path = [{ x: -2, z: 0 }, { x: 6, z: 0 }];
+    for (const spot of strokeFit(walls, site, path, 'ограда')) {
+      assert.equal(fenceBlock(walls, site, spot), 'ok', `${spot.x},${spot.z} встало зря`);
+    }
+  });
+
+  test('стройка ограды доводится до конца и ставит ровно свои клетки', () => {
+    const walls = emptyWalls();
+    const resources: Resources = { ...emptyResources(), wood: 20, stone: 20 };
+    const cells = [{ x: 0, z: 0 }, { x: 1, z: 0 }, { x: 2, z: 0 }];
+    assert.equal(startWall(walls, resources, 'ограда', cells, 0, false), 'ok');
+    assert.equal(resources.wood, 19, 'дощатая ограда списала не дерево');
+    assert.equal(completeWallIfDue(walls, wallSeconds('ограда', cells.length)) === null, false);
+    assert.deepEqual(fenceCells(walls), cells.map(keyOf));
+    // Три клетки в ряд — два пролёта: панель стоит между клетками, а не в них.
+    assert.equal(fencePieces(walls).filter((p) => p.role === 'пролёт').length, 2);
+  });
+
+  test('снос одиночной клетки возвращает то, чем за неё платили', () => {
+    const walls = emptyWalls();
+    const resources: Resources = { ...emptyResources(), wood: 5 };
+    assert.equal(startWall(walls, resources, 'ограда', [{ x: 0, z: 0 }], 0, false), 'ok');
+    completeWallIfDue(walls, wallSeconds('ограда', 1));
+    assert.equal(resources.wood, 4);
+    assert.ok(razeWall(walls, { x: 0, z: 0 }, resources));
+    assert.equal(resources.wood, 5, 'дерево не вернулось');
+    assert.deepEqual(fenceCells(walls), []);
   });
 });

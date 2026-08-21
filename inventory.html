@@ -124,8 +124,10 @@
   <p class="lede">Это не картинка, а работающий прототип. Значки нарисованы
     из моделей набора, оружие встаёт в правую кисть, а факел или щит — в левую,
     оба по измеренным узлам <code>handslot.r</code> и <code>handslot.l</code>.
-    Правую руку игра занимает и без экрана — герой уходит в вылазку с топором;
-    экран добавляет левую и выбор, что в ней держать. Фигура крутится,
+    Правую руку игра занимает и без экрана — герой уходит в вылазку с клинком,
+    и клинок этот <b>тот же самый</b>: ступень лестницы §14 берётся здесь
+    из <code>src/render/weapons.ts</code>, а не рисуется значком под уровень
+    (§6.1.8). Экран добавляет левую руку и выбор, что в ней держать. Фигура крутится,
     а сводка справа считается
     <b>формулами самой игры</b> — <code>gearMods()</code> из <code>src/sim/gear.ts</code>,
     без единого числа, переписанного на страницу.</p>
@@ -269,6 +271,7 @@
 <script type="module">
 const ADV = './assets/kaykit-adventurers/';
 const DNG = './assets/kaykit-dungeon/';
+const WPN = './assets/kaykit-weapons/';
 const CLIPS = './assets/kaykit-animations/gltf/';
 
 function fail(text){
@@ -277,7 +280,7 @@ function fail(text){
   w.style.display = '';
 }
 
-let P, GEAR, GEAR_ORDER, OFFHAND, gearMods, gearItemLine, advCat, dngCat, forestSlots;
+let P, GEAR, GEAR_ORDER, OFFHAND, gearMods, gearItemLine, advCat, dngCat, wpnCat, forestSlots, weaponOf;
 try{
   // Слоты, их подписи и формулы приходят из самой игры. Второй список слотов
   // или вторая формула разошлись бы с игрой молча, а экран именно про то,
@@ -285,8 +288,12 @@ try{
   P = await import('/src/render/palette.ts');
   ({ GEAR, GEAR_ORDER, OFFHAND, gearMods, gearItemLine } = await import('/src/sim/gear.ts'));
   forestSlots = (await import('/src/render/forest.data.ts')).FOREST_SLOTS;
-  [advCat, dngCat] = await Promise.all(
-    [ADV, DNG].map((dir) => fetch(dir + 'catalog.json').then((r) => r.json())),
+  // Лестница уровней оружия — из самой игры (§6.1.8): второй список ступеней
+  // разошёлся бы с рукой героя молча, а экран именно про то, что игрок видит
+  // свою вещь, а не её пересказ.
+  weaponOf = (await import('/src/render/weapons.ts')).weaponOf;
+  [advCat, dngCat, wpnCat] = await Promise.all(
+    [ADV, DNG, WPN].map((dir) => fetch(dir + 'catalog.json').then((r) => r.json())),
   );
 }catch(e){
   fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /inventory.html. ' + e);
@@ -323,6 +330,7 @@ const adv = packOf(ADV, advCat, P.ADVENTURERS_SLOT_ORDER, P.ADVENTURERS_PALETTE)
 // Подземелью хватает палитры леса, а золоту достаётся цвет добычи из вылазки —
 // так же, как в артбуке подземелья.
 const dng = packOf(DNG, dngCat, forestSlots, P.FOREST_PALETTE, {'золото': P.PALETTE.loot});
+const wpn = packOf(WPN, wpnCat, P.WEAPONS_SLOT_ORDER, P.WEAPONS_PALETTE);
 
 /* ---------- разбор .gltf и .glb ---------- */
 const SIZE = {SCALAR:1, VEC2:2, VEC3:3, VEC4:4, MAT4:16};
@@ -665,7 +673,9 @@ const DUNGEON_TILE = 4;
 const HERO_TILES = 1.38;
 
 const LOOK = {
-  weapon: {pack: adv, model: 'axe_1handed', hand: 'handslot.r'},
+  // Единственный слот, у которого своя модель есть: клинок §14 меняется
+  // с уровнем, и здесь он тот же, что окажется в руке героя в вылазке.
+  weapon: {pack: wpn, model: (level) => weaponOf(level), hand: 'handslot.r'},
   // Своей модели у брони нет ни в одном наборе, и значком ей служит то самое,
   // что слот меняет, — корпус персонажа, вынутый из его же файла одним мешем.
   armor:  {pack: adv, character: 'Knight', mesh: 'Knight_Body'},
@@ -673,6 +683,12 @@ const LOOK = {
   shield: {pack: adv, model: 'shield_round_barbarian', hand: 'handslot.l'},
   bag:    {pack: adv, model: 'quiver'},
   ring:   {pack: dng, model: 'keyring'},
+};
+
+/** Модель вещи: у оружия она зависит от уровня, у остальных слотов одна. */
+const modelFor = (kind, level) => {
+  const model = LOOK[kind].model;
+  return typeof model === 'function' ? model(level) : model;
 };
 
 /**
@@ -712,18 +728,22 @@ const modsOf = (w) => gearMods(stateOf(w), offhandOf(w));
 
 /* ---------- значки: модель рисуется один раз ---------- */
 const icons = new Map();
-function iconOf(kind){
-  if(!icons.has(kind)) icons.set(kind, (async () => {
+function iconOf(kind, level = 0){
+  // Ключ кэша — вместе с моделью, а не с уровнем: у оружия ступеней меньше,
+  // чем уровней, и рисовать одну и ту же картинку дважды незачем.
+  const model = modelFor(kind, level);
+  const key = kind + '#' + (model ?? '');
+  if(!icons.has(key)) icons.set(key, (async () => {
     const look = LOOK[kind];
     const off = document.createElement('canvas');
     off.width = 132; off.height = 132;
     const shape = look.mesh === undefined
-      ? await propOf(look.pack, look.model)
+      ? await propOf(look.pack, model)
       : await meshOf(look.pack, look.character, look.mesh);
     draw(off, shape.tris, shape.colors);
     return off;
   })());
-  return icons.get(kind);
+  return icons.get(key);
 }
 
 /* ---------- сводка: числа считает сама игра ---------- */
@@ -815,7 +835,7 @@ async function drawHero(){
     if(worn[slot] === null) continue;
     const look = LOOK[kindOf(worn[slot])];
     if(look.hand === undefined) continue;
-    const prop = await propOf(look.pack, look.model);
+    const prop = await propOf(look.pack, modelFor(kindOf(worn[slot]), worn[slot].level));
     const hand = hero.rig.nodeOf(look.hand);
     const k = look.scale ?? 1;
     tris = tris.concat(prop.tris.map((t) => t.map((p) => apply(hand, [p[0]*k, p[1]*k, p[2]*k]))));
@@ -864,7 +884,7 @@ function cellOf(item, drop, label){
     lvl.className = 'lvl';
     lvl.textContent = 'ур. ' + item.level;
     el.appendChild(lvl);
-    iconOf(kindOf(item)).then((off) => canvas.getContext('2d').drawImage(off, 0, 0));
+    iconOf(kindOf(item), item.level).then((off) => canvas.getContext('2d').drawImage(off, 0, 0));
   }
   return el;
 }
@@ -958,7 +978,7 @@ screen.addEventListener('pointermove', (e) => {
     canvas.width = 132; canvas.height = 132;
     ghost.appendChild(canvas);
     document.body.appendChild(ghost);
-    iconOf(kindOf(drag.item)).then((off) => canvas.getContext('2d').drawImage(off, 0, 0));
+    iconOf(kindOf(drag.item), drag.item.level).then((off) => canvas.getContext('2d').drawImage(off, 0, 0));
     drag.ghost = ghost;
     renderMods(isWorn(drag.item) ? {...worn, [drag.item.slot]: null} : {...worn, [drag.item.slot]: drag.item});
   }

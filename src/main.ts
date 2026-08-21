@@ -27,7 +27,7 @@ import {
   upgradeBlock,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { GEAR } from './sim/gear';
+import { GEAR, MAX_ITEM_LEVEL } from './sim/gear';
 import type { GearSlot } from './sim/gear';
 import { visionRadius } from './sim/config';
 import {
@@ -68,26 +68,57 @@ import {
   stepChop,
   treeAt,
 } from './sim/logging';
-import type { Chop, ChopBlock } from './sim/logging';
+import type { Chop } from './sim/logging';
+import {
+  MINE_STONE,
+  aimMine,
+  mineBlock,
+  mineProgress,
+  standNear,
+  startMine,
+  stepMine,
+  stepMineInto,
+  stoneAt,
+} from './sim/stones';
+import type { Stone } from './sim/stones';
+import { idx } from './sim/grid';
+import { inReach } from './sim/work';
+import type { Work, WorkBlock } from './sim/work';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
 import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
-import { addResources, emptyResources } from './sim/resources';
+import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
-import { dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import { KIND, dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
-import { commandCampMove, createCampHero, stepCampHero, type CampHero } from './sim/campWalk';
+import {
+  campNav,
+  commandCampMove,
+  createCampHero,
+  stepCampHero,
+  type CampHero,
+  type CampNav,
+} from './sim/campWalk';
+import { topWalkable } from './sim/campTop';
+import { CASTLE_CELL, WALK } from './sim/castle';
 import {
   completeWallIfDue,
+  cycleTower,
   emptyWalls,
   gateBlock,
   nextTowerLevel,
+  cycleFence,
+  fenceMaterial,
+  fencePieces,
   razeWall,
   stairsBlock,
   startTower,
   startWall,
+  raiseWall,
   strokeFit,
+  toggleGate,
+  putStairs,
   wallPieces,
   wallPrice,
   wallSeconds,
@@ -96,7 +127,14 @@ import {
   type WallTool,
 } from './sim/campWalls';
 import type { Spot } from './sim/castle';
-import { generateCastleSite } from './sim/castleSite';
+import { FENCE } from './sim/fence';
+import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
+import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
+import { generateGraveSite, readEpitaph } from './sim/graveSite';
+import { trade } from './sim/trade';
+import type { OfferId } from './sim/trade';
+import { TradePanel } from './ui/tradePanel';
+import type { GraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
 import type { Cell, Tier } from './sim/types';
 import { CampView } from './render/campView';
@@ -162,7 +200,7 @@ let raidView: RaidView | null = null;
 /**
  * Идёт пролог. Отдельного режима у него нет: поляна ходится теми же
  * правилами, что вылазка, и отличается тем, чем кадр кончается — не
- * эвакуацией, а нулём провианта.
+ * возвращением, а нулём провианта.
  */
 let inGlade = false;
 /**
@@ -201,6 +239,14 @@ let resting = false;
  * нет вовсе.
  */
 let chop: Chop | null = null;
+/**
+ * Начатая добыча (§13.5): по какому валуну бьют и сколько осталось. Живёт
+ * здесь по той же причине, что и рубка, — шаг вылазки обязан оставаться
+ * тем же самым и у бота, где кайла нет вовсе.
+ */
+let mine: Work | null = null;
+/** То же в лагере: там рюкзака нет, и камень идёт прямо в кладовую. */
+let campMine: { work: Work; stone: Stone } | null = null;
 
 /**
  * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
@@ -216,12 +262,22 @@ const say = (text: string): void => {
 
 /** Почему рубить нельзя — словами игрока. Отказ обязан называть причину:
  *  молчащий отказ читается как поломка (§16.1). */
-const CHOP_DENY: Record<ChopBlock, string> = {
+const CHOP_DENY: Record<WorkBlock, string> = {
   ok: '',
-  'no-forest': 'Здесь не лес — рубить нечего',
-  'no-tree': 'Дерева здесь больше нет',
+  off: 'Здесь не лес — рубить нечего',
+  gone: 'Дерева здесь больше нет',
   far: 'К этому дереву не подойти',
   bag: 'Рюкзак полон — дерево некуда класть',
+};
+
+/** То же для кайла (§13.5). Словарь причин общий, слова — свои: игрок
+ *  видит камень, а не «работу по клетке». */
+const MINE_DENY: Record<WorkBlock, string> = {
+  ok: '',
+  off: 'Здесь нечего добывать',
+  gone: 'Камня здесь больше нет',
+  far: 'К этому камню не подойти',
+  bag: 'Рюкзак полон — камень некуда класть',
 };
 
 /** Что сейчас написано в строке подсказки пролога. Сравнение затем, чтобы
@@ -325,7 +381,9 @@ const campHud = new CampHud(app, {
     // отсюда, а не из локации — в локацию он уже приезжает начатым.
     if (onboarding.step === 'world') onboarding.set('move');
     // Вторая вылазка — конец раскадровки: дальше игра работает как обычно.
-    else if (onboarding.step === 'craft') onboarding.set('done');
+    // Кадр `craft` кончается первой ковкой, а не входом в вылазку: она и есть
+    // то, ради чего Мастерская строилась. Раньше он висел до следующего входа,
+    // то есть до того, как игрок сделает обещанное.
     toRaid(node);
   },
   onCraft: (slot) => forge(slot),
@@ -357,6 +415,14 @@ const buildPanel = new BuildPanel({
     campView.hideWallGhost();
     persist();
   },
+  // Материал ограды перебирается тапом по уже выбранной карточке: он общий
+  // на весь лагерь, поэтому меняет и то, что уже стоит.
+  onCycleFence: () => {
+    const material = cycleFence(wallsOf());
+    refreshWalls();
+    campHud.notify(`Ограда: ${FENCE[material].title.toLowerCase()}`);
+    persist();
+  },
 });
 campHud.slot.appendChild(buildPanel.root);
 
@@ -368,6 +434,16 @@ let buildTool: WallTool | null = null;
 let stroke: Spot[] | null = null;
 
 const wallsOf = (): NonNullable<typeof camp.walls> => (camp.walls ??= emptyWalls());
+
+/** Клетки стены, по верху которых ходят: их спрашивает лестница. */
+const topsOf = (): ReadonlySet<string> => {
+  const nav = campNav(camp);
+  const out = new Set<string>();
+  for (let z = 0; z < nav.top.grid; z++) {
+    for (let x = 0; x < nav.top.grid; x++) if (topWalkable(nav.top, { x, z })) out.add(`${x}:${z}`);
+  }
+  return out;
+};
 const wallSite = (): WallSite => ({
   area: campArea(camp.levels.hq),
   layout: camp.layout,
@@ -383,6 +459,7 @@ function openWalls(): void {
 /** Перерисовать стены и обновить счётчики панели. */
 function refreshWalls(): void {
   campView.setWalls(wallPieces(wallsOf()));
+  campView.setFences(fencePieces(wallsOf()));
   buildPanel.update(wallsOf(), clock.now());
 }
 
@@ -395,30 +472,33 @@ function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
   // Слот один на лагерь: стена и улучшение здания спорят за одно и то же.
   const busy = camp.construction !== null;
 
-  if (buildTool === 'стена') {
+  if (buildTool === 'стена' || buildTool === 'ограда') {
+    const tool = buildTool;
     if (stroke === null) stroke = [];
     const last = stroke[stroke.length - 1];
     if (last === undefined || last.x !== spot.x || last.z !== spot.z) stroke.push(spot);
     if (!finished) {
       // Призрак ведётся по тем же клеткам, которые встанут: показывать одно,
       // а строить другое — худший вид обмана в стройке.
-      const fit = new Set(strokeFit(walls, site, stroke).map((s) => `${s.x}:${s.z}`));
+      const fit = new Set(strokeFit(walls, site, stroke, tool).map((s) => `${s.x}:${s.z}`));
       campView.showWallGhost(stroke.map((s) => ({ spot: s, ok: fit.has(`${s.x}:${s.z}`) })));
       // Счёт ведётся вместе с мазком: цену игрок обязан видеть до того,
       // как отпустит палец, а не после.
-      const price = wallPrice('стена', fit.size).stone ?? 0;
-      const minutes = Math.round(wallSeconds('стена', fit.size) / 6) / 10;
+      const material = fenceMaterial(walls);
+      const cost = wallPrice(tool, fit.size, material);
+      const paid = cost.wood !== undefined ? `${cost.wood} дерева` : `${cost.stone ?? 0} камня`;
+      const minutes = Math.round(wallSeconds(tool, fit.size) / 6) / 10;
       buildPanel.setNote(
         fit.size === 0
-          ? 'Здесь стене не встать'
-          : `${fit.size} кл. · ${price} камня · ${minutes} мин`,
+          ? `Здесь ${tool === 'ограда' ? 'ограде' : 'стене'} не встать`
+          : `${fit.size} кл. · ${paid} · ${minutes} мин`,
       );
       return true;
     }
-    const cells = strokeFit(walls, site, stroke);
+    const cells = strokeFit(walls, site, stroke, tool);
     stroke = null;
     campView.hideWallGhost();
-    return finishWall(startWall(walls, camp.resources, 'стена', cells, clock.now(), busy));
+    return finishWall(startWall(walls, camp.resources, tool, cells, clock.now(), busy));
   }
 
   if (!finished) return true;
@@ -434,7 +514,8 @@ function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
     return finishWall(startWall(walls, camp.resources, 'ворота', [spot], clock.now(), busy));
   }
   if (buildTool === 'лестница') {
-    const why = stairsBlock(walls, site, spot);
+    const tops = topsOf();
+    const why = stairsBlock(walls, site, spot, tops);
     if (why !== 'ok') return finishWall(`Лестница: ${why}`);
     return finishWall(startWall(walls, camp.resources, 'лестница', [spot], clock.now(), busy));
   }
@@ -529,6 +610,8 @@ function forge(slot: GearSlot): boolean {
   }
   const level = camp.gear[slot];
   track({ t: 'craft', at: clock.now(), slot, toLevel: level });
+  // Раскадровка кончается здесь: игрок сковал первое, что обещала Мастерская.
+  if (onboarding.step === 'craft') onboarding.set('done');
   campHud.notify(`${GEAR[slot].name} ур. ${level}`);
   persist();
   return true;
@@ -548,6 +631,29 @@ const campPrompt = new CampPrompt(app, {
     // остался, — и первое здание вырастает у него на глазах, а не за
     // загрузочным экраном.
     startPlacing(PITCH_ORDER[0]!);
+  },
+});
+
+/**
+ * Лавка торговца (§13.5). Открывается подходом во дворе замка, гаснет уходом.
+ *
+ * Обмен ничего не пишет в мир и никуда не ведёт: он меняет только кошелёк,
+ * и поэтому сохраняется тем же `persist`, что и всякая трата. Прибавка
+ * говорится строкой события — той же, в которой вылазка сообщает о подобранном
+ * (§18.1): игрок обязан увидеть, что именно у него прибавилось.
+ */
+const tradePanel = new TradePanel(app, {
+  onTrade: (id: OfferId) => {
+    if (!trade(camp, id)) {
+      // Отказ обязан быть слышен так же, как виден (§18.3).
+      play('deny');
+      return;
+    }
+    play('build');
+    track({ t: 'trade', at: clock.now(), offer: id });
+    if (raid !== null) raid.events.push(TradePanel.gained(id));
+    tradePanel.sync(camp);
+    persist();
   },
 });
 
@@ -798,7 +904,10 @@ function showScene(scene: Scene, tier: Tier = 0): void {
  * выбирают: перезапуск посреди кадра вылазки и отладочный вход.
  */
 function safestNode(now: number): number {
-  const nodes = regionAt(dayAt(now)).nodes;
+  // Только вылазки: у замка и кладбища `tier: 0`, и без фильтра сортировка
+  // ставила прогулку первой — перезапуск посреди кадра вылазки уводил гулять
+  // по стенам вместо того, что кадр обещает.
+  const nodes = regionAt(dayAt(now)).nodes.filter((n) => KIND[n.kind].raidable);
   return [...nodes].sort((a, b) => a.tier - b.tier)[0]?.id ?? 0;
 }
 
@@ -824,6 +933,9 @@ function toRaid(node: number): boolean {
   // Замок (§6.1.6) — не вылазка: там нечего добывать и не с кем драться,
   // и заход в него не тратит ни богатство места, ни героя.
   if (place.kind === 'замок') return toCastle(node, nodeSeed(day, node));
+  // Кладбище (§6.1.7) — та же прогулка, но населённая: добычи нет,
+  // а привидения есть.
+  if (place.kind === 'кладбище') return toGraveyard(node, nodeSeed(day, node));
   const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
@@ -832,13 +944,18 @@ function toRaid(node: number): boolean {
     return false;
   }
   raidNode = node;
+  graveSite = null;
   const rotated = hero !== activeHero(roster);
   if (rotated) selectHero(roster, roster.heroes.indexOf(hero));
   hero.status = 'raid';
   raidHero = hero;
 
-  const rich = worldAt(now, camp.visits)[node]?.rich ?? 0;
+  const state = worldAt(now, camp.visits)[node];
+  const rich = state?.rich ?? 0;
   const mul = lootMul(rich);
+  // §11.6 — событие объявлено картой до входа, и здесь оно уже принятое
+  // решение: карточка назвала ставку и добычу, игрок нажал «Войти».
+  const event = state?.event ?? null;
 
   raidView?.dispose();
   raid = createRaid({
@@ -849,6 +966,9 @@ function toRaid(node: number): boolean {
     // §4 — истощение множит добычу, а не запирает вход: плохая сделка
     // оставляет решение игроку, запрет отправляет его ждать вне игры.
     lootMul: mul,
+    // §11.6 — что здесь сегодня. Складывается с богатством: выработанная
+    // локация под бурей остаётся выработанной.
+    event,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
     loadout: loadout(hero),
@@ -874,7 +994,7 @@ function toRaid(node: number): boolean {
   // которую мир хранит (§4): кланы и восстановление считаются функцией.
   camp.visits.push({ node, shift: shiftAt(now) });
   persist();
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -893,6 +1013,9 @@ function toRaid(node: number): boolean {
   return true;
 }
 
+/** Площадка последнего замка: ручка отладочной сцены `?castle`. */
+let castleNow: CastleSite | null = null;
+
 /**
  * Замок (§6.1.6). Собирается тем же `createRaid`, что вылазка и пролог:
  * ходьба, шаг и камера обязаны считаться одинаково везде, иначе прогулка
@@ -902,10 +1025,63 @@ function toRaid(node: number): boolean {
  * это постройка, а не сделка, и провиант в ней ничего не решает. Выход
  * открыт сразу — уйти можно в любой момент, потому что уходить не от чего.
  */
+/**
+ * Участок кладбища, пока по нему ходят, и камень, который герой читает
+ * прямо сейчас. Второе нужно затем, чтобы надпись всплывала один раз
+ * на подход, а не шестьдесят раз в секунду.
+ */
+let graveSite: GraveSite | null = null;
+let readStone: string | null = null;
+
+function toGraveyard(node: number, seed: number): boolean {
+  const hero = heroForRaid() ?? roster.heroes[0]!;
+  chop = null;
+  const site = generateGraveSite(seed);
+  castleNow = null;
+  tradePanel.setVisible(false);
+  graveSite = site;
+  readStone = null;
+  raidNode = node;
+  // Раны здесь получить можно, а вот занимать героя незачем: добычи нет,
+  // и заход не обязан снимать с ротации того, кто просто сходил посмотреть.
+  raidHero = null;
+  raidView?.dispose();
+  raid = createRaid({
+    seed,
+    tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
+    loc: site.loc,
+    evacOpen: true,
+    containerFood: 0,
+    hunger: false,
+  });
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, camp.gear.weapon);
+  hud.setGrass(grassPerTile);
+  rig.world.add(raidView.group);
+  campView.group.visible = false;
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  // Ниже, чем в замке: ограда не прячет участок, и подниматься над ней,
+  // чтобы заглянуть внутрь, не нужно — через неё и так видно.
+  rig.setZoom(22, true);
+  // Сумерки: кладбище стоит на поверхности, но не полдень же на нём.
+  rig.night = 0.45;
+  resultShown = false;
+  ear.reset(raid);
+  showScene('raid', 0);
+  return true;
+}
+
 function toCastle(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateCastleSite(seed);
+  graveSite = null;
+  // Площадка запоминается ради гарнизона и торговца (§13.5): и тот и другой
+  // считаются из неё по ходу прогулки.
+  castleNow = site;
+  tradePanel.setVisible(false);
   raidNode = node;
   // Ран и опыта здесь никто не получает, поэтому герой и не занимается:
   // прогулка не обязана снимать его с лечения.
@@ -922,7 +1098,7 @@ function toCastle(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1039,10 +1215,11 @@ function tryPlace(cell: Cell): void {
 
 /* ---------- вырубка (§13.3) ---------- */
 
-/** Бросить топор: игрок ушёл или дерева не стало. */
+/** Бросить инструмент: игрок ушёл или того, по чему били, не стало. */
 function stopChopping(): void {
   chop = null;
-  raidView?.hideChop();
+  mine = null;
+  raidView?.hideWork();
 }
 
 /**
@@ -1078,10 +1255,10 @@ function stepChopping(dt: number): void {
   // Пока герой в дороге, работы ещё нет: пятно под деревом врало бы о том,
   // что топор уже стучит.
   if (raid.path.length > 0) {
-    raidView?.hideChop();
+    raidView?.hideWork();
     return;
   }
-  raidView?.showChop(chop.cell.x, chop.cell.z, chopProgress(chop));
+  raidView?.showWork(chop.cell.x, chop.cell.z, chopProgress(chop));
   if (step.swing) {
     play('build');
     raidView?.hitTree(chop.cell.x, chop.cell.z);
@@ -1090,6 +1267,54 @@ function stepChopping(dt: number): void {
     // Кромка не открывается никогда (§12.1), и на месте упавшего дерева там
     // встаёт следующее: рубка по краю бесконечна именно этим.
     raidView?.fellTree(chop.cell.x, chop.cell.z, isEdge(raid.loc, chop.cell));
+    stopChopping();
+  }
+}
+
+/* ---------- добыча камня (§13.5) ---------- */
+
+/**
+ * Тап по валуну. Жест тот же, что у дерева: герой идёт сам и начинает
+ * работать, когда дойдёт. Отказ здесь бывает один — полный рюкзак:
+ * «далеко» не отказ, а дорога.
+ */
+function startMining(cell: Cell): void {
+  if (raid === null) return;
+  const block = mineBlock(raid.hero, raid.loc.stones, cell, raid.bagTotal < raid.capacity);
+  if (block !== 'ok' && block !== 'far') {
+    play('deny');
+    say(MINE_DENY[block]);
+    return;
+  }
+  chop = null;
+  mine = aimMine(raid, cell, commandMove);
+  raidView?.showMarker(cell.x, cell.z);
+}
+
+/**
+ * Тик работы кайлом. Звук замаха играется здесь, а прибавку в рюкзаке
+ * озвучивает ухо вылазки (`raidAudio`) — то же правило §18.1, что у рубки.
+ */
+function stepMining(dt: number): void {
+  if (raid === null || mine === null) return;
+  const stone = stoneAt(raid.loc.stones, mine.cell);
+  const step = stepMine(raid, mine, dt);
+  if (step.stopped !== null) {
+    play('deny');
+    say(MINE_DENY[step.stopped]);
+    stopChopping();
+    return;
+  }
+  // Пока герой в дороге, работы ещё нет: пятно врало бы о том, что кайло
+  // уже стучит.
+  if (raid.path.length > 0) {
+    raidView?.hideWork();
+    return;
+  }
+  raidView?.showWork(mine.cell.x, mine.cell.z, mineProgress(mine));
+  if (step.swing && stone !== null) raidView?.hitStone(stone.id);
+  if (step.taken) {
+    if (stone !== null) raidView?.takeStone(stone.id);
     stopChopping();
   }
 }
@@ -1201,8 +1426,8 @@ function toGlade(): void {
     food: gladeFood(),
     // Сумка пролога — своя, как и провиант: Склада ещё нет (`prologue.ts`).
     capacity: gladeCapacity(),
-    // Выхода с поляны нет, и кольцо эвакуации не рисуется: пролог кончается
-    // не эвакуацией, а вторым уровнем жилья — и открывшимся лагерем.
+    // Выхода с поляны нет, и кольцо выхода не рисуется: пролог кончается
+    // не возвращением, а вторым уровнем жилья — и открывшимся лагерем.
     evacOpen: false,
     // Подбор бесплатен, голод раны не грызёт: провиант здесь — шаги, а нуль
     // провианта — повод отдохнуть у лагеря, а не проиграть (`prologue.ts`).
@@ -1215,7 +1440,7 @@ function toGlade(): void {
     // их рубят, а по краю рубят сколько угодно.
     logging: true,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade');
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -1245,6 +1470,7 @@ function toGlade(): void {
 function toCamp(): void {
   leaveTitle();
   chop = null;
+  campMine = null;
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
   // в лагере провиант ничего не отсчитывает. Взамен — единственная
   // мелодия игры, и звучит она только здесь: всё это в таблице сцены.
@@ -1268,11 +1494,12 @@ function toCamp(): void {
   // Лагерь — вечер, а не полдень: тёплый свет и длинные тени читаются лучше
   // на плоском затенении, чем прямое солнце.
   rig.night = 0.22;
-  // Стены, построенные игроком, — часть лагеря: они встают вместе с ним,
-  // а не по открытию панели.
+  // Стены и ограды, построенные игроком, — часть лагеря: они встают вместе
+  // с ним, а не по открытию панели.
   campView.setWalls(wallPieces(wallsOf()));
+  campView.setFences(fencePieces(wallsOf()));
   campHero = createCampHero(camp);
-  campView.setHero(campHero.x, campHero.z, campHero.facing);
+  campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
   showScene('camp');
   idleSeconds = 0;
   onboarding.apply();
@@ -1302,6 +1529,10 @@ const campInput = bindCampInput({
 function campTap(clientX: number, clientY: number): void {
   const hit = rig.screenToGround(clientX, clientY);
   if (hit === null) return;
+  // Любой тап бросает кайло: игрок занялся чем-то другим. Тап по тому же
+  // валуну начнёт работу заново — с нуля, а не с середины, и это честно:
+  // отойти и вернуться значит начать сначала.
+  stopCampMining();
   const picked = campView.buildingAt(hit.x, hit.z);
 
   // §20.4 — перестановка бесплатна и мгновенна: она вооружена из карточки,
@@ -1319,6 +1550,49 @@ function campTap(clientX: number, clientY: number): void {
     return;
   }
 
+  // Ярус выбирается раньше здания: тап по верху стены над следом здания
+  // иначе открыл бы карточку постройки, которая под стеной.
+  const up = rig.screenToGround(clientX, clientY, undefined, WALK * CASTLE_CELL);
+  const nav = campNav(camp);
+  if (up !== null) {
+    const spot = wallSpotOf(Math.round(up.x), Math.round(up.z));
+    // Камера смотрит сверху вниз, настил непрозрачен: если луч пересёк его
+    // внутри ходибельной клетки, именно настил в этом пикселе и нарисован.
+    // Погрешность остаётся у боков башен и зубцов выше настила — тот же класс
+    // ошибки, что у зданий на плоскости земли, и чинится он только рейкастом
+    // по мешам.
+    if (topWalkable(nav.top, spot)) {
+      campHud.close();
+      campView.highlight(null);
+      const why = commandCampMove(camp, campHero, { x: Math.round(up.x), z: Math.round(up.z) }, 'верх');
+      if (why === 'нет лестницы') campHud.notify('Наверх — по лестнице');
+      return;
+    }
+  }
+
+  /**
+   * Тап по валуну — та же добыча, что в вылазке (§13.5). Рюкзака в лагере
+   * нет: камень идёт прямо в кладовую, потому что склад в двух шагах.
+   *
+   * Валун спрашивается раньше здания, и это не произвол. Здание ловит тап
+   * с запасом в клетку вокруг следа (`buildingAt`) — иначе в него трудно
+   * попасть пальцем, — а валун ловится ровно своей клеткой. Спроси мы
+   * здание первым, камень рядом с Кухней стал бы нетапаемым, и выглядело бы
+   * это поломкой. Условие «клетка свободна» держит вторую половину сделки:
+   * валун под переставленным зданием (§20.4) карточку не перебивает.
+   */
+  const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+  const free = cell.x >= 0 && cell.z >= 0 && cell.x < nav.area && cell.z < nav.area
+    && nav.ground[idx(nav.area, cell.x, cell.z)] === 0;
+  const stone = stoneAt(camp.stones, cell);
+  if (stone !== null && free && campHero.level === 'земля') {
+    campHud.close();
+    campView.highlight(null);
+    startCampMining(stone, nav);
+    return;
+
+  }
+
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
   // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
@@ -1327,7 +1601,68 @@ function campTap(clientX: number, clientY: number): void {
     return;
   }
   campHud.close();
-  commandCampMove(camp, campHero, { x: Math.round(hit.x), z: Math.round(hit.z) });
+  commandCampMove(camp, campHero, cell);
+}
+
+/* ---------- добыча камня в лагере (§13.5) ---------- */
+
+/** Взяться за валун: дойти до него или встать, если кайло уже достаёт. */
+function startCampMining(stone: Stone, nav: CampNav): void {
+  campMine = { work: startMine(stone), stone };
+  if (inReach(campHero, stone)) {
+    campHero.path.length = 0;
+    return;
+  }
+  const spot = standNear(campHero, stone, (x, z) =>
+    x >= 0 && z >= 0 && x < nav.area && z < nav.area && nav.ground[idx(nav.area, x, z)] === 0);
+  commandCampMove(camp, campHero, spot);
+}
+
+function stopCampMining(): void {
+  campMine = null;
+  campView.hideWork();
+}
+
+/**
+ * Тик работы кайлом в лагере. Отличий от вылазки два, и оба — про место:
+ * камень идёт в кладовую, а не в рюкзак, и добытое сразу сохраняется —
+ * лагерь переживает перезагрузку, и разобранный валун обязан её пережить
+ * тоже.
+ */
+function stepCampMining(dt: number): void {
+  if (campMine === null) return;
+  const { work, stone } = campMine;
+  const step = stepMineInto(
+    campHero,
+    campHero.path.length > 0,
+    camp.stones,
+    work,
+    dt,
+    camp.resources,
+  );
+  if (step.stopped !== null) {
+    play('deny');
+    campHud.notify(MINE_DENY[step.stopped]);
+    stopCampMining();
+    return;
+  }
+  if (campHero.path.length > 0) {
+    campView.hideWork();
+    return;
+  }
+  campView.showWork(work.cell.x, work.cell.z, mineProgress(work));
+  if (step.swing) {
+    play('build');
+    campView.hitStone(stone.id);
+  }
+  if (step.taken) {
+    campView.takeStone(stone.id);
+    campHud.notify(`+${MINE_STONE} · ${RESOURCE_NAME.stone}`);
+    campHud.sync(camp, clock.now(), 0);
+    play('levelup');
+    stopCampMining();
+    persist();
+  }
 }
 
 /* ---------- ввод вылазки ---------- */
@@ -1409,6 +1744,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // Стройка стен перехватывает палец целиком: пока карточка выбрана,
   // лагерь не крутится и здания не выбираются.
   if (mode === 'camp' && buildTool !== null) {
+    stopCampMining();
     const hit = rig.screenToGround(e.clientX, e.clientY);
     if (hit !== null) buildAt(hit, buildTool !== 'стена');
     return;
@@ -1453,6 +1789,12 @@ canvas.addEventListener('pointerdown', (e) => {
   // в локации их всего один.
   if (raid.logging && treeAt(raid.loc, cell)) {
     startChopping(cell);
+    return;
+  }
+  // Тап по валуну — добыча (§13.5). Спорить с деревом ему не о чем: дерево
+  // стоит на занятой клетке, валун лежит на проходимой.
+  if (stoneAt(raid.loc.stones, cell) !== null) {
+    startMining(cell);
     return;
   }
   stopChopping();
@@ -1586,6 +1928,183 @@ if (debugNode !== null) {
   if (today.some((place) => place.id === n)) toRaid(n);
 }
 
+/**
+ * Ручка к состоянию вылазки для сцен `?tier=N` и `?node=N`. Без неё сцена
+ * показывает кадр, но ответить «взялся ли герой за валун и сколько осталось»
+ * может только глаз, а восемь секунд у камня незачем высиживать: работа
+ * отдаётся живой, и `работа().left` двигается руками.
+ */
+if (debugTier !== null || debugNode !== null) {
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    вылазка: () => raid,
+    камни: () => raid?.loc.stones ?? null,
+    работа: () => mine,
+    рубка: () => chop,
+  };
+}
+
+/**
+ * Отладочные сцены (§6: воспроизводимость). Кадр, который нужно посмотреть,
+ * открывается сразу, а не проходом игры до него: чтобы проверить стену
+ * в лагере, незачем играть пролог.
+ *
+ * `?camp` — лагерь как он есть.
+ * `?camp=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
+ *   Ровно та планировка, на которой видно все четыре ответа сразу — ход
+ *   поверху, разрыв на башне, проезд под воротами и подъём.
+ *
+ * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
+ * но открыть их можно лишь адресом, которого в игре нет.
+ */
+const debugCamp = debugParams.get('camp');
+if (debugCamp !== null) {
+  if (debugCamp === 'walls') {
+    // Площадь по максимуму и полный карман камня: сцена заведена, чтобы
+    // смотреть стену, а не чтобы копить на неё. При Жилье ур. 1 кольцо
+    // занимает лагерь целиком, и смотреть внутри нечего.
+    // Сцена собирается с нуля каждый раз: `toCamp` сохраняет лагерь, и без
+    // сброса второй заход достраивал бы кольцо поверх прежнего.
+    camp.walls = emptyWalls();
+    camp.levels.hq = 5;
+    camp.levels.kitchen = 3;
+    camp.levels.storage = 3;
+    camp.resources.stone = 200;
+    camp.resources.wood = 200;
+    // Здания уводятся во двор: при раскладке по умолчанию они стоят по краю
+    // площади и кольцо не замыкается — стена на клетку здания не встаёт.
+    // Это не подгонка сцены, а то же, что пришлось бы сделать игроку.
+    // Координаты чётные: клетка стены — две клетки лагеря, и здание, стоящее
+    // не по этой сетке, съедает до четырёх её клеток вместо одной.
+    camp.layout.hq = { x: 2, z: 2 };
+    camp.layout.kitchen = { x: 6, z: 2 };
+    camp.layout.storage = { x: 2, z: 6 };
+    camp.layout.forge = { x: 6, z: 6 };
+    const walls = wallsOf();
+    const site = wallSite();
+    // Кольцо ставится мимо зданий: клетка стены — четыре клетки лагеря,
+    // и угол площади занят Жильём.
+    // Кольцо подаётся обходом, а не списком клеток: мазок соединяет соседние
+    // точки лесенкой, и зигзаг залил бы двор целиком.
+    const grid = Math.floor(campArea(camp.levels.hq) / CASTLE_CELL);
+    raiseWall(walls, site, [
+      { x: 0, z: 0 },
+      { x: grid - 1, z: 0 },
+      { x: grid - 1, z: grid - 1 },
+      { x: 0, z: grid - 1 },
+      { x: 0, z: 0 },
+    ]);
+    toggleGate(walls, { x: 1, z: grid - 1 });
+    cycleTower(walls, site, { x: grid - 1, z: 0 });
+    // Лестница ставится последней и на первую подходящую клетку: ей нужен
+    // и свободный двор, и сосед с готовым ходом, а где это совпало —
+    // зависит от того, куда встали здания.
+    const tops = topsOf();
+    for (let z = 1; z < grid - 1 && Object.keys(walls.stairs).length === 0; z++) {
+      for (let x = 1; x < grid - 1; x++) {
+        if (putStairs(walls, site, { x, z }, tops)) break;
+      }
+    }
+    persist();
+  }
+  toCamp();
+  // Ручка к состоянию сцены. Без неё отладочная сцена показывает кадр,
+  // но ответить на вопрос «а герой-то поднялся?» может только глаз.
+  // Живёт только вместе с отладочным адресом.
+  (window as unknown as { камень: unknown }).камень = {
+    camp,
+    hero: campHero,
+    rig,
+    nav: () => campNav(camp),
+    tap: (x: number, z: number, level: 'земля' | 'верх' = 'земля') =>
+      commandCampMove(camp, campHero, { x, z }, level),
+    // §14 и §6.1.8: уровень оружия меняет клинок в руке. Ковать ради проверки
+    // незачем — ручка ставит уровень и пересобирает вид тем же путём,
+    // которым он пересобирается после настоящей ковки.
+    оружие: (level: number) => {
+      camp.gear.weapon = Math.max(0, Math.min(MAX_ITEM_LEVEL, level | 0));
+      campView.setCamp(camp);
+      return camp.gear.weapon;
+    },
+    // Начатая добыча (§13.5). Отдаётся сама работа, а не снимок: отладочной
+    // сцене положено не только показывать состояние, но и двигать его —
+    // высиживать восемь секунд у камня незачем.
+    работа: () => campMine,
+  };
+}
+
+/**
+ * `?castle` — замок сегодняшнего региона сразу, вместе с гарнизоном
+ * (§6.1.6). Смотреть на отряд и на смену стрелка, проходя до замка игру,
+ * нельзя: точка замка одна на день, и ждать её — не проверка.
+ *
+ * Ручка `камень` даёт то, чего не видно глазом: где отряд будет через
+ * минуту и когда стрелок выйдет на стену. `камень.смена(t)` переводит часы
+ * гарнизона — смена длится минуту, и высиживать её незачем.
+ */
+if (debugParams.has('castle')) {
+  const place = today.find((n) => n.kind === 'замок');
+  if (place !== undefined) toRaid(place.id);
+  (window as unknown as { камень: unknown }).камень = {
+    site: () => castleNow,
+    // Начатая добыча (§13.5) и тот, кто её ведёт. Работы не видно глазом,
+    // пока пятно не выросло, а вопрос «взялся ли герой за камень» задаётся
+    // первым. Отдаётся сама работа, а не её снимок: отладочной сцене положено
+    // не только показывать состояние, но и двигать его.
+    работа: () => mine,
+    герой: () => raid?.hero ?? null,
+    garrison: () => (castleNow === null ? null : garrisonOf(castleNow)),
+    patrol: (t = 0) => (castleNow === null ? null : patrolAt(garrisonOf(castleNow), t)),
+    archer: (t = 0) => (castleNow === null ? null : archerAt(garrisonOf(castleNow), t)),
+    // Жильцы двора (§6.1.6.1). Печатается то, чего не видно глазом: кто где
+    // сейчас, идёт ли и какой длины у него круг — обход в клетках читать
+    // по одной клетке бессмысленно.
+    жильцы: (t = 0) => {
+      if (castleNow === null) return null;
+      const g = garrisonOf(castleNow);
+      return dwellersAt(g, t).map((d, i) => ({
+        кто: d.look,
+        где: [+d.x.toFixed(2), +d.z.toFixed(2)],
+        идёт: d.walking,
+        круг: +(g.yard[i]?.cycle ?? 0).toFixed(1),
+      }));
+    },
+    смена: (t: number) => raidView?.setWatch(t),
+    // Герой и тап по клетке: прозрачность стен (§6.1.6.1) включается тем,
+    // что он вошёл во двор, и без ручки к нему сцена этого не показывает —
+    // до ворот пришлось бы идти пешком.
+    raid: () => raid,
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+    rig,
+  };
+}
+
+/**
+ * `?grave` — кладбище сегодняшнего региона сразу, `?grave=СИД` — с назначенным
+ * сидом. Участок вырос до мерки замка (§6.1.7.1), и размер, материал ограды
+ * и расстановка могил выводятся из сида: чтобы посмотреть на крупное
+ * кладбище, ждать нужной точки на карте — не проверка, а лотерея.
+ */
+const debugGrave = debugParams.get('grave');
+if (debugGrave !== null) {
+  const place = today.find((n) => n.kind === 'кладбище');
+  const seed = debugGrave === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(debugGrave);
+  leaveTitle();
+  toGraveyard(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    site: () => graveSite,
+    // Размер участка и население — те два числа, ради которых сцена и заведена.
+    участок: () => (graveSite === null ? null : {
+      локация: graveSite.loc.size,
+      привидений: graveSite.loc.enemies.length,
+      надгробий: graveSite.marks.length,
+      материал: graveSite.material,
+    }),
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+  };
+}
+
 if (debugParams.has('bench')) {
   installBench({
     rig,
@@ -1634,9 +2153,31 @@ startLoop({
         raid.events.push(sayNext);
         sayNext = null;
       }
+      /**
+       * Камни кладбища читаются подходом (§6.1.7). Надпись всплывает один раз
+       * на камень: пока герой стоит рядом, она не повторяется, а отойдя
+       * и вернувшись, он прочтёт её снова. Ничего, кроме строки в HUD,
+       * это не делает — кладбище остаётся прогулкой.
+       */
+      if (graveSite !== null) {
+        const read = readEpitaph(graveSite, raid.hero.x, raid.hero.z, readStone);
+        readStone = read.last;
+        if (read.say !== null) raid.events.push(read.say);
+      }
+      /**
+       * Лавка открывается подходом и гаснет уходом (§13.5) — тем же жестом,
+       * что и надпись на камне. Кнопки «закрыть» нет: игрок отходит, и лавки
+       * больше нет.
+       */
+      if (castleNow !== null) {
+        const near = atTrader(castleNow, raid.hero.x, raid.hero.z);
+        if (near !== tradePanel.visible) tradePanel.setVisible(near);
+        if (near) tradePanel.sync(camp);
+      }
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).
       stepChopping(dt);
+      stepMining(dt);
       ear.hear(raid);
       if (inGlade) {
         hud.sync(raid, dt);
@@ -1808,7 +2349,8 @@ startLoop({
       // Герой лагеря идёт тем же шагом, что и в вылазке: сначала считается
       // симуляцией, потом ставится в сцену.
       stepCampHero(camp, campHero, campDt);
-      campView.setHero(campHero.x, campHero.z, campHero.facing);
+      stepCampMining(campDt);
+      campView.setHero(campHero.x, campHero.z, campHero.facing, campHero.y);
       campView.update(campDt, now, rig.dayFactor);
       const c = campView.center;
       // Тот же кадр, что и в toCamp, плюс то, куда игрок увёз камеру.

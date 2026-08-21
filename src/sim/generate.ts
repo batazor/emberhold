@@ -4,6 +4,7 @@ import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } fro
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
 import { rollLoot } from './resources';
+import { STONES, scatterStones } from './stones';
 import type { Cell, Container, Enemy, GameLocation, Tier } from './types';
 
 /**
@@ -13,7 +14,7 @@ import type { Cell, Container, Enemy, GameLocation, Tier } from './types';
  * Форма локации подчинена единственному решению игры — идти глубже или назад,
  * — и строится из четырёх частей:
  *
- * 1. Спинной ход от эвакуации к дальнему углу. Глубина обязана быть
+ * 1. Спинной ход от выхода к дальнему углу. Глубина обязана быть
  *    направлением, а не следствием блужданий: без него «дальше» ничего
  *    не значит и путь назад не читается.
  * 2. Залы вдоль хода. Ориентиры: без них игрок не понимает, где был,
@@ -129,9 +130,20 @@ function degree(size: number, blocked: Uint8Array, x: number, z: number): number
  *   на карте мира (§4). По умолчанию 1 — вылазка вне карты (пролог, замеры,
  *   золотой мастер) обязана считаться ровно так, как её калибровали (§20.3).
  */
-export function generateLocation(seed: number, tier: Tier, lootMul = 1): GameLocation {
+export function generateLocation(
+  seed: number,
+  tier: Tier,
+  lootMul = 1,
+  /**
+   * Множитель числа противников от события (§11.6). Единица по умолчанию:
+   * бот, калибровка §20.3 и золотой мастер считают локацию без событий.
+   * Роспись состава при этом не меняется — ростер яруса повторяется по кругу,
+   * то есть «врагов больше» значит «тех же больше», а не «пришли другие».
+   */
+  enemyMul = 1,
+): GameLocation {
   const size = TIER_SIZE[tier];
-  // Эвакуация в углу: «путь назад» обязан расти вместе с глубиной захода,
+  // Выход в углу: «путь назад» обязан расти вместе с глубиной захода,
   // а из центра карты любая точка одинаково близка.
   const evac: Cell = { x: 1, z: 1 };
   const rng = mulberry32(seed ^ (tier * 0x9e3779b9));
@@ -255,7 +267,7 @@ export function generateLocation(seed: number, tier: Tier, lootMul = 1): GameLoc
    * проход к добыче — это стена, притворяющаяся врагом.
    *
    * Клетка проверяется: если, замуровав зону мага 3×3, хоть один контейнер
-   * становится недостижим от эвакуации, клетка отбрасывается.
+   * становится недостижим от выхода, клетка отбрасывается.
    */
   const mageBlocksLoot = (cell: number): boolean => {
     const walled = Uint8Array.from(blocked);
@@ -271,7 +283,10 @@ export function generateLocation(seed: number, tier: Tier, lootMul = 1): GameLoc
   };
 
   const enemies: Enemy[] = [];
-  TIER_ROSTER[tier].forEach((kind, i) => {
+  const roster = TIER_ROSTER[tier];
+  const count = Math.max(0, Math.round(roster.length * enemyMul));
+  const scaled = Array.from({ length: count }, (_, i) => roster[i % roster.length]!);
+  scaled.forEach((kind, i) => {
     const stats = ENEMY_STATS[kind];
     // §15 — маг перекрывает маршрут, а не гонится. Значит его место
     // в узком проходе: там обход стоит шагов, а прорыв — ран.
@@ -297,13 +312,36 @@ export function generateLocation(seed: number, tier: Tier, lootMul = 1): GameLoc
     });
   });
 
-  return { seed, tier, size, blocked, evac, containers, enemies, backSteps };
+  /**
+   * Валуны (§13.4) — последними и от своего потока случайности. Порядок
+   * здесь не вкусовщина: подмешавшись в общий `rng`, камни сдвинули бы
+   * всё, что бросается после них, и золотой мастер разошёлся бы с прежним
+   * на локациях, где ничего, кроме камней, не менялось.
+   *
+   * Клетки находок и противников исключены. Валун их не загораживает —
+   * он не занимает клетку, — но тап по такой клетке стал бы спорным:
+   * игрок целился в добычу, а герой взялся за кайло.
+   */
+  const busy = new Set<number>([
+    idx(size, evac.x, evac.z),
+    ...containers.map((c) => idx(size, c.x, c.z)),
+    ...enemies.map((e) => idx(size, e.x, e.z)),
+  ]);
+  const stones = scatterStones(
+    seed ^ (tier * 0x2545f491),
+    size,
+    blocked,
+    STONES.raid[tier]!,
+    (x, z) => !busy.has(idx(size, x, z)),
+  );
+
+  return { seed, tier, size, blocked, evac, containers, stones, enemies, backSteps };
 }
 
 /**
  * Есть ли путь в обход клетки: перекрываем её вместе с ближайшими соседями
  * (маг занимает не точку, а зону досягаемости) и проверяем, что от точки
- * эвакуации по-прежнему достижим каждый контейнер.
+ * возвращения по-прежнему достижим каждый контейнер.
  */
 function hasDetour(
   size: number,

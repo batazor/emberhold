@@ -1,12 +1,18 @@
 import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
+import type { DwellerLook } from '../sim/garrison';
 import type { HeroClassId } from '../sim/heroes';
-import type { EnemyKind } from '../sim/types';
-import { adventurerGeometry, adventurerParts } from './adventurers';
+import type { EnemyKind, RaidEnemyKind } from '../sim/types';
+import { adventurerGeometry, adventurerHeld, adventurerParts } from './adventurers';
+import type { Held } from './adventurers';
+import { WEAPONS_MODELS } from './weapons.data';
+import { weaponOf } from './weapons';
+import { WEAPONS_PALETTE } from './palette';
 import type { AdventurerModelName } from './adventurers.data';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import type { RiggedParts } from './rigged';
+import { graveyardGeometry } from './graveyard';
 import { skeletonGeometry, skeletonParts } from './skeleton';
 
 /**
@@ -338,10 +344,21 @@ const HERO_SHAPES: Record<HeroClassId, () => Piece[]> = {
  * скелет — 0,72 клетки против 1,3 у героя: мелкий он и на вид; воин 0,95,
  * маг 1,0, и за габарит тела его выносит посох, а не рост.
  */
+/**
+ * Рост привидения. Стоит отдельным числом, потому что нужен раньше таблицы
+ * ростов: неподвижная модель собирается выше по файлу, а разъехаться этим
+ * двум нельзя — иначе одно и то же привидение будет разного размера
+ * на странице артбука и в локации.
+ */
+const GHOST_HEIGHT = 0.62;
+
 const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
   minion: () => skeletonGeometry('Skeleton_Minion', 0.72),
   warrior: () => skeletonGeometry('Skeleton_Warrior', 0.95, 'Skeleton_Axe'),
   mage: () => skeletonGeometry('Skeleton_Mage', 1, 'Skeleton_Staff'),
+  // Привидение — из набора кладбища (§6.1.7), и скелета у него нет: и здесь,
+  // и в вылазке это одна и та же неподвижная модель.
+  ghost: () => graveyardGeometry('character-ghost', GHOST_HEIGHT),
   // Те же числа, что в ENEMY_HEIGHT ниже: неподвижная версия обязана стоять
   // ровно там же, где стоит подвижная.
 };
@@ -366,7 +383,7 @@ export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeo
 export const HERO_MODELS: Partial<Record<HeroClassId, AdventurerModelName>> = {
   knight: 'Knight',
   archer: 'Ranger',
-  rogue: 'Rogue_Hooded',
+  rogue: 'Rogue',
 };
 
 /**
@@ -388,16 +405,19 @@ function heroHeight(cls: HeroClassId): number {
 }
 
 /**
- * Что у героя в правой руке — то, чем он дерётся (§11.7). Рыцарь с мечом,
- * Лучник с луком, Бандит с кинжалом: оружие названо тем, что делает класс
- * в бою, а не наоборот.
+ * Что у героя в правой руке. Раньше здесь стояла строка — одноручный топор,
+ * один на все уровни; комментарий рядом обещал таблицу, когда уровень
+ * предмета начнёт читаться моделью. Набор оружия (§6.1.8) это и есть.
  *
- * Уровень предмета из Мастерской моделью по-прежнему не читается: слот
- * растёт числом, а не видом. Когда начнёт, здесь появится не строка,
- * а таблица.
+ * Теперь у таблицы два ключа, и это ровно то, что комментарий и предсказывал:
+ * **класс говорит, чем он дерётся, уровень — насколько хорошим.** Рыцарь
+ * с мечом, Лучник с луком, Бандит с кинжалом (§11.7); лестница §14 выбирает
+ * ступень внутри своего рода оружия.
  */
-const HERO_HELD: Partial<Record<HeroClassId, AdventurerModelName>> = {
-  knight: 'sword_1handed',
+type HeroWeapon = 'sword' | 'bow' | 'dagger';
+
+const HERO_ARMED: Partial<Record<HeroClassId, HeroWeapon>> = {
+  knight: 'sword',
   archer: 'bow',
   rogue: 'dagger',
 };
@@ -413,11 +433,41 @@ const HERO_OFFHAND: Partial<Record<HeroClassId, AdventurerModelName>> = {
   rogue: 'dagger',
 };
 
-export const heroGeometry = (cls: HeroClassId): THREE.BufferGeometry => {
+/**
+ * Предмет в правой руке по классу и уровню.
+ *
+ * Уровень 0 — «не выковано»: рука всё равно не пустая, потому что пустая
+ * в бою читается как ошибка рисовальщика, а не как «Мастерская не построена».
+ *
+ * **Лестница есть только у меча** (§6.1.8): набор оружия — про клинки,
+ * и пять ступеней в нём именно мечи. Лук и кинжал берутся из набора
+ * персонажей одной моделью на все уровни. Это записанный долг, а не
+ * недосмотр: ковка Лучника меняет числа, но не силуэт, — и починится это
+ * набором, а не строкой здесь.
+ */
+const heldOf = (cls: HeroClassId, weapon: number): Held | undefined => {
+  const kind = HERO_ARMED[cls];
+  if (kind === undefined) return undefined;
+  if (kind === 'sword') {
+    const name = weaponOf(weapon);
+    return { name, model: WEAPONS_MODELS[name], palette: WEAPONS_PALETTE };
+  }
+  return adventurerHeld(kind === 'bow' ? 'bow_withString' : 'dagger');
+};
+
+/** §14.2 — что в левой руке. Уровнем не растёт: щит спорит с фонарём
+ *  за руку, а не за ступень лестницы. */
+const offhandOf = (cls: HeroClassId): Held | undefined => {
+  const name = HERO_OFFHAND[cls];
+  return name === undefined ? undefined : adventurerHeld(name);
+};
+
+/** §14 — уровень оружия из Мастерской. 0 — слот пуст, ковки ещё не было. */
+export const heroGeometry = (cls: HeroClassId, weapon = 0): THREE.BufferGeometry => {
   const model = HERO_MODELS[cls];
   return model === undefined
     ? merge(HERO_SHAPES[cls]())
-    : adventurerGeometry(model, heroHeight(cls), HERO_HELD[cls]);
+    : adventurerGeometry(model, heroHeight(cls), heldOf(cls, weapon));
 };
 
 export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MODELS[kind]();
@@ -431,21 +481,77 @@ export const ENEMY_HEIGHT: Record<EnemyKind, number> = {
   minion: 0.72,
   warrior: 0.95,
   mage: 1,
+  // Привидение мельче простого скелета: в наборе это тряпка с руками
+  // 0,79 в ширину при 0,66 в высоту, и вытягивать её до роста скелета
+  // значило бы рисовать другую модель.
+  ghost: GHOST_HEIGHT,
 };
 
-const ENEMY_PARTS: Record<EnemyKind, () => RiggedParts> = {
+const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {
   minion: () => skeletonParts('Skeleton_Minion', ENEMY_HEIGHT.minion),
   warrior: () => skeletonParts('Skeleton_Warrior', ENEMY_HEIGHT.warrior, 'Skeleton_Axe'),
   mage: () => skeletonParts('Skeleton_Mage', ENEMY_HEIGHT.mage, 'Skeleton_Staff'),
 };
 
-export const enemyParts = (kind: EnemyKind): RiggedParts => ENEMY_PARTS[kind]();
+/** Скелет есть только у ярусных: привидение набора не скиновано вовсе. */
+export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind]();
+
+/**
+ * Жильцы двора (§6.1.6.1). Гарнизон стережёт, а живёт в замке кто-то ещё,
+ * и отличить одно от другого можно только силуэтом — тем же правилом, каким
+ * различаются скелеты (§15) и сам гарнизон: снаряжение, а не порода.
+ *
+ * Предмет у обоих правый: набор отдаёт узел `handslot.r` и только его,
+ * поэтому щита в левой руке не бывает ни у кого. Это ответ набора, а не
+ * выбор снаряжения: числами жильцы не описаны вовсе.
+ */
+const DWELLER_MODEL: Record<DwellerLook, readonly [AdventurerModelName, AdventurerModelName]> = {
+  маг: ['Mage', 'staff'],
+  плут: ['Rogue', 'dagger'],
+};
+
+export const dwellerParts = (look: DwellerLook): RiggedParts => {
+  const [model, held] = DWELLER_MODEL[look];
+  // Рост берётся у героя по той же причине, что у гарнизона: жильцы и герой —
+  // люди одного мира, и разный рост читался бы не «другой человек»,
+  // а «другой масштаб сцены».
+  return adventurerParts(model, heroHeight(GUARD_LIKE), adventurerHeld(held));
+};
 
 /** Герой со скелетом — там, где у класса есть модель набора (§6.1.4). */
-export function heroParts(cls: HeroClassId): RiggedParts | null {
+export function heroParts(cls: HeroClassId, weapon = 0): RiggedParts | null {
   const model = HERO_MODELS[cls];
   return model === undefined
     ? null
-    : adventurerParts(model, heroHeight(cls), HERO_HELD[cls], HERO_OFFHAND[cls]);
+    : adventurerParts(model, heroHeight(cls), heldOf(cls, weapon), offhandOf(cls));
 }
 
+
+/**
+ * Гарнизон замка (§6.1.6) — рыцарь набора: тот, что по периметру, и тот,
+ * что на стене. Персонаж один на обоих, а отличает их предмет в руке —
+ * ровно то же правило, каким набор различает своих скелетов (§6.1.3):
+ * силуэт делает снаряжение, а не порода.
+ *
+ * Рост берётся у героя, а не назначается своим числом. Гарнизон и герой —
+ * люди одного мира, и разный рост читался бы не «другой человек», а «другой
+ * масштаб сцены»; вдобавок мерка героя снята с примитива, который он заменил,
+ * и второе записанное число разошлось бы с ней молча.
+ */
+const GUARD_MODEL: AdventurerModelName = 'Knight';
+
+/** Класс, у которого рост измерен: единственный, кому набор уже вписан. */
+const GUARD_LIKE: HeroClassId = 'knight';
+
+/** Кто в гарнизоне: обходящий периметр и стоящий на стене. */
+export type GuardKind = 'дозор' | 'стрелок';
+
+const GUARD_HELD: Record<GuardKind, AdventurerModelName> = {
+  'дозор': 'sword_1handed',
+  'стрелок': 'bow_withString',
+};
+
+export const guardHeight = (): number => heroHeight(GUARD_LIKE);
+
+export const guardParts = (kind: GuardKind): RiggedParts =>
+  adventurerParts(GUARD_MODEL, heroHeight(GUARD_LIKE), adventurerHeld(GUARD_HELD[kind]));

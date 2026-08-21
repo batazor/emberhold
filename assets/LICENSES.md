@@ -16,23 +16,34 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-dungeon/dungeon_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-skeletons/gltf/*.gltf`, `*.bin`, `*.glb` — 17 моделей: четыре скелета, оружие, щиты, стрелы | [kaylousberg.itch.io/kaykit-skeletons](https://kaylousberg.itch.io/kaykit-skeletons), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
 | `kaykit-skeletons/skeleton_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
-| `kaykit-animations/gltf/*.glb` — 159 скелетных клипов: ход, бой, работа, быт | [kaylousberg.itch.io/kaykit-character-animations](https://kaylousberg.itch.io/kaykit-character-animations), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
+| `kaykit-animations/gltf/*.glb` — 131 скелетный клип средней оснастки: ход, бой, работа, быт | [kaylousberg.itch.io/kaykit-character-animations](https://kaylousberg.itch.io/kaykit-character-animations), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
 | `kaykit-animations/rig/*.glb`, `mannequin_texture.png` — два манекена набора и их текстура | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-adventurers/characters/*.glb` — 6 моделей персонажей: рыцарь, варвар, маг, следопыт, разбойник (и он же в капюшоне) | [kaylousberg.itch.io/kaykit-adventurers](https://kaylousberg.itch.io/kaykit-adventurers), тариф FREE, версия 2.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-adventurers/gltf/*.gltf`, `*.bin` — 31 предмет в руки: мечи, топоры, луки, арбалеты, стрелы, щиты, посохи, книги, кружки | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-adventurers/*_texture.png` — пять атласов, свой на каждого персонажа | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-resources/gltf/*.gltf`, `*.bin` — 76 моделей: слитки, самородки, брёвна, доски, тюки, поддоны, бочки, груды деталей | [kaylousberg.itch.io/resource-bits](https://kaylousberg.itch.io/resource-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-resources/resource_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
+| `kaykit-weapons/gltf/*.gltf`, `*.bin` — 31 модель: мечи, топоры, молоты, кинжалы, древковое, луки, посохи, кулачное, щиты | [kaylousberg.itch.io/fantasy-weapons-bits](https://kaylousberg.itch.io/fantasy-weapons-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
+| `kaykit-weapons/weapons_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kenney-castle-kit/glb/*.glb` — 76 моделей: стены, углы, башни, ворота, мосты, лестницы, знамёна, осадные машины | [kenney.nl/assets/castle-kit](https://kenney.nl/assets/castle-kit), версия 2.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-castle-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
+| `kenney-graveyard-kit/glb/*.glb` — 91 модель: ограды, склепы, могилы, надгробия, хвоя, пеньки, тыквы, утварь, пятеро существ | [kenney.nl/assets/graveyard-kit](https://kenney.nl/assets/graveyard-kit), версия 5.0 | CC0 1.0 | Kenney Vleugels |
+| `kenney-graveyard-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
+| `kaykit-builder/glb/**/*.glb` — 226 моделей: 30 объектов (постройки, стены, мосты, рельеф, растительность), 68 квадратных плиток и 128 гексов | [kaylousberg.itch.io/kaykit-medieval-builder-pack](https://kaylousberg.itch.io/kaykit-medieval-builder-pack), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
-`kenney-rpg-audio/License.txt` и `kenney-castle-kit/License.txt` — файлы
-лицензий как они пришли в архивах,
-без правок.
+`kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
+`kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`
+и `kenney-graveyard-kit/License.txt` — файлы лицензий как они пришли
+в архивах, без правок.
+
+Атласа у строителя нет: цвет лежит в именованных материалах glTF, и картинки
+в наборе только промо-кадры автора — они в репозиторий не переносились.
+Имена файлов укорочены с `house.gltf.glb` до `house.glb`: двойное расширение
+попадало в каталог как имя модели.
 
 ## Apache 2.0 и что она требует
 
@@ -57,8 +68,8 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 и пишет геометрию в `src/render/*.data.ts`.
 В сборку едут только эти файлы; исходные наборы остаются здесь как источник,
 из которого их можно пересобрать. Каталоги наборов с числами и цветами —
-`forestart.html`, `dungeonart.html`, `enemyart.html`, `heroart.html`
-и `resourceart.html`
+`forestart.html`, `dungeonart.html`, `enemyart.html`, `heroart.html`,
+`resourceart.html` и `weaponart.html`
 (только на dev-сервере: страницы читают файлы отсюда).
 
 Набор анимаций устроен иначе: запекать в нём нечего — в клипе нет ни цвета,
@@ -80,6 +91,11 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 наборов, остаётся в `assets/` и в сборку не попадает.
 
 ## Подземелье и анимации лежат, но не едут
+
+Набор анимаций к тому же лежит не целиком: у него две оснастки, а крупных
+персонажей в игре нет ни одного, и 28 клипов `Rig_Large_*` удалены — 4,1 МБ
+дорожек, которые не на кого надеть. Манекен `Mannequin_Large` оставлен: по нему
+`charart.html` показывает, чем крупная оснастка отличается от средней.
 
 `kaykit-dungeon/` и `kaykit-animations/` измерены целиком, и в бандле от них
 нет ни байта: список принятых моделей пуст, `.data.ts` под них не пишется,
@@ -150,6 +166,46 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 же звуков подряд — и два ярлыка `.url`. Формат оставлен как пришёл, `.ogg`;
 в игру такие файлы поедут перегнанными в `.m4a`, потому что Safari научился
 Ogg Vorbis только в 18.4, а §18.5 отдельно оговаривает iOS.
+
+## Из кладбища едут двадцать шесть
+
+`kenney-graveyard-kit/` измерен целиком, а в бандл поехали 26 моделей из 91 —
+6877 треугольников, 51 КБ gzip в `src/render/graveyard.data.ts` (§6.1.7):
+двенадцать деталей четырёх оград, четыре хвойные породы, два пенька, семь
+предметов кладбища и привидение. Остальные 65 лежат здесь источником: реестру
+это всё равно — файлы в репозитории есть, значит запись обязана быть, — но при
+чтении «чужие ассеты в игре» считать нужно двадцать шесть.
+
+Из архива взято не всё: `.fbx` и `.obj` выброшены целиком — обмер и запекание
+идут по `.glb`, а второй и третий формат тех же моделей это только вес.
+По той же причине нет папки `Previews` с девяноста картинками и обзорных
+`Preview.png` / `Sample.png`. Атлас лежит один раз, в корне набора.
+
+Каталог набора — `graveart.html` (только на dev-сервере: страница читает
+файлы отсюда).
+
+## Из оружия едут пять
+
+`kaykit-weapons/` измерен целиком, а в бандл поехали пять моделей из 31 —
+лестница уровней оружия §14: `sword_A` … `sword_E`, 2447 треугольников,
+46,2 КБ base64 в `src/render/weapons.data.ts` (§6.1.8). Остальные 26 лежат
+здесь источником: реестру это всё равно — файлы в репозитории есть, значит
+запись обязана быть, — но при чтении «чужие ассеты в игре» считать нужно пять.
+
+Едет не сам `.gltf`: `npm run models -- --write` снимает цвет с атласа,
+заменяет его слотом палитры и пишет геометрию. Ни атласа, ни узлов сцены
+в сборке нет. Место в руке при этом берётся у другого набора — узел
+`handslot.r` персонажа (§6.1.4), — и что нуль у обоих наборов в одном месте,
+проверено замером, а не примеркой.
+
+Из архива взято не всё: `.obj`, `.fbx` и `.fbx(unity)` выброшены целиком —
+обмер и запекание идут по `.gltf`, а второй, третий и четвёртый формат тех же
+моделей это только вес. По той же причине нет обзорной картинки набора
+и трёх ярлыков `.url`. Атлас лежит один раз, в корне набора: свои копии
+внутри `gltf/` и `fbx/` пришли побайтно те же и удалены.
+
+Каталог набора — `weaponart.html` (только на dev-сервере: страница читает
+файлы отсюда).
 
 ## Чего здесь нет и почему
 

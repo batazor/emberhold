@@ -15,7 +15,7 @@ import type { ConsumableId } from '../sim/consumables';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
-import { dayAt, regionAt, worldAt } from '../sim/world';
+import { KIND, dayAt, regionAt, worldAt } from '../sim/world';
 
 /**
  * Экран возврата (мокап 04). Самый важный экран для удержания: здесь игрок
@@ -53,7 +53,10 @@ export interface ReturnCallbacks {
 function nextPlace(camp: CampState, node: number, now: number): number {
   const world = worldAt(now, camp.visits);
   if ((world[node]?.rich ?? 0) >= 2) return node;
-  const nodes = regionAt(dayAt(now)).nodes;
+  // Только вылазки: богатство считается и у прогулочных мест — их просто
+  // никто не тратит, поэтому у них всегда полные три, и без фильтра кнопка
+  // «Ещё вылазка» звала в замок, где добычи нет вовсе.
+  const nodes = regionAt(dayAt(now)).nodes.filter((n) => KIND[n.kind].raidable);
   if (nodes.length === 0) return node;
   return [...nodes].sort((a, b) => (world[b.id]?.rich ?? 0) - (world[a.id]?.rich ?? 0))[0]!.id;
 }
