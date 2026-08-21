@@ -41,6 +41,9 @@ interface SaveV1 {
     salt?: number;
   };
   construction: CampState['construction'];
+  /** Якорь площадки на поляне (§16.1). Необязателен: сейв до якоря
+   *  открывается, его лагерь стоит в нулевом. */
+  origin?: { x: number; z: number };
   loadout?: CampState['loadout'];
   raids: number;
   /**
@@ -121,6 +124,8 @@ export function save(
     watermark,
     levels: camp.levels,
     layout: camp.layout,
+    // exactOptionalPropertyTypes: у лагеря без якоря ключа нет вовсе.
+    ...(camp.origin !== undefined ? { origin: camp.origin } : {}),
     resources: camp.resources,
     construction: camp.construction,
     loadout: camp.loadout,
@@ -203,6 +208,11 @@ export function load(): LoadResult {
     // Площадь зависит от Жилья, а сейв мог быть записан другой версией правил.
     // Здание, не влезающее в текущую площадь, возвращается на место по умолчанию:
     // молча уехавшая за край постройка выглядит как пропажа.
+    const o = data.origin;
+    if (o !== undefined && typeof o.x === 'number' && typeof o.z === 'number') {
+      camp.origin = { x: o.x, z: o.z };
+    }
+
     const area = campArea(camp.levels.hq);
     const fallback = createCamp().layout;
     for (const id of BUILDING_ORDER) {
