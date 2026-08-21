@@ -1321,8 +1321,53 @@ const PROPS: Pack = {
   data: { file: 'src/render/props.data.ts', prefix: 'PROPS', type: 'Prop' },
 };
 
+/**
+ * Тринадцатый набор — жители от standout7 (LOWPO Villager NPC, тариф FREE):
+ * кузнец и охотник плюс три предмета в руки — молот, нож, палка. CC0.
+ * Пришёл в FBX со своим ригом (rigify, 27 костей) — на общий `Rig_Medium`
+ * он не ретаргетится (та же история, что с легаси-паком анимаций), поэтому
+ * персонажи запечены статикой: руки опущены из T-позы при конвертации
+ * Blender'ом, риг в GLB не поехал.
+ *
+ * Атлас — сетка градиентных клеток: под треугольником всегда середина
+ * плавной заливки, и окна назначаются по замеру этих серединных цветов.
+ */
+const VILLAGER: Pack = {
+  id: 'villager',
+  title: 'LOWPO Villager NPC FREE',
+  dir: 'assets/villager-npc',
+  atlas: 'Villagers_Texture.png',
+  sources: ['glb'],
+  ramps: [
+    // Кожа и дерево стоят на одном тоне (~30°) и разводятся насыщенностью:
+    // кожа светлая и блёклая (0,36–0,46), дерево и кожаная утварь — 0,65–0,85.
+    { id: 'skin', title: 'кожа', slots: ['кожа'], hue: [8, 60], sat: [0.2, 0.6] },
+    // Куртка охотника — единственное красное набора (347°, насыщенность 0,83).
+    { id: 'red', title: 'алое', slots: ['краска-алая'], hue: [330, 8], sat: [0.35, 1] },
+    { id: 'wood', title: 'дерево', slots: ['земля-тень', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [8, 65], sat: [0.6, 1] },
+    // Зелёное сукно охотника: 105°, насыщенность около 0,5.
+    { id: 'moss', title: 'зелень', slots: ['хвоя', 'мох'], hue: [65, 200], sat: [0.03, 1] },
+    // Волосы, сапоги и железо: чистые серые от почти чёрного до стали.
+    { id: 'iron', title: 'железо', slots: ['мрак', 'металл', 'сталь'], hue: [0, 360], sat: [0, 1] },
+  ],
+  slots: [
+    'кожа',
+    'краска-алая',
+    'земля-тень', 'дерево-тень', 'дерево', 'дерево-свет',
+    'хвоя', 'мох',
+    'мрак', 'металл', 'сталь',
+  ],
+  range: 'used',
+  fallback: 'iron',
+  /** Серое здесь — материал (волосы, железо), а не пустое поле атласа. */
+  grey: 0,
+  categoryOf: (name) => (name.includes('_') ? 'Предмет' : 'Житель'),
+  adopted: ['Blacksmith', 'Hunter', 'Villager_Hammer', 'Villager_Knife', 'Villlager_Stick'],
+  data: { file: 'src/render/villager.data.ts', prefix: 'VILLAGER', type: 'Villager' },
+};
+
 const PACKS: readonly Pack[] =
-  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, BUILDER, FOLK, CAMP, PROPS];
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, BUILDER, FOLK, CAMP, PROPS, VILLAGER];
 
 /* ---------- png ---------- */
 

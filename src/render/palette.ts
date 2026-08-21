@@ -229,3 +229,20 @@ export const CAMP_SLOT_ORDER = [
 ] as const;
 
 export const CAMP_PALETTE = paletteOf(CAMP_SLOT_ORDER);
+
+/**
+ * Набор LOWPO Villager NPC (§6.1.13) — кузнец, охотник и три предмета в руки.
+ * Одиннадцать слотов и ни одного нового цвета: кожа — та же, что у персонажей,
+ * бурая утварь и фартук — семья дерева, куртка охотника — краска бочек,
+ * его зелёное сукно — хвоя и мох, волосы и железо — мрак, металл и сталь.
+ * Порядок — тот же, что пишет `npm run models` в `villager.data.ts`.
+ */
+export const VILLAGER_SLOT_ORDER = [
+  'кожа',
+  'краска-алая',
+  'земля-тень', 'дерево-тень', 'дерево', 'дерево-свет',
+  'хвоя', 'мох',
+  'мрак', 'металл', 'сталь',
+] as const;
+
+export const VILLAGER_PALETTE = paletteOf(VILLAGER_SLOT_ORDER);
