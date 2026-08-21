@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind, RaidEnemyKind } from '../sim/types';
-import { adventurerGeometry, adventurerParts } from './adventurers';
+import { adventurerGeometry, adventurerHeld, adventurerParts } from './adventurers';
 import type { Held } from './adventurers';
 import { WEAPONS_MODELS } from './weapons.data';
 import { weaponOf } from './weapons';
@@ -490,4 +490,4 @@ const GUARD_HELD: Record<GuardKind, AdventurerModelName> = {
 export const guardHeight = (): number => heroHeight(GUARD_LIKE);
 
 export const guardParts = (kind: GuardKind): RiggedParts =>
-  adventurerParts(GUARD_MODEL, heroHeight(GUARD_LIKE), GUARD_HELD[kind]);
+  adventurerParts(GUARD_MODEL, heroHeight(GUARD_LIKE), adventurerHeld(GUARD_HELD[kind]));

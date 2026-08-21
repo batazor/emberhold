@@ -39,6 +39,18 @@ export interface Held {
   readonly palette: readonly number[];
 }
 
+/**
+ * Предмет из этого же набора: реквизит персонажей (мечи, луки, кружки) едет
+ * вместе с ними и красится их палитрой. Оружие героя приезжает из своего
+ * набора (§6.1.8) и собирается там же — здесь остаётся то, у чего своего
+ * набора нет.
+ */
+export const adventurerHeld = (name: AdventurerModelName): Held => ({
+  name,
+  model: ADVENTURERS_MODELS[name],
+  palette: ADVENTURERS_PALETTE,
+});
+
 const cache = new Map<string, THREE.BufferGeometry>();
 
 /**
