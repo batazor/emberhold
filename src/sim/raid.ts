@@ -3,6 +3,7 @@ import {
   ENEMY_WAKE_SHARE,
   FOOD_COST,
   HERO_ATTACK_INTERVAL,
+  HERO_ATTACK_REF,
   HERO_REACH,
   HERO_SPEED,
   TIER_RISK,
@@ -326,7 +327,7 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
   hero.cooldown = Math.max(0, hero.cooldown - dt);
 
   for (const enemy of loc.enemies) {
-    if (enemy.wounds <= 0) continue;
+    if (enemy.hp <= 0) continue;
     const stats = ENEMY_STATS[enemy.kind];
     enemy.prevX = enemy.x;
     enemy.prevZ = enemy.z;
@@ -391,11 +392,14 @@ function stepCombat(state: RaidState, dt: number, vision: number): void {
     // не проходит ни разу. Замер ловил это как 70% провалов в бою.
     const engageAt = Math.max(HERO_REACH, stats.reach);
     if (dist <= engageAt && hero.cooldown <= 0) {
-      enemy.wounds -= 1;
-      // §14 — оружие ускоряет зачистку, а не увеличивает урон: удар остаётся
-      // одной раной, меняется только пауза между ударами.
+      // §11.3 — герой снимает очки стойкости. Пока Атака в бой не входит,
+      // урон равен эталону: замена шкалы обязана быть рефактором, а не правкой
+      // баланса, и золотой мастер не имеет права сдвинуться от неё.
+      enemy.hp -= HERO_ATTACK_REF;
+      // §14 — оружие ускоряет зачистку, а не увеличивает урон: меняется
+      // только пауза между ударами.
       hero.cooldown = HERO_ATTACK_INTERVAL * state.mods.attackInterval;
-      if (enemy.wounds <= 0) {
+      if (enemy.hp <= 0) {
         enemy.awake = false;
         state.kills += 1;
         state.events.push(`${stats.name} падёт`);
@@ -447,7 +451,7 @@ function stepConsumables(state: RaidState): void {
 
   if (state.consumables.includes('smoke')) {
     let awake = 0;
-    for (const e of loc.enemies) if (e.wounds > 0 && e.awake) awake++;
+    for (const e of loc.enemies) if (e.hp > 0 && e.awake) awake++;
     if (awake >= SMOKE_THRESHOLD) {
       fireConsumable(state, 'smoke');
       for (const e of loc.enemies) {

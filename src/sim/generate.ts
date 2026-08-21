@@ -290,7 +290,7 @@ export function generateLocation(seed: number, tier: Tier, lootMul = 1): GameLoc
       z,
       prevX: x,
       prevZ: z,
-      wounds: stats.wounds,
+      hp: stats.hp,
       awake: false,
       telegraph: 0,
       cooldown: 0,

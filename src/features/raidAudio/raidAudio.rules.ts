@@ -74,9 +74,9 @@ describe('Звук вылазки (§18.3)', () => {
   test('последний удар звучит смертью, а не смертью поверх попадания', () => {
     const raid = raidWithEnemies();
     const victim = raid.loc.enemies[0]!;
-    victim.wounds = 1;
+    victim.hp = 1;
     const { ear, heard } = listen(raid);
-    victim.wounds = 0;
+    victim.hp = 0;
     ear.hear(raid);
     assert.deepEqual(heard, ['kill'], 'смерть прозвучала вместе с попаданием');
   });
@@ -84,9 +84,9 @@ describe('Звук вылазки (§18.3)', () => {
   test('попадание по живому звучит попаданием', () => {
     const raid = raidWithEnemies();
     const victim = raid.loc.enemies[0]!;
-    victim.wounds = 3;
+    victim.hp = 3;
     const { ear, heard } = listen(raid);
-    victim.wounds = 2;
+    victim.hp = 2;
     ear.hear(raid);
     assert.deepEqual(heard, ['hit']);
   });
@@ -95,12 +95,12 @@ describe('Звук вылазки (§18.3)', () => {
     const raid = raidWithEnemies();
     const dead = raid.loc.enemies[0]!;
     const other = raid.loc.enemies[1]!;
-    dead.wounds = 1;
-    other.wounds = 3;
+    dead.hp = 1;
+    other.hp = 3;
     const { ear, heard } = listen(raid);
-    dead.wounds = 0;
+    dead.hp = 0;
     ear.hear(raid);
-    other.wounds = 2;
+    other.hp = 2;
     ear.hear(raid);
     assert.deepEqual(heard, ['kill', 'hit']);
   });

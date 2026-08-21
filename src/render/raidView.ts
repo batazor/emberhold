@@ -132,8 +132,8 @@ interface EnemyView {
   /** Куда смотрит модель. Хранится отдельно, потому что поворот сглаживается,
    *  а симуляция направления противника не держит: ей оно не нужно. */
   facing: number;
-  /** Раны на прошлом кадре: по их уменьшению и запускается клип урона. */
-  wounds: number;
+  /** Стойкость на прошлом кадре: по её убыли запускается клип урона. */
+  hp: number;
   /** Одиночный клип доигрывает до конца и только потом отпускает состояние. */
   busy: boolean;
 }
@@ -682,7 +682,7 @@ export class RaidView {
       rig.root.position.set(e.x, 0, e.z);
       this.group.add(rig.root);
 
-      const { root: lifeRoot, fill } = this.buildLifeBar(ENEMY_STATS[e.kind].wounds);
+      const { root: lifeRoot, fill } = this.buildLifeBar(ENEMY_STATS[e.kind].hp);
       rig.root.add(lifeRoot);
 
       this.enemyViews.set(e.id, {
@@ -692,7 +692,7 @@ export class RaidView {
         life: fill,
         lifeRoot,
         facing: 0,
-        wounds: e.wounds,
+        hp: e.hp,
         busy: false,
       });
     }
@@ -840,7 +840,7 @@ export class RaidView {
       if (view === undefined) continue;
       view.rig.update(dt);
 
-      if (e.wounds <= 0) {
+      if (e.hp <= 0) {
         // Падение — клип, а не мгновенное исчезновение: §17.1 отводит на него
         // 680 мс, и всё это время противник ещё на полу.
         if (view.rig.state !== 'падение') {
@@ -873,7 +873,7 @@ export class RaidView {
       // Состояния §17.1. Одиночный клип доигрывает до конца: удар, прерванный
       // шагом на середине замаха, читается как рывок, а не как удар.
       if (view.busy && view.rig.finished) view.busy = false;
-      if (e.wounds < view.wounds) {
+      if (e.hp < view.hp) {
         view.rig.play('урон');
         view.busy = true;
       } else if (e.telegraph > 0 && view.rig.state !== 'удар') {
@@ -883,11 +883,11 @@ export class RaidView {
         if (walking) view.rig.play('ходьба', walkRate(e.kind, view.rig.root.scale.y));
         else view.rig.play('покой');
       }
-      view.wounds = e.wounds;
+      view.hp = e.hp;
 
       // Полоска показывается, когда есть что показывать: спящий и целый
       // противник её не носит, иначе локация превращается в приборную панель.
-      const share = e.wounds / ENEMY_STATS[e.kind].wounds;
+      const share = e.hp / ENEMY_STATS[e.kind].hp;
       view.lifeRoot.visible = e.awake || share < 1;
       view.lifeRoot.position.y = ENEMY_HEIGHT[e.kind] / view.rig.root.scale.y + 0.4;
       view.life.scale.x = (view.life.userData.width as number) * share;
@@ -935,7 +935,7 @@ export class RaidView {
     slots.push({ x: hx, z: hz, strength: 1.2 });
     for (const e of this.loc.enemies) {
       if (slots.length >= 6) break;
-      if (e.wounds <= 0) continue;
+      if (e.hp <= 0) continue;
       const dx = e.x - hx;
       const dz = e.z - hz;
       if (dx * dx + dz * dz > 64) continue;

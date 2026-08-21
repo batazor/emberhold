@@ -1,3 +1,4 @@
+import { HP_PER_WOUND } from './config';
 import type { EnemyKind, EnemyStats } from './types';
 
 /**
@@ -15,7 +16,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   minion: {
     kind: 'minion',
     name: 'Скелет',
-    wounds: 1,
+    hp: 1 * HP_PER_WOUND,
     speed: 2.2,
     telegraph: 0.25,
     attackInterval: 1.1,
@@ -25,7 +26,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   warrior: {
     kind: 'warrior',
     name: 'Скелет-воин',
-    wounds: 2,
+    hp: 2 * HP_PER_WOUND,
     speed: 1.4,
     telegraph: 0.25,
     // Замер: герой снимает две раны воина за 2,4 с. При 1,4 с тот успевал
@@ -39,7 +40,7 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
   mage: {
     kind: 'mage',
     name: 'Скелет-маг',
-    wounds: 5,
+    hp: 5 * HP_PER_WOUND,
     speed: 0,
     telegraph: 0.5,
     attackInterval: 1.8,

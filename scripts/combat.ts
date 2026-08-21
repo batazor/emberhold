@@ -56,7 +56,7 @@ function duelField(kind: EnemyKind, gap: number): GameLocation {
         z: mid,
         prevX: mid + gap,
         prevZ: mid,
-        wounds: ENEMY_STATS[kind].wounds,
+        hp: ENEMY_STATS[kind].hp,
         awake: true,
         telegraph: 0,
         cooldown: 0,
@@ -98,23 +98,23 @@ function duel(cls: HeroClassId, gear: GearState, kind: EnemyKind): Duel {
   const enemy = state.loc.enemies[0]!;
   const startWounds = state.hero.wounds;
   let swings = 0;
-  let before = enemy.wounds;
+  let before = enemy.hp;
   let t = 0;
 
-  while (t < GIVE_UP && enemy.wounds > 0 && state.status === 'running') {
+  while (t < GIVE_UP && enemy.hp > 0 && state.status === 'running') {
     stepRaid(state, TICK, false, hero.knowledge);
-    if (enemy.wounds < before) {
+    if (enemy.hp < before) {
       swings += 1;
-      before = enemy.wounds;
+      before = enemy.hp;
     }
     t += TICK;
   }
 
   return {
-    ttk: enemy.wounds <= 0 ? t : null,
+    ttk: enemy.hp <= 0 ? t : null,
     swings,
     wounds: startWounds - state.hero.wounds,
-    won: enemy.wounds <= 0 && state.status === 'running',
+    won: enemy.hp <= 0 && state.status === 'running',
   };
 }
 

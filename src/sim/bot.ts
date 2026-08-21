@@ -68,7 +68,7 @@ function dangerGrid(state: RaidState, keepAway: number, vision: number): Uint8Ar
   const grid = Uint8Array.from(loc.blocked);
   if (keepAway <= 0) return grid;
   for (const e of loc.enemies) {
-    if (e.wounds <= 0) continue;
+    if (e.hp <= 0) continue;
     const seen = e.awake || Math.hypot(e.x - hero.x, e.z - hero.z) <= vision;
     if (!seen) continue;
     for (let z = e.z - keepAway; z <= e.z + keepAway; z++) {
@@ -151,7 +151,7 @@ function maybeUseSkill(
   }
   if (skill === 'guard') {
     const close = state.loc.enemies.some(
-      (e) => e.wounds > 0 && e.awake && Math.hypot(e.x - state.hero.x, e.z - state.hero.z) <= 1.6,
+      (e) => e.hp > 0 && e.awake && Math.hypot(e.x - state.hero.x, e.z - state.hero.z) <= 1.6,
     );
     if (close) useSkill(state);
     return;

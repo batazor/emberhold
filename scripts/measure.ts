@@ -35,7 +35,7 @@ function avoidMap(state: RaidState, vision: number): Uint8Array {
   const { loc, hero } = state;
   const avoid = Uint8Array.from(loc.blocked);
   for (const e of loc.enemies) {
-    if (e.wounds <= 0) continue;
+    if (e.hp <= 0) continue;
     // Замеченным считается тот, кто попал в круг света.
     if (Math.hypot(e.x - hero.x, e.z - hero.z) > vision) continue;
     const r = 2;

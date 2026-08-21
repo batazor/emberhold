@@ -23,14 +23,16 @@ export interface Sink {
 
 const AUDIO: Sink = { play, setFoodShare };
 
-const enemyWoundsOf = (state: RaidState): number =>
-  state.loc.enemies.reduce((sum, e) => sum + Math.max(0, e.wounds), 0);
+/** Стойкость всех живых: попадание слышно по её убыли, а не по событию —
+ *  событий бой не рассылает, и звук читает состояние сам (§18.3). */
+const enemyHpOf = (state: RaidState): number =>
+  state.loc.enemies.reduce((sum, e) => sum + Math.max(0, e.hp), 0);
 
 /** Живых противников. Смерть слышна по убыли их числа, а не по наличию
  *  мёртвого: мёртвый остаётся мёртвым, и проверка «есть труп» звучала бы
  *  на каждом следующем попадании. */
 const aliveOf = (state: RaidState): number =>
-  state.loc.enemies.reduce((n, e) => n + (e.wounds > 0 ? 1 : 0), 0);
+  state.loc.enemies.reduce((n, e) => n + (e.hp > 0 ? 1 : 0), 0);
 
 /** Сколько десятых запаса уже потрачено: тик расхода звучит на каждой. */
 const foodTicksOf = (state: RaidState): number =>
@@ -50,7 +52,7 @@ export function createRaidEar(sink: Sink = AUDIO): RaidEar {
     steps: 0,
     wounds: 0,
     bag: 0,
-    enemyWounds: 0,
+    enemyHp: 0,
     alive: 0,
     ticks: 0,
     cooldown: 0,
@@ -61,7 +63,7 @@ export function createRaidEar(sink: Sink = AUDIO): RaidEar {
     heard.steps = state.steps;
     heard.wounds = state.hero.wounds;
     heard.bag = state.bagTotal;
-    heard.enemyWounds = enemyWoundsOf(state);
+    heard.enemyHp = enemyHpOf(state);
     heard.alive = aliveOf(state);
     heard.ticks = foodTicksOf(state);
     heard.cooldown = state.hero.cooldown;
@@ -74,11 +76,11 @@ export function createRaidEar(sink: Sink = AUDIO): RaidEar {
       if (state.steps > heard.steps) sink.play('step');
       // Замах слышен до результата (§18.3): откат прыгает вверх в момент удара.
       if (state.hero.cooldown > heard.cooldown + 0.01) sink.play('swing');
-      const enemyWounds = enemyWoundsOf(state);
+      const enemyHp = enemyHpOf(state);
       const alive = aliveOf(state);
       // Попадание — только по живому: последний удар звучит смертью, а не оба
       // разом. §18.3 — попадание не громче ранения, и подавно не поверх смерти.
-      if (enemyWounds < heard.enemyWounds && alive === heard.alive) sink.play('hit');
+      if (enemyHp < heard.enemyHp && alive === heard.alive) sink.play('hit');
       if (alive < heard.alive) sink.play('kill');
       if (state.hero.wounds < heard.wounds) sink.play('wound');
       if (state.bagTotal > heard.bag) sink.play('chest');

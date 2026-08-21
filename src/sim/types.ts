@@ -23,7 +23,9 @@ export type EnemyKind = 'minion' | 'warrior' | 'mage';
 export interface EnemyStats {
   readonly kind: EnemyKind;
   readonly name: string;
-  readonly wounds: number;
+  /** §11.3 — стойкость в очках, а не в ранах. Ранами считается только герой:
+   *  их видно на экране, и они обязаны быть целыми. */
+  readonly hp: number;
   readonly speed: number;
   /** §17.3 — длительность замаха. Нижняя граница осознанной реакции. */
   readonly telegraph: number;
@@ -39,7 +41,7 @@ export interface Enemy {
   z: number;
   prevX: number;
   prevZ: number;
-  wounds: number;
+  hp: number;
   awake: boolean;
   /** Секунды до конца замаха; 0 — замаха нет. */
   telegraph: number;
