@@ -16,6 +16,7 @@
     "combat": "tsx scripts/combat.ts",
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
+    "hands": "tsx scripts/hands.ts",
     "classes": "tsx scripts/classes.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
