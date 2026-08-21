@@ -15,7 +15,7 @@
  * подставленное имя тапом и не печатает ни буквы. Форма от этого не
  * возникает — возникает согласие.
  */
-import { MAX_NAME, SELF_ANSWERS, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
+import { MAX_NAME, SELF_ANSWERS, SELF_HINT, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
 import { avatarSvg } from './avatar';
 
@@ -117,7 +117,9 @@ export class MeetPanel {
     if (state.step === 'вопрос') {
       this.field.dataset.step = '';
       this.line.textContent = `— ${state.heroName}. Чем у вас там живут?`;
-      for (const answer of SELF_ANSWERS) this.act(SELF_LABEL[answer], () => this.cb.onAnswer(answer));
+      for (const answer of SELF_ANSWERS) {
+        this.act(SELF_LABEL[answer], () => this.cb.onAnswer(answer), SELF_HINT[answer]);
+      }
       return;
     }
 
@@ -147,9 +149,15 @@ export class MeetPanel {
     return this.root.style.display !== 'none';
   }
 
-  private act(label: string, onClick: () => void): void {
+  private act(label: string, onClick: () => void, hint?: string): void {
     const button = document.createElement('button');
     button.textContent = label;
+    // Пояснение внутри кнопки, а не рядом: выбор и его цена — одно касание.
+    if (hint !== undefined) {
+      const sub = document.createElement('small');
+      sub.textContent = hint;
+      button.append(sub);
+    }
     button.addEventListener('click', onClick);
     this.buttons.append(button);
   }
