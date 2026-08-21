@@ -51,6 +51,8 @@
   --pick-line: #a2842f;
   --raze: #3a2320;
   --raze-line: #b0574a;
+  /* Плашка под портретом: темнее сцены, светлее листа. */
+  --portrait: rgba(30, 28, 24, 0.9);
   /* Рамка опасного действия: тот же красный, только вполсилы. */
   --bad-line: rgba(212, 84, 58, 0.5);
 
@@ -122,6 +124,13 @@
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-chip);
   padding: 2px 7px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
 }
+
+/**
+ * Круг портрета. Шестое слово словаря, и пришло оно не отсюда: веер, карточка
+ * героя, знакомство, лавка и строка задания завели его сообща и правильно —
+ * один класс на пять панелей. Размер каждая задаёт себе сама, край и плашка
+ * приходят отсюда. Живёт рядом с `.face` в разделе знакомства.
+ */
 
 /** Силуэт. Заливкой без обводки — тем же приёмом, что и низкополигональный арт. */
 .glyph { width: 25px; height: 25px; fill: currentColor; }
@@ -389,17 +398,24 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #stats-panel .acts button { flex: 1; }
 
 /* ---------- отряд (§11.8) ---------- */
-#roster {
-  pointer-events: auto; display: flex; flex-direction: column; gap: 8px;
-  /* Список зданий уже занимает 46vh: вместе с отрядом столбец лагеря должен
-     оставаться короче экрана, иначе нижняя постройка уезжает под вылазку. */
-  max-height: 26vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+/* Списка отряда больше нет: кем идти, выбирают веером у большого пальца
+   (`features/fan`), а карточка показывает того, кого выбрали. Ширина
+   ограничена левой половиной — правую занимает дуга, и панель, залезшая
+   под неё, отбирала бы у лиц палец. */
+#hero-card {
+  /* Ширина кончается там, где начинается дуга: нижнее лицо стоит примерно
+     в 195 px от левого края, и панель, доходившая до 206, накрывала его
+     краем — ведущего было видно, а нажать нельзя. */
+  position: fixed; left: 10px; max-width: 172px; z-index: 6;
+  display: flex; flex-direction: column; gap: 4px; font-size: 11px;
+  /* Карточка стоит на лагере постоянно и потому не берёт палец: тап
+     по земле под ней обязан доходить до сцены, иначе угол площадки
+     перестал бы существовать. Нажимается только кнопка. */
+  pointer-events: none;
 }
-#roster .r { display: flex; flex-direction: column; gap: 4px; }
-#roster .r + .r { padding-top: 8px; border-top: 1px solid var(--line); }
-/* Активный герой выделен рамкой, а не цветом текста: строка должна читаться
-   с расстояния вытянутой руки, как и всё остальное в лагере. */
-#roster .r.on { border-left: 2px solid var(--warn); padding-left: 7px; }
+#hero-card button { pointer-events: auto; font-size: 12px; padding: 7px; }
+#hero-card b { font-size: 12.5px; }
+#hero-card .bar { height: 4px; }
 .r-meta { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .r-skill { font-size: 11px; color: var(--dim); }
 .r-acts { display: flex; gap: 6px; }
@@ -542,9 +558,13 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Строка, а не уведомление: «кому-то негде спать» не перестаёт быть правдой
    оттого, что игрок отвернулся. Стоит под ресурсами, потому что просит она
    ресурс, и гаснет, когда все под крышей. */
+/* Строка задания прижата влево и не доходит до правого края: там стоит
+   кнопка «Данные», и по центру задание накрывало её целиком — кнопка была
+   видна и не нажималась. Ширина ограничена ею же, а не на глаз. */
 #camp .task {
-  align-self: center; display: flex; align-items: center; gap: 10px;
+  align-self: flex-start; display: flex; align-items: center; gap: 10px;
   margin-top: 6px; padding: 8px 12px; pointer-events: auto;
+  max-width: calc(100% - 84px);
 }
 #camp .task .why {
   font-size: 12px; letter-spacing: 0.04em; color: var(--ink);
@@ -562,6 +582,18 @@ button[disabled] { opacity: 0.4; cursor: default; }
   padding: 0 16px calc(28px + env(safe-area-inset-bottom));
   pointer-events: none;
 }
+/* Лицо собеседника: тот же кружок, что в веере у большого пальца
+   (`features/fan`) и в карточке героя. Размер крупнее — здесь на него
+   смотрят, а не целятся пальцем. */
+.face {
+  width: 72px; height: 72px; border-radius: 50%; overflow: hidden;
+  border: 1px solid var(--line); background: var(--portrait);
+}
+.face svg { display: block; width: 100%; height: 100%; }
+#trade .face { width: 56px; height: 56px; }
+/* В строке задания лицо мелкое: там на него смотрят краем глаза, а места
+   ровно на строку. */
+#camp .task .face { width: 26px; height: 26px; flex: none; }
 #meet .say {
   margin: 0; font-size: 14px; letter-spacing: 0.03em; color: var(--ink);
   max-width: 22em; text-align: center;

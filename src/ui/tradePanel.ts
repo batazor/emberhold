@@ -16,6 +16,10 @@ import type { OfferId } from '../sim/trade';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { CampState } from '../sim/camp';
+import { avatarSvg } from './avatar';
+
+/** Сид лица торговца. Он один на игру, и лицо у него одно. */
+export const TRADER_FACE = 41;
 
 export interface TradePanelCallbacks {
   /** Игрок нажал строку обмена. */
@@ -37,6 +41,13 @@ export class TradePanel {
     this.root.id = 'trade';
     this.root.style.display = 'none';
 
+    // Лицо торговца (`ui/avatar.ts`) — то же, что у него в веере и во дворе.
+    // Сид у него один на всю игру: торговец в замке один, и меняться лицом
+    // между заходами ему не с кем.
+    const face = document.createElement('div');
+    face.className = 'face';
+    face.innerHTML = avatarSvg('торговец', TRADER_FACE);
+
     const title = document.createElement('p');
     title.className = 'panel t';
     title.textContent = 'Торговец';
@@ -44,7 +55,7 @@ export class TradePanel {
     this.wallet = document.createElement('p');
     this.wallet.className = 'panel wallet';
 
-    this.root.append(title, this.wallet);
+    this.root.append(face, title, this.wallet);
 
     for (const id of OFFER_ORDER) {
       const box = document.createElement('div');

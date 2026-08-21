@@ -10,7 +10,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { MATERIAL } from '../../render/palette';
+import { MATERIAL } from '../core/palette';
 import { AVATAR_LOOKS, avatarSvg } from './avatar';
 
 const PALETTE = new Set(

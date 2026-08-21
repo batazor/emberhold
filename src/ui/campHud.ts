@@ -25,7 +25,8 @@ import { ONB_HINT } from '../sim/onboarding';
 import { dayAt, firstRaidNode } from '../sim/world';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
-import { TENT_COST, TENT_REASON, homeless, tentBlock } from '../sim/residents';
+import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
+import { avatarSvg } from './avatar';
 import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
 import { WorldMap } from './worldMap';
@@ -84,7 +85,7 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'cryst
  */
 
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь. */
-type SheetKind = BuildingId | 'tiers' | 'shop' | 'roster' | null;
+type SheetKind = BuildingId | 'tiers' | 'shop' | null;
 
 const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
@@ -109,12 +110,6 @@ interface Row {
  */
 export class CampHud {
   private readonly root: HTMLElement;
-  /**
-   * Место для панелей, которые живут в лагере, но не принадлежат зданиям, —
-   * сейчас там отряд (§11.8). Слот, а не прямой доступ к корню: порядок
-   * элементов в лагере — решение этой панели, а не того, кто в неё встраивается.
-   */
-  readonly slot: HTMLElement;
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
   private readonly gearRows = new Map<GearSlot, Row>();
@@ -123,6 +118,7 @@ export class CampHud {
   private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
   private readonly banner: HTMLElement;
   private readonly task: HTMLElement;
+  private readonly taskFace: HTMLElement;
   private readonly taskWhy: HTMLElement;
   private readonly taskButton: HTMLButtonElement;
 
@@ -134,6 +130,15 @@ export class CampHud {
   private readonly gearSection: HTMLElement;
   private readonly moveButton: HTMLButtonElement;
   private readonly bar: HTMLElement;
+  /**
+   * Место для панелей, которые живут в лагере, но не принадлежат зданиям, —
+   * сейчас там панель стройки стен. Стоит **над нижней строкой, а не в листе**,
+   * и это исправление: раньше слот был разделом листа, а лист под отряд.
+   * Кнопка «Стены» закрывает лист и показывает панель — то есть показывала её
+   * внутри только что закрытого листа, и не показывала вовсе. Отладочная сцена
+   * `?camp=walls` ставит кольцо кодом и мимо этой дыры проходила.
+   */
+  readonly slot: HTMLElement;
   /** Полоса ресурсов: верхний край экрана, занятый панелью. */
   private readonly res: HTMLElement;
   private slots!: HTMLElement;
@@ -192,11 +197,15 @@ export class CampHud {
     this.task = document.createElement('div');
     this.task.className = 'panel task';
     this.task.style.display = 'none';
+    // Лицо того, кто ждёт крышу (`ui/avatar.ts`). Задание про человека,
+    // и человек в нём — тот же, с которым знакомились на прогалине.
+    this.taskFace = document.createElement('div');
+    this.taskFace.className = 'face';
     this.taskWhy = document.createElement('span');
     this.taskWhy.className = 'why';
     this.taskButton = document.createElement('button');
     this.taskButton.addEventListener('click', () => this.cb.onTent());
-    this.task.append(this.taskWhy, this.taskButton);
+    this.task.append(this.taskFace, this.taskWhy, this.taskButton);
 
     // Пустая середина — это и есть лагерь. Клики сквозь неё уходят на сцену,
     // иначе тап по зданию не дошёл бы до канваса.
@@ -288,17 +297,15 @@ export class CampHud {
     this.sections.set('shop', shop);
     this.sheet.appendChild(shop);
 
-    this.slot = document.createElement('div');
-    this.slot.className = 'sec camp-slot';
-    this.sections.set('roster', this.slot);
-    this.sheet.appendChild(this.slot);
-
     const tiers = document.createElement('div');
     tiers.className = 'sec tiers';
     this.map = new WorldMap({ onRaid: (node) => this.cb.onRaid(node) });
     tiers.append(this.map.root);
     this.sections.set('tiers', tiers);
     this.sheet.appendChild(tiers);
+
+    this.slot = document.createElement('div');
+    this.slot.className = 'sec camp-slot';
 
     /* ---------- нижняя строка ---------- */
     this.bar = document.createElement('div');
@@ -312,14 +319,17 @@ export class CampHud {
       this.close();
       this.cb.onWalls();
     });
+    // Кнопки «Отряд» здесь больше нет: отряд переехал в веер у большого
+    // пальца (`features/fan`) и стоит на экране постоянно. Лист открывался
+    // ради одного вопроса — кем идти, — и на него теперь отвечает лицо
+    // под пальцем, без листа и без второго касания.
     this.bar.append(
-      this.makeBarButton('Отряд', 'roster'),
       walls,
       this.makeBarButton('Припасы', 'shop'),
       this.makeBarButton('В мир', 'tiers', true),
     );
 
-    this.root.append(res, this.banner, this.task, space, this.sheet, this.bar);
+    this.root.append(res, this.banner, this.task, space, this.sheet, this.slot, this.bar);
     parent.appendChild(this.root);
     this.close();
   }
@@ -457,7 +467,6 @@ export class CampHud {
     // Заголовок называет ту же кнопку, что открыла лист: «В вылазку» здесь
     // называло кнопку, которой больше нет.
     if (kind === 'shop') return 'Припасы';
-    if (kind === 'roster') return 'Отряд';
     return BUILDINGS[kind].name;
   }
 
@@ -510,7 +519,23 @@ export class CampHud {
     const need = homeless(camp);
     this.task.style.display = need === 0 ? 'none' : 'flex';
     if (need === 0) return;
-    this.taskWhy.textContent = need === 1 ? 'Гостю негде спать' : `Без крыши: ${need}`;
+    // Имя вместо «гостя»: человек, которого позвали, стоит в лагере
+    // с именем и лицом, и звать его в задании гостем — значит забыть
+    // знакомство, ради которого он и пришёл.
+    //
+    // Строка нарочно именительная. «Гите негде спать» требует дательного,
+    // а склонять имена из пула (§0.1) неоткуда: «Гость 2 негде спать» уже
+    // получилось и читалось поломкой. Двоеточие обходит падеж целиком
+    // и работает с любым именем.
+    const first = homelessFolk(camp)[0];
+    const who = first?.name ?? 'гость';
+    this.taskWhy.textContent = need === 1 ? `Без крыши: ${who}` : `Без крыши: ${who} и ещё ${need - 1}`;
+    const face = first === undefined ? '' : `${first.look}/${first.seed}`;
+    if (this.taskFace.dataset['who'] !== face) {
+      this.taskFace.dataset['who'] = face;
+      this.taskFace.innerHTML = first === undefined ? '' : avatarSvg(first.look, first.seed);
+      this.taskFace.style.display = first === undefined ? 'none' : '';
+    }
     const block = tentBlock(camp);
     this.taskButton.textContent = `Палатка · ${this.costLine(0, TENT_COST)}`;
     this.taskButton.disabled = block !== 'ok';

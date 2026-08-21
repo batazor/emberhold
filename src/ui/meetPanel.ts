@@ -17,6 +17,7 @@
  */
 import { MAX_NAME, SELF_ANSWERS, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
+import { avatarSvg } from './avatar';
 
 export interface MeetPanelCallbacks {
   /** Игрок принял имя — своё или подставленное. */
@@ -29,6 +30,12 @@ export interface MeetPanelCallbacks {
 
 export class MeetPanel {
   private readonly root: HTMLElement;
+  /**
+   * Лицо собеседника (`ui/avatar.ts`). Выводится из сида поселенца — того же,
+   * с которым он войдёт в лагерь и встанет в веер: человек ходит по игре
+   * с одним лицом, иначе лицо ничего не значит.
+   */
+  private readonly face: HTMLElement;
   private readonly line: HTMLElement;
   private readonly field: HTMLInputElement;
   private readonly goods: HTMLElement;
@@ -38,6 +45,9 @@ export class MeetPanel {
     this.root = document.createElement('div');
     this.root.id = 'meet';
     this.root.style.display = 'none';
+
+    this.face = document.createElement('div');
+    this.face.className = 'face';
 
     this.line = document.createElement('p');
     this.line.className = 'panel say';
@@ -62,7 +72,7 @@ export class MeetPanel {
     this.buttons = document.createElement('div');
     this.buttons.className = 'acts';
 
-    this.root.append(this.line, this.field, this.goods, this.buttons);
+    this.root.append(this.face, this.line, this.field, this.goods, this.buttons);
     parent.appendChild(this.root);
   }
 
@@ -77,6 +87,13 @@ export class MeetPanel {
     this.buttons.replaceChildren();
     this.field.style.display = 'none';
     this.goods.style.display = 'none';
+    // Лицо рисуется на смену человека, а не на каждый кадр разговора:
+    // разметка та же, и перекладывать её четыре раза подряд незачем.
+    const face = `${settler.look}/${settler.seed}`;
+    if (this.face.dataset['who'] !== face) {
+      this.face.dataset['who'] = face;
+      this.face.innerHTML = avatarSvg(settler.look, settler.seed);
+    }
 
     if (state.step === 'он') {
       this.line.textContent = `— Я ${settler.name}.`;
