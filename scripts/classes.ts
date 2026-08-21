@@ -16,9 +16,7 @@
  * там, где заходят глубоко. Вердикт по одной политике мерил бы не класс,
  * а привычку игрока.
  *
- * Запуск: npx tsx scripts/classes.ts
- * (в package.json не прописан намеренно: файл сейчас правят соседние сессии,
- *  и строка скрипта добавится вместе с их изменениями, а не поперёк них)
+ * Запуск: npm run classes
  */
 import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';

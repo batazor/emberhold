@@ -13,6 +13,8 @@
     "verify": "tsx scripts/baseline.ts",
     "baseline": "tsx scripts/baseline.ts --write",
     "measure": "tsx scripts/measure.ts",
+    "combat": "tsx scripts/combat.ts",
+    "classes": "tsx scripts/classes.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
     "audio": "tsx scripts/audio.ts",
