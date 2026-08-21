@@ -150,21 +150,49 @@ for (const tier of TIERS) {
   }
 }
 
+/**
+ * По чему считать первого.
+ *
+ * Здесь стояла одна добыча, и критерий был унаследован от прежней тройки —
+ * Следопыта, Ратника и Носильщика, — которая, как прямо пишет §11.7,
+ * «различалась рюкзаком, обзором и ранами». Для неё добыча была честной осью.
+ *
+ * Нынешняя тройка различается тем, **как они дерутся** — это первая строка
+ * §11.7, — и одной добычей её мерить нельзя: у Лучника рюкзак −25%, у Бандита
+ * +30%, и выиграть у него по добыче Лучник не может арифметически, при любом
+ * балансе. Прибор объявлял вырожденным класс, чью ось он не мерил.
+ *
+ * Оси взяты из той же таблицы §11.7, и это ровно три колонки, которые скрипт
+ * и так печатает: **сколько вынес** (Бандит), **дошёл ли** (Рыцарь — «четыре
+ * раны прощают больше») и **как глубоко зашёл** (Лучник — «обзор, дистанция»).
+ * Класс не вырожден, если он первый хотя бы по одной.
+ */
+const AXES: readonly { readonly name: string; readonly of: (r: Row) => number }[] = [
+  { name: 'добыча', of: (r) => r.carried },
+  { name: 'успех', of: (r) => r.success },
+  { name: 'глубина', of: (r) => r.depth },
+];
+
 const winners = new Set<HeroClassId>();
 const line: string[] = [];
 for (const tier of TIERS) {
   const here = rows.filter((r) => r.tier === tier);
-  const best = here.reduce((a, b) => (b.carried > a.carried ? b : a));
-  winners.add(best.cls);
-  line.push(`ярус ${tier}: ${HERO_CLASSES[best.cls].name}`);
+  if (here.length === 0) continue;
+  const per: string[] = [];
+  for (const axis of AXES) {
+    const best = here.reduce((a, b) => (axis.of(b) > axis.of(a) ? b : a));
+    winners.add(best.cls);
+    per.push(`${axis.name} ${HERO_CLASSES[best.cls].name}`);
+  }
+  line.push(`ярус ${tier}: ${per.join(', ')}`);
 }
-console.log(`  первые — ${line.join(' · ')}`);
+for (const l of line) console.log(`  первые — ${l}`);
 
 const idle = CLASS_ORDER.filter((c) => !winners.has(c));
 console.log(
   idle.length === 0
-    ? '  ✓ у каждого класса есть свой ярус'
-    : `  ⚠ не первый нигде: ${idle.map((c) => HERO_CLASSES[c].name).join(', ')}`,
+    ? '  ✓ у каждого класса есть своя ось'
+    : `  ⚠ не первый ни по одной оси: ${idle.map((c) => HERO_CLASSES[c].name).join(', ')}`,
 );
 
 console.log('  умения:');

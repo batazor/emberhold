@@ -16,12 +16,29 @@ import {
   suggestUpgrade,
   upgradeBlock,
 } from './camp';
-import { GEAR_COST, MAX_ITEM_LEVEL, emptyGear, gearMods } from './gear';
+import { GEAR_COST, MAX_ITEM_LEVEL, NO_MODS, emptyGear, gearMods } from './gear';
 import { atRisk, createRaid, raidResult } from './raid';
 import { load, save, wipe } from './save';
 import { createRoster } from './heroes';
 
 describe('Мастерская', () => {
+  test('§14.3 — «снаряжения нет» это снаряжение нулевого уровня, а не другое', () => {
+    /**
+     * `NO_MODS` была табличкой, набранной руками, и разошлась с `gearMods`
+     * ровно в одном поле — колчане. Стоило это класса: Лучник, вошедший
+     * без снаряжения, оказывался не стрелком, а худшим ближником игры,
+     * и `npm run classes` объявлял его вырожденным, меряя героя без лука.
+     *
+     * Второго источника правды больше нет, и это правило держит его снесённым.
+     */
+    assert.deepEqual(
+      NO_MODS,
+      gearMods(emptyGear()),
+      'NO_MODS разошлась со снаряжением нулевого уровня',
+    );
+    assert.ok(NO_MODS.arrows > 0, 'у невыкованного лука колчан не нулевой (§14.3)');
+  });
+
   test('§16 — закрыта до Жилья ур. 2 и говорит, чем закрыта', () => {
     const camp = createCamp();
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
