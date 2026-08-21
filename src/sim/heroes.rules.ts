@@ -37,16 +37,16 @@ describe('Отряд', () => {
     const roster = createRoster();
     assert.equal(roster.heroes.length, 1, 'на старте герой один');
     assert.equal(syncRoster(roster, 1), null, 'Жильё ур. 1 никого не открывает');
-    assert.equal(syncRoster(roster, 2), 'warrior', 'ур. 2 — Ратник');
+    assert.equal(syncRoster(roster, 2), 'archer', 'ур. 2 — второй класс');
     assert.equal(syncRoster(roster, 3), null, 'ур. 3 не открывает третьего');
-    assert.equal(syncRoster(roster, 4), 'porter', 'ур. 4 — Носильщик');
+    assert.equal(syncRoster(roster, 4), 'rogue', 'ур. 4 — третий класс');
     assert.equal(syncRoster(roster, 6), null, 'больше трёх героев не бывает');
   });
 
   test('§11.8 — лечение 6 минут за рану, максимум 18', () => {
     assert.equal(healSeconds(1), 6 * 60);
     assert.equal(healSeconds(3), 18 * 60);
-    assert.equal(healSeconds(4), 18 * 60, 'потолок 18 минут даже у Ратника');
+    assert.equal(healSeconds(4), 18 * 60, 'потолок 18 минут даже у Рыцаря');
   });
 
   test('§3 — вернувшийся герой занят лечением, и это создаёт ротацию', () => {
@@ -86,27 +86,27 @@ describe('Отряд', () => {
   });
 
   test('§11.7 — классы различаются рюкзаком, ранами и обзором', () => {
-    const ranger = loadout(createHero('ranger', 0));
-    const warrior = loadout(createHero('warrior', 1));
-    const porter = loadout(createHero('porter', 2));
+    const archer = loadout(createHero('archer', 0));
+    const knight = loadout(createHero('knight', 1));
+    const rogue = loadout(createHero('rogue', 2));
 
-    assert.equal(ranger.bagMul, 0.75, 'Следопыт: рюкзак −25%');
-    assert.equal(porter.bagMul, 1.3, 'Носильщик: рюкзак +30%');
-    assert.equal(warrior.wounds, 4, 'Ратник: четыре раны');
+    assert.equal(archer.bagMul, 0.75, 'Лучник: рюкзак −25%');
+    assert.equal(rogue.bagMul, 1.3, 'Бандит: рюкзак +30%');
+    assert.equal(knight.wounds, 4, 'Рыцарь: четыре раны');
 
-    // §11.4 — обзор = 3 + Знание/5. Ратник видит на тайл меньше базового.
-    assert.equal(visionRadius(ranger.knowledge, false, false), 5);
-    assert.equal(visionRadius(porter.knowledge, false, false), 4);
-    assert.equal(visionRadius(warrior.knowledge, false, false), 3);
+    // §11.4 — обзор = 3 + Знание/5. Рыцарь видит на тайл меньше базового.
+    assert.equal(visionRadius(archer.knowledge, false, false), 5);
+    assert.equal(visionRadius(rogue.knowledge, false, false), 4);
+    assert.equal(visionRadius(knight.knowledge, false, false), 3);
   });
 
   test('§11.7 — рюкзак класса доезжает до вылазки', () => {
     const opts = { seed: 4242, tier: 1 as const, kitchenLevel: 3, storageLevel: 3 };
     const base = createRaid(opts).capacity;
-    const light = createRaid({ ...opts, loadout: loadout(createHero('ranger', 0)) }).capacity;
-    const heavy = createRaid({ ...opts, loadout: loadout(createHero('porter', 1)) }).capacity;
-    assert.ok(light < base, 'Следопыт несёт меньше');
-    assert.ok(heavy > base, 'Носильщик несёт больше');
+    const light = createRaid({ ...opts, loadout: loadout(createHero('archer', 0)) }).capacity;
+    const heavy = createRaid({ ...opts, loadout: loadout(createHero('rogue', 1)) }).capacity;
+    assert.ok(light < base, 'Лучник несёт меньше');
+    assert.ok(heavy > base, 'Бандит несёт больше');
   });
 
   test('§11.7 — умение применяется один раз за вылазку, отката нет', () => {
@@ -115,7 +115,7 @@ describe('Отряд', () => {
       tier: 1,
       kitchenLevel: 3,
       storageLevel: 3,
-      loadout: loadout(createHero('porter', 0)),
+      loadout: loadout(createHero('rogue', 0)),
     });
     const before = state.food;
     assert.equal(useSkill(state), true);
@@ -129,7 +129,7 @@ describe('Отряд', () => {
       tier: 2,
       kitchenLevel: 4,
       storageLevel: 4,
-      loadout: loadout(createHero('warrior', 0)),
+      loadout: loadout(createHero('knight', 0)),
     });
     const enemy = state.loc.enemies[0];
     assert.ok(enemy !== undefined, 'на ярусе 2 есть противники');
@@ -150,7 +150,7 @@ describe('Отряд', () => {
         tier: 1,
         kitchenLevel: 3,
         storageLevel: 3,
-        loadout: loadout(createHero('ranger', 0)),
+        loadout: loadout(createHero('archer', 0)),
       });
     const plain = make();
     const trail = make();
@@ -176,7 +176,7 @@ describe('Отряд', () => {
   });
 
   test('§3 — итог вылазки переносит раны в расписание', () => {
-    const hero = createHero('warrior', 0); // четыре раны
+    const hero = createHero('knight', 0); // четыре раны
     // Вернулся с двумя оставшимися ранами из четырёх — значит, получил две.
     const out = applyRaidOutcome(hero, 2, 9, 1, true, 1000);
     assert.equal(out.wounds, 2);
@@ -186,7 +186,7 @@ describe('Отряд', () => {
 
     // Целый герой в лечение не уходит: иначе ротация включалась бы всегда
     // и превращалась в налог на игру, а не в решение.
-    const whole = createHero('ranger', 1);
+    const whole = createHero('archer', 1);
     const clean = applyRaidOutcome(whole, 3, 4, 0, true, 1000);
     assert.equal(clean.wounds, 0);
     assert.equal(clean.healSec, 0);
@@ -194,7 +194,7 @@ describe('Отряд', () => {
   });
 
   test('опыт копится и поднимает уровень', () => {
-    const hero = createHero('ranger', 0);
+    const hero = createHero('archer', 0);
     assert.equal(addXp(hero, xpToNext(1) - 1), 0, 'до порога уровня нет');
     assert.equal(addXp(hero, 1), 1, 'порог поднимает уровень');
     assert.equal(hero.level, 2);

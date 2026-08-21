@@ -182,7 +182,7 @@ export class RaidView {
 
   constructor(
     private readonly loc: GameLocation,
-    private readonly heroClass: HeroClassId = 'ranger',
+    private readonly heroClass: HeroClassId = 'archer',
     grassPerTile = 24,
     private readonly flavor: RaidFlavor = 'mine',
     /** Площадка замка (§6.1.6): без неё вкус «замок» рисовать нечем. */

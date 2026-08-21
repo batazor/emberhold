@@ -2,7 +2,7 @@ import type { BuildingId, CampState } from './camp';
 import { BUILDING_ORDER, campArea, createCamp } from './camp';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
-import { CLASS_ORDER, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
+import { CLASS_ORDER, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
 import type { HeroState, Roster } from './heroes';
 import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
 import { ONB_ORDER, RENAMED_STEPS, restartStep } from './onboarding';
@@ -234,10 +234,12 @@ function readRoster(roster: Roster, saved: SaveV1['heroes']): void {
   if (saved === undefined || !Array.isArray(saved.list) || saved.list.length === 0) return;
   const heroes: HeroState[] = [];
   saved.list.forEach((h, i) => {
-    // Носильщик раньше звался Солеваром — по ресурсу, которого больше нет.
-    // Без этой строки сейв терял третьего героя вместе с его опытом: незнакомый
-    // класс здесь молча пропускается, а syncRoster потом добирал бы новичка.
-    const saved = h.cls === 'salter' ? 'porter' : h.cls;
+    // Классы переименовывались дважды: Солевар стал Носильщиком, а тройка
+    // целиком — Рыцарем, Лучником и Бандитом (§11.7). Оба перехода живут
+    // в одной таблице при самих классах, а не здесь: без неё сейв терял
+    // героя вместе с опытом — незнакомый класс тут молча пропускается,
+    // а syncRoster потом добирал бы новичка первого уровня.
+    const saved = LEGACY_CLASS[h.cls] ?? h.cls;
     const cls = CLASS_ORDER.find((c) => c === saved);
     if (cls === undefined) return;
     const level = typeof h.level === 'number' ? Math.floor(h.level) : 1;

@@ -124,7 +124,7 @@ describe('Артбук: бюджет треугольников', () => {
     // Не «геометрия непустая», а именно то, ради чего узел запекается:
     // модель героя знает матрицу руки, и с предметом она тяжелее, чем без.
     const bare = adventurerGeometry('Barbarian', 1);
-    const armed = heroGeometry('ranger');
+    const armed = heroGeometry('archer');
     assert.ok(ADVENTURERS_MODELS.Barbarian.hand !== undefined, 'у варвара нет узла руки');
     assert.ok(
       triangles(armed) > triangles(bare),
@@ -172,7 +172,7 @@ describe('Артбук: замок', () => {
   test('через стену не заглянуть, и ход по ней идёт над головой', () => {
     // Рост героя меряется, а не берётся числом: модель может смениться,
     // и масштаб замка обязан спорить с новой, а не со старой.
-    const geo = heroGeometry('ranger');
+    const geo = heroGeometry('archer');
     geo.computeBoundingBox();
     const hero = geo.boundingBox!.max.y - geo.boundingBox!.min.y;
     geo.dispose();
@@ -247,7 +247,7 @@ describe('Артбук: палитра', () => {
     const palette = new Set(Object.values(C).map((c) => c.toLowerCase()));
     /**
      * Один цвет взят из самого артбука, где он тоже стоит литералом мимо
-     * списка, — ткань Следопыта. Исключение названо здесь, чтобы оно было
+     * списка, — ткань Лучника. Исключение названо здесь, чтобы оно было
      * видно, а не растворилось среди прочих литералов. Второе исключение,
      * глаза противника, ушло вместе с примитивными врагами: их рисует набор.
      */

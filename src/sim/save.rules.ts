@@ -65,7 +65,7 @@ describe('Сохранение', () => {
     assert.equal(camp.resources.wood, 7, 'остальные ресурсы не задеты');
   });
 
-  test('герой, записанный Солеваром, открывается Носильщиком с опытом', () => {
+  test('герой, записанный Солеваром, открывается Бандитом с опытом', () => {
     const store = fakeStore();
     store.set(
       'emberhold/save',
@@ -76,9 +76,37 @@ describe('Сохранение', () => {
       }),
     );
     const hero = load().roster.heroes[0];
-    assert.equal(hero?.cls, 'porter', 'класс переехал под новое имя');
+    // Два переименования подряд: Солевар → Носильщик → Бандит. Сейв про
+    // промежуточное имя не знает и знать не обязан — LEGACY_CLASS ведёт
+    // сразу в нынешний класс.
+    assert.equal(hero?.cls, 'rogue', 'класс переехал через оба переименования');
     assert.equal(hero?.level, 5, 'уровень уцелел');
     assert.equal(hero?.xp, 120, 'опыт уцелел');
+  });
+
+  test('§11.7 — три старых класса открываются тремя разными новыми', () => {
+    const store = fakeStore();
+    store.set(
+      'emberhold/save',
+      JSON.stringify({
+        version: 1,
+        levels: { hq: 6, kitchen: 1, storage: 1, forge: 0 },
+        heroes: {
+          active: 0,
+          list: [
+            { cls: 'ranger', level: 3, xp: 10, wounds: 0, status: 'ready' },
+            { cls: 'warrior', level: 2, xp: 20, wounds: 0, status: 'ready' },
+            { cls: 'porter', level: 1, xp: 30, wounds: 0, status: 'ready' },
+          ],
+        },
+      }),
+    );
+    // Отображение обязано быть биекцией: readRoster дубликаты не схлопывает,
+    // и два старых класса, ведущих в один новый, дали бы отряд из двух
+    // одинаковых героев — с чужим опытом на одном из них.
+    const got = load().roster.heroes.map((h) => h.cls);
+    assert.equal(new Set(got).size, got.length, 'ни один класс не задвоился');
+    assert.deepEqual(got.slice(0, 3), ['archer', 'knight', 'rogue'], 'каждый переехал по роли');
   });
 
   test('новое имя сильнее старого: stone побеждает salt в одном сейве', () => {

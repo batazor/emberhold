@@ -244,7 +244,7 @@ export class CampView {
 
   /** Герой в лагере — та же модель, что уходит в вылазку (артбук, 04). */
   private buildHero(): void {
-    this.hero = new THREE.Mesh(this.track(heroGeometry('ranger')), this.blocking);
+    this.hero = new THREE.Mesh(this.track(heroGeometry('archer')), this.blocking);
     this.hero.castShadow = true;
     this.hero.scale.setScalar(VILLAGER_SCALE);
     this.group.add(this.hero);

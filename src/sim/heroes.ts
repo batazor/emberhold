@@ -16,7 +16,20 @@ import { HERO_WOUNDS } from './balance';
  * темпа, а не источник дохода).
  */
 
-export type HeroClassId = 'ranger' | 'warrior' | 'porter';
+/**
+ * §11.7 — три класса, и различает их то, как они дерутся. Идентификаторы
+ * совпадают с моделями набора KayKit (`Knight`, `Ranger`, `Rogue`) ровно
+ * по той же причине, по какой `EnemyKind` совпадает со `Skeleton_*`:
+ * называть тип тем, что игрок видит, честнее, чем придумывать породу.
+ *
+ * Прежняя тройка — `ranger` / `warrior` / `porter` — снята по выводу
+ * `scripts/classes.ts`, который назвал Следопыта вырожденным вниз:
+ * класс, не первый ни на одном ярусе ни при одной манере игры, — это
+ * не выбор, а подсказка. Старые значения переезжают через LEGACY_CLASS.
+ *
+ * Попутно ушла двусмысленность: строка 'warrior' означала и героя, и врага.
+ */
+export type HeroClassId = 'knight' | 'archer' | 'rogue';
 export type SkillId = 'trail' | 'guard' | 'forage';
 export type HeroStatus = 'ready' | 'raid' | 'healing' | 'training';
 
@@ -43,7 +56,7 @@ export interface SkillDef {
 export const SKILLS: Record<SkillId, SkillDef> = {
   trail: { id: 'trail', name: 'Тропа', effect: 'путь назад −25% на 30 с', seconds: 30 },
   guard: { id: 'guard', name: 'Заслон', effect: 'не получает урон 5 с', seconds: 5 },
-  forage: { id: 'forage', name: 'Прикорм', effect: 'разово +20 провианта', seconds: 0 },
+  forage: { id: 'forage', name: 'Схрон', effect: 'разово +20 провианта', seconds: 0 },
 };
 
 /** Насколько «Тропа» удешевляет шаг. См. комментарий к TRAIL_STEP_DISCOUNT ниже. */
@@ -57,11 +70,11 @@ export interface HeroClassDef {
   readonly strong: string;
   readonly weak: string;
   readonly skill: SkillId;
-  /** §11.3 — здоровье это раны. У Ратника их четыре (§11.7). */
+  /** §11.3 — здоровье это раны. У Рыцаря их четыре (§11.7). */
   readonly wounds: number;
-  /** Доля вместимости Склада: Следопыт −25%, Носильщик +30% (§11.7). */
+  /** Доля вместимости Склада: Лучник −25%, Бандит +30% (§11.7). */
   readonly bagMul: number;
-  /** Доля скорости шага. Скорость — сильная сторона Следопыта. */
+  /** Доля скорости шага. Скорость — сильная сторона Лучника. */
   readonly speedMul: number;
   /** Базовые характеристики на первом уровне (§3 — четыре штуки, как в ГМиМ). */
   readonly base: Stats;
@@ -71,8 +84,8 @@ export interface HeroClassDef {
 
 /**
  * Обзор считается по формуле §11.4: `3 + Знание/5`. Отсюда и назначено
- * Знание: Следопыт 10 даёт 5 тайлов, Носильщик 5 — четыре (базовая величина
- * прежнего безымянного героя), Ратник 0 — три, то есть ровно «−1» из §11.7.
+ * Знание: Лучник 10 даёт 5 тайлов, Бандит 5 — четыре (базовая величина
+ * прежнего безымянного героя), Рыцарь 0 — три, то есть ровно «−1» из §11.7.
  *
  * Атака, Защита и Сила пока хранятся и показываются, но в бой не входят:
  * бой ведётся ранами (одна за удар). §11.3 переписан под две шкалы — Атака
@@ -80,10 +93,20 @@ export interface HeroClassDef {
  * к нему шагами. Связывать их наполовину — значит получить два источника
  * правды о том, кто кого бьёт.
  */
+/**
+ * ВНИМАНИЕ: числа здесь пока прежние — те, что были у Следопыта, Ратника
+ * и Носильщика. Переименование сделано отдельным шагом намеренно: так
+ * золотой мастер не двигается, и переход на новые имена можно проверить
+ * независимо от того, как классы разойдутся в бою.
+ *
+ * Поэтому `strong` и `weak` описывают ещё старые роли, а не те, что
+ * обещает §11.7. Разведёт их `scripts/classes.ts` вместе с Атакой,
+ * Защитой и колчаном — до тех пор числа считаются черновыми (§11.7).
+ */
 export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
-  ranger: {
-    id: 'ranger',
-    name: 'Следопыт',
+  archer: {
+    id: 'archer',
+    name: 'Лучник',
     strong: 'обзор, скорость',
     weak: 'рюкзак −25%',
     skill: 'trail',
@@ -93,9 +116,9 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     base: { attack: 4, defense: 3, knowledge: 10, might: 3 },
     growth: { attack: 1, defense: 0, knowledge: 1, might: 0 },
   },
-  warrior: {
-    id: 'warrior',
-    name: 'Ратник',
+  knight: {
+    id: 'knight',
+    name: 'Рыцарь',
     strong: 'защита, 4 раны',
     weak: 'обзор −1',
     skill: 'guard',
@@ -105,9 +128,9 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     base: { attack: 5, defense: 6, knowledge: 0, might: 4 },
     growth: { attack: 1, defense: 1, knowledge: 0, might: 0 },
   },
-  porter: {
-    id: 'porter',
-    name: 'Носильщик',
+  rogue: {
+    id: 'rogue',
+    name: 'Бандит',
     strong: 'рюкзак +30%, добыча',
     weak: 'защита',
     skill: 'forage',
@@ -119,9 +142,30 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
   },
 };
 
-/** Порядок открытия. Первый герой — Следопыт: его сильная сторона (обзор)
- *  видна с первой вылазки, а слабая (рюкзак) не мешает, пока Склад мал. */
-export const CLASS_ORDER: readonly HeroClassId[] = ['ranger', 'warrior', 'porter'];
+/**
+ * Порядок открытия. **Первый герой — Рыцарь** (§11.7): четыре раны прощают
+ * больше, а решение «держать дистанцию» первой вылазке не по силам. Довод
+ * второй и более жёсткий: §19.4 держит потолок в шесть механик на первую
+ * сессию, а лук, стрелы и выбор руки добавляют три — стрелковый класс
+ * первым этот потолок пробивает.
+ */
+export const CLASS_ORDER: readonly HeroClassId[] = ['knight', 'archer', 'rogue'];
+
+/**
+ * §11.7 — классы, записанные прежними правилами. Сопоставление по роли,
+ * а не по имени: Следопыт был обзором и скоростью — это Лучник; Ратник был
+ * ранами и защитой — это Рыцарь; Носильщик был рюкзаком — это Бандит.
+ * Солевар — прежнее имя Носильщика, и он проходит оба шага разом.
+ *
+ * Отображение обязано быть биекцией: `readRoster` не схлопывает дубликаты,
+ * и два старых класса, ведущих в один новый, дали бы отряд из двух Рыцарей.
+ */
+export const LEGACY_CLASS: Readonly<Record<string, HeroClassId>> = {
+  ranger: 'archer',
+  warrior: 'knight',
+  porter: 'rogue',
+  salter: 'rogue',
+};
 
 export interface HeroState {
   readonly id: number;
@@ -157,7 +201,7 @@ export function createHero(cls: HeroClassId, id: number): HeroState {
 }
 
 export function createRoster(): Roster {
-  return { heroes: [createHero('ranger', 0)], active: 0 };
+  return { heroes: [createHero(CLASS_ORDER[0]!, 0)], active: 0 };
 }
 
 /**
@@ -401,7 +445,7 @@ export function loadout(hero: HeroState): HeroLoadout {
 /** Плейсхолдерный герой для замеров и тестов: ровно те числа, что были
  *  у безымянного героя этапов 1–4, чтобы старые прогоны остались сравнимы. */
 export const DEFAULT_LOADOUT: HeroLoadout = {
-  cls: 'porter',
+  cls: 'rogue',
   level: 1,
   wounds: HERO_WOUNDS,
   knowledge: 5,
