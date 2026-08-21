@@ -262,12 +262,15 @@ const parseKey = (key: string): Spot => {
 export const wallSpots = (walls: CampWalls): Spot[] => walls.cells.map(parseKey);
 
 /**
- * Почему сюда нельзя. Строка, а не `false`: панель обязана сказать, что
+ * Почему сюда нельзя. Причина, а не `false`: панель обязана сказать, что
  * не так, — «нельзя» без причины читается как поломка интерфейса.
+ *
+ * Причины назывались русскими строками и были одновременно текстом для
+ * панели; §23.3 это отменил — слова живут ниже, в `WALL_REASON`, и одни
+ * на всех. Заодно ушёл член `'снаружи'`: его не возвращал никто, а слова
+ * под него пришлось бы придумывать для случая, которого не бывает.
  */
-export type WallBlock =
-  | 'ok' | 'вне площади' | 'занято зданием' | 'нет стены' | 'не прямая'
-  | 'снаружи' | 'вести некуда';
+export type WallBlock = 'ok' | 'off' | 'busy' | 'none' | 'bent' | 'nowhere';
 
 /** Занята ли клетка стены зданием: здание 2×2 и клетка стены 2×2 — ровно одна. */
 function onBuilding(
@@ -321,8 +324,8 @@ export function walkBlocked(walls: CampWalls, x: number, z: number): boolean {
 /** Можно ли поставить стену в эту клетку. */
 export function wallBlock(site: WallSite, spot: Spot): WallBlock {
   const grid = wallGrid(site.area);
-  if (spot.x < 0 || spot.z < 0 || spot.x >= grid || spot.z >= grid) return 'вне площади';
-  if (onBuilding(spot, site.layout, site.levels)) return 'занято зданием';
+  if (spot.x < 0 || spot.z < 0 || spot.x >= grid || spot.z >= grid) return 'off';
+  if (onBuilding(spot, site.layout, site.levels)) return 'busy';
   return 'ok';
 }
 
@@ -336,7 +339,7 @@ export function fenceBlock(walls: CampWalls, site: WallSite, spot: Spot): WallBl
   const why = wallBlock(site, spot);
   if (why !== 'ok') return why;
   const key = keyOf(spot);
-  if (walls.cells.includes(key) || walls.stairs[key] !== undefined) return 'занято зданием';
+  if (walls.cells.includes(key) || walls.stairs[key] !== undefined) return 'busy';
   return 'ok';
 }
 
@@ -347,16 +350,16 @@ export function fenceBlock(walls: CampWalls, site: WallSite, spot: Spot): WallBl
  */
 export function gateBlock(walls: CampWalls, spot: Spot): WallBlock {
   const set = new Set(walls.cells);
-  if (!set.has(keyOf(spot))) return 'нет стены';
+  if (!set.has(keyOf(spot))) return 'none';
   const dirs = [
     [-1, 0],
     [1, 0],
     [0, -1],
     [0, 1],
   ].filter(([dx, dz]) => set.has(keyOf({ x: spot.x + dx!, z: spot.z + dz! })));
-  if (dirs.length !== 2) return 'не прямая';
+  if (dirs.length !== 2) return 'bent';
   const [a, b] = dirs as [number[], number[]];
-  return a[0] === -b[0]! && a[1] === -b[1]! ? 'ok' : 'не прямая';
+  return a[0] === -b[0]! && a[1] === -b[1]! ? 'ok' : 'bent';
 }
 
 /**
@@ -387,13 +390,13 @@ export function stairsBlock(
   tops?: ReadonlySet<string>,
 ): WallBlock {
   const set = new Set(walls.cells);
-  if (set.has(keyOf(spot))) return 'занято зданием';
+  if (set.has(keyOf(spot))) return 'busy';
   if (wallBlock(site, spot) !== 'ok') return wallBlock(site, spot);
   const near = DIRS.some(([dx, dz]) => set.has(keyOf({ x: spot.x + dx, z: spot.z + dz })));
-  if (!near) return 'нет стены';
+  if (!near) return 'none';
   // Башню могут поставить и после лестницы — запретить это нельзя, и проверка
   // панели остаётся лучшим усилием. Граф верха отработает верно в любом случае.
-  if (tops !== undefined && stairsTarget(walls, spot, tops) < 0) return 'вести некуда';
+  if (tops !== undefined && stairsTarget(walls, spot, tops) < 0) return 'nowhere';
   return 'ok';
 }
 
@@ -466,7 +469,25 @@ export function raiseWall(walls: CampWalls, site: WallSite, path: readonly Spot[
 }
 
 /** Почему стройку не начать. */
-export type StartBlock = 'ok' | 'слот занят' | 'не хватает камня' | WallBlock;
+export type StartBlock = 'ok' | 'slot' | 'resources' | 'empty' | 'top' | WallBlock;
+
+/**
+ * Слова причины — рядом с причиной (§23.3). `empty` и `top` приходят
+ * не отсюда, а от сноса и башни в цикле: сносить нечего и выше некуда —
+ * такие же отказы стройки стен, и держать их слова отдельно значило бы
+ * завести вторую таблицу.
+ */
+export const WALL_REASON: Record<Exclude<StartBlock, 'ok'>, string> = {
+  off: 'Вне площадки',
+  busy: 'Занято зданием',
+  none: 'Рядом нет стены',
+  bent: 'Ход должен быть прямым',
+  nowhere: 'Вести некуда',
+  slot: 'Слот занят другой стройкой',
+  resources: 'Не хватает камня',
+  empty: 'Здесь ничего не стоит',
+  top: 'Выше некуда — снимается сносом',
+};
 
 /**
  * Поставить стройку в слот. Камень списывается на входе, а не по готовности:
@@ -484,10 +505,10 @@ export function startWall(
   now: number,
   busy: boolean,
 ): StartBlock {
-  if (busy || walls.work != null) return 'слот занят';
-  if (cells.length === 0) return 'вне площади';
+  if (busy || walls.work != null) return 'slot';
+  if (cells.length === 0) return 'off';
   const price = wallPrice(tool, cells.length, fenceMaterial(walls));
-  if (!canAfford(resources, price)) return 'не хватает камня';
+  if (!canAfford(resources, price)) return 'resources';
   spend(resources, price);
   walls.work = {
     tool,

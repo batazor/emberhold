@@ -27,6 +27,8 @@ import {
   setOffhand,
   startUpgrade,
   upgradeBlock,
+  UPGRADE_REASON,
+  GEAR_REASON,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
 import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
@@ -44,6 +46,8 @@ import {
   startTraining,
   syncRoster,
   trainBlock,
+  RAID_REASON,
+  TRAIN_REASON,
 } from './sim/heroes';
 import type { HeroClassId, HeroLoadout, HeroState, Roster } from './sim/heroes';
 import { ONB_HINT, firstTapCell, grantLevelOffBooks, reveal } from './sim/onboarding';
@@ -69,6 +73,7 @@ import {
   isEdge,
   stepChop,
   treeAt,
+  CHOP_REASON,
 } from './sim/logging';
 import type { Chop } from './sim/logging';
 import {
@@ -81,14 +86,16 @@ import {
   stepMine,
   stepMineInto,
   stoneAt,
+  MINE_REASON,
 } from './sim/stones';
 import type { Stone } from './sim/stones';
 import { idx } from './sim/grid';
 import { inReach } from './sim/work';
-import type { Work, WorkBlock } from './sim/work';
+import type { Work } from './sim/work';
+import { refusal } from './sim/reason';
 import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/raid';
 import type { RaidState } from './sim/raid';
-import { CONSUMABLES, buyConsumable, refundConsumable } from './sim/consumables';
+import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
@@ -127,7 +134,9 @@ import {
   wallSpotOf,
   type WallSite,
   type WallTool,
+  WALL_REASON,
 } from './sim/campWalls';
+import type { StartBlock } from './sim/campWalls';
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
@@ -279,26 +288,6 @@ let campMine: { work: Work; stone: Stone } | null = null;
 let sayNext: string | null = null;
 const say = (text: string): void => {
   sayNext = text;
-};
-
-/** Почему рубить нельзя — словами игрока. Отказ обязан называть причину:
- *  молчащий отказ читается как поломка (§16.1). */
-const CHOP_DENY: Record<WorkBlock, string> = {
-  ok: '',
-  off: 'Здесь не лес — рубить нечего',
-  gone: 'Дерева здесь больше нет',
-  far: 'К этому дереву не подойти',
-  bag: 'Рюкзак полон — дерево некуда класть',
-};
-
-/** То же для кайла (§13.5). Словарь причин общий, слова — свои: игрок
- *  видит камень, а не «работу по клетке». */
-const MINE_DENY: Record<WorkBlock, string> = {
-  ok: '',
-  off: 'Здесь нечего добывать',
-  gone: 'Камня здесь больше нет',
-  far: 'К этому камню не подойти',
-  bag: 'Рюкзак полон — камень некуда класть',
 };
 
 /** Что сейчас написано в строке подсказки пролога. Сравнение затем, чтобы
@@ -564,24 +553,24 @@ function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
 
   if (buildTool === 'башня') {
     // Снять башню — не стройка: она разбирается сносом, как и всё остальное.
-    if (nextTowerLevel(walls, spot) === null) return finishWall('Выше некуда: снимите сносом');
+    if (nextTowerLevel(walls, spot) === null) return finishWall('top');
     return finishWall(startTower(walls, site, camp.resources, spot, clock.now(), busy));
   }
   if (buildTool === 'ворота') {
     const why = gateBlock(walls, spot);
-    if (why !== 'ok') return finishWall(`Ворота: ${why}`);
+    if (why !== 'ok') return finishWall(why, 'Ворота');
     return finishWall(startWall(walls, camp.resources, 'ворота', [spot], clock.now(), busy));
   }
   if (buildTool === 'лестница') {
     const tops = topsOf();
     const why = stairsBlock(walls, site, spot, tops);
-    if (why !== 'ok') return finishWall(`Лестница: ${why}`);
+    if (why !== 'ok') return finishWall(why, 'Лестница');
     return finishWall(startWall(walls, camp.resources, 'лестница', [spot], clock.now(), busy));
   }
 
   // Снос мгновенный и с возвратом камня: сносить — не строить, и трогать
   // планировку не должно стоить дороже, чем не трогать её.
-  if (!razeWall(walls, spot, camp.resources)) return finishWall('Здесь ничего не стоит');
+  if (!razeWall(walls, spot, camp.resources)) return finishWall('empty');
   play('build');
   buildPanel.setNote(null);
   refreshWalls();
@@ -590,11 +579,18 @@ function buildAt(hit: { x: number; z: number }, finished: boolean): boolean {
   return true;
 }
 
-/** Общий хвост стройки: отказ называет причину, успех занимает слот. */
-function finishWall(result: string): boolean {
+/**
+ * Общий хвост стройки: отказ называет причину, успех занимает слот.
+ *
+ * Слова берутся из `WALL_REASON` (§23.3), а не собираются здесь: раньше
+ * причина сама была текстом, и один случай — «слот занят» — переписывался
+ * по дороге в панель, потому что фрагментом он читался, а строкой нет.
+ */
+function finishWall(result: StartBlock, subject?: string): boolean {
   if (result !== 'ok') {
     play('deny');
-    buildPanel.setNote(result === 'слот занят' ? 'Слот занят другой стройкой' : result);
+    const reason = WALL_REASON[result];
+    buildPanel.setNote(subject === undefined ? reason : refusal(subject, reason));
     return true;
   }
   play('build');
@@ -609,8 +605,9 @@ const rosterPanel = new RosterPanel(campHud.slot, {
   onSelect: (index) => {
     const hero = roster.heroes[index];
     if (hero === undefined) return;
-    if (raidBlock(hero) !== 'ok') {
-      campHud.notify(`${HERO_CLASSES[hero.cls].name} занят`);
+    const block = raidBlock(hero);
+    if (block !== 'ok') {
+      campHud.notify(refusal(HERO_CLASSES[hero.cls].name, RAID_REASON[block]));
       return;
     }
     selectHero(roster, index);
@@ -621,7 +618,7 @@ const rosterPanel = new RosterPanel(campHud.slot, {
     if (hero === undefined) return;
     const block = trainBlock(roster, hero);
     if (block !== 'ok') {
-      campHud.notify(`${HERO_CLASSES[hero.cls].name}: ${TRAIN_REASON[block] ?? 'нельзя тренировать'}`);
+      campHud.notify(refusal(HERO_CLASSES[hero.cls].name, TRAIN_REASON[block]));
       return;
     }
     startTraining(roster, hero, clock.now());
@@ -629,33 +626,6 @@ const rosterPanel = new RosterPanel(campHud.slot, {
     persist();
   },
 });
-
-const TRAIN_REASON: Record<string, string> = {
-  cap: 'потолок — на два уровня ниже лучшего',
-  busy: 'занят',
-  'slot-busy': 'тренировочный слот занят',
-  max: 'максимальный уровень',
-};
-
-const BLOCK_REASON: Record<string, string> = {
-  max: 'максимальный уровень',
-  'hq-cap': 'выше Жилья нельзя',
-  'slot-busy': 'слот занят другой стройкой',
-  resources: 'не хватает ресурсов',
-  ok: 'не вышло',
-};
-
-function upgradeReason(state: CampState, id: BuildingId): string {
-  return BLOCK_REASON[upgradeBlock(state, id)] ?? 'не вышло';
-}
-
-const GEAR_REASON: Record<string, string> = {
-  'no-forge': 'нужна Мастерская',
-  max: 'лучше не бывает',
-  'forge-cap': 'Мастерская не тянет выше',
-  resources: 'не хватает железа',
-  ok: 'не вышло',
-};
 
 /**
  * Знакомство у прогалины. Панель заводится рядом с остальными, а обработчики
@@ -677,10 +647,13 @@ const meetPanel = new MeetPanel(app, {
  */
 function forge(slot: GearSlot): boolean {
   const block = gearBlock(camp, slot);
-  if (!craftGear(camp, slot)) {
-    campHud.notify(`${GEAR[slot].name}: ${GEAR_REASON[block] ?? 'не вышло'}`);
+  // Причина спрашивается до попытки, а не после отказа: `'не вышло'` стояло
+  // здесь ровно затем, чтобы объяснить случай, которого не бывает (§23.3).
+  if (block !== 'ok') {
+    campHud.notify(refusal(GEAR[slot].name, GEAR_REASON[block]));
     return false;
   }
+  craftGear(camp, slot);
   const level = camp.gear[slot];
   track({ t: 'craft', at: clock.now(), slot, toLevel: level });
   // Раскадровка кончается здесь: игрок сковал первое, что обещала Мастерская.
@@ -758,10 +731,12 @@ new SettingsMenu(app, {
 const statsPanel = new StatsPanel(app);
 
 function buy(id: ConsumableId): boolean {
-  if (!buyConsumable(camp, id)) {
-    campHud.notify(`${CONSUMABLES[id].name}: не хватает или слоты заняты`);
+  const block = buyBlock(camp, id);
+  if (block !== 'ok') {
+    campHud.notify(refusal(CONSUMABLES[id].name, BUY_REASON[block]));
     return false;
   }
+  buyConsumable(camp, id);
   track({ t: 'consumable', at: clock.now(), id, phase: 'buy' });
   campHud.notify(`${CONSUMABLES[id].name} — в вылазку`);
   persist();
@@ -892,12 +867,14 @@ const returnScreen = new ReturnScreen(app, {
 
 function beginUpgrade(id: BuildingId): boolean {
   const now = clock.now();
-  if (!startUpgrade(camp, id, now)) {
+  const block = upgradeBlock(camp, id);
+  if (block !== 'ok') {
     // Отказ обязан быть слышен так же, как виден (§18.3).
     play('deny');
-    campHud.notify(`${BUILDINGS[id].name}: ${upgradeReason(camp, id)}`);
+    campHud.notify(refusal(BUILDINGS[id].name, UPGRADE_REASON[block]));
     return false;
   }
+  startUpgrade(camp, id, now);
   const toLevel = camp.levels[id] + 1;
   track({ t: 'build_start', at: now, building: id, toLevel, seconds: BUILD_SECONDS[toLevel] ?? 0 });
   play('build');
@@ -1043,7 +1020,7 @@ function toRaid(node: number): boolean {
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
   if (hero === null) {
-    campHud.notify('Все герои заняты — ждём лечения или тренировки');
+    campHud.notify('Все герои заняты — лечатся или тренируются');
     return false;
   }
   raidNode = node;
@@ -1355,7 +1332,7 @@ function startChopping(cell: Cell): void {
   const block = chopBlock(raid, cell);
   if (block !== 'ok' && block !== 'far') {
     play('deny');
-    say(CHOP_DENY[block]);
+    say(CHOP_REASON[block]);
     return;
   }
   chop = aimChop(raid, cell);
@@ -1372,7 +1349,7 @@ function stepChopping(dt: number): void {
   const step = stepChop(raid, chop, dt);
   if (step.stopped !== null) {
     play('deny');
-    say(CHOP_DENY[step.stopped]);
+    say(CHOP_REASON[step.stopped]);
     stopChopping();
     return;
   }
@@ -1407,7 +1384,7 @@ function startMining(cell: Cell): void {
   const block = mineBlock(raid.hero, raid.loc.stones, cell, raid.bagTotal < raid.capacity);
   if (block !== 'ok' && block !== 'far') {
     play('deny');
-    say(MINE_DENY[block]);
+    say(MINE_REASON[block]);
     return;
   }
   chop = null;
@@ -1425,7 +1402,7 @@ function stepMining(dt: number): void {
   const step = stepMine(raid, mine, dt);
   if (step.stopped !== null) {
     play('deny');
-    say(MINE_DENY[step.stopped]);
+    say(MINE_REASON[step.stopped]);
     stopChopping();
     return;
   }
@@ -1781,7 +1758,7 @@ function stepCampMining(dt: number): void {
   );
   if (step.stopped !== null) {
     play('deny');
-    campHud.notify(MINE_DENY[step.stopped]);
+    campHud.notify(MINE_REASON[step.stopped]);
     stopCampMining();
     return;
   }

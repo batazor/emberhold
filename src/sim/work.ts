@@ -83,8 +83,14 @@ export interface WorkStep {
   readonly swing: boolean;
   /** Работа кончена: то, по чему били, поддалось. */
   readonly done: boolean;
-  /** Работа прервана и почему; null — идёт или ещё идут к цели. */
-  readonly stopped: WorkBlock | null;
+  /**
+   * Работа прервана и почему; null — идёт или ещё идут к цели.
+   *
+   * `ok` сюда не попадает по построению — при `ok` работа как раз идёт, —
+   * и типом это сказано затем, что зовущий подставляет причину в таблицу
+   * слов (§23.3), где строки на `ok` нет.
+   */
+  readonly stopped: Exclude<WorkBlock, 'ok'> | null;
 }
 
 const IDLE: WorkStep = { swing: false, done: false, stopped: null };

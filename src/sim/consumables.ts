@@ -105,9 +105,31 @@ export function cheapestAffordable(have: Resources, taken: Loadout): ConsumableI
  * Покупка. Ровно один вход в систему: «использовать» функции нет и не будет —
  * см. §21.1, автосрабатывание есть условие существования расходников.
  */
+export type BuyBlock = 'ok' | 'slots' | 'resources';
+
+/**
+ * Почему расходник сейчас не купить. Причина, а не булево, — по тому же
+ * правилу, что у стройки и палатки (§16.1, §23.3). Заведена она затем, что
+ * покупка возвращала одно «нет» на два разных случая, и полоса называла оба
+ * сразу: «не хватает или слоты заняты» — то есть не называла ни одного.
+ *
+ * Слоты стоят первыми: полный набор — это не бедность, а решение, принятое
+ * раньше, и предлагать за него доплатить бессмысленно.
+ */
+export function buyBlock(camp: CampState, id: ConsumableId): BuyBlock {
+  if (camp.loadout.length >= CONSUMABLE_SLOTS) return 'slots';
+  if (!canAfford(camp.resources, CONSUMABLES[id].price)) return 'resources';
+  return 'ok';
+}
+
+/** Слова причины — рядом с причиной (§23.3). */
+export const BUY_REASON: Record<Exclude<BuyBlock, 'ok'>, string> = {
+  slots: 'Все слоты заняты',
+  resources: 'Не хватает ресурсов',
+};
+
 export function buyConsumable(camp: CampState, id: ConsumableId): boolean {
-  if (camp.loadout.length >= CONSUMABLE_SLOTS) return false;
-  if (!canAfford(camp.resources, CONSUMABLES[id].price)) return false;
+  if (buyBlock(camp, id) !== 'ok') return false;
   spend(camp.resources, CONSUMABLES[id].price);
   camp.loadout.push(id);
   return true;

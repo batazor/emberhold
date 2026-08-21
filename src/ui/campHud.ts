@@ -8,6 +8,8 @@ import {
   itemCap,
   speedupCost,
   upgradeBlock,
+  UPGRADE_REASON,
+  GEAR_REASON,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { ARROW_PACK, ARROW_PACK_COST, canBuyArrows } from '../sim/camp';
@@ -63,20 +65,6 @@ export interface CampCallbacks {
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
 }
-
-const BLOCK_TEXT: Record<string, string> = {
-  max: 'Максимальный уровень',
-  locked: 'Нужно Жильё ур. 2',
-  'hq-cap': 'Жильё не пускает выше',
-  'slot-busy': 'Слот занят другой стройкой',
-  resources: 'Не хватает ресурсов',
-};
-
-const GEAR_BLOCK_TEXT: Record<string, string> = {
-  max: 'Лучше не бывает',
-  'forge-cap': 'Мастерская не тянет выше',
-  resources: 'Не хватает железа',
-};
 
 const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
 
@@ -623,7 +611,7 @@ export class CampHud {
     row.status.textContent =
       block === 'ok' || block === 'resources'
         ? this.priceLine(level + 1)
-        : (BLOCK_TEXT[block] ?? '');
+        : UPGRADE_REASON[block];
   }
 
   /** Снаряжение. Компромисс слота показывается всегда, а не только когда
@@ -644,7 +632,7 @@ export class CampHud {
       row.status.textContent =
         block === 'ok' || block === 'resources'
           ? this.gearCostLine(level + 1)
-          : (GEAR_BLOCK_TEXT[block] ?? '');
+          : GEAR_REASON[block];
     }
   }
 

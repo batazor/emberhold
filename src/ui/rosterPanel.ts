@@ -8,6 +8,7 @@ import {
   trainBlock,
   trainCap,
   xpToNext,
+  TRAIN_REASON,
 } from '../sim/heroes';
 import type { HeroState, Roster } from '../sim/heroes';
 
@@ -44,13 +45,6 @@ const STATUS_TEXT: Record<string, string> = {
   raid: 'в вылазке',
   healing: 'лечится',
   training: 'тренируется',
-};
-
-const TRAIN_TEXT: Record<string, string> = {
-  cap: 'потолок — на два ниже лучшего',
-  busy: 'занят',
-  'slot-busy': 'тренировочный слот занят',
-  max: 'максимальный уровень',
 };
 
 export class RosterPanel {
@@ -164,7 +158,7 @@ export class RosterPanel {
           ? `Тренируется · ${formatDuration(Math.max(0, (hero.busyUntil ?? now) - now))}`
           : tb === 'ok'
             ? 'Тренировать · 2 ч'
-            : (TRAIN_TEXT[tb] ?? 'Тренировать');
+            : TRAIN_REASON[tb];
     });
 
     // Потолок тренировки выведен в шапку: иначе «почему кнопка серая»

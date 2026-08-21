@@ -321,6 +321,26 @@ export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
   return 'ok';
 }
 
+/**
+ * Слова причины — здесь же, рядом с причиной (§23.3). Разнесённые по файлам,
+ * они расходятся: панель говорила «Жильё не пускает выше», а полоса про то же
+ * самое — «выше Жилья нельзя».
+ *
+ * `ok` в таблице нет намеренно: строка отказа существует только там, где есть
+ * отказ, и звать таблицу с `ok` неоткуда — причина известна до строки.
+ *
+ * `locked` называет ур. 2 числом, потому что это единственный `unlockHq`
+ * выше единицы во всём списке зданий. Появится второй — число уйдёт отсюда
+ * к зданию.
+ */
+export const UPGRADE_REASON: Record<Exclude<UpgradeBlock, 'ok'>, string> = {
+  max: 'Максимальный уровень',
+  locked: 'Нужно Жильё ур. 2',
+  'hq-cap': 'Жильё не пускает выше',
+  'slot-busy': 'Слот занят другой стройкой',
+  resources: 'Не хватает ресурсов',
+};
+
 export function startUpgrade(camp: CampState, id: BuildingId, now: number): boolean {
   if (upgradeBlock(camp, id) !== 'ok') return false;
   const toLevel = camp.levels[id] + 1;
@@ -417,6 +437,14 @@ export function gearBlock(camp: CampState, slot: GearSlot): GearBlock {
   if (!canAfford(camp.resources, GEAR_COST[next] ?? {})) return 'resources';
   return 'ok';
 }
+
+/** Слова причины ковки — рядом с причиной (§23.3). */
+export const GEAR_REASON: Record<Exclude<GearBlock, 'ok'>, string> = {
+  'no-forge': 'Нужна Мастерская',
+  max: 'Лучше не бывает',
+  'forge-cap': 'Мастерская не тянет выше',
+  resources: 'Не хватает железа',
+};
 
 /**
  * Ковка и улучшение — одно действие: пустой слот получает ур. 1, занятый

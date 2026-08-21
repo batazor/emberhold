@@ -35,24 +35,28 @@ const ROOT = new URL('../..', import.meta.url).pathname;
  * до конца кадра, отказ отвечает на жест, событие сообщает о случившемся,
  * диалог — речь человека, а не игры.
  *
+ * `заметка` — строка под карточками стройки. Она не полоса: живёт, пока
+ * открыта панель, и говорит то цену мазка, то отказ. Поэтому у неё свой
+ * канал, а не общий с событиями: мерить её длину полосой было бы неверно.
+ *
  * `состояние` каналом не является: это подпись в панели, а не строка полосы.
  * Числится здесь затем, что таблица с таким именем существует, и правило
  * «новых таблиц не завелось» обязано её знать.
  */
-type Channel = 'подсказка' | 'отказ' | 'событие' | 'диалог' | 'состояние';
+type Channel = 'подсказка' | 'отказ' | 'событие' | 'заметка' | 'диалог' | 'состояние';
 
 /** Таблицы строк, известные поимённо. Ключ — имя, значение — канал. */
 const TABLES: Readonly<Record<string, Channel>> = {
   ONB_HINT: 'подсказка',
   PITCH_HINT: 'подсказка',
-  CHOP_DENY: 'отказ',
-  MINE_DENY: 'отказ',
-  BLOCK_REASON: 'отказ',
+  UPGRADE_REASON: 'отказ',
   GEAR_REASON: 'отказ',
   TRAIN_REASON: 'отказ',
-  BLOCK_TEXT: 'отказ',
-  GEAR_BLOCK_TEXT: 'отказ',
-  TRAIN_TEXT: 'отказ',
+  RAID_REASON: 'отказ',
+  BUY_REASON: 'отказ',
+  CHOP_REASON: 'отказ',
+  MINE_REASON: 'отказ',
+  WALL_REASON: 'отказ',
   TENT_REASON: 'отказ',
   ENTRY_REASON: 'отказ',
   STATUS_TEXT: 'состояние',
@@ -65,6 +69,7 @@ const CALLS: Readonly<Record<string, Channel>> = {
   notify: 'событие',
   'events.push': 'событие',
   setReason: 'событие',
+  setNote: 'заметка',
 };
 
 /** Речь человека берётся из панели знакомства и только оттуда. */
@@ -151,8 +156,12 @@ const found = new Set<string>();
 for (const [file, code] of sources) {
   const line = (index: number): string => `${file}:${code.slice(0, index).split('\n').length}`;
 
-  // Таблицы: `const NAME... = { ключ: 'строка', ... };`
-  for (const m of code.matchAll(/(?:^|\n)(?:export )?const ([A-Z][A-Z_]*)[^=\n]*=\s*\{\n([\s\S]*?)\n\};/g)) {
+  // Таблицы: `const NAME... = {` со строкой на каждой своей строке. Скобка
+  // обязана открываться в конце строки, а закрываться — в начале: иначе
+  // однострочный `const TENT_COST = { wood: 5 };` съедает следующую таблицу
+  // целиком, а `} as const;` у соседа — эту. Оба раза правило про размеры
+  // каналов ловило это первым.
+  for (const m of code.matchAll(/(?:^|\n)(?:export )?const ([A-Z][A-Z_]*)[^=\n]*=\s*\{\n([\s\S]*?)\n\}[^\n]*;/g)) {
     const name = m[1]!;
     if (!/(REASON|DENY|HINT|TEXT)$/.test(name)) continue;
     found.add(name);
@@ -227,30 +236,6 @@ function census(channel: Channel): Record<Person, number> {
 
 /* ---------- замеры, записанные на 2026-08-21 ---------- */
 
-/**
- * Пары «одна причина — две таблицы». Слева строка, которую полоса приклеивает
- * после двоеточия, справа — подпись той же причины в панели. Пока таблиц две,
- * слова обязаны совпадать: игрок видит один и тот же отказ.
- */
-const TWINS: readonly (readonly [string, string])[] = [
-  ['BLOCK_REASON', 'BLOCK_TEXT'],
-  ['GEAR_REASON', 'GEAR_BLOCK_TEXT'],
-  ['TRAIN_REASON', 'TRAIN_TEXT'],
-];
-
-/** Причины, у которых близнецы разошлись словами. Список — замер, а не норма. */
-const DIVERGED: readonly string[] = [
-  'BLOCK_REASON/BLOCK_TEXT hq-cap: «выше Жилья нельзя» ≠ «Жильё не пускает выше»',
-  'TRAIN_REASON/TRAIN_TEXT cap: «потолок — на два уровня ниже лучшего» ≠ «потолок — на два ниже лучшего»',
-];
-
-/**
- * Таблицы отказов, где у ключа `ok` лежит текст. Отказа при `ok` нет,
- * и строка там — это слова на случай, которого не бывает: `CHOP_DENY`
- * и `MINE_DENY` держат в этом ключе пустоту, а эти две — «не вышло».
- */
-const SPEAKS_WITHOUT_REFUSAL: readonly string[] = ['BLOCK_REASON: не вышло', 'GEAR_REASON: не вышло'];
-
 /** Подсказки, которые не приказывают, а называют, чего в мире нет. */
 const HINTS_WITHOUT_ORDER: readonly string[] = [
   'Теперь костёр',
@@ -267,13 +252,14 @@ const EVENTS_WITH_ORDER: readonly string[] = [
 ];
 
 /** Сколько строк в каком канале. Падение числа — повод посмотреть, не протух ли разбор. */
-const SIZES: Readonly<Record<string, number>> = { подсказка: 11, отказ: 39, событие: 39, диалог: 5 };
+const SIZES: Readonly<Record<string, number>> = { подсказка: 11, отказ: 40, событие: 37, заметка: 2, диалог: 5 };
 
 /** Обращения по каналам. Здесь весь треугольник виден разом. */
 const CENSUS: Readonly<Record<string, Record<Person, number>>> = {
   подсказка: { вы: 7, ты: 0, я: 0, никто: 4 },
-  отказ: { вы: 0, ты: 0, я: 0, никто: 39 },
-  событие: { вы: 4, ты: 0, я: 1, никто: 34 },
+  отказ: { вы: 0, ты: 0, я: 0, никто: 40 },
+  событие: { вы: 4, ты: 0, я: 0, никто: 33 },
+  заметка: { вы: 0, ты: 0, я: 0, никто: 2 },
   диалог: { вы: 1, ты: 3, я: 1, никто: 0 },
 };
 
@@ -309,7 +295,7 @@ describe('Голос игры', () => {
     // Единственное из трёх лиц, которое проект уже выбрал делом: интерфейс
     // обращается на «вы», а на «ты» зовёт поселенец в знакомстве — потому
     // что это его речь, а не голос игры.
-    const slips = inChannel('подсказка', 'отказ', 'событие')
+    const slips = inChannel('подсказка', 'отказ', 'событие', 'заметка')
       .filter((l) => person(l.text) === 'ты')
       .map((l) => `${l.where} ${l.text}`);
     assert.deepEqual(slips, [], 'интерфейс заговорил на «ты»');
@@ -325,29 +311,24 @@ describe('Голос игры', () => {
     }
   });
 
-  test('замер: одна причина — две таблицы и разные слова', () => {
-    const same = (text: string): string => text.toLowerCase().replaceAll('ё', 'е');
-    const diverged: string[] = [];
-    for (const [left, right] of TWINS) {
-      const byKey = (from: string): Map<string, string> =>
-        new Map(corpus.filter((l) => l.from === from && l.key).map((l) => [l.key!, l.text]));
-      const a = byKey(left);
-      const b = byKey(right);
-      for (const [key, text] of a) {
-        const twin = b.get(key);
-        if (twin !== undefined && same(text) !== same(twin)) {
-          diverged.push(`${left}/${right} ${key}: «${text}» ≠ «${twin}»`);
-        }
-      }
-    }
-    assert.deepEqual(diverged, DIVERGED, 'близнецы разошлись не так, как записано');
+  test('причина и её слова живут в одном файле', () => {
+    // §23.3. Панель и полоса берут одну строку из одного места; вторая
+    // таблица заводится ровно тогда, когда слова уезжают от причины,
+    // и разъезжаются они потом молча — так «Жильё не пускает выше»
+    // разошлось с «выше Жилья нельзя».
+    const orphans = [...new Set(inChannel('отказ').map((l) => `${l.from} ${l.where.split(':')[0]}`))]
+      .filter((entry) => {
+        const file = entry.split(' ')[1]!;
+        return !/(?:type|function) \w*Block\b/.test(sources.get(file) ?? '');
+      });
+    assert.deepEqual(orphans, [], 'таблица причин живёт отдельно от своей `*Block`-функции');
   });
 
-  test('замер: отказ говорит там, где отказа нет', () => {
-    const speaking = corpus
-      .filter((l) => l.key === 'ok' && l.text !== '')
-      .map((l) => `${l.from}: ${l.text}`);
-    assert.deepEqual(speaking, SPEAKS_WITHOUT_REFUSAL, 'изменился список строк при `ok`');
+  test('строка отказа существует только там, где есть отказ', () => {
+    // §23.3. `ok` — это «отказа нет», и слова под него означают объяснение
+    // случая, которого не бывает: так в игре жило «не вышло».
+    const speaking = corpus.filter((l) => l.key === 'ok').map((l) => `${l.from}: ${l.text}`);
+    assert.deepEqual(speaking, [], 'у причины `ok` завелись слова');
   });
 
   test('замер: подсказка приказывает, событие рассказывает — но не всегда', () => {
