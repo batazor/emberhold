@@ -134,6 +134,8 @@ export class CampHud {
   private readonly gearSection: HTMLElement;
   private readonly moveButton: HTMLButtonElement;
   private readonly bar: HTMLElement;
+  /** Полоса ресурсов: верхний край экрана, занятый панелью. */
+  private readonly res: HTMLElement;
   private slots!: HTMLElement;
   private quiver!: HTMLButtonElement;
   private offhand!: HTMLElement;
@@ -161,6 +163,7 @@ export class CampHud {
     this.root.id = 'camp';
 
     const res = document.createElement('div');
+    this.res = res;
     res.className = 'panel res';
     for (const kind of RESOURCE_ORDER) {
       const item = document.createElement('span');
@@ -457,6 +460,26 @@ export class CampHud {
   }
 
   /* ---------- обновление ---------- */
+
+  /**
+   * Сколько экрана занято панелью сверху и снизу, в пикселях. Середина
+   * между ними принадлежит сцене (`camp-space`), и всё, что встаёт поверх
+   * лагеря, обязано умещаться туда, а не на кнопки.
+   *
+   * Считается по живым прямоугольникам, а не по константам вёрстки: высота
+   * полосы зависит от безопасной зоны телефона, от строки задания и от того,
+   * говорит ли сейчас баннер. Константа разошлась бы с вёрсткой молча.
+   */
+  bands(): { top: number; bottom: number } {
+    const low = [this.res, this.banner, this.task]
+      .filter((el) => el.offsetParent !== null)
+      .reduce((y, el) => Math.max(y, el.getBoundingClientRect().bottom), 0);
+    const bar = this.bar.getBoundingClientRect();
+    return {
+      top: Math.round(low),
+      bottom: Math.round(Math.max(0, window.innerHeight - bar.top)),
+    };
+  }
 
   sync(camp: CampState, now: number, dt: number): void {
     for (const kind of RESOURCE_ORDER) {

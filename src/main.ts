@@ -171,6 +171,8 @@ import { mulberry32 } from './core/rng';
 import { DraftScreen } from './ui/draftScreen';
 import { StartScreen } from './ui/startScreen';
 import { installBench } from './features/bench';
+import { installFan } from './features/fan';
+import type { FanPerson } from './features/fan';
 import { bindCampInput } from './features/campInput';
 import { createDirector } from './features/onboarding';
 import { MeetPanel } from './ui/meetPanel';
@@ -2495,6 +2497,74 @@ if (debugGrave !== null) {
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
+}
+
+/**
+ * `?веер` — дуга аватаров под большой палец (`features/fan`).
+ *
+ * Сцена заведена под один вопрос: со скольких человек контрол перестаёт
+ * помещаться под палец. Отряд — это трое (§11.8), и трое влезают куда угодно;
+ * веер обсуждался как способ брать разом **всех** людей лагеря, а жильцов
+ * (`residents.ts`) бывает десятки. Ёмкость дуги сцена считает, промахи мерит
+ * упражнением, досягаемость обводится пальцем — назначать её числом
+ * из статьи было бы ответом без замера.
+ *
+ * Люди подаются игрой, а не выдумываются фичой: сперва отряд, потом жильцы
+ * лагеря, и лишь дальше выдуманные гости — чтобы длина и вид подписей были
+ * теми же, что в игре. Имена в пуле не бесконечны, поэтому повтор получает
+ * номер: два «Гиты» на дуге сделали бы задание упражнения двусмысленным.
+ */
+if (debugParams.has('веер')) {
+  // За веером стоит лагерь, а не заставка: размер слота и длина подписи
+  // читаются только на настоящем кадре. Сам веер экран забирает — промах
+  // по контролу обязан быть промахом по контролу, а не попаданием в лагерь.
+  toCamp();
+  const guests = (n: number): FanPerson[] => {
+    const out: FanPerson[] = [];
+    for (let i = 0; i < n; i++) {
+      const seed = 1000 + i * 7;
+      const s = generateSettler(seed);
+      out.push({ name: s.name, kind: 'жилец', look: s.look, seed, state: s.look, asking: false });
+    }
+    return out;
+  };
+  installFan({
+    // Полосы игры веер спрашивает у самой панели: высота нижней строки
+    // зависит от безопасной зоны телефона, и списать её числом значило бы
+    // разойтись с вёрсткой на первом же аппарате.
+    reserve: () => campHud.bands(),
+    people: (n: number) => {
+      const all: FanPerson[] = [
+        ...roster.heroes.map((h) => ({
+          name: HERO_CLASSES[h.cls].name,
+          kind: 'герой' as const,
+          look: h.cls,
+          seed: h.id,
+          state: h.status,
+          asking: false,
+        })),
+        ...camp.residents.map((r, i) => ({
+          name: r.name,
+          kind: 'жилец' as const,
+          look: r.look,
+          seed: 100 + i,
+          state: r.answer,
+          asking: false,
+        })),
+        ...guests(n),
+      ].slice(0, n);
+      // Метка «вопрос» здесь расставлена узором, и это честнее, чем кажется:
+      // заполнить её пока нечем — отряд ходит целиком (§11.8), а у жильца
+      // состояний, кроме крыши, нет вовсе. Сцена проверяет не «кто спросил»,
+      // а видно ли пятно на дуге и не сливается ли оно с соседним слотом.
+      const seen = new Map<string, number>();
+      return all.map((p, i) => {
+        const n2 = (seen.get(p.name) ?? 0) + 1;
+        seen.set(p.name, n2);
+        return { ...p, name: n2 === 1 ? p.name : `${p.name} ${n2}`, asking: i % 3 === 1 };
+      });
+    },
+  });
 }
 
 if (debugParams.has('bench')) {
