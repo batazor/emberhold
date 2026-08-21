@@ -289,7 +289,7 @@
   <p class="note" id="ualSpeedNote"></p>
   <table id="rtSpeeds"><thead><tr>
     <th>Цикл после ретаргета</th><th class="num">Тайла/с на нашем риге</th>
-    <th class="num">У источника</th><th class="num">Расхождение</th>
+    <th class="num">У источника</th><th class="num">Темп к 1,67</th>
   </tr></thead><tbody></tbody></table>
   <p class="note" id="rtNote"></p>
   <div class="guard">
@@ -1192,18 +1192,21 @@ try{
     const rows = ual.retarget.clips.filter((c) => c.slide >= ual.still && c.loop <= ual.open);
     for(const c of rows){
       const original = byName.get(c.name);
+      // Ретаргет живёт в единицах Rig_Medium — к тайлам его приводит масштаб
+      // KayKit, а не масштаб манекена UAL: ноги стали короче вместе с ригом.
+      const speed = c.slide * ual.retarget.scale;
       const was = original === undefined ? 0 : original.slide * ual.scale;
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td class="mono">' + c.name + '</td><td class="num">' + num(c.slide) +
-        '</td><td class="num">' + num(was) + '</td><td class="num">' +
-        (was > 0 ? Math.round((c.slide - was) / was * 100) + '%' : '—') + '</td>';
+      tr.innerHTML = '<td class="mono">' + c.name + '</td><td class="num">' + num(speed) +
+        '</td><td class="num">' + num(was) + '</td><td class="num">×' +
+        num(ual.heroSpeed / speed) + '</td>';
       rt.appendChild(tr);
     }
     const rtClips = ual.retarget.clips;
     const kb = Math.round(rtClips.reduce((s, c) => s + c.bytes, 0) / 1024 / rtClips.length);
     document.getElementById('rtNote').textContent =
       'Rig_Medium_UAL.glb: ' + clipsOf(rtClips.length) + ' на 23 костях, ' + kb +
-      ' КБ дорожек на клип. Скорости — без пересчёта: риг уже в масштабе игры. ' +
+      ' КБ дорожек на клип. Чиби-ноги короче: бег источника 1,79 тайла/с на нашем риге даёт 0,86 — темп ×1,94 против ×3,88 у прежней ходьбы KayKit. ' +
       'Петель, разомкнувшихся при переносе, нет; корень не сдвинул ни один клип.';
   }
 

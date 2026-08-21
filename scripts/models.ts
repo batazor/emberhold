@@ -303,7 +303,12 @@ const RIG = {
   prefix: 'RIG',
   clips: [
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', as: 'покой' },
-    { file: 'assets/kaykit-animations/gltf/Rig_Medium_MovementBasic.glb', clip: 'Walking_A', as: 'ходьба' },
+    // Ход — из UAL, пересаженного на наш риг (scripts/retarget_ual.py):
+    // Walking_A из KayKit давал 0,43 тайла/с и требовал темпа ×3,88 при
+    // потолке ×3 — ноги ехали на четверть скорости. Jog_Fwd_Loop даёт
+    // 0,86 тайла/с (npm run ual): темп ×1,94, в потолок укладывается,
+    // и герой наконец бежит, а не семенит ускоренным шагом.
+    { file: 'assets/quaternius-ual/gltf/Rig_Medium_UAL.glb', clip: 'Jog_Fwd_Loop', as: 'ходьба' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_CombatMelee.glb', clip: 'Melee_1H_Attack_Chop', as: 'удар' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Hit_A', as: 'урон' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Death_A', as: 'падение' },
