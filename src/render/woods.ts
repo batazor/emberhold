@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { forestGeometry } from './forest';
 import type { ForestModelName } from './forest';
 import { graveyardGeometry } from './graveyard';
@@ -60,3 +60,30 @@ export const STUMP: Tree = grave('trunk');
 
 /** Высота пенька в клетках локации: герою чуть выше колена. */
 export const STUMP_HEIGHT = 0.42;
+
+/** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка.
+ *  Общий у вылазки и лагеря — лес обязан совпадать сам с собой между сценами. */
+export const cellHash = (a: number, b: number, mod: number): number =>
+  Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
+
+/**
+ * Матрица дерева (или валуна кромки) на клетке. Всё выведено из координаты —
+ * тот же приём, что у выбора модели: лес обязан совпадать сам с собой между
+ * заходами и сценами. Лагерь стоит на той же поляне, где герой ходил в
+ * прологе (§16.1), и его лес — буквально тот же лес: клетка в клетку,
+ * поворот в поворот. `turn` сдвигает вывод для дерева, вставшего на место
+ * срубленного на кромке: рубят там вечно, и стоять на месте упавшего
+ * обязан не он сам.
+ */
+export function treeStand(x: number, z: number, tree: boolean, turn: number): THREE.Matrix4 {
+  const dummy = new THREE.Object3D();
+  const t = ((Math.sin(x * 3.1 + z * 7.7 + turn * 2.3) * 1000) % 1 + 1) % 1;
+  // Дерево ростом с камень читалось бы кустом: тот же размах,
+  // что у леса вокруг лагеря, иначе это два разных леса.
+  const s = tree ? 1.9 + t * 1.1 : 0.85 + t * 0.55;
+  dummy.position.set(x + (t - 0.5) * 0.22, tree ? -0.05 : -0.12, z + (t - 0.5) * 0.18);
+  dummy.rotation.set(0, t * 6.28, 0);
+  dummy.scale.set(s, s * (tree ? 0.9 + t * 0.25 : 0.8 + t * 0.5), s);
+  dummy.updateMatrix();
+  return dummy.matrix.clone();
+}

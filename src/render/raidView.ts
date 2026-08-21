@@ -48,7 +48,7 @@ import type { EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
 import { forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
-import { STUMP, STUMP_HEIGHT, WOODS, treeGeometry, type Tree } from './woods';
+import { STUMP, STUMP_HEIGHT, WOODS, cellHash, treeGeometry, treeStand, type Tree } from './woods';
 import type { Gust } from './cursorWind';
 import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
 import { Grass, tileNoise } from './grass';
@@ -212,9 +212,6 @@ const SHAKE_SECONDS = 0.32;
  */
 const FALL_SECONDS = 0.9;
 
-/** Выбор варианта от координаты: без RNG, чтобы вид не зависел от порядка. */
-const hash = (a: number, b: number, mod: number): number =>
-  Math.floor(((((Math.sin(a + b) * 43758.5453) % 1) + 1) % 1) * mod) % mod;
 
 interface EnemyView {
   /**
@@ -556,7 +553,7 @@ export class RaidView {
         const at = idx(size, x, z);
         if (!blocked[at]) continue;
         if (wood !== null && !wood.has(at)) continue;
-        cells[hash(x * 5.1, z * 9.3, models.length)]!.push(x, z);
+        cells[cellHash(x * 5.1, z * 9.3, models.length)]!.push(x, z);
       }
     }
 
@@ -571,7 +568,7 @@ export class RaidView {
       for (let i = 0; i < list.length; i += 2) {
         const x = list[i]!;
         const z = list[i + 1]!;
-        const at = RaidView.standAt(x, z, tree, 0);
+        const at = treeStand(x, z, tree, 0);
         mesh.setMatrixAt(i / 2, at);
         // Дерево, которое можно срубить, обязано быть найдено по клетке:
         // симуляция говорит «клетка освободилась», а рендеру надо знать,
@@ -584,25 +581,7 @@ export class RaidView {
 
   /* ---------- вырубка (§13.3) ---------- */
 
-  /**
-   * Матрица дерева на клетке. Всё в ней выведено из координаты — тот же
-   * приём, что у выбора модели: лес обязан совпадать сам с собой между
-   * заходами. `turn` сдвигает вывод для дерева, вставшего на место
-   * срубленного на кромке: рубят там вечно, и стоять на месте упавшего
-   * обязан не он сам.
-   */
-  private static standAt(x: number, z: number, tree: boolean, turn: number): THREE.Matrix4 {
-    const dummy = new THREE.Object3D();
-    const t = ((Math.sin(x * 3.1 + z * 7.7 + turn * 2.3) * 1000) % 1 + 1) % 1;
-    // Дерево ростом с камень читалось бы кустом: тот же размах,
-    // что у леса вокруг лагеря, иначе это два разных леса.
-    const s = tree ? 1.9 + t * 1.1 : 0.85 + t * 0.55;
-    dummy.position.set(x + (t - 0.5) * 0.22, tree ? -0.05 : -0.12, z + (t - 0.5) * 0.18);
-    dummy.rotation.set(0, t * 6.28, 0);
-    dummy.scale.set(s, s * (tree ? 0.9 + t * 0.25 : 0.8 + t * 0.5), s);
-    dummy.updateMatrix();
-    return dummy.matrix.clone();
-  }
+  /* Матрица дерева на клетке — общая с лагерем: `treeStand` (woods.ts). */
 
   /** Поставить дереву матрицу и сказать three, что буфер поменялся. */
   private static put(mesh: THREE.InstancedMesh, at: number, m: THREE.Matrix4): void {
@@ -712,7 +691,7 @@ export class RaidView {
         continue;
       }
       const next = t + dt;
-      const base = RaidView.standAt(key % this.loc.size, (key / this.loc.size) | 0, true, tree.turn);
+      const base = treeStand(key % this.loc.size, (key / this.loc.size) | 0, true, tree.turn);
       if (next >= SHAKE_SECONDS) {
         this.shaken.delete(key);
         RaidView.put(tree.mesh, tree.at, base);
@@ -737,7 +716,7 @@ export class RaidView {
       const share = Math.min(1, fall.t / FALL_SECONDS);
       if (share < 1) {
         // Ускорение к земле: ствол трогается медленно и обрушивается в конце.
-        const base = RaidView.standAt(x, z, true, tree.turn);
+        const base = treeStand(x, z, true, tree.turn);
         const angle = (Math.PI / 2) * share * share;
         RaidView.put(tree.mesh, tree.at, base.multiply(new THREE.Matrix4().makeRotationX(angle)));
         continue;
@@ -746,7 +725,7 @@ export class RaidView {
       if (fall.regrow) {
         const turn = tree.turn + 1;
         this.trees.set(fall.key, { ...tree, turn });
-        RaidView.put(tree.mesh, tree.at, RaidView.standAt(x, z, true, turn));
+        RaidView.put(tree.mesh, tree.at, treeStand(x, z, true, turn));
       } else {
         this.trees.delete(fall.key);
         RaidView.put(tree.mesh, tree.at, new THREE.Matrix4().makeScale(0, 0, 0));
@@ -1052,7 +1031,7 @@ export class RaidView {
       tree: boolean,
     ): void => {
       const buckets: { x: number; z: number }[][] = models.map(() => []);
-      for (const s of list) buckets[hash(s.x * 5.1, s.z * 9.3, models.length)]!.push(s);
+      for (const s of list) buckets[cellHash(s.x * 5.1, s.z * 9.3, models.length)]!.push(s);
       for (let v = 0; v < models.length; v++) {
         const bucket = buckets[v]!;
         if (bucket.length === 0) continue;
@@ -1061,7 +1040,7 @@ export class RaidView {
         mesh.receiveShadow = true;
         for (let i = 0; i < bucket.length; i++) {
           const s = bucket[i]!;
-          mesh.setMatrixAt(i, RaidView.standAt(s.x, s.z, tree, 0));
+          mesh.setMatrixAt(i, treeStand(s.x, s.z, tree, 0));
         }
         this.group.add(mesh);
       }

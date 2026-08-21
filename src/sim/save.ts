@@ -44,6 +44,8 @@ interface SaveV1 {
   /** Якорь площадки на поляне (§16.1). Необязателен: сейв до якоря
    *  открывается, его лагерь стоит в нулевом. */
   origin?: { x: number; z: number };
+  /** Поляна пролога (§16.1). Необязательна: сейв без неё рисует лес-кольцо. */
+  glade?: { size: number; cells: string };
   loadout?: CampState['loadout'];
   raids: number;
   /**
@@ -126,6 +128,7 @@ export function save(
     layout: camp.layout,
     // exactOptionalPropertyTypes: у лагеря без якоря ключа нет вовсе.
     ...(camp.origin !== undefined ? { origin: camp.origin } : {}),
+    ...(camp.glade !== undefined ? { glade: camp.glade } : {}),
     resources: camp.resources,
     construction: camp.construction,
     loadout: camp.loadout,
@@ -211,6 +214,10 @@ export function load(): LoadResult {
     const o = data.origin;
     if (o !== undefined && typeof o.x === 'number' && typeof o.z === 'number') {
       camp.origin = { x: o.x, z: o.z };
+    }
+    const g = data.glade;
+    if (g !== undefined && typeof g.size === 'number' && typeof g.cells === 'string') {
+      camp.glade = { size: g.size, cells: g.cells };
     }
 
     const area = campArea(camp.levels.hq);

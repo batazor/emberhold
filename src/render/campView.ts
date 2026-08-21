@@ -6,11 +6,12 @@ import { CAMP_SPEED } from '../sim/campWalk';
 import type { HeroClassId } from '../sim/heroes';
 import { Fire } from './fire';
 import { BUILDING_ORDER, builtBuildings, campArea, campOrigin } from '../sim/camp';
+import { unpackGlade } from '../sim/prologue';
 import type { BuildingId, CampState } from '../sim/camp';
 import type { Gust } from './cursorWind';
 import { FluffyGrass } from './fluffyGrass';
 import { forestMaterial } from './forest';
-import { WOODS, forest as forestTree, treeGeometry, type Tree } from './woods';
+import { WOODS, cellHash, forest as forestTree, treeGeometry, treeStand, type Tree } from './woods';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { fenceGeometry, graveyardMaterial } from './graveyard';
 import type { GraveyardPartModelName } from './graveyard';
@@ -193,6 +194,11 @@ export class CampView {
   private buildForest(area: number): void {
     for (const child of [...this.forest.children]) child.removeFromParent();
     this.forestMat ??= this.track(forestMaterial());
+    if (this.camp.glade !== undefined) {
+      this.buildGladeForest(area, this.camp.glade);
+      return;
+    }
+    this.forest.position.set(0, 0, 0);
 
     const models: readonly Tree[] = [...CAMP_TREES, ...CAMP_ROCKS];
     const spots: number[][] = models.map(() => []);
@@ -232,6 +238,48 @@ export class CampView {
         dummy.scale.set(size * (0.9 + n * 0.2), size, size * (0.9 + n * 0.2));
         dummy.updateMatrix();
         mesh.setMatrixAt(i / 2, dummy.matrix);
+      }
+      this.forest.add(mesh);
+    }
+  }
+
+  /**
+   * Лес поляны (§16.1). Лагерь стоит там, где герой ходил в прологе, и его
+   * лес — буквально тот же: клетка в клетку, модель в модель, поворот
+   * в поворот (`treeStand` и `cellHash` — общие с вылазкой). Срубленное
+   * в прологе срублено и здесь: снимок поляны едет в сейв вместе с лагерем.
+   * Чисто только под площадью и зазором — лес отступает перед выросшим
+   * Жильём (§20.4), как отступал бы и кольцевой.
+   */
+  private buildGladeForest(area: number, glade: { size: number; cells: string }): void {
+    const o = campOrigin(this.camp);
+    // Матрица дерева выведена из его клетки поляны, а группа лагеря стоит
+    // на якоре: лес возвращается в клетки поляны сдвигом группы, а не
+    // пересчётом каждой матрицы.
+    this.forest.position.set(-o.x, 0, -o.z);
+    const mat = this.forestMat ?? this.track(forestMaterial());
+    this.forestMat = mat;
+    const blocked = unpackGlade(glade);
+    const spots: number[][] = WOODS.map(() => []);
+    for (let z = 0; z < glade.size; z++) {
+      for (let x = 0; x < glade.size; x++) {
+        if (!blocked[z * glade.size + x]) continue;
+        const lx = x - o.x;
+        const lz = z - o.z;
+        const clear =
+          lx >= -FOREST_GAP && lz >= -FOREST_GAP && lx < area + FOREST_GAP && lz < area + FOREST_GAP;
+        if (clear) continue;
+        spots[cellHash(x * 5.1, z * 9.3, WOODS.length)]!.push(x, z);
+      }
+    }
+    for (let m = 0; m < WOODS.length; m++) {
+      const list = spots[m]!;
+      if (list.length === 0) continue;
+      const mesh = new THREE.InstancedMesh(treeGeometry(WOODS[m]!, 1), mat, list.length / 2);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i += 2) {
+        mesh.setMatrixAt(i / 2, treeStand(list[i]!, list[i + 1]!, true, 0));
       }
       this.forest.add(mesh);
     }
