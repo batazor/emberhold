@@ -26,7 +26,7 @@
  *   npm run ual            — отчёт: совместимость, категории, скорости, петли
  *   npm run ual -- --write — переписать assets/quaternius-ual/catalog.json
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HERO_SPEED } from '../src/sim/config';
@@ -299,20 +299,32 @@ const measureRetarget = (): Retargeted[] | undefined => {
     });
 };
 
+/**
+ * Масштаб нашего рига к игре — из каталога KayKit, а не отсюда: ретаргетнутый
+ * клип живёт в единицах Rig_Medium (манекен ростом 2,2), и его скорость
+ * приводится к тайлам тем же множителем, что у клипов KayKit. Первая версия
+ * обмера подписала сырые единицы как «тайла/с» — и совпала с источником
+ * случайно, потому что множители 0,5 и 0,607 разошлись как раз на укорочение
+ * чиби-ног. Урок в артбуке: сравнивать можно только приведённые метры.
+ */
+const kay = JSON.parse(
+  readFileSync(join(ROOT, 'assets/kaykit-animations/catalog.json'), 'utf8'),
+) as { scale: number };
+
 const retargeted = measureRetarget();
 if (retargeted === undefined) {
   console.log('\nретаргет: файла нет — scripts/retarget_ual.py его ещё не собирал');
 } else {
   const byName = new Map(clips.map((c) => [c.name, c]));
-  console.log('циклы хода на нашем риге (тайла/с — без пересчёта, риг в масштабе игры):');
-  console.log('клип                       длит.  тайл/с  у источника  расхождение');
+  console.log(`циклы хода на нашем риге (тайла/с — через масштаб KayKit ×${kay.scale}):`);
+  console.log('клип                       длит.  тайл/с  у источника  темп к 1,67');
   for (const c of retargeted.filter((c) => c.slide >= STILL && c.loop <= OPEN)) {
     const original = byName.get(c.name);
+    const speed = c.slide * kay.scale;
     const was = original === undefined ? 0 : original.slide * scale;
-    const diff = was === 0 ? 0 : (c.slide - was) / was;
     console.log(
-      `${c.name.padEnd(25)} ${c.duration.toFixed(2).padStart(6)} ${c.slide.toFixed(2).padStart(7)}` +
-        ` ${was.toFixed(2).padStart(12)} ${(diff * 100).toFixed(0).padStart(10)}%`,
+      `${c.name.padEnd(25)} ${c.duration.toFixed(2).padStart(6)} ${speed.toFixed(2).padStart(7)}` +
+        ` ${was.toFixed(2).padStart(12)}  ×${(HERO_SPEED / speed).toFixed(2)}`,
     );
   }
   const brokenLoop = retargeted.filter((c) => {
@@ -355,7 +367,7 @@ if (!process.argv.includes('--write')) {
     retarget:
       retargeted === undefined
         ? undefined
-        : { file: RETARGET, clips: retargeted },
+        : { file: RETARGET, scale: kay.scale, clips: retargeted },
   };
   const out = join(PACK, 'catalog.json');
   writeFileSync(join(ROOT, out), JSON.stringify(catalog) + '\n', 'utf8');
