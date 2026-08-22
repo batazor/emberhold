@@ -344,6 +344,12 @@ export interface CampState {
   loadout: ConsumableId[];
   raids: number;
   /**
+   * §22.6б — заходы по ярусам: первые `SOFT_TIER_VISITS` ярус встречает
+   * телами уровнем ниже. Считаются только настоящие вылазки (с героем),
+   * как и `raids`; прогулки и кладбище яруса не взрослят.
+   */
+  tierRaids: Record<Tier, number>;
+  /**
    * Куда и когда ходил игрок (§4). Единственное, что мир хранит: всё
    * остальное — кланы, богатство, раскладка — выводится из сида и часов.
    */
@@ -456,6 +462,7 @@ export function createCamp(): CampState {
     arrows: bowQuiver(0),
     loadout: [],
     raids: 0,
+    tierRaids: { 0: 0, 1: 0, 2: 0, 3: 0 },
     visits: [],
     walls: emptyWalls(),
     stones: campStones(),

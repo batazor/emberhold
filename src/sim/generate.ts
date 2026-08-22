@@ -1,6 +1,6 @@
 import { mulberry32, randInt } from '../core/rng';
 import type { Rng } from '../core/rng';
-import { ENEMY_DEPTH_SHARE, GOLD_CHEST_CHANCE, TIER_ENEMY_LEVEL } from './balance';
+import { ENEMY_DEPTH_SHARE, GOLD_CHEST_CHANCE, tierEnemyLevel } from './balance';
 import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
 import { TIER_ROSTER, enemyStats } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
@@ -142,6 +142,12 @@ export function generateLocation(
    * то есть «врагов больше» значит «тех же больше», а не «пришли другие».
    */
   enemyMul = 1,
+  /**
+   * §22.6б — номер захода на ярус: первые `SOFT_TIER_VISITS` встречают тела
+   * уровнем ниже. По умолчанию бесконечность — полная сила: пролог, замеры
+   * и золотой мастер без счётчика считаются по зрелому ярусу.
+   */
+  visit = Infinity,
 ): GameLocation {
   const size = TIER_SIZE[tier];
   // Выход в углу: «путь назад» обязан расти вместе с глубиной захода,
@@ -339,8 +345,9 @@ export function generateLocation(
   const roster = TIER_ROSTER[tier];
   const count = Math.max(0, Math.round(roster.length * enemyMul));
   const scaled = Array.from({ length: count }, (_, i) => roster[i % roster.length]!);
-  // §22.6 — ярус задаёт уровень тел, статы уровня считает enemyStats.
-  const level = TIER_ENEMY_LEVEL[tier];
+  // §22.6 — ярус задаёт уровень тел, статы уровня считает enemyStats;
+  // первые заходы смягчены (§22.6б).
+  const level = tierEnemyLevel(tier, visit);
   scaled.forEach((kind, i) => {
     const stats = enemyStats(kind, level);
     // §15 — маг перекрывает маршрут, а не гонится. Значит его место

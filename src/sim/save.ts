@@ -15,6 +15,7 @@ import type { OnbStep } from './onboarding';
 import { emptyResources } from './resources';
 import { liveVisits } from './world';
 import type { ResourceKind } from './resources';
+import type { Tier } from './types';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -54,6 +55,10 @@ interface SaveV1 {
   wheelDay?: number;
   loadout?: CampState['loadout'];
   raids: number;
+  /** §22.6б — заходы по ярусам. Необязательное: старый сейв открывается
+   *  со свежими ярусами, и смягчённый вход повторяется один раз — это
+   *  дешевле, чем выводить зрелость из суммарного счётчика вслепую. */
+  tierRaids?: number[];
   /**
    * Стены лагеря (§6.1.6). Поле необязательное, версия сейва ради него
    * не поднята — тем же приёмом, что отряд и снаряжение: сейв, записанный
@@ -174,6 +179,7 @@ export function save(
     construction: camp.construction,
     loadout: camp.loadout,
     raids: camp.raids,
+    tierRaids: [0, 1, 2, 3].map((t) => camp.tierRaids[t as Tier]),
     gear: camp.gear,
     offhand: camp.offhand,
     arrows: camp.arrows,
@@ -292,6 +298,13 @@ export function load(): LoadResult {
     }
     camp.resources = res;
     if (typeof data.raids === 'number') camp.raids = data.raids;
+    // §22.6б — зрелость ярусов. Нет поля — ярусы свежие, вход снова мягкий.
+    if (Array.isArray(data.tierRaids)) {
+      for (const t of [0, 1, 2, 3] as const) {
+        const v = data.tierRaids[t];
+        if (typeof v === 'number' && v >= 0) camp.tierRaids[t] = Math.floor(v);
+      }
+    }
     if (Array.isArray(data.visits)) {
       camp.visits = data.visits
         .filter(

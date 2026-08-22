@@ -13,7 +13,7 @@
   "raidsPerSession": 20,
   "metrics": {
     "failRate": 0,
-    "avgDamageTaken": 5.8006,
+    "avgDamageTaken": 5.3506,
     "avgFights": 1.5625,
     "avgDepthShare": 0.7946,
     "buyOfferRate": 0.75,

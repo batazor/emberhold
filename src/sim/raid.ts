@@ -72,6 +72,12 @@ export interface RaidOptions {
    */
   readonly loadout?: HeroLoadout;
   /**
+   * §22.6б — номер захода на ярус (0 — первый): первые заходы встречают
+   * тела уровнем ниже. Необязателен: без него локация считается зрелой,
+   * как её меряли, — замеры и старые прогоны остаются сравнимы.
+   */
+  readonly visit?: number;
+  /**
    * §11.7 — кто ещё идёт. Ведущий задаётся `loadout`, эти встают следом.
    * Необязательно и по той же причине, что класс и снаряжение: без него
    * вылазка обязана считаться ровно так, как её измеряли при калибровке
@@ -169,7 +175,7 @@ export function createRaid(opts: RaidOptions): RaidState {
   // незачем знать про карты, ей нужны провиант, вместимость, обзор и ставка.
   const draft = effectOfCard(opts.draft ?? null);
   const loc =
-    opts.loc ?? generateLocation(opts.seed, opts.tier, (opts.lootMul ?? 1) * event.loot * draft.loot, event.enemies);
+    opts.loc ?? generateLocation(opts.seed, opts.tier, (opts.lootMul ?? 1) * event.loot * draft.loot, event.enemies, opts.visit);
   const loadout = opts.loadout ?? DEFAULT_LOADOUT;
   // Снаряжение сворачивается в числа один раз на входе: вылазке незачем
   // знать про слоты, ей нужны вместимость, раны и множители.
@@ -487,9 +493,9 @@ function springAmbush(state: RaidState, container: Container): void {
   }
   const nextId = loc.enemies.reduce((top, e) => Math.max(top, e.id), 0) + 1;
   spots.forEach((at, i) => {
-    // §22.6 — засада поднимается телами своего яруса: цена сундука растёт
-    // с глубиной вместе со всеми остальными.
-    const level = TIER_ENEMY_LEVEL[loc.tier];
+    // §22.6 — засада поднимается телами своего яруса, и уровнем локации:
+    // на смягчённом входе (§22.6б) сундук не должен быть жёстче яруса.
+    const level = loc.enemies[0]?.level ?? TIER_ENEMY_LEVEL[loc.tier];
     loc.enemies.push({
       id: nextId + i,
       kind: ambush.kind,

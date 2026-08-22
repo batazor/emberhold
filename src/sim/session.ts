@@ -118,6 +118,8 @@ export function playSession(seed: number): SessionResult {
    * противники; с их ростом он мерил бы встречу, которой в игре нет.
    */
   const hero = createHero(CLASS_ORDER[0]!, 0);
+  /** §22.6б — петля взрослит ярусы, как игра: смягчённый вход — её часть. */
+  const tierRaids: Record<Tier, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
 
   let now = 0;
   let watermark = 0;
@@ -155,6 +157,7 @@ export function playSession(seed: number): SessionResult {
         kitchenLevel: camp.levels.kitchen,
         storageLevel: camp.levels.storage,
         loadout: loadout(hero),
+        visit: tierRaids[tier],
         gear: camp.gear,
         offhand: camp.offhand,
         arrows: camp.arrows,
@@ -165,6 +168,7 @@ export function playSession(seed: number): SessionResult {
     );
     addXp(hero, raidXp(raid.carriedTotal, tier, raid.status === 'evacuated'));
     autoSpend(hero);
+    tierRaids[tier] += 1;
     // §21 — купленное ушло в вылазку и не возвращается: сгорает независимо
     // от того, пригодилось или нет. Копить нечего.
     camp.loadout = [];
