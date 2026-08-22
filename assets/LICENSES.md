@@ -37,6 +37,8 @@ NC-лицензии несовместимы с любой монетизаци�
 | `craftpix-props/Texture.png` — атлас набора, десять цветовых полос | там же | craftpix royalty-free | craftpix.net |
 | `villager-npc/glb/*.glb` — 5 моделей: кузнец с молотом, охотник с ножом, молот, нож, палка; конвертация из FBX набора Blender'ом: у жителей опущены руки из T-позы, предмет владельца запечён в кулак, риг набора (rigify) в GLB не переносился | [standout7.itch.io/villagernpc](https://standout7.itch.io/villagernpc), тариф FREE | CC0 1.0 | standout7 |
 | `villager-npc/Villagers_Texture.png` — атлас набора, сетка градиентных клеток | там же | CC0 1.0 | standout7 |
+| `quaternius-village/gltf/*.gltf`, `*.bin` — 176 моделей городской застройки: стены (штукатурка и кирпич), углы, крыши под пролёты 4/6/8 м, фронтоны, двери, окна, ставни, полы, трубы, лестницы, балконы, реквизит | [quaternius.itch.io/medieval-village-megakit](https://quaternius.itch.io/medieval-village-megakit), тариф Standard (бесплатный) | CC0 1.0 | Quaternius |
+| `quaternius-village/gltf/T_*_BaseColor.png`, `T_VineLeaf_png.png` — текстуры цвета; в бандл не едут, по ним замеряется цвет материала для слота палитры | там же | CC0 1.0 | Quaternius |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,

@@ -250,3 +250,22 @@ export const VILLAGER_SLOT_ORDER = [
 ] as const;
 
 export const VILLAGER_PALETTE = paletteOf(VILLAGER_SLOT_ORDER);
+
+/**
+ * Набор Medieval Village MegaKit (§6.1) — городская застройка, словарь
+ * генератора домов (`village.ts`). Восемь слотов и ни одного нового цвета:
+ * штукатурка легла в соль, кирпич — в соль-тень, цоколь — в скол,
+ * брус — в дерево, черепица — в дерево-тень (тот же тон, меньше насыщенность —
+ * то же решение, каким песочный замок ушёл в серый камень), ковка — в сталь,
+ * стекло — в стекло хижины, лоза — в мох.
+ * Порядок — тот же, что пишет `npm run models` в `village.data.ts`.
+ */
+export const VILLAGE_SLOT_ORDER = [
+  'скол', 'соль-тень', 'соль',
+  'дерево-тень', 'дерево',
+  'сталь',
+  'стекло',
+  'мох',
+] as const;
+
+export const VILLAGE_PALETTE = paletteOf(VILLAGE_SLOT_ORDER);

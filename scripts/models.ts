@@ -1395,8 +1395,131 @@ const VILLAGER: Pack = {
   adopted: [],
 };
 
+/** Категория застройки — по первым словам имени файла набора. */
+const VILLAGE_CATEGORY: readonly (readonly [string, string])[] = [
+  ['Roof_Front', 'Фронтоны'],
+  ['Roof', 'Крыши'],
+  ['Wall', 'Стены'],
+  ['Corner', 'Углы'],
+  ['DoorFrame', 'Двери'],
+  ['Door', 'Двери'],
+  ['WindowShutters', 'Окна'],
+  ['Window', 'Окна'],
+  ['Floor', 'Полы'],
+  ['Overhang', 'Свесы'],
+  ['Stairs', 'Лестницы'],
+  ['Stair', 'Лестницы'],
+  ['Balcony', 'Балконы'],
+  ['HoleCover', 'Проёмы'],
+  ['Prop_Chimney', 'Трубы'],
+];
+
+/**
+ * Материалы городской застройки → слоты палитры. Таблица объявляет только
+ * слот; цвет материала измеряется по его BaseColor-текстуре (см.
+ * `materialTableOf`), и почти каждый лёг в ближайшую ступень без спора:
+ * штукатурка #ae9d7e → «соль», брус #8a694c → «дерево», тёмный брус →
+ * «дерево-тень», металл #84828e → «сталь» (совпадение почти точное).
+ *
+ * Три исключения — решения, а не замеры, и потому записаны словами.
+ *
+ * Кирпич, неровный кирпич и каменный цоколь набор красит почти одним серым
+ * (#928474, #877865, #8f867b) и различает фактурой, которой плоское затенение
+ * не возит. Стенам отдана «соль-тень», цоколю и лестницам — «скол», ступень
+ * темнее: дом обязан читаться стоящим на камне, а не нарисованным одним тоном.
+ *
+ * Черепица #b1532f в палитру не ложится: ближе всего «дерево-тень» #8f4e33 —
+ * тот же тон, меньше насыщенность. Крыши уходят туда — это то же решение,
+ * каким песочный замок Kenney ушёл в серый камень (§6.1.6): ответ палитры,
+ * а не дефект набора. День, когда городу понадобится своя терракота, — день
+ * нового слота, с ревью §6.1, как у «стекла».
+ *
+ * Лоза — «мох»: цвет её задаёт зелёный factor поверх белого листа.
+ */
+const VILLAGE_MATERIALS: Record<string, string> = {
+  'MI_Plaster': 'соль',
+  // Обычный и потёртый брус набор красит одной картинкой и различает только
+  // картой износа, которую плоское затенение не возит: замер даёт им один
+  // цвет, и слот у них обязан быть один — иначе ключ-цвет решал бы молча.
+  'MI_WoodTrim': 'дерево',
+  'MI_WoodTrim_Wear': 'дерево',
+  'MI_Brick': 'соль-тень',
+  'MI_UnevenBrick': 'соль-тень',
+  'MI_RedBrick': 'дерево',
+  'MI_RockTrim': 'скол',
+  'MI_RoundTiles': 'дерево-тень',
+  'MI_MetalOrnaments': 'сталь',
+  'MI_WindowGlass': 'стекло',
+  'MI_Vine': 'мох',
+};
+
+/**
+ * Четырнадцатый набор — городская застройка Quaternius (Medieval Village
+ * MegaKit, тариф Standard, CC0). Первый набор, из которого игра **собирает
+ * дома генератором** (`src/render/village.ts`), а не берёт постройку куском:
+ * стена — клетка 2 м при этаже 3,12 м, крыши нарезаны под пролёты 4/6/8 м
+ * с шагом длины 2 м, и дом любого плана складывается из этого словаря.
+ *
+ * Цвет у набора лежит в текстурах, а не в атласе и не в factor — поэтому
+ * замер цвета материала здесь впервые идёт по картинке (среднее BaseColor,
+ * взвешенное прозрачностью). Дальше по конвейеру набор обычный: слот
+ * на треугольник, палитра одна на игру.
+ */
+const VILLAGE: Pack = {
+  id: 'village',
+  title: 'Medieval Village MegaKit Standard',
+  dir: 'assets/quaternius-village',
+  /** Атласа нет: цвет назван материалом, а измерен по его текстуре. */
+  atlas: '',
+  sources: ['gltf'],
+  materials: VILLAGE_MATERIALS,
+  /** Градиенты ничего не выводят — ступень названа материалом. */
+  ramps: [
+    { id: 'stone', title: 'камень', slots: ['скол', 'соль-тень', 'соль'], hue: [0, 360], sat: [0, 0.3] },
+    { id: 'wood', title: 'дерево', slots: ['дерево-тень', 'дерево'], hue: [330, 65], sat: [0.25, 1] },
+    { id: 'iron', title: 'железо', slots: ['сталь'], hue: [190, 60], sat: [0, 0.25] },
+    { id: 'glass', title: 'стекло', slots: ['стекло'], hue: [180, 230], sat: [0.2, 0.6] },
+    { id: 'moss', title: 'зелень', slots: ['мох'], hue: [65, 180], sat: [0.25, 1] },
+  ],
+  slots: [
+    'скол', 'соль-тень', 'соль',
+    'дерево-тень', 'дерево',
+    'сталь',
+    'стекло',
+    'мох',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  grey: 0,
+  categoryOf: (name) => VILLAGE_CATEGORY.find(([prefix]) => name.startsWith(prefix))?.[1] ?? 'Реквизит',
+  /**
+   * Словарь генератора домов (`village.ts`) и ничего сверх него: каждая
+   * лишняя модель — килобайты у всех игроков. Стены взяты одним видом проёма
+   * на вопрос (дверь круглая, окно широкое): варианты «Flat» — разнообразие,
+   * которого в кадре не видно. Тяжелее всего черепица — крыша нарезана
+   * набором под план, и шесть размеров закрывают пролёты 4 и 6 при глубинах
+   * до 10 м; пролёт 8 не взят — дома такой ширины городу пока не нужны.
+   */
+  adopted: [
+    // Стены в штукатурке: глухая, дверь, окно, фахверк.
+    'Wall_Plaster_Straight', 'Wall_Plaster_Door_Round', 'Wall_Plaster_Window_Wide_Round', 'Wall_Plaster_WoodGrid',
+    // Стены в кирпиче: глухая, дверь, окно.
+    'Wall_UnevenBrick_Straight', 'Wall_UnevenBrick_Door_Round', 'Wall_UnevenBrick_Window_Wide_Round',
+    // Угловой брус, полотно двери, окно со стеклом.
+    'Corner_Exterior_Wood', 'Door_1_Round', 'Window_Wide_Round1',
+    // Фронтоны под пролёты 4 и 6.
+    'Roof_Front_Brick4', 'Roof_Front_Brick6',
+    // Черепица: пролёт × глубина, шаг 2 м.
+    'Roof_RoundTiles_4x4', 'Roof_RoundTiles_4x6', 'Roof_RoundTiles_4x8',
+    'Roof_RoundTiles_6x6', 'Roof_RoundTiles_6x8', 'Roof_RoundTiles_6x10',
+    // Труба на конёк.
+    'Prop_Chimney2',
+  ],
+  data: { file: 'src/render/village.data.ts', prefix: 'VILLAGE', type: 'VillagePart' },
+};
+
 const PACKS: readonly Pack[] =
-  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, BUILDER, FOLK, CAMP, PROPS, VILLAGER];
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, BUILDER, FOLK, CAMP, PROPS, VILLAGER, VILLAGE];
 
 /* ---------- png ---------- */
 
@@ -1542,7 +1665,11 @@ interface Gltf {
   images?: { name?: string; uri?: string; bufferView?: number }[];
   bufferViews: { buffer: number; byteOffset?: number; byteLength: number; byteStride?: number }[];
   buffers: { uri?: string; byteLength: number }[];
-  materials?: { name?: string; pbrMetallicRoughness?: { baseColorFactor?: number[] } }[];
+  materials?: {
+    name?: string;
+    pbrMetallicRoughness?: { baseColorFactor?: number[]; baseColorTexture?: { index: number } };
+  }[];
+  textures?: { source?: number }[];
   meshes: { primitives: { attributes: Record<string, number>; indices?: number; material?: number }[] }[];
   nodes?: Node[];
   skins?: Skin[];
@@ -1971,12 +2098,51 @@ const toSrgb = (v: number): number => {
 function materialTableOf(pack: Pack, files: readonly string[]): MaterialTable {
   const declared = pack.materials!;
   const color = new Map<string, readonly [number, number, number]>();
+  /**
+   * Средний цвет текстуры, взвешенный прозрачностью, — раз на файл картинки.
+   * Нужен наборам, у которых цвет материала лежит не в factor, а в текстуре
+   * (megakit §6.1: у стены factor нет вовсе, есть только картинка): цвет
+   * по-прежнему **измеряется**, просто мерная линейка теперь — сама картинка.
+   */
+  const textureAverage = new Map<string, readonly [number, number, number]>();
+  const averageOf = (path: string): readonly [number, number, number] => {
+    let avg = textureAverage.get(path);
+    if (avg === undefined) {
+      const img = decodePng(path);
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let weight = 0;
+      for (let i = 0; i < img.width * img.height; i++) {
+        const a = img.rgba[i * 4 + 3]! / 255;
+        r += img.rgba[i * 4]! * a;
+        g += img.rgba[i * 4 + 1]! * a;
+        b += img.rgba[i * 4 + 2]! * a;
+        weight += a;
+      }
+      avg = weight === 0 ? [0, 0, 0] : [r / weight, g / weight, b / weight];
+      textureAverage.set(path, avg);
+    }
+    return avg;
+  };
   for (const file of files) {
     const { gltf } = loadDoc(file);
     for (const material of gltf.materials ?? []) {
       const name = material.name ?? '';
       const factor = material.pbrMetallicRoughness?.baseColorFactor ?? [1, 1, 1, 1];
-      const rgb = [toSrgb(factor[0]!), toSrgb(factor[1]!), toSrgb(factor[2]!)] as const;
+      /** Текстура цвета, если материал её называет: замер идёт по ней. */
+      const textureIndex = material.pbrMetallicRoughness?.baseColorTexture?.index;
+      const imageUri = textureIndex === undefined
+        ? undefined
+        : gltf.images?.[gltf.textures?.[textureIndex]?.source ?? -1]?.uri;
+      const base: readonly [number, number, number] = imageUri === undefined
+        ? [255, 255, 255]
+        : averageOf(join(file, '..', decodeURIComponent(imageUri)));
+      const rgb = [
+        Math.round(base[0] * toSrgb(factor[0]!) / 255),
+        Math.round(base[1] * toSrgb(factor[1]!) / 255),
+        Math.round(base[2] * toSrgb(factor[2]!) / 255),
+      ] as const;
       const known = color.get(name);
       if (known === undefined) {
         color.set(name, rgb);
@@ -1999,6 +2165,12 @@ function materialTableOf(pack: Pack, files: readonly string[]): MaterialTable {
   const slot = new Map<number, string>();
   names.forEach((name, i) => {
     const [r, g, b] = color.get(name)!;
+    // Слот ищется по цвету, поэтому два материала одного цвета обязаны
+    // называть один слот: иначе поздний молча перекрасил бы ранний.
+    const taken = slot.get(colorKey(r, g, b));
+    if (taken !== undefined && taken !== declared[name]) {
+      throw new Error(`${pack.title}: «${name}» цветом совпал с другим материалом, а слот другой`);
+    }
     rgba[i * 4] = r;
     rgba[i * 4 + 1] = g;
     rgba[i * 4 + 2] = b;
