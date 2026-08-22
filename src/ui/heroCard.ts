@@ -186,7 +186,7 @@ export class HeroCard {
     // и не читалась ничем: ни боем, ни обзором, ни генератором. Показанное
     // число обязано на что-то влиять; до тех пор строка врёт.
     const s = stats(hero);
-    this.meta.textContent = `Атака ${s.attack} · Защита ${s.defense} · Знание ${s.knowledge}`;
+    this.meta.textContent = `Атака ${s.attack} · Защита ${s.defense} · Знание ${s.knowledge} · Ловкость ${s.agility}`;
 
     const need = xpToNext(hero.level);
     this.xp.style.width = `${Math.min(100, (hero.xp / need) * 100).toFixed(1)}%`;

@@ -52,13 +52,14 @@ import { inYard } from '../sim/castleSite';
 import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
-import type { Cell, EnemyKind, GameLocation, RaidState } from '../sim/types';
+import type { Cell, Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
 import { forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
 import { STUMP, STUMP_HEIGHT, WOODS, cellHash, treeGeometry, treeStand, type Tree } from './woods';
 import type { Gust } from './cursorWind';
 import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
+import { chestGeometry, dungeonMaterial } from './dungeon';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
@@ -144,6 +145,12 @@ const TENT_LOOK = 0.5;
 const CONTAINER_HEIGHT = 0.52;
 
 /**
+ * Высота сундука (`sim/chests.ts`, §13.6) — чуть выше кучки добычи:
+ * предмет, а не постройка, но заметный с высоты лагерной камеры.
+ */
+const CHEST_HEIGHT = 0.58;
+
+/**
  * Рост валуна (§13.4) в клетках локации: герою по колено. Выше — и камень
  * стал бы стеной, которую почему-то можно обойти; ниже — щебнем, по которому
  * не бьют. Пенёк просеки ровно такой же (0,42), и это не совпадение: обе
@@ -172,6 +179,7 @@ const ATTACK_RATE: Record<EnemyKind, number> = {
   // У привидения клипа нет вовсе: замах играется трансформом (`drifting.ts`)
   // и длится ровно столько, сколько назначено телеграфу. Растягивать нечего.
   ghost: 1,
+  guard: STRIKE / ENEMY_STATS.guard.telegraph,
 };
 
 /**
@@ -291,6 +299,8 @@ interface EnemyView {
 export class RaidView {
   readonly group = new THREE.Group();
   private readonly enemyViews = new Map<number, EnemyView>();
+  /** Материал замаха, общий на вид противника (`hotOf`). */
+  private readonly enemyHots = new Map<EnemyKind, THREE.MeshLambertMaterial>();
   /**
    * Жильцы двора (§6.1.6.1). Держатся отдельно от противников, потому что
    * ими и не являются: ни полоски жизни, ни замаха, ни клипа падения —
@@ -1082,6 +1092,7 @@ export class RaidView {
 
   /** Палатки жильцов на поляне — по одной на приглашённого под крышей. */
   private tents: THREE.Mesh[] = [];
+  private chests: THREE.Mesh[] = [];
 
   /**
    * Ведение передано жильцу (§16.1): герой стоит, где остановился, и сцена
@@ -1550,6 +1561,27 @@ export class RaidView {
   }
 
   /**
+   * Сундуки-хранилища (`sim/chests.ts`) в кадре поляны — тем же правилом,
+   * что палатки: список пересобирается целиком, клетка 1×1 лежит центром
+   * в целых координатах. Модель — сундук набора KayKit Dungeon (§6.1.2),
+   * тот же, что стоит приманкой в замке: хранилище обязано выглядеть
+   * одинаково везде, где оно хранилище.
+   */
+  setChests(list: readonly { x: number; z: number }[]): void {
+    for (const mesh of this.chests) mesh.removeFromParent();
+    const mat = this.track(dungeonMaterial());
+    this.chests = list.map((c) => {
+      const mesh = new THREE.Mesh(this.track(chestGeometry('простой', CHEST_HEIGHT)), mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.position.set(c.x, 0, c.z);
+      this.group.add(mesh);
+      this.clearGrassCell(c.x, c.z);
+      return mesh;
+    });
+  }
+
+  /**
    * Здание выросло на уровень. Геометрия пересобирается той же функцией,
    * что и в лагере: стадия роста — свойство модели, а не сцены (§6.1).
    *
@@ -1665,18 +1697,27 @@ export class RaidView {
       new THREE.MeshLambertMaterial({ color: PALETTE.loot, flatShading: true }),
     );
     const baked = this.track(resourceMaterial());
+    const chestMat = this.track(dungeonMaterial());
     for (const c of this.loc.containers) {
       const name = RESOURCE_MODEL[c.kind];
-      const mesh = name === null
-        ? new THREE.Mesh(gem, gemMat)
-        : new THREE.Mesh(this.track(resourceGeometry(name, CONTAINER_HEIGHT)), baked);
+      // Сундук (§13.6) прячет содержимое за крышкой — единственный контейнер,
+      // который не показывает, что внутри: он и есть ставка. Простой стоит
+      // во дворе замка, золотой — редкая находка яруса 3.
+      const mesh = c.look !== undefined
+        ? new THREE.Mesh(
+            this.track(chestGeometry(c.look === 'золотой' ? 'золотой' : 'простой', CHEST_HEIGHT)),
+            chestMat,
+          )
+        : name === null
+          ? new THREE.Mesh(gem, gemMat)
+          : new THREE.Mesh(this.track(resourceGeometry(name, CONTAINER_HEIGHT)), baked);
       mesh.castShadow = true;
       // Добыча лежит на земле, как лежала бы брошенная: парящая и крутящаяся
       // читается игровой пиктограммой, а обломки, бревно и слитки — часть
       // места. Поворот — детерминированный по id, чтобы кучки не легли
       // по линейке. Кристалл — центрированный октаэдр без основания:
       // приподнят и чуть утоплен остриём в землю, стоит, а не парит.
-      mesh.position.set(c.x, name === null ? 0.2 : 0, c.z);
+      mesh.position.set(c.x, c.look === undefined && name === null ? 0.2 : 0, c.z);
       mesh.rotation.y = tileNoise(c.id, c.id * 7 + 3) * Math.PI * 2;
       this.group.add(mesh);
       this.containerMeshes.set(c.id, mesh);
@@ -1767,48 +1808,58 @@ export class RaidView {
    * набора это уже не мелочь: одна модель — пять тысяч треугольников.
    */
   private buildEnemies(): void {
-    const hots = new Map<EnemyKind, THREE.MeshLambertMaterial>();
-    // §17.3: замах обязан быть виден заранее. Клип замаха его и показывает,
-    // но на пяти сантиметрах экрана одного движения мало — эмиссия остаётся.
-    const hotOf = (kind: EnemyKind): THREE.MeshLambertMaterial => {
-      const found = hots.get(kind);
-      if (found !== undefined) return found;
-      const made = this.track(
-        new THREE.MeshLambertMaterial({
-          vertexColors: true,
-          flatShading: true,
-          emissive: PALETTE.telegraph,
-          emissiveIntensity: 1.2,
-        }),
-      );
-      hots.set(kind, made);
-      return made;
-    };
+    for (const e of this.loc.enemies) this.addEnemyView(e);
+  }
 
-    for (const e of this.loc.enemies) {
-      // Геометрия и материал общие на вид, скелет — свой: пятеро с одним
-      // скелетом махали бы одновременно.
-      const rig = e.kind === 'ghost'
-        ? new Drifting(enemyGeometry('ghost'), this.blocking, ENEMY_HEIGHT.ghost)
+  /** §17.3: замах обязан быть виден заранее. Клип замаха его и показывает,
+   *  но на пяти сантиметрах экрана одного движения мало — эмиссия остаётся. */
+  private hotOf(kind: EnemyKind): THREE.MeshLambertMaterial {
+    const found = this.enemyHots.get(kind);
+    if (found !== undefined) return found;
+    const made = this.track(
+      new THREE.MeshLambertMaterial({
+        vertexColors: true,
+        flatShading: true,
+        emissive: PALETTE.telegraph,
+        emissiveIntensity: 1.2,
+      }),
+    );
+    this.enemyHots.set(kind, made);
+    return made;
+  }
+
+  /**
+   * Тело одного противника. Отдельно от `buildEnemies` затем, что противник
+   * может появиться и посреди вылазки — засадой сундука (`springAmbush`), —
+   * и цикл кадра ставит опоздавшему тело этим же путём.
+   */
+  private addEnemyView(e: Enemy): void {
+    // Геометрия и материал общие на вид, скелет — свой: пятеро с одним
+    // скелетом махали бы одновременно.
+    const rig = e.kind === 'ghost'
+      ? new Drifting(enemyGeometry('ghost'), this.blocking, ENEMY_HEIGHT.ghost)
+      // Стражник — рыцарь дозора (§6.1.6): засада поднимает гарнизон,
+      // а не третью породу людей.
+      : e.kind === 'guard'
+        ? new Rigged(guardParts('дозор'), this.blocking)
         : new Rigged(enemyParts(e.kind), this.blocking);
-      rig.root.position.set(e.x, 0, e.z);
-      this.group.add(rig.root);
+    rig.root.position.set(e.x, 0, e.z);
+    this.group.add(rig.root);
 
-      const { root: lifeRoot, fill } = this.buildLifeBar(ENEMY_STATS[e.kind].hp);
-      rig.root.add(lifeRoot);
+    const { root: lifeRoot, fill } = this.buildLifeBar(ENEMY_STATS[e.kind].hp);
+    rig.root.add(lifeRoot);
 
-      this.enemyViews.set(e.id, {
-        rig,
-        base: this.blocking,
-        hot: hotOf(e.kind),
-        life: fill,
-        lifeRoot,
-        facing: 0,
-        hp: e.hp,
-        flash: 0,
-        busy: false,
-      });
-    }
+    this.enemyViews.set(e.id, {
+      rig,
+      base: this.blocking,
+      hot: this.hotOf(e.kind),
+      life: fill,
+      lifeRoot,
+      facing: 0,
+      hp: e.hp,
+      flash: 0,
+      busy: false,
+    });
   }
 
   /**
@@ -2083,6 +2134,28 @@ export class RaidView {
     this.shownHp.set(play.target, play.hpAfter);
     const body = this.battleRigOf(state, play.target);
     if (body === null) return;
+
+    if (play.dodged) {
+      // Уворот (§11.3): удар прошёл мимо — ни вспышки, ни раны, ни отдачи
+      // по линии удара. Цель разворачивается к бьющему и играет «уклон»
+      // (Dodge_Right, клонится вправо от взгляда), а показ сдвигает её туда
+      // же вбок и возвращает: уход с линии виден телом, а не подписью.
+      const from = hexToWorld(play.from);
+      const at = hexToWorld(play.at);
+      const d = Math.hypot(at.x - from.x, at.z - from.z) || 1;
+      this.battleFacing.set(play.target, Math.atan2(from.x - at.x, from.z - at.z));
+      const rig = body.rig;
+      if (rig !== null && rig.state !== 'падение') {
+        if (rig.state === 'уклон') rig.replay();
+        else rig.play('уклон');
+      }
+      this.bumps.set(play.target, {
+        dx: (at.z - from.z) / d,
+        dz: -(at.x - from.x) / d,
+        left: PLAY_BUMP_SECONDS,
+      });
+      return;
+    }
 
     if (body.enemy !== undefined) {
       body.enemy.flash = FLASH_SECONDS;
@@ -2507,6 +2580,9 @@ export class RaidView {
     }
 
     for (const e of this.loc.enemies) {
+      // Опоздавшему — тело на месте: засада сундука (`springAmbush`) добавляет
+      // противника посреди вылазки, и кадр обязан догнать симуляцию.
+      if (!this.enemyViews.has(e.id)) this.addEnemyView(e);
       const view = this.enemyViews.get(e.id);
       if (view === undefined) continue;
       view.rig.update(dt);
@@ -2601,8 +2677,9 @@ export class RaidView {
       const mesh = this.containerMeshes.get(c.id);
       if (mesh === undefined) continue;
       // Вся добыча лежит неподвижно (см. buildContainers): циклу осталось
-      // только прятать вскрытое.
-      mesh.visible = !c.opened;
+      // только прятать вскрытое. Сундук — мебель, а не кучка: вскрытый
+      // остаётся стоять, исчезает только содержимое — оно уже в рюкзаке.
+      mesh.visible = !c.opened || c.look !== undefined;
     }
 
     this.syncTrees(dt);

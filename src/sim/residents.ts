@@ -153,13 +153,21 @@ function taken(camp: CampState, x: number, z: number): boolean {
       return true;
     }
   }
-  for (const t of camp.tents) {
+  // Палатки и сундуки (`chests.ts`) занимают одинаково: след 1×1.
+  for (const t of [...camp.tents, ...camp.chests]) {
     if (x < t.x + TENT_FOOT && x + TENT_FOOT > t.x && z < t.z + TENT_FOOT && z + TENT_FOOT > t.z) {
       return true;
     }
   }
   return false;
 }
+
+/**
+ * Занятость клетки под след 1×1 — общая проверка палатки и сундука
+ * (`chests.ts`): оба ставятся тем же жестом на ту же площадку, и две копии
+ * этого цикла разошлись бы молча.
+ */
+export const spotTaken = (camp: CampState, x: number, z: number): boolean => taken(camp, x, z);
 
 /**
  * Влезет ли палатка в эту клетку: в границах площадки и не на чужом следе.

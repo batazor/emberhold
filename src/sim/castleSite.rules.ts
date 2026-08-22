@@ -122,10 +122,33 @@ describe('Замок на карте: где кончается двор', () =>
 });
 
 describe('Замок на карте: чего в нём нет', () => {
-  test('ни добычи, ни противников — и это решение, а не пропуск', () => {
+  test('из добычи — одна казна, противников на входе нет', () => {
+    // Прежнее «ни добычи, ни противников» пересмотрено (§13.6): в каждом
+    // замке ровно один сундук казны, и это вся добыча. Противников при
+    // генерации по-прежнему ноль — стража поднимается только засадой
+    // вскрытого сундука, и прогулка не тронувшего казну остаётся прогулкой.
     for (const site of sites) {
-      assert.equal(site.loc.containers.length, 0, `сид ${site.loc.seed}: в замке добыча`);
+      assert.equal(site.loc.containers.length, 1, `сид ${site.loc.seed}: казна не одна`);
+      const chest = site.loc.containers[0]!;
+      assert.equal(chest.look, 'сундук', `сид ${site.loc.seed}: казна не сундуком`);
+      assert.equal(chest.ambush?.kind, 'guard', `сид ${site.loc.seed}: казна без стражи`);
+      assert.ok((chest.ambush?.count ?? 0) > 0, `сид ${site.loc.seed}: стражи ноль`);
+      // Клетка сундука проходима: вскрытие — это приход на клетку.
+      assert.equal(
+        site.loc.blocked[idx(site.loc.size, chest.x, chest.z)],
+        0,
+        `сид ${site.loc.seed}: сундук в стене`,
+      );
       assert.equal(site.loc.enemies.length, 0, `сид ${site.loc.seed}: в замке противник`);
+    }
+  });
+
+  test('казна не рядом с торговцем: кража не попадает в радиус обмена', () => {
+    for (const site of sites) {
+      const chest = site.loc.containers[0]!;
+      if (site.trader === null) continue;
+      const d = Math.hypot(chest.x - site.trader.x, chest.z - site.trader.z);
+      assert.ok(d >= 3, `сид ${site.loc.seed}: сундук в ${d.toFixed(1)} клетках от торговца`);
     }
   });
 
