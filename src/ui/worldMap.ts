@@ -51,6 +51,9 @@ const WALK_COLOR: Partial<Record<NodeKind, string>> = {
   // Мшистый, а не зелёный богатства (`RICH_COLOR[3]`): кольцо прогулки
   // не имеет права читаться как «полная жила».
   'тропа': '#86a35c',
+  // Фиолетовый — единственный не занятый картой цвет: золото у замка,
+  // зелёный и красный у богатства, синева у кладбища. Ярмарке достался он.
+  'призы': '#a778c9',
 };
 
 /**
@@ -203,21 +206,40 @@ export const NODE_ICON: Record<
     ctx.lineTo(x + r, y + r);
     ctx.closePath();
   },
-  // Кладбище — крест: силуэт могилы, а не символ веры — тот же крест,
-  // которым нарисованы надгробия самой локации.
+  // Кладбище — надгробие: плита со скруглённым верхом на основании.
+  // Прежний крест на пяти пикселях слипался со крестом «выработано»,
+  // который карта рисует поверх узлов тем же штрихом; плита — силуэт
+  // из самой локации (kenney-graveyard), и второго такого знака на карте нет.
   'кладбище': (ctx, x, y, r) => {
-    ctx.moveTo(x - r * 0.42, y - r);
-    ctx.lineTo(x + r * 0.42, y - r);
-    ctx.lineTo(x + r * 0.42, y - r * 0.3);
-    ctx.lineTo(x + r, y - r * 0.3);
-    ctx.lineTo(x + r, y + r * 0.12);
-    ctx.lineTo(x + r * 0.42, y + r * 0.12);
-    ctx.lineTo(x + r * 0.42, y + r);
-    ctx.lineTo(x - r * 0.42, y + r);
-    ctx.lineTo(x - r * 0.42, y + r * 0.12);
-    ctx.lineTo(x - r, y + r * 0.12);
-    ctx.lineTo(x - r, y - r * 0.3);
-    ctx.lineTo(x - r * 0.42, y - r * 0.3);
+    ctx.moveTo(x - r, y + r);
+    ctx.lineTo(x - r, y + r * 0.55);
+    ctx.lineTo(x - r * 0.62, y + r * 0.55);
+    ctx.lineTo(x - r * 0.62, y - r * 0.38);
+    ctx.arc(x, y - r * 0.38, r * 0.62, Math.PI, 0);
+    ctx.lineTo(x + r * 0.62, y + r * 0.55);
+    ctx.lineTo(x + r, y + r * 0.55);
+    ctx.lineTo(x + r, y + r);
+    ctx.closePath();
+  },
+  // Колесо призов — колесо с зубцами-ручками: круг вылазки не спутать,
+  // у того контур гладкий, а здесь восемь выступов по ободу.
+  'призы': (ctx, x, y, r) => {
+    const teeth = 8;
+    const inner = r * 0.74;
+    for (let i = 0; i < teeth; i++) {
+      const a0 = (i / teeth) * Math.PI * 2 - Math.PI / 2;
+      const half = (Math.PI * 2) / teeth / 2;
+      const t = 0.34; // полширины зубца в долях шага
+      const p = (a: number, rad: number): [number, number] => [
+        x + Math.cos(a) * rad,
+        y + Math.sin(a) * rad,
+      ];
+      if (i === 0) ctx.moveTo(...p(a0 - half * t, r));
+      else ctx.lineTo(...p(a0 - half * t, r));
+      ctx.lineTo(...p(a0 + half * t, r));
+      ctx.lineTo(...p(a0 + half * t, inner));
+      ctx.lineTo(...p(a0 + half * 2 - half * t, inner));
+    }
     ctx.closePath();
   },
   // Тропа — вьющаяся лента с двумя коленами: силуэт самой локации, спина
@@ -603,6 +625,10 @@ export class WorldMap {
       this.paintTrailCard(node);
       return;
     }
+    if (node.kind === 'призы') {
+      this.paintPrizeCard(node);
+      return;
+    }
     const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0, event: null };
     // §11.6 — «объявляются до входа». Объявлять надо итог: карточка, которая
     // пишет «ставка 0%» и «×0,6», пока буря делает 25% и ×0,9, — это и есть
@@ -749,6 +775,35 @@ export class WorldMap {
       '<div class="row line"><span>Кто здесь</span><b class="good">никого</b></div>';
     this.note.textContent = 'Прогулка: тропа виляет и раздваивается, выходы на обоих концах. Лес рубят, валуны бьют — противников нет.';
     this.walkButton(node);
+  }
+
+  /**
+   * Колесо призов. Единственное место карты с суточным замком на самом
+   * месте, а не на ярусе: прокрутка одна в день, и карточка обязана говорить,
+   * потрачена ли она, — до входа, как всё на этом экране (§11.6).
+   * Сколько выпадет, карточка не называет: исход решает симуляция за дверью,
+   * а обещать вилку «1–10» — значит продавать место тем, чего игрок может
+   * не получить.
+   */
+  private paintPrizeCard(node: WorldNode): void {
+    const spun = this.camp?.wheelDay === dayAt(this.now);
+    this.card.innerHTML =
+      `<div class="row t"><b>${node.name}</b><i>аттракцион</i></div>` +
+      '<div class="row line"><span>Что там</span><b>колесо призов</b></div>' +
+      '<div class="row line"><span>Добыча</span><b>кристаллы</b></div>' +
+      `<div class="row line"><span>Прокрутка</span>` +
+      (spun
+        ? '<b class="bad">сегодня уже была</b>'
+        : '<b class="good">одна в день, сегодня не тратилась</b>') +
+      '</div>';
+    this.note.textContent = spun
+      ? 'Колесо уже крутили — новая прокрутка завтра, с новым регионом.'
+      : 'Дёрните рычаг — сколько выпадет, столько кристаллов и заберёте.';
+    this.walkButton(node);
+    // Поверх общего правила прогулок: сегодняшняя прокрутка потрачена —
+    // и идти незачем, кнопка говорит об этом запертостью, а строка выше —
+    // причиной.
+    if (spun) this.go.disabled = true;
   }
 
   /**

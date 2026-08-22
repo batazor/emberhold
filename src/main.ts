@@ -162,6 +162,14 @@ import type { StartBlock } from './sim/campWalls';
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
+import {
+  GUEST_WORK,
+  advanceGuest,
+  castleGuestAt,
+  guestPitch,
+  startGuestMeet,
+} from './sim/castleGuest';
+import type { CastleGuest, GuestMeet } from './sim/castleGuest';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
@@ -176,6 +184,7 @@ import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { TitleView } from './render/titleView';
+import { WheelView } from './render/wheelView';
 import { streetScene } from './render/village';
 import { CampHud } from './ui/campHud';
 import { HeroCard } from './ui/heroCard';
@@ -279,6 +288,8 @@ if (finishedOffline !== null) {
 let mode: 'title' | 'camp' | 'raid' = 'title';
 let raid: RaidState | null = null;
 let titleView: TitleView | null = null;
+/** Колесо призов — оверлей поверх карты, в риг не входит (`wheelView.ts`). */
+let wheelView: WheelView | null = null;
 /** Герой, который сейчас в локации: раны и опыт зачисляются ему. */
 let raidHero: HeroState | null = null;
 /** Место на карте, в котором идёт вылазка (§4). Экран возврата зовёт обратно
@@ -1112,6 +1123,8 @@ function placeTents(): void {
   const o = campOrigin(camp);
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
   raidView.setChests(camp.chests.map((c) => ({ x: o.x + c.x, z: o.z + c.z })));
+  // Костры гостей — тем же вызовом и в тех же координатах поляны.
+  raidView.setFires((camp.fires ?? []).map((f) => ({ x: o.x + f.x, z: o.z + f.z })));
   if (controlled === -1) seatResidents();
   else planChores();
 }
@@ -1212,7 +1225,8 @@ function planChores(): void {
     }
   }
   // Палатки жильцов и сундуки — след 1×1, и сквозь них тоже не ходят.
-  for (const t of [...camp.tents, ...camp.chests]) {
+  // Костры гостей — тем же правилом: сквозь огонь не ходят тем более.
+  for (const t of [...camp.tents, ...camp.chests, ...(camp.fires ?? [])]) {
     const x = o.x + t.x;
     const z = o.z + t.z;
     if (x >= 0 && z >= 0 && x < size && z < size) mask[idx(size, x, z)] = 1;
@@ -1623,7 +1637,7 @@ function buy(id: ConsumableId): boolean {
  * перенесло в чужой лагерь» — второй лагерь существует чисто для тестов
  * и границу сохранения не пересекает.
  */
-const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город', 'бой'] as const;
+const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город', 'бой', 'колесо'] as const;
 const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
 
 function persist(): void {
@@ -2024,6 +2038,41 @@ function collectSortie(now: number): boolean {
 }
 
 /**
+ * Колесо призов — оверлей поверх карты, сцену рига не трогает. Исход
+ * рождается здесь, из сида дня и места, а не из угла остановки: колесо
+ * в `wheelView.ts` лишь довозит анимацию до готового ответа — иначе
+ * результат зависел бы от кадровой частоты рендера.
+ *
+ * Замок суточный: карточка карты запирает кнопку той же проверкой,
+ * а эта — на случай входа мимо карточки (отладка, гонка смены дня).
+ */
+function toWheel(seed: number): boolean {
+  const day = dayAt(clock.now());
+  if (camp.wheelDay === day) {
+    campHud.notify('Колесо уже крутили сегодня — новая прокрутка завтра');
+    return false;
+  }
+  const answer = 1 + Math.floor(mulberry32(seed ^ 0x5b1e)() * 10);
+  wheelView?.dispose();
+  wheelView = new WheelView(answer, {
+    onClaim: (crystals) => {
+      camp.resources.crystal += crystals;
+      camp.wheelDay = day;
+      persist();
+      campHud.notify(`Выпало ${crystals} — кристаллы уже в лагере`);
+      closeWheel();
+    },
+    onLeave: () => closeWheel(),
+  });
+  return true;
+}
+
+function closeWheel(): void {
+  wheelView?.dispose();
+  wheelView = null;
+}
+
+/**
  * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
  * карточкой карты — сюда приходит уже принятое решение.
  */
@@ -2048,6 +2097,8 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // Тропа (§6.1.17) — прогулка длинная: ход через лес, который проходят,
   // а не рассматривают. Добычи и противников нет — пока.
   if (place.kind === 'тропа') return toTrail(node, nodeSeed(day, node));
+  // Колесо призов — аттракцион: одна прокрутка в день, кристаллы по сектору.
+  if (place.kind === 'призы') return toWheel(nodeSeed(day, node));
   const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
@@ -2134,6 +2185,93 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
 let castleNow: CastleSite | null = null;
 
 /**
+ * Гость у стен замка (`sim/castleGuest.ts`) и его разговор. Состояние живёт
+ * при сцене, а не в сейве, — тем же правилом, что знакомство пролога:
+ * не приглашённый сидит у своей палатки каждый заход заново, а приглашённый
+ * вписан в жильцов, и это единственное, что переживает перезагрузку
+ * (плюс сид замка в `camp.guests`, чтобы тот же замок не отдал его дважды).
+ */
+let castleGuest: CastleGuest | null = null;
+let guestMeet: GuestMeet | null = null;
+let guestShown = false;
+
+/**
+ * Разговор с гостем: кадры листает игрок, приглашение вписывает человека
+ * в жильцы и переносит его хозяйство. Палатка достаётся лагерю бесплатно —
+ * гость принёс свою, — а место ей и костру выбирает он сам (`guestPitch`).
+ */
+function guestCallbacks(): MeetPanelCallbacks {
+  const redraw = (): void => {
+    if (castleGuest === null || guestMeet === null) return;
+    meetPanel.showGuest(castleGuest, guestMeet);
+    setHint('');
+  };
+  return {
+    onName: () => {},
+    onAnswer: () => {},
+    onAdvance: () => {
+      if (guestMeet === null) return;
+      advanceGuest(guestMeet);
+      redraw();
+    },
+    onInvite: () => {
+      if (castleGuest === null || guestMeet === null || castleNow === null) return;
+      guestMeet.invited = true;
+      // Сид замка — до всего остального: даже если места в лагере нет,
+      // этот гость уже позван и второй раз у стен не сядет.
+      (camp.guests ??= []).push(castleNow.loc.seed);
+      // Что он ищет, тем и займётся (`GUEST_WORK`) — сид лица приходит
+      // с человеком, как у поселенца знакомства.
+      admit(camp, {
+        name: castleGuest.who.name,
+        look: castleGuest.who.look,
+        seed: castleGuest.who.seed,
+        answer: GUEST_WORK[castleGuest.seek],
+        rest: false,
+      });
+      const pitch = guestPitch(camp, castleGuest.who.seed);
+      if (pitch !== null) {
+        camp.tents.push(pitch.tent);
+        if (pitch.fire !== null) (camp.fires ??= []).push(pitch.fire);
+      }
+      persist();
+      play('build');
+      // Хозяйство он сворачивает с собой: у стен не остаётся ни палатки,
+      // ни костра — они уже в лагере, на месте, которое он выбрал.
+      raidView?.setTents([]);
+      raidView?.setFires([]);
+      // Встаёт и идёт к герою — тем же зовом, что поселенец пролога.
+      if (raid !== null) raidView?.callSettler(raid.hero.x, raid.hero.z);
+      advanceGuest(guestMeet);
+      meetPanel.hide();
+    },
+  };
+}
+
+/**
+ * Разговор с гостем открывается подходом и гаснет уходом — тем же жестом,
+ * что лавка торговца (§13.5) и знакомство пролога: кнопки «закрыть» нет.
+ */
+function syncGuestMeet(): void {
+  if (raid === null || castleGuest === null || guestMeet === null) return;
+  if (guestMeet.invited) return;
+  const near =
+    Math.hypot(
+      raid.hero.x - (castleGuest.sit.x + 0.5),
+      raid.hero.z - (castleGuest.sit.z + 0.5),
+    ) <= 2.5;
+  if (near && !guestShown) {
+    guestShown = true;
+    meetOn = guestCallbacks();
+    meetPanel.showGuest(castleGuest, guestMeet);
+    setHint('');
+  } else if (!near && guestShown) {
+    guestShown = false;
+    meetPanel.hide();
+  }
+}
+
+/**
  * Замок (§6.1.6). Собирается тем же `createRaid`, что вылазка и пролог:
  * ходьба, шаг и камера обязаны считаться одинаково везде, иначе прогулка
  * научит игрока не тому, что его ждёт дальше.
@@ -2172,6 +2310,11 @@ function leaveWalkSites(): void {
   readStone = null;
   trailSite = null;
   tradePanel.setVisible(false);
+  // Гость живёт при сцене замка: сцены нет — нет ни гостя, ни разговора.
+  castleGuest = null;
+  guestMeet = null;
+  if (guestShown) meetPanel.hide();
+  guestShown = false;
 }
 
 function toGraveyard(node: number, seed: number): boolean {
@@ -2239,6 +2382,27 @@ function toCastle(node: number, seed: number): boolean {
     hunger: false,
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null, camp.gear.weapon, mateClasses(raid));
+  // Гость у стен (`sim/castleGuest.ts`): выводится из сида площадки, а живёт
+  // ли ещё здесь — решает лагерь. Позванный не сидит у стен второй раз,
+  // и тёзка живущего не садится вовсе: `admit` различает людей именем,
+  // и второго человека с тем же именем игра завести не может.
+  const guest = castleGuestAt(site);
+  if (
+    guest !== null &&
+    !(camp.guests ?? []).includes(site.loc.seed) &&
+    !camp.residents.some((r) => r.name === guest.who.name)
+  ) {
+    castleGuest = guest;
+    guestMeet = startGuestMeet();
+    raidView.setTents([guest.tent]);
+    raidView.setFires([guest.fire]);
+    raidView.putSettler(
+      guest.who.look,
+      guest.sit.x + 0.5,
+      guest.sit.z + 0.5,
+      Math.atan2(guest.fire.x - (guest.sit.x + 0.5), guest.fire.z - (guest.sit.z + 0.5)),
+    );
+  }
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -2833,6 +2997,7 @@ function toGladeCamp(): void {
   // а маску собирает `planChores` внутри `seatResidents`.
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
   raidView.setChests(camp.chests.map((c) => ({ x: o.x + c.x, z: o.z + c.z })));
+  raidView.setFires((camp.fires ?? []).map((f) => ({ x: o.x + f.x, z: o.z + f.z })));
   seatSettler(door);
   bubbles.clear();
   seatResidents();
@@ -3786,10 +3951,21 @@ if (debugCamp !== null) {
  * Ручка `камень` даёт то, чего не видно глазом: где отряд будет через
  * минуту и когда стрелок выйдет на стену. `камень.смена(t)` переводит часы
  * гарнизона — смена длится минуту, и высиживать её незачем.
+ *
+ * `?castle=СИД` — с назначенным сидом, как у `?grave`: гость у стен
+ * (`castleGuest.ts`) есть у трети замков, и ждать сегодняшнего сида
+ * с гостем — не проверка, а лотерея.
  */
-if (debugParams.has('castle')) {
+const debugCastle = debugParams.get('castle');
+if (debugCastle !== null) {
   const place = today.find((n) => n.kind === 'замок');
-  if (place !== undefined) toRaid(place.id);
+  if (debugCastle === '') {
+    if (place !== undefined) toRaid(place.id);
+  } else {
+    const seed = Number(debugCastle);
+    leaveTitle();
+    toCastle(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
+  }
   (window as unknown as { камень: unknown }).камень = {
     site: () => castleNow,
     // Начатая добыча (§13.5) и тот, кто её ведёт. Работы не видно глазом,
@@ -3815,6 +3991,20 @@ if (debugParams.has('castle')) {
       }));
     },
     смена: (t: number) => raidView?.setWatch(t),
+    // Гость у стен (`castleGuest.ts`): кто, откуда, что ищет и где сидит.
+    // Ждать замка с гостем — лотерея, а тут видно и «гостя сегодня нет».
+    гость: () =>
+      castleGuest === null
+        ? null
+        : {
+            он: castleGuest.who,
+            откуда: castleGuest.origin,
+            ищет: castleGuest.seek,
+            палатка: castleGuest.tent,
+            костёр: castleGuest.fire,
+            сидит: castleGuest.sit,
+            шаг: guestMeet?.step ?? null,
+          },
     // Герой и тап по клетке: прозрачность стен (§6.1.6.1) включается тем,
     // что он вошёл во двор, и без ручки к нему сцена этого не показывает —
     // до ворот пришлось бы идти пешком.
@@ -3977,6 +4167,29 @@ if (debugTrail !== null) {
       валунов: trailSite.loc.stones.length,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+  };
+}
+
+/**
+ * `?колесо` — колесо призов сразу, `?колесо=СИД` — с назначенным сидом.
+ * Сид решает сектор: проверять, что колесо довозит до каждого из десяти,
+ * перебором дней на карте — не проверка, а лотерея про лотерею.
+ * Сейв ручка не пишет: `persist()` глушится любым отладочным кадром.
+ */
+const debugWheel = debugParams.get('колесо');
+if (debugWheel !== null) {
+  const seed = debugWheel === ''
+    ? nodeSeed(dayAt(clock.now()), today.find((n) => n.kind === 'призы')?.id ?? 0)
+    : Number(debugWheel);
+  leaveTitle();
+  toWheel(Number.isFinite(seed) ? seed : 1);
+  (window as unknown as { камень: unknown }).камень = {
+    // Ответ пересчитан той же формулой: ручка обязана говорить, куда колесо
+    // обязано довезти, чтобы расхождение было видно числом, а не на глаз.
+    ответ: () => 1 + Math.floor(mulberry32((Number.isFinite(seed) ? seed : 1) ^ 0x5b1e)() * 10),
+    // Нутро сцены: скрытая панель превью замораживает rAF, и «застряло»
+    // от «крутится» снаружи не отличить — ручка отличает числом.
+    колесо: () => wheelView,
   };
 }
 
@@ -4232,6 +4445,8 @@ startLoop({
         const show = near && !tradeLeft;
         if (show !== tradePanel.visible) tradePanel.setVisible(show);
         if (show) tradePanel.sync(camp);
+        // Гость у стен: разговор тем же жестом подхода, что лавка выше.
+        syncGuestMeet();
       }
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).
