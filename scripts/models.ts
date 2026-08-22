@@ -335,6 +335,13 @@ const RIG = {
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_Simulation.glb', clip: 'Sit_Floor_Down', as: 'присесть' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_Simulation.glb', clip: 'Sit_Floor_Idle', as: 'сидит' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_Simulation.glb', clip: 'Sit_Floor_StandUp', as: 'встаёт' },
+    // Работа жильца (§6.1.14): занятие видно не только предметом в руке,
+    // но и движением. Пара клипов — пара занятий: топору рубка, кирке
+    // кайление; отдыхающий и жилец без крыши остаются в покое — это то же
+    // правило `workDone`, сказанное движением. Взяты «-ing»-версии набора:
+    // они зациклены, а Chop/Pickaxe — одиночные замахи с длинным хвостом.
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_Tools.glb', clip: 'Chopping', as: 'рубит' },
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_Tools.glb', clip: 'Pickaxing', as: 'кайлит' },
   ],
 } as const;
 
