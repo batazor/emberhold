@@ -580,11 +580,39 @@ export class RaidView {
     const wood = this.keep === null
       ? null
       : new Set(this.keep.trees.map((s) => idx(size, s.x, s.z)));
+    // Камни тропы (§6.1.17): на своих клетках вместо дерева встаёт валун.
+    const trailRocks = this.trail === null
+      ? null
+      : new Set(this.trail.rocks.map((c) => idx(size, c.x, c.z)));
+    const rockCells: number[][] = RAID_ROCKS.map(() => []);
+    // Стоит ли клетка у просеки: рядом с ходом стволы обязаны стоять стеной —
+    // граница читается, — и прореживается только глубь.
+    const nearOpen = (cx: number, cz: number): boolean => {
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx;
+          const nz = cz + dz;
+          if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
+          if (!blocked[idx(size, nx, nz)]) return true;
+        }
+      }
+      return false;
+    };
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
         const at = idx(size, x, z);
         if (!blocked[at]) continue;
         if (wood !== null && !wood.has(at)) continue;
+        if (trailRocks !== null) {
+          if (trailRocks.has(at)) {
+            rockCells[cellHash(x * 5.1, z * 9.3, RAID_ROCKS.length)]!.push(x, z);
+            continue;
+          }
+          // Глубь леса дышит: сплошной строй крон читался стеной до горизонта.
+          // Просвет у самой просеки прореживание не трогает — он читался бы
+          // проходом, которого нет.
+          if (!nearOpen(x, z) && (x * 3 + z * 7) % 10 >= 6) continue;
+        }
         cells[cellHash(x * 5.1, z * 9.3, models.length)]!.push(x, z);
       }
     }
@@ -606,6 +634,25 @@ export class RaidView {
         // симуляция говорит «клетка освободилась», а рендеру надо знать,
         // какой из экземпляров какого меша на ней стоит (§13.3).
         if (tree) this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
+      }
+      this.group.add(mesh);
+    }
+
+    // Камни тропы — тем же строем, что стены копей: валун на клетке,
+    // порода от координаты. В `this.trees` они не попадают — камень
+    // не рубят (§13.3), и добычей он не становится (§13.4).
+    for (let v = 0; v < rockCells.length; v++) {
+      const list = rockCells[v]!;
+      if (list.length === 0) continue;
+      const mesh = new THREE.InstancedMesh(
+        treeGeometry({ set: 'forest', model: RAID_ROCKS[v]! }, 1),
+        mat,
+        list.length / 2,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      for (let i = 0; i < list.length; i += 2) {
+        mesh.setMatrixAt(i / 2, treeStand(list[i]!, list[i + 1]!, false, 0));
       }
       this.group.add(mesh);
     }

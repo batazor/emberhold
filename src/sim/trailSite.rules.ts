@@ -1,14 +1,19 @@
 /**
- * Правила лесной тропы (§6.1.17, §4). Локация обещает игроку три вещи,
- * и все три проверяются здесь, а не глазами.
+ * Правила лесной тропы (§6.1.17, §4). Локация обещает игроку четыре вещи,
+ * и все четыре проверяются здесь, а не глазами.
  *
  * Первое: **по ней можно пройти**. Каждая открытая клетка достижима
- * от входа — виляние спины нигде не рвёт просеку.
+ * от входа — виляние и отвилки нигде не рвут просеку.
  *
- * Второе: **она длинная**. Ход длиннее своей ширины минимум вдвое — это
- * и есть отличие тропы от участка, и меряется оно, а не оценивается.
+ * Второе: **она длинная и тесная**. Ход длиннее своей ширины минимум вдвое,
+ * а каждая открытая клетка держится осевой: тропа, расползшаяся в поляну,
+ * перестала бы быть тропой.
  *
- * Третье: **это прогулка**. Ни добычи, ни валунов, ни противников:
+ * Третье: **она ветвится в тупики**. Развилки есть на любом сиде, и каждый
+ * отвилок удлиняет путь назад, а не срезает его: срезка отменяет длину,
+ * ради которой локация заведена.
+ *
+ * Четвёртое: **это прогулка**. Ни добычи, ни валунов-сделок, ни противников:
  * пустая тропа — обещание карточки карты, и засады сюда придут своим
  * записанным решением, а не молча.
  *
@@ -19,18 +24,24 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  BRANCH_MIN,
   CLEAR_HALF,
-  DIRT_HALF,
+  FORKS_MAX,
+  FORKS_MIN,
   LEN_MAX,
   LEN_MIN,
-  MEANDER,
+  MOUTH,
   WOOD,
   generateTrailSite,
 } from './trailSite';
-import { idx } from './grid';
+import type { Cell } from './types';
+import { distanceField, idx } from './grid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
 const sites = SEEDS.map(generateTrailSite);
+
+const near = (cells: readonly Cell[], x: number, z: number, r: number): boolean =>
+  cells.some((c) => Math.abs(c.x - x) <= r && Math.abs(c.z - z) <= r);
 
 describe('Тропа: по ней можно пройти', () => {
   test('каждая открытая клетка достижима от входа', () => {
@@ -58,19 +69,23 @@ describe('Тропа: по ней можно пройти', () => {
     }
   });
 
-  test('лес держит границу локации: край не вскрывается ни на одном сиде', () => {
+  test('лес держит границу локации: рамка не вскрывается ни на одном сиде', () => {
     for (const site of sites) {
       const { loc } = site;
-      for (let i = 0; i < loc.size; i++) {
-        for (const [x, z] of [[i, 0], [i, loc.size - 1], [0, i], [loc.size - 1, i]] as const) {
-          assert.equal(loc.blocked[idx(loc.size, x, z)], 1, `сид ${loc.seed}: край открыт в ${x},${z}`);
+      // Не только самый край — вся рамка толщиной WOOD: просека и отвилки
+      // не имеют права прогрызть её даже на клетку.
+      for (let z = 0; z < loc.size; z++) {
+        for (let x = 0; x < loc.size; x++) {
+          const frame = x < WOOD || z < WOOD || x >= loc.size - WOOD || z >= loc.size - WOOD;
+          if (!frame) continue;
+          assert.equal(loc.blocked[idx(loc.size, x, z)], 1, `сид ${loc.seed}: рамка открыта в ${x},${z}`);
         }
       }
     }
   });
 });
 
-describe('Тропа: она длинная', () => {
+describe('Тропа: она длинная и тесная', () => {
   /**
    * Форма меряется по открытым клеткам, а не по константам генератора:
    * правило, читающее ту же переменную, что и код, проверяет опечатку,
@@ -97,43 +112,118 @@ describe('Тропа: она длинная', () => {
       assert.ok(long / wide >= 2, `сид ${loc.seed}: ход ${long} на ${wide} — участок, а не тропа`);
       assert.equal(long, site.length, `сид ${loc.seed}: длина хода разошлась с записанной`);
       assert.ok(site.length >= LEN_MIN && site.length <= LEN_MAX);
-      // Разброс спины входит в ширину: перо шире заявленного — форма поплыла.
-      assert.ok(wide <= 2 * MEANDER + 2 * CLEAR_HALF + 1, `сид ${loc.seed}: ход расползся до ${wide}`);
     }
   });
 
-  test('просека тесная: в любом столбце хода открыто не больше пяти клеток', () => {
+  test('тропа тесная: каждая открытая клетка держится осевой', () => {
     for (const site of sites) {
       const { loc } = site;
-      for (let x = WOOD; x < WOOD + site.length; x++) {
-        let open = 0;
-        for (let z = 0; z < loc.size; z++) if (!loc.blocked[idx(loc.size, x, z)]) open++;
-        assert.ok(open <= 2 * CLEAR_HALF + 1, `сид ${loc.seed}: столбец ${x} открыт на ${open}`);
-        assert.ok(open >= 1, `сид ${loc.seed}: столбец ${x} перекрыт — ход порван`);
+      const lines = [...site.spine, ...site.branches.flatMap((b) => b.line)];
+      for (let z = 0; z < loc.size; z++) {
+        for (let x = 0; x < loc.size; x++) {
+          if (loc.blocked[idx(loc.size, x, z)]) continue;
+          assert.ok(
+            near(lines, x, z, CLEAR_HALF),
+            `сид ${loc.seed}: клетка ${x},${z} открыта, а осевой рядом нет — поляна`,
+          );
+        }
       }
     }
   });
 
-  test('грунт лежит внутри просеки и уже её: обочина есть с обеих сторон', () => {
+  test('ход виляет, а не прочерчен по линейке', () => {
+    // Меряются колена — начала боковых отрезков осевой. Генератор вынуждает
+    // колено каждые девять прямых клеток, и на длине в сорок четыре их
+    // не может быть меньше четырёх ни на каком сиде.
+    for (const site of sites) {
+      let bends = 0;
+      for (let i = 1; i < site.spine.length; i++) {
+        const turn = site.spine[i]!.z !== site.spine[i - 1]!.z;
+        const wasStraight = i === 1 || site.spine[i - 1]!.z === site.spine[i - 2]!.z;
+        if (turn && wasStraight) bends++;
+      }
+      assert.ok(bends >= 4, `сид ${site.loc.seed}: у спины ${bends} колена — коридор`);
+    }
+  });
+});
+
+describe('Тропа: она ветвится в тупики', () => {
+  test('развилки есть на любом сиде, и каждый отвилок не обрубок', () => {
+    for (const site of sites) {
+      const n = site.branches.length;
+      assert.ok(n >= FORKS_MIN, `сид ${site.loc.seed}: отвилков ${n} — развилка случайность`);
+      assert.ok(n <= FORKS_MAX, `сид ${site.loc.seed}: отвилков ${n} — лабиринт, а не тропа`);
+      for (const b of site.branches) {
+        assert.ok(b.line.length >= BRANCH_MIN, `сид ${site.loc.seed}: отвилок в ${b.line.length} клетки`);
+        assert.ok(
+          site.spine.some((c) => c.x === b.from.x && c.z === b.from.z),
+          `сид ${site.loc.seed}: развилка ${b.from.x},${b.from.z} не на ходу`,
+        );
+      }
+    }
+  });
+
+  /**
+   * Тупик — это ровно одна дверь, и доказывается он волной, а не словом:
+   * то же правило, каким кладбище доказывает ограду («войти можно только
+   * в проезд»). Устье развилки закладывается — и конец отвилка обязан
+   * стать недостижимым. Отвилок со вторым соединением — срезка, срезка
+   * отменяет длину, ради которой локация заведена, и это правило её ловит.
+   */
+  test('единственная дверь отвилка — его развилка: заложи её, и конец отрезан', () => {
     for (const site of sites) {
       const { loc } = site;
-      for (const c of site.path) {
-        assert.equal(loc.blocked[idx(loc.size, c.x, c.z)], 0, `сид ${loc.seed}: грунт в лесу`);
-      }
-      for (let x = WOOD; x < WOOD + site.length; x++) {
-        const dirt = site.path.filter((c) => c.x === x).length;
-        assert.equal(dirt, 2 * DIRT_HALF + 1, `сид ${loc.seed}: в столбце ${x} грунта ${dirt}`);
+      for (const b of site.branches) {
+        const tip = b.line[b.line.length - 1]!;
+        assert.ok(
+          loc.backSteps[idx(loc.size, tip.x, tip.z)]! >= 0,
+          `сид ${loc.seed}: до конца отвилка не дойти`,
+        );
+        const walled = Uint8Array.from(loc.blocked);
+        for (let dz = -MOUTH; dz <= MOUTH; dz++) {
+          for (let dx = -MOUTH; dx <= MOUTH; dx++) {
+            const x = b.from.x + dx;
+            const z = b.from.z + dz;
+            if (x < 0 || z < 0 || x >= loc.size || z >= loc.size) continue;
+            walled[idx(loc.size, x, z)] = 1;
+          }
+        }
+        const closed = distanceField(loc.size, walled, loc.evac);
+        assert.ok(
+          closed[idx(loc.size, tip.x, tip.z)]! < 0,
+          `сид ${loc.seed}: устье заложено, а конец отвилка всё равно достижим — срезка`,
+        );
       }
     }
   });
 });
 
 describe('Тропа: это прогулка', () => {
-  test('ни добычи, ни валунов, ни противников — ни на одном сиде', () => {
+  test('ни добычи, ни валунов-сделок, ни противников — ни на одном сиде', () => {
     for (const site of sites) {
       assert.equal(site.loc.containers.length, 0, `сид ${site.loc.seed}: на тропе добыча`);
-      assert.equal(site.loc.stones.length, 0, `сид ${site.loc.seed}: на тропе валуны`);
+      assert.equal(site.loc.stones.length, 0, `сид ${site.loc.seed}: на тропе валуны-сделки`);
       assert.equal(site.loc.enemies.length, 0, `сид ${site.loc.seed}: на тропе противники`);
+    }
+  });
+
+  test('камни — картинка на опушке: заняты и видны с хода, но не добыча', () => {
+    for (const site of sites) {
+      const { loc } = site;
+      assert.ok(site.rocks.length > 0, `сид ${loc.seed}: обочина без единого камня`);
+      for (const r of site.rocks) {
+        assert.equal(loc.blocked[idx(loc.size, r.x, r.z)], 1, `сид ${loc.seed}: камень на ходу`);
+        let edge = false;
+        for (let dz = -1; dz <= 1 && !edge; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!loc.blocked[idx(loc.size, r.x + dx, r.z + dz)]) {
+              edge = true;
+              break;
+            }
+          }
+        }
+        assert.ok(edge, `сид ${loc.seed}: камень ${r.x},${r.z} спрятан в глуши`);
+      }
     }
   });
 });
@@ -144,6 +234,9 @@ describe('Тропа: один сид — одна тропа', () => {
       const a = generateTrailSite(seed);
       const b = generateTrailSite(seed);
       assert.equal(a.length, b.length);
+      assert.deepEqual(a.spine, b.spine);
+      assert.deepEqual(a.branches, b.branches);
+      assert.deepEqual(a.rocks, b.rocks);
       assert.deepEqual(a.path, b.path);
       assert.deepEqual([...a.loc.blocked], [...b.loc.blocked]);
       assert.deepEqual(a.loc.evac, b.loc.evac);

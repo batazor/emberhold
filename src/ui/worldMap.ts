@@ -742,10 +742,10 @@ export class WorldMap {
   private paintTrailCard(node: WorldNode): void {
     this.card.innerHTML =
       `<div class="row t"><b>${node.name}</b><i>прогулка</i></div>` +
-      '<div class="row line"><span>Что там</span><b>тропа через лес</b></div>' +
+      '<div class="row line"><span>Что там</span><b>тропа, развилки, тупики</b></div>' +
       '<div class="row line"><span>Добыча</span><b>нет</b></div>' +
       '<div class="row line"><span>Кто здесь</span><b class="good">никого</b></div>';
-    this.note.textContent = 'Прогулка: длинная тропа, глухой лес по обе стороны. Добычи и противников нет.';
+    this.note.textContent = 'Прогулка: длинная тропа виляет и раздваивается, отвилки кончаются тупиками. Добычи и противников нет.';
     this.walkButton(node);
   }
 
