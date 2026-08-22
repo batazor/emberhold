@@ -394,6 +394,17 @@ let placingChest = false;
  * ползунком и задаётся в адресе (?grass=N), чтобы замер повторялся.
  */
 const debugParams = new URLSearchParams(location.search);
+/**
+ * `?кадры` — цикл на таймере вместо rAF: отладка, а не механика (§6).
+ * В скрытой панели браузер не зовёт rAF вовсе, время игры стоит, и ни одну
+ * отладочную сцену нельзя проверить инструментом без окна на переднем
+ * плане. Таймер медленнее и неровнее rAF — в игре ему делать нечего,
+ * поэтому ручка адресная, как все отладочные сцены.
+ */
+if (debugParams.has('кадры')) {
+  window.requestAnimationFrame = (cb: FrameRequestCallback): number =>
+    window.setTimeout(() => cb(performance.now()), 16) as unknown as number;
+}
 let grassPerTile = Number(debugParams.get('grass') ?? 24);
 if (!Number.isFinite(grassPerTile)) grassPerTile = 24;
 grassPerTile = Math.max(0, Math.min(64, Math.round(grassPerTile)));
