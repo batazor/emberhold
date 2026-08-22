@@ -180,8 +180,13 @@ canvas { display: block; touch-action: none; }
   flex-direction: column; justify-content: space-between;
   padding: calc(8px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
 }
+/* Рамка листа — набор dobo_ui Fantasy RPG UI (реестр: assets/LICENSES.md).
+   Девятидольная нарезка: углы картинки остаются углами при любом размере
+   листа. Без `fill`: середина картинки не рисуется, стекло листа прежнее,
+   и сцена под ним видна как раньше. */
 .panel {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); border: 10px solid transparent; border-radius: 10px;
+  border-image: url('../assets/dobo-ui/Container3_default.png') 36 / 10px stretch;
   padding: 8px 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
 }
 .stats {
@@ -190,7 +195,15 @@ canvas { display: block; touch-action: none; }
 }
 .lbl { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 .num { font-size: 12px; min-width: 56px; text-align: right; }
-.bar { height: 6px; border-radius: var(--r-bar); background: var(--fill-2); overflow: hidden; }
+/* Корыто полосы — из того же набора, что рамка листа. `fill` здесь нужен:
+   картинка и есть подложка, а цветную заливку игровой цикл рисует поверх,
+   внутри контентной области. Высота выросла с 6 до 10: в шести пикселях
+   рамка корыта съедала заливку целиком. */
+.bar {
+  height: 10px; border-radius: var(--r-bar); background: var(--fill-2); overflow: hidden;
+  border: 3px solid transparent;
+  border-image: url('../assets/dobo-ui/ProgressBarBackground4.png') 18 fill / 3px stretch;
+}
 /* Пустая полоса по умолчанию: незаполненная width читается как «полный»,
    и это уже один раз выглядело как баг. */
 /* Без CSS-перехода: ширину пишет игровой цикл 60 раз в секунду, и переход
@@ -203,7 +216,10 @@ canvas { display: block; touch-action: none; }
 .bar > i.dimbar { background: var(--mute); }
 #h-bag-bar { background: var(--gold); }
 /* Раны — сегменты, а не сплошная полоса (§11.3). */
-.bar.segmented { display: flex; gap: 3px; background: none; overflow: visible; }
+.bar.segmented {
+  display: flex; gap: 3px; background: none; overflow: visible;
+  border: none; border-image: none; height: 6px;
+}
 .bar.segmented > i {
   flex: 1; height: 6px; border-radius: var(--r-bar); background: var(--fill-2);
 }
@@ -245,12 +261,16 @@ canvas { display: block; touch-action: none; }
 .night input { flex: 1; accent-color: var(--gold); }
 .ctl { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .tiers { margin-top: 2px; }
+/* Кнопка — из того же набора. `fill` рисует глянец середины поверх стекла;
+   отступы ужаты, потому что визуальное поле теперь даёт рамка. Нажатие —
+   осветлением картинки: заливка под `fill` не видна. */
 button {
   pointer-events: auto; font: inherit; font-size: 12px; color: var(--ink);
-  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 7px 11px; cursor: pointer; touch-action: manipulation;
+  background: var(--panel); border: 12px solid transparent; border-radius: 8px;
+  border-image: url('../assets/dobo-ui/PatternLongButton2_ultramarine.png') 52 fill / 12px stretch;
+  padding: 1px 3px; cursor: pointer; touch-action: manipulation;
 }
-button:active { background: var(--press); }
+button:active { filter: brightness(1.25); }
 
 #result { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   background: var(--scrim-soft); backdrop-filter: blur(4px); padding: 20px; z-index: 5; }
@@ -464,8 +484,18 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #camp .slots .slot.empty { border-style: dashed; color: var(--dim); }
 /* Слоты в вылазке молчат: тусклые, без счётчиков и подсветки. */
 .raid-slots { display: flex; gap: 6px; justify-content: center; min-height: 18px; }
-.raid-slot { font-size: 10px; letter-spacing: 0.04em; color: var(--dim); }
-.raid-slot.spent { opacity: 0.35; text-decoration: line-through; }
+/* Слот вылазки — ячейка предмета из того же набора: рамка поверх стекла
+   метки. Потухший слот меняет только картинку рамки — текстовое зачёркивание
+   остаётся, состояние читается и без цвета. */
+.raid-slot {
+  font-size: 10px; letter-spacing: 0.04em; color: var(--dim);
+  border: 6px solid transparent;
+  border-image: url('../assets/dobo-ui/itemSlot_default.png') 40 / 6px stretch;
+}
+.raid-slot.spent {
+  opacity: 0.35; text-decoration: line-through;
+  border-image-source: url('../assets/dobo-ui/itemSlot_disabled.png');
+}
 
 /* ---------- онбординг: раскадровка первых трёх минут ---------- */
 /* Полоса обязана иметь тело. Ширину панели задаёт самая длинная строка внутри
