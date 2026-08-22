@@ -160,6 +160,7 @@ import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
+import { generateTrailSite, type TrailSite } from './sim/trailSite';
 import { askOf, makeDeal, worthOf } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
@@ -1525,7 +1526,7 @@ function buy(id: ConsumableId): boolean {
  * перенесло в чужой лагерь» — второй лагерь существует чисто для тестов
  * и границу сохранения не пересекает.
  */
-const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'встреча', 'город'] as const;
+const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город'] as const;
 const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
 
 function persist(): void {
@@ -1941,6 +1942,9 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // Кладбище (§6.1.7) — та же прогулка, но населённая: добычи нет,
   // а привидения есть.
   if (place.kind === 'кладбище') return toGraveyard(node, nodeSeed(day, node));
+  // Тропа (§6.1.17) — прогулка длинная: ход через лес, который проходят,
+  // а не рассматривают. Добычи и противников нет — пока.
+  if (place.kind === 'тропа') return toTrail(node, nodeSeed(day, node));
   const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
@@ -2004,7 +2008,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // которую мир хранит (§4): кланы и восстановление считаются функцией.
   camp.visits.push({ node, shift: shiftAt(now) });
   persist();
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, camp.gear.weapon, mateClasses(raid));
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'mine', null, null, null, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -2043,6 +2047,9 @@ let castleNow: CastleSite | null = null;
 let graveSite: GraveSite | null = null;
 let readStone: string | null = null;
 
+/** Тропа, пока по ней идут: ручка отладочной сцены `?тропа`. */
+let trailSite: TrailSite | null = null;
+
 /**
  * Снять прогулочную сцену перед входом в любую другую.
  *
@@ -2060,6 +2067,7 @@ function leaveWalkSites(): void {
   castleNow = null;
   graveSite = null;
   readStone = null;
+  trailSite = null;
   tradePanel.setVisible(false);
 }
 
@@ -2086,7 +2094,7 @@ function toGraveyard(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, camp.gear.weapon, mateClasses(raid));
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, null, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -2127,7 +2135,7 @@ function toCastle(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, camp.gear.weapon, mateClasses(raid));
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -2137,6 +2145,53 @@ function toCastle(node: number, seed: number): boolean {
   rig.setZoom(26, true);
   // День: замок стоит на поверхности, и подземный мрак спрятал бы его.
   setNight(0.1);
+  resultShown = false;
+  ear.reset(raid);
+  showScene('raid', 0);
+  return true;
+}
+
+/**
+ * Тропа (§6.1.17). Собирается тем же `createRaid`, что все прогулки: ходьба,
+ * шаг и камера обязаны считаться одинаково везде.
+ *
+ * Как у замка — ни добычи, ни противников, ни голода, и выход открыт сразу:
+ * уйти можно с любого шага, потому что уходить не от чего. Герой не занимается
+ * той же причиной, что на прогулках-участках: заход не обязан снимать
+ * с ротации того, кто просто прошёлся.
+ */
+function toTrail(node: number, seed: number): boolean {
+  const hero = heroForRaid() ?? roster.heroes[0]!;
+  chop = null;
+  const site = generateTrailSite(seed);
+  leaveWalkSites();
+  trailSite = site;
+  raidNode = node;
+  raidHero = null;
+  raidView?.dispose();
+  raid = createRaid({
+    seed,
+    tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
+    followers: followersOf(hero),
+    loc: site.loc,
+    evacOpen: true,
+    containerFood: 0,
+    hunger: false,
+  });
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'trail', null, null, site, camp.gear.weapon, mateClasses(raid));
+  hud.setGrass(grassPerTile);
+  rig.world.add(raidView.group);
+  campView.group.visible = false;
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  // Ниже прогулок-участков: рассматривать здесь нечего, а теснота просеки
+  // и стена стволов по бокам читаются только с близкой камеры.
+  rig.setZoom(20, true);
+  // Лесная тень: светлее сумерек кладбища, темнее двора замка — под кронами
+  // не полдень, но и не вечер.
+  setNight(0.2);
   resultShown = false;
   ear.reset(raid);
   showScene('raid', 0);
@@ -2497,7 +2552,7 @@ function toGlade(): void {
     // их рубят, а по краю рубят сколько угодно.
     logging: true,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -2619,7 +2674,7 @@ function toGladeCamp(): void {
   });
   controlled = -1;
   parkedHero = null;
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, null, camp.gear.weapon);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -3578,6 +3633,32 @@ if (debugGrave !== null) {
       привидений: graveSite.loc.enemies.length,
       надгробий: graveSite.marks.length,
       материал: graveSite.material,
+    }),
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+  };
+}
+
+/**
+ * `?тропа` — лесная тропа сегодняшнего региона сразу, `?тропа=СИД` — с
+ * назначенным сидом (§6.1.17). Длина, виляние спины и грунт выводятся
+ * из сида: чтобы посмотреть на длинную тропу, ждать нужной точки
+ * на карте — не проверка, а лотерея.
+ */
+const debugTrail = debugParams.get('тропа');
+if (debugTrail !== null) {
+  const place = today.find((n) => n.kind === 'тропа');
+  const seed = debugTrail === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(debugTrail);
+  leaveTitle();
+  toTrail(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    site: () => trailSite,
+    // Длина и теснота — те два числа, ради которых сцена и заведена:
+    // тропа обещает быть длиннее своей ширины, и обещание видно ручкой.
+    тропа: () => (trailSite === null ? null : {
+      локация: trailSite.loc.size,
+      длина: trailSite.length,
+      грунта: trailSite.path.length,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
