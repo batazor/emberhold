@@ -11,10 +11,10 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { TIER_ROSTER } from './balance';
+import { TIER_ENEMY_LEVEL, TIER_HERO_LEVEL, TIER_ROSTER } from './balance';
 import { MIN_DAMAGE } from './config';
-import { ENEMY_STATS } from './enemies';
-import { CLASS_ORDER, HERO_CLASSES, createHero, loadout } from './heroes';
+import { ENEMY_STATS, enemyStats } from './enemies';
+import { CLASS_ORDER, HERO_CLASSES, createHero, loadout, referenceLoadout } from './heroes';
 import { damageOf } from './raid';
 import type { EnemyKind, Tier } from './types';
 
@@ -76,6 +76,30 @@ describe('Бой: модель', () => {
     for (const kind of KINDS) {
       const { reach, name } = ENEMY_STATS[kind];
       assert.ok(reach > 0, `${name}: нулевая досягаемость`);
+    }
+  });
+
+  test('§22.6 — уровень в уровень: модельный герой яруса добивает его тела', () => {
+    // Лестница уровней обязана оставлять §15 в силе: «пробиться» — вариант
+    // на каждом ярусе, а не только «обойти». Проверяется конструкция,
+    // а не баланс: конечные удары в обе стороны, ни одна не бьёт насмерть
+    // с одного раза.
+    for (const [key, roster] of Object.entries(TIER_ROSTER)) {
+      const tier = Number(key) as Tier;
+      const hero = referenceLoadout(TIER_HERO_LEVEL[tier]);
+      for (const kind of new Set(roster)) {
+        const foe = enemyStats(kind, TIER_ENEMY_LEVEL[tier]);
+        const hits = Math.ceil(foe.hp / hero.attack);
+        assert.ok(
+          Number.isFinite(hits) && hits > 0 && hits <= 12,
+          `ярус ${tier}, ${foe.name}: ${hits} ударов — бой не кончается`,
+        );
+        const bite = Math.max(MIN_DAMAGE, foe.attack * 0.35, foe.attack - hero.defense / 2);
+        assert.ok(
+          bite < 20,
+          `ярус ${tier}, ${foe.name}: удар ${bite} — модельный герой падает с одного`,
+        );
+      }
     }
   });
 

@@ -6,12 +6,28 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { HERO_HP, ENCOUNTER_WOUND } from './balance';
 import { HERO_REACH } from './config';
-import { ENEMY_STATS, TIER_ROSTER } from './enemies';
+import { ENEMY_GROWTH, ENEMY_STATS, TIER_ROSTER, enemyStats } from './enemies';
 import { generateLocation } from './generate';
 import { distanceField, idx } from './grid';
-import type { RaidEnemyKind, Tier } from './types';
+import type { EnemyKind, RaidEnemyKind, Tier } from './types';
 
 describe('Бой', () => {
+  test('§22.6 — уровень растит стойкость и Атаку, не трогая рисунок типа', () => {
+    for (const kind of Object.keys(ENEMY_STATS) as EnemyKind[]) {
+      const base = ENEMY_STATS[kind];
+      assert.deepEqual(enemyStats(kind, 1), base, `${base.name}: первый уровень — это база`);
+      const up = enemyStats(kind, 4);
+      assert.equal(up.hp, base.hp + ENEMY_GROWTH[kind].hp * 3, `${base.name}: стойкость`);
+      assert.equal(up.attack, base.attack + ENEMY_GROWTH[kind].attack * 3, `${base.name}: Атака`);
+      // Скорость, замах, дальность и манера — рисунок типа, а не сила:
+      // воин пятого уровня обязан читаться воином.
+      assert.equal(up.speed, base.speed, `${base.name}: скорость не растёт`);
+      assert.equal(up.telegraph, base.telegraph, `${base.name}: замах не растёт`);
+      assert.equal(up.reach, base.reach, `${base.name}: дальность не растёт`);
+      assert.equal(up.chases, base.chases, `${base.name}: манера не меняется`);
+    }
+  });
+
   test('§15 — герой достаёт до каждого противника', () => {
     for (const stats of Object.values(ENEMY_STATS)) {
       // Противник останавливается на reach × 0.9; если герой не достаёт туда,

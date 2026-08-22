@@ -21,7 +21,7 @@
  * мастер и разбор бага по сейву. Инициатива считается Скоростью, а не броском.
  */
 import { HERO_RANGED_REACH } from './config';
-import { ENEMY_STATS } from './enemies';
+import { ENEMY_STATS, enemyStats } from './enemies';
 import {
   hexDistance,
   hexKey,
@@ -93,6 +93,9 @@ export interface BattleUnit {
   readonly side: Side;
   /** У противника — его вид; у героя null. */
   readonly kind: EnemyKind | null;
+  /** §22.6 — уровень противника: HUD подписывает, статы уже посчитаны
+   *  при создании. У героя единица — его уровень живёт в лагере. */
+  readonly level: number;
   hex: Hex;
   /** Очки стойкости у противника, целые раны у героя (§11.3). */
   hp: number;
@@ -286,7 +289,7 @@ export function createBattle(
     defense: number;
     agility: number;
   }[],
-  enemies: readonly { id: number; kind: EnemyKind; x: number; z: number; hp: number }[],
+  enemies: readonly { id: number; kind: EnemyKind; level: number; x: number; z: number; hp: number }[],
   /** Сид боя для бросков уворота. Приходит из сида локации и номера стычки —
    *  тот же сейв даёт тот же бой. */
   seed = 0,
@@ -300,6 +303,7 @@ export function createBattle(
       id: p.id,
       side: 'hero',
       kind: null,
+      level: 1,
       hex,
       hp: p.hp,
       move: movePerTurn(p.speed),
@@ -315,7 +319,9 @@ export function createBattle(
     });
   }
   for (const e of enemies) {
-    const stats = ENEMY_STATS[e.kind];
+    // §22.6 — числа берутся у уровня, а не у типа: воин Дна бьёт больнее
+    // воина Подступов, оставаясь тем же воином по рисунку боя.
+    const stats = enemyStats(e.kind, e.level);
     // Двое в одном гексе — следствие округления, а не расстановки: в мире
     // они стояли врозь. Раздвигаем по соседям, а не роняем бой.
     const hex = placeOn(size, blocked, worldToHex(e.x, e.z), taken);
@@ -324,6 +330,7 @@ export function createBattle(
       id: e.id,
       side: 'enemy',
       kind: e.kind,
+      level: e.level,
       hex,
       hp: e.hp,
       move: movePerTurn(stats.speed),

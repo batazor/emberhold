@@ -225,6 +225,16 @@ export interface HeroState {
   readonly cls: HeroClassId;
   level: number;
   xp: number;
+  /**
+   * §11.7 — купленные уровни характеристик. Рост перестал быть автоматикой
+   * класса: уровень героя выдаёт очки (`STAT_POINTS_PER_LEVEL`), игрок
+   * кладёт их в характеристики сам, и `stats()` считает базу плюс купленное.
+   * Класс остаётся наклоном, а не рельсами: его `growth` теперь — веса
+   * авто-траты (`autoSpend`), которыми ходят бот, замеры и кнопка «Само».
+   */
+  spent: Stats;
+  /** Нераспределённые очки характеристик. */
+  statPoints: number;
   /** Сколько ран получено и ещё не залечено. */
   wounds: number;
   status: HeroStatus;
@@ -254,8 +264,21 @@ export function unlockedHeroes(hqLevel: number): number {
   return n;
 }
 
+/** Нулевые купленные уровни — свой объект на героя: `spent` мутируется. */
+export const zeroStats = (): Stats => ({ attack: 0, defense: 0, knowledge: 0, might: 0, agility: 0 });
+
 export function createHero(cls: HeroClassId, id: number): HeroState {
-  return { id, cls, level: 1, xp: 0, wounds: 0, status: 'ready', busyUntil: null };
+  return {
+    id,
+    cls,
+    level: 1,
+    xp: 0,
+    spent: zeroStats(),
+    statPoints: 0,
+    wounds: 0,
+    status: 'ready',
+    busyUntil: null,
+  };
 }
 
 export function createRoster(): Roster {
@@ -293,6 +316,14 @@ export function raidXp(carried: number, tier: number, evacuated: boolean): numbe
   return Math.round(carried * 8 + tier * 10 + (evacuated ? 20 : 0));
 }
 
+/**
+ * §11.7 — очков характеристик за уровень героя. Одинаково всем классам:
+ * класс различает базу и веса авто-траты, а не скорость роста, — иначе
+ * «кем качаться» решала бы арифметика, а не манера игры. Число черновое
+ * до перемера (`npm run levels`).
+ */
+export const STAT_POINTS_PER_LEVEL = 2;
+
 export function addXp(hero: HeroState, xp: number): number {
   let gained = 0;
   hero.xp += Math.max(0, Math.round(xp));
@@ -302,19 +333,52 @@ export function addXp(hero: HeroState, xp: number): number {
     gained += 1;
   }
   if (hero.level >= MAX_HERO_LEVEL) hero.xp = 0;
+  hero.statPoints += gained * STAT_POINTS_PER_LEVEL;
   return gained;
 }
 
 export function stats(hero: HeroState): Stats {
   const def = HERO_CLASSES[hero.cls];
-  const n = hero.level - 1;
+  const s = hero.spent;
   return {
-    attack: def.base.attack + def.growth.attack * n,
-    defense: def.base.defense + def.growth.defense * n,
-    knowledge: def.base.knowledge + def.growth.knowledge * n,
-    might: def.base.might + def.growth.might * n,
-    agility: def.base.agility + def.growth.agility * n,
+    attack: def.base.attack + s.attack,
+    defense: def.base.defense + s.defense,
+    knowledge: def.base.knowledge + s.knowledge,
+    might: def.base.might + s.might,
+    agility: def.base.agility + s.agility,
   };
+}
+
+/**
+ * Куда очки кладутся руками. `might` не в списке намеренно: характеристику
+ * без потребителя нельзя продавать за очки — это цена без товара.
+ */
+export const SPENDABLE = ['attack', 'defense', 'knowledge', 'agility'] as const;
+export type SpendableStat = (typeof SPENDABLE)[number];
+
+/** Положить одно очко в характеристику. false — очков нет. */
+export function spendStat(hero: HeroState, key: SpendableStat): boolean {
+  if (hero.statPoints <= 0) return false;
+  hero.statPoints -= 1;
+  hero.spent = { ...hero.spent, [key]: hero.spent[key] + 1 };
+  return true;
+}
+
+/**
+ * Авто-трата по весам класса: очки идут по кругу в характеристики, у которых
+ * `growth` не нулевой, — та самая прежняя автоматика, но добровольная.
+ * Ей ходят бот и замеры (`referenceLoadout` меряет ею же), и она обязана
+ * быть детерминированной: тот же герой — те же числа.
+ */
+export function autoSpend(hero: HeroState): void {
+  const g = HERO_CLASSES[hero.cls].growth;
+  const keys = SPENDABLE.filter((k) => g[k] > 0);
+  if (keys.length === 0) return;
+  let i = SPENDABLE.reduce((sum, k) => sum + hero.spent[k], 0);
+  while (hero.statPoints > 0) {
+    spendStat(hero, keys[i % keys.length]!);
+    i += 1;
+  }
 }
 
 /* ---------- лечение ---------- */
@@ -450,6 +514,9 @@ export function refreshHeroes(roster: Roster, now: number): HeroTick[] {
       done.push({ hero, what: 'healed' });
     } else if (hero.status === 'training') {
       hero.level += 1;
+      // Плац — второй источник уровней, и очки он выдаёт те же: уровень
+      // один, откуда бы ни пришёл.
+      hero.statPoints += STAT_POINTS_PER_LEVEL;
       hero.xp = 0;
       hero.status = 'ready';
       hero.busyUntil = null;
@@ -648,3 +715,25 @@ export const DEFAULT_LOADOUT: HeroLoadout = {
   // сделал бы её результаты несравнимыми с прежними.
   ranged: false,
 };
+
+/**
+ * §22.6 — модельный герой уровня `level`: эталон замера с ростом. Первый
+ * уровень — ровно `DEFAULT_LOADOUT`, дальше очки уровней ложатся по кругу
+ * в четыре работающие характеристики: середина между классами, как и база.
+ * Каким уровнем мерить ярус, называет `TIER_HERO_LEVEL` (balance.ts).
+ */
+export function referenceLoadout(level: number): HeroLoadout {
+  const lvl = Math.max(1, Math.floor(level));
+  const pts = (lvl - 1) * STAT_POINTS_PER_LEVEL;
+  const order = ['attack', 'defense', 'agility', 'knowledge'] as const;
+  const add = { attack: 0, defense: 0, agility: 0, knowledge: 0 };
+  for (let i = 0; i < pts; i++) add[order[i % order.length]!] += 1;
+  return {
+    ...DEFAULT_LOADOUT,
+    level: lvl,
+    attack: DEFAULT_LOADOUT.attack + add.attack,
+    defense: DEFAULT_LOADOUT.defense + add.defense,
+    agility: DEFAULT_LOADOUT.agility + add.agility,
+    knowledge: DEFAULT_LOADOUT.knowledge + add.knowledge,
+  };
+}

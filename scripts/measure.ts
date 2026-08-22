@@ -12,8 +12,9 @@
 import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';
 import { createRaid } from '../src/sim/raid';
+import { referenceLoadout } from '../src/sim/heroes';
 import { findPath } from '../src/sim/pathfinding';
-import { TIER_KITCHEN_GATE } from '../src/sim/balance';
+import { TIER_HERO_LEVEL, TIER_KITCHEN_GATE } from '../src/sim/balance';
 import { ENEMY_STATS } from '../src/sim/enemies';
 import { emptyResources, RESOURCE_NAME } from '../src/sim/resources';
 import type { ResourceKind, Resources } from '../src/sim/resources';
@@ -80,7 +81,13 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     // пошагового боя: игрок, не умеющий ходить в бою, вешает вылазку,
     // и замер начинает мерить не игру, а обрыв. Одинаковые числа при
     // разных правках — верный признак, что меряется не то.
-    const r = playRaid({ seed, tier, kitchenLevel, storageLevel }, POLICIES.cautious, mulberry32(seed));
+    // §22.6 — ходит модельный герой яруса: обе стороны растут, и мерить
+    // Дно новичком значило бы мерить встречу, которой в игре не бывает.
+    const r = playRaid(
+      { seed, tier, kitchenLevel, storageLevel, loadout: referenceLoadout(TIER_HERO_LEVEL[tier]) },
+      POLICIES.cautious,
+      mulberry32(seed),
+    );
     stat.runs += 1;
     stat.steps += r.steps;
     stat.seconds += r.durationSec;

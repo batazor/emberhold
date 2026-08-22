@@ -415,6 +415,8 @@ export function generateGraveSite(seed: number): GraveSite {
     enemies.push({
       id: i,
       kind: 'ghost',
+      // Обитатель места, а не яруса: живёт первым уровнем (§22.6).
+      level: 1,
       x: cell.x,
       z: cell.z,
       prevX: cell.x,

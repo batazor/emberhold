@@ -1,4 +1,4 @@
-import { HERO_HP } from './balance';
+import { HERO_HP, TIER_ENEMY_LEVEL } from './balance';
 import { kitchenFood, storageCapacity } from './camp';
 import {
   ENEMY_WAKE_SHARE,
@@ -15,7 +15,7 @@ import {
   WEIGHT_SLOWDOWN,
   visionRadius,
 } from './config';
-import { ENEMY_STATS } from './enemies';
+import { ENEMY_STATS, enemyStats } from './enemies';
 import { CACHE_LOOT, DEFAULT_LOADOUT, HAUL_CAPACITY, SKILLS, TRAIL_BACK_DISCOUNT } from './heroes';
 import type { HeroLoadout } from './heroes';
 import { NO_MODS, gearMods } from './gear';
@@ -487,14 +487,18 @@ function springAmbush(state: RaidState, container: Container): void {
   }
   const nextId = loc.enemies.reduce((top, e) => Math.max(top, e.id), 0) + 1;
   spots.forEach((at, i) => {
+    // §22.6 — засада поднимается телами своего яруса: цена сундука растёт
+    // с глубиной вместе со всеми остальными.
+    const level = TIER_ENEMY_LEVEL[loc.tier];
     loc.enemies.push({
       id: nextId + i,
       kind: ambush.kind,
+      level,
       x: at.x,
       z: at.z,
       prevX: at.x,
       prevZ: at.z,
-      hp: ENEMY_STATS[ambush.kind].hp,
+      hp: enemyStats(ambush.kind, level).hp,
       awake: true,
       telegraph: 0,
       cooldown: 0,
@@ -949,7 +953,7 @@ function openBattle(state: RaidState): void {
       defense: f.loadout.defense + f.mods.defense,
       agility: f.loadout.agility,
     })),
-    engaged.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z, hp: e.hp })),
+    engaged.map((e) => ({ id: e.id, kind: e.kind, level: e.level, x: e.x, z: e.z, hp: e.hp })),
     // Сид боя — сид локации плюс номер стычки: броски уворота (§11.3)
     // детерминированы, и тот же сейв даёт тот же бой посимвольно.
     state.loc.seed + state.fights,
