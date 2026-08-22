@@ -5,7 +5,7 @@
  * Запуск: npm run trade
  */
 import { BUILD_COST } from '../src/sim/camp';
-import { OFFERS } from '../src/sim/trade';
+import { PARITY, feeOf, offerOf } from '../src/sim/trade';
 import { GEAR_COST } from '../src/sim/gear';
 import { playRaid, POLICIES } from '../src/sim/bot';
 import { mulberry32 } from '../src/core/rng';
@@ -118,4 +118,13 @@ for (const price of [3, 4, 5, 6, 8, 10]) {
 console.log(`\nдерева за заход яруса 0: ${t0.wood.toFixed(1)} · Кухне ур. 2 нужно ${KITCHEN.wood}`);
 console.log('то есть весь дровяной доход двух заходов уходит в Кухню целиком.');
 
-console.log(`\nсейчас в коде: камень ${OFFERS['iron-stone'].give.stone} → железо ${OFFERS['iron-stone'].take.iron}, дерево ${OFFERS['iron-wood'].give.wood} → железо ${OFFERS['iron-wood'].take.iron}`);
+console.log(`\nпаритет в коде: камень ${PARITY['iron-stone'].give.stone} → железо ${PARITY['iron-stone'].take.iron}, дерево ${PARITY['iron-wood'].give.wood} → железо ${PARITY['iron-wood'].take.iron}`);
+
+// Лестница наценки: критерии выше меряют паритет — лучшую цену лавки;
+// незнакомому дороже, и это в пользу продавца по построению (feeOf ≥ 0).
+console.log('\nотношения: наценка по сделкам');
+for (let d = 0; d <= 5; d++) {
+  const stone = offerOf('iron-stone', d).give.stone;
+  const wood = offerOf('iron-wood', d).give.wood;
+  console.log(`  сделок ${d}: наценка ${(feeOf(d) * 100).toFixed(0)} на сто · камень ${stone} · дерево ${wood}`);
+}
