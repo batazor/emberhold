@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BuildingId } from '../sim/camp';
+import { CRAFT_LOOKS } from '../sim/garrison';
 import type { DwellerLook } from '../sim/garrison';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind, RaidEnemyKind } from '../sim/types';
@@ -11,6 +12,9 @@ import { WEAPONS_PALETTE } from './palette';
 import type { AdventurerModelName } from './adventurers.data';
 import { folkGeometry, folkParts } from './folk';
 import type { FolkModelName } from './folk.data';
+import { toolGeometry } from './tools';
+import type { ToolModelName } from './tools';
+import type { SelfAnswer } from '../sim/settler';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import type { RiggedParts } from './rigged';
@@ -601,11 +605,28 @@ const DWELLER_MODEL: Record<DwellerLook, FolkModelName> = {
   'охотник': 'Hunter',
 };
 
-export const dwellerParts = (look: DwellerLook): RiggedParts =>
+/**
+ * Инструмент занятия (§6.1.14): топор у носящего дерево, кирка у носящего
+ * камень. Связка та же, что в `RESIDENT_WORK`, и читается она предметом:
+ * чем жилец занят, видно по руке, а не только по строке карточки.
+ */
+export const RESIDENT_TOOL: Record<SelfAnswer, ToolModelName> = {
+  строим: 'axe',
+  ходим: 'pickaxe',
+};
+
+export const dwellerParts = (look: DwellerLook, tool?: ToolModelName): RiggedParts => {
   // Рост берётся у героя по той же причине, что у гарнизона: жильцы и герой —
   // люди одного мира, и разный рост читался бы не «другой человек»,
   // а «другой масштаб сцены».
-  folkParts(DWELLER_MODEL[look], heroHeight(GUARD_LIKE));
+  const parts = folkParts(DWELLER_MODEL[look], heroHeight(GUARD_LIKE));
+  // Инструмент — в узел правой руки общего рига: рукоять у набора в нуле,
+  // и кость уносит её сама (`rigged.ts`). Кузнецу и охотнику предмет
+  // не предлагается вовсе: их молот и нож запечены в кисть (§6.1.10),
+  // и второй предмет в той же руке был бы двумя предметами.
+  if (tool === undefined || CRAFT_LOOKS.has(look)) return parts;
+  return { ...parts, hold: { 'handslot.r': toolGeometry(tool) } };
+};
 
 /**
  * Жилец лагеря неподвижной геометрией. Именно неподвижной, и это решение,

@@ -53,6 +53,12 @@ export interface Resident {
   /** Что он о себе сказал при знакомстве: этим выбрано, чем он занят
    *  в лагере (`RESIDENT_WORK`). */
   readonly answer: SelfAnswer;
+  /**
+   * Отдыхает: приказ «отдыхать» откладывает инструмент и останавливает
+   * работу. Занятие (`answer`) при этом не стирается — отдых кончается
+   * приказом вернуться к нему, и жилец обязан помнить, к чему.
+   */
+  readonly rest: boolean;
 }
 
 /** Сколько человек вмещает одна палатка. Единица — это и есть вся механика. */
@@ -253,10 +259,26 @@ export const RESIDENT_STATE: Record<SelfAnswer, string> = {
   ходим: 'носит камень',
 };
 
+/** Состояние жильца одним словом: отдых виден раньше занятия. */
+export const residentState = (r: Resident): string =>
+  r.rest ? 'отдыхает' : RESIDENT_STATE[r.answer];
+
+/**
+ * Приказ карточки. Занятий по-прежнему два (`RESIDENT_WORK`), а приказов
+ * три: «отдыхать» — не третье занятие, а разрешение отложить инструмент.
+ * Ресурсов он не приносит и приносить не может — иначе отдых стал бы
+ * работой, у которой §20.3 потребовал бы замера.
+ */
+export type ResidentOrder = SelfAnswer | 'отдых';
+
+/** Порядок кнопок карточки: сперва занятия, отдых последним. */
+export const RESIDENT_ORDERS: readonly ResidentOrder[] = ['строим', 'ходим', 'отдых'];
+
 /** Приказ словами — кнопки карточки жильца: на что его можно перевести. */
-export const RESIDENT_ORDER: Record<SelfAnswer, string> = {
+export const RESIDENT_ORDER: Record<ResidentOrder, string> = {
   строим: 'Носить дерево',
   ходим: 'Носить камень',
+  отдых: 'Отдыхать',
 };
 
 /**
@@ -269,13 +291,20 @@ export function hasRoof(camp: CampState, index: number): boolean {
 }
 
 /**
- * Приказ жильцу: сменить занятие. Бесплатно и мгновенно, как перестановка
- * зданий (§20.4): расписание — выразительность лагеря, а не логистика.
+ * Приказ жильцу: сменить занятие или отложить инструмент. Бесплатно
+ * и мгновенно, как перестановка зданий (§20.4): расписание —
+ * выразительность лагеря, а не логистика.
  */
-export function assignWork(camp: CampState, index: number, answer: SelfAnswer): boolean {
+export function assignWork(camp: CampState, index: number, order: ResidentOrder): boolean {
   const r = camp.residents[index];
-  if (r === undefined || r.answer === answer) return false;
-  camp.residents[index] = { ...r, answer };
+  if (r === undefined) return false;
+  if (order === 'отдых') {
+    if (r.rest) return false;
+    camp.residents[index] = { ...r, rest: true };
+    return true;
+  }
+  if (r.answer === order && !r.rest) return false;
+  camp.residents[index] = { ...r, answer: order, rest: false };
   return true;
 }
 
@@ -319,6 +348,9 @@ export function workDone(camp: CampState, awaySec: number): { kind: ResourceKind
   const roofed = Math.min(camp.residents.length, Math.max(0, roofs(camp) - 1));
   const sum = new Map<ResourceKind, number>();
   for (const r of camp.residents.slice(0, roofed)) {
+    // Отдыхающий не приносит ничего: отдых — это и есть отложенный
+    // инструмент, и прибавка от него была бы работой под другим именем.
+    if (r.rest) continue;
     const kind = RESIDENT_WORK[r.answer];
     sum.set(kind, (sum.get(kind) ?? 0) + each);
   }

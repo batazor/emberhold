@@ -39,13 +39,16 @@ NC-лицензии несовместимы с любой монетизаци�
 | `villager-npc/Villagers_Texture.png` — атлас набора, сетка градиентных клеток | там же | CC0 1.0 | standout7 |
 | `quaternius-village/gltf/*.gltf`, `*.bin` — 176 моделей городской застройки: стены (штукатурка и кирпич), углы, крыши под пролёты 4/6/8 м, фронтоны, двери, окна, ставни, полы, трубы, лестницы, балконы, реквизит | [quaternius.itch.io/medieval-village-megakit](https://quaternius.itch.io/medieval-village-megakit), тариф Standard (бесплатный) | CC0 1.0 | Quaternius |
 | `quaternius-village/gltf/T_*_BaseColor.png`, `T_VineLeaf_png.png` — текстуры цвета; в бандл не едут, по ним замеряется цвет материала для слота палитры | там же | CC0 1.0 | Quaternius |
+| `kaykit-tools/gltf/*.gltf`, `*.bin` — 49 моделей: топор, кирка, лопата, молот, киянка, пила, клещи, наковальня, точило, ножовка, стамеска, дрель, рубанок, фонарь, факелы, вёдра, верёвки, карты, чертежи, журналы, циркули, лупа, гвозди, винты, отвёртки, ключи | [kaylousberg.itch.io/rpg-tools-bits](https://kaylousberg.itch.io/rpg-tools-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
+| `kaykit-tools/gltf/tools_bits_*.png` — атлас набора и три текстуры карт/чертежа | там же | CC0 1.0 | Kay Lousberg |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
 `kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
 `kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`,
-`kenney-graveyard-kit/License.txt` и `quaternius-ual/License.txt` — файлы лицензий как они пришли
+`kenney-graveyard-kit/License.txt`, `quaternius-ual/License.txt` и
+`kaykit-tools/License.txt` — файлы лицензий как они пришли
 в архивах, без правок.
 
 Атласа у строителя нет: цвет лежит в именованных материалах glTF, и картинки

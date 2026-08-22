@@ -105,7 +105,7 @@ interface SaveV1 {
    * открываться. Отсутствие читается пустым лагерем — герой один и живёт
    * в Жилье, ровно как было до появления жильцов.
    */
-  residents?: { name: string; look: string; answer: string; seed?: number }[];
+  residents?: { name: string; look: string; answer: string; seed?: number; rest?: boolean }[];
   tents?: { x: number; z: number }[];
 }
 
@@ -151,6 +151,9 @@ export function save(
       look: r.look,
       answer: r.answer,
       seed: r.seed,
+      // Пишется только правда «отдыхает»: false — умолчание чтения,
+      // и старый сейв без поля читается работающим лагерем, каким и был.
+      ...(r.rest ? { rest: true } : {}),
     })),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
     onb: onboarding,
@@ -298,7 +301,7 @@ export function load(): LoadResult {
     // подставить умолчание значило бы придумать за игрока, кого он позвал.
     if (Array.isArray(data.residents)) {
       camp.residents = data.residents
-        .filter((r): r is { name: string; look: DwellerLook; answer: SelfAnswer; seed?: number } =>
+        .filter((r): r is { name: string; look: DwellerLook; answer: SelfAnswer; seed?: number; rest?: boolean } =>
           r != null &&
           typeof r.name === 'string' &&
           r.name !== '' &&
@@ -312,6 +315,8 @@ export function load(): LoadResult {
           look: r.look,
           answer: r.answer,
           seed: typeof r.seed === 'number' ? r.seed : seedOfName(r.name),
+          // Отдых — недавнее поле: сейв без него читается работающим лагерем.
+          rest: r.rest === true,
         }));
     }
     if (Array.isArray(data.tents)) {
