@@ -149,6 +149,32 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
     beard(beardKind, hair) +
     (beardKind === 2 ? '' : mouth(mouthKind));
 
+  // Рыцарь лица не показывает, и приметы у него кузнечные: жребии примет
+  // (брови, борода, рот) переиспользуются на тон купола, забрало и заклёпки —
+  // новых бросков нет, и сид даёт то же лицо всем остальным видам.
+  const dome = beardKind === 0 ? C.металл : C.сталь;
+  /** Подбородник контрастом к куполу: одним цветом шлем слипался бы в пятно. */
+  const trim = beardKind === 0 ? C.сталь : C.металл;
+  /** Забрало: щель, крест или решётка — по нему рыцари узнают друг друга. */
+  const visor =
+    `<rect x="11" y="19" width="22" height="4" rx="1" fill="${C['металл-тень']}"/>` +
+    (browKind === 1
+      ? `<rect x="20.5" y="16.5" width="3" height="9" rx="1.2" fill="${C['металл-тень']}"/>`
+      : browKind === 2
+        ? `<rect x="15.5" y="19" width="2" height="4" fill="${dome}"/>` +
+          `<rect x="21" y="19" width="2" height="4" fill="${dome}"/>` +
+          `<rect x="26.5" y="19" width="2" height="4" fill="${dome}"/>`
+        : '');
+  const rivets =
+    mouthKind === 2
+      ? `<circle cx="13.8" cy="16.6" r="1.2" fill="${C.латунь}"/>` +
+        `<circle cx="30.2" cy="16.6" r="1.2" fill="${C.латунь}"/>`
+      : '';
+  /** Наплечники: герой в железе, а не в одном сукне — но сукно из-под них видно. */
+  const pauldrons =
+    `<path d="M4 44a18 14 0 0 1 9-12l4 6a12 9 0 0 0-8 6z" fill="${dome}"/>` +
+    `<path d="M40 44a18 14 0 0 0-9-12l-4 6a12 9 0 0 1 8 6z" fill="${dome}"/>`;
+
   /** Гребень рыцарского шлема: щётка, перо или валик — шлем один, люди разные. */
   const crest =
     extra === 0
@@ -168,12 +194,14 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
         : `<circle cx="22" cy="11" r="4.5" fill="${hair}"/>`;
 
   const gear: Record<AvatarLook, string> = {
-    // Рыцарь: глухой шлем со щелью и гребнем. Глаз не видно — их и не должно.
+    // Рыцарь: глухой шлем с забралом и гребнем. Глаз не видно — их и не должно.
     knight:
-      `<path d="M11 22a11 11 0 0 1 22 0v4H11z" fill="${C.сталь}"/>` +
-      `<rect x="11" y="19" width="22" height="4" rx="1" fill="${C['металл-тень']}"/>` +
+      pauldrons +
+      `<path d="M11 22a11 11 0 0 1 22 0v4H11z" fill="${dome}"/>` +
+      visor +
+      rivets +
       crest +
-      `<rect x="13" y="26" width="18" height="3" rx="1.5" fill="${C.металл}"/>`,
+      `<rect x="13" y="26" width="18" height="3" rx="1.5" fill="${trim}"/>`,
     // Лучник: капюшон с боковинами и тетива через плечо. Тетива идёт ниже
     // лица: через лицо она читалась царапиной, а не снаряжением.
     archer:
