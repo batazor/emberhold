@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { RESIDENT_TOOL, buildingGeometry, dwellerParts, heroGeometry, heroParts } from './models';
+import { RESIDENT_TOOL, RESIDENT_WORK_CLIP, buildingGeometry, dwellerParts, heroGeometry, heroParts } from './models';
+import { hasRoof } from '../sim/residents';
 import { Rigged } from './rigged';
 import { CAMP_SPEED } from '../sim/campWalk';
 import type { HeroClassId } from '../sim/heroes';
@@ -530,7 +531,14 @@ export class CampView {
       rig.root.position.set(at.x, 0, at.z);
       // Лицом к костру: люди в лагере смотрят на огонь, а не в лес.
       rig.root.rotation.y = Math.atan2(fire.x + 1 - at.x, fire.z + 1 - at.z);
-      rig.play('покой');
+      // Работающий работает и в кадре (§6.1.14): топор рубит, кирка кайлит.
+      // Отдыхающий и жилец без крыши стоят в покое — прибавки от них нет
+      // (`workDone`), и движения тоже: клип и счёт держат одно правило.
+      const working = !r.rest && hasRoof(this.camp, i);
+      rig.play(working ? RESIDENT_WORK_CLIP[r.answer] : 'покой');
+      // Фазы разведены номером: одинаковый клип, запущенный всем в один
+      // кадр, машет строем, а строй читается заводными игрушками.
+      rig.update(i * 1.1);
       this.group.add(rig.root);
       this.folk.push(rig);
     });
