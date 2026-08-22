@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  AWAKE_SEC,
   CAMP_DAY,
   CAMP_NIGHT,
   KIND,
@@ -28,6 +29,8 @@ import {
   phaseAt,
   regionAt,
   shiftAt,
+  SLEEP_SEC,
+  WAKE_AT,
   worldAt,
 } from './world';
 import type { Visit } from './world';
@@ -358,6 +361,17 @@ describe('Время суток (§24)', () => {
       if (phaseAt(t) === 'день') assert.equal(nightAt(t), CAMP_DAY);
       if (phaseAt(t) === 'ночь') assert.equal(nightAt(t), CAMP_NIGHT);
     }
+  });
+
+  test('свет и расписание просыпаются в одну и ту же секунду', () => {
+    // Границы фаз считаются в секундах ровно ради этого: на долях 0,87×2400
+    // выходило то чуть больше 2088, то чуть меньше, и свет говорил «ещё
+    // ночь», когда расписание уже будило жильца.
+    assert.equal(phaseAt(WAKE_AT), 'рассвет', 'подъём пришёлся не на рассвет');
+    assert.equal(phaseAt(WAKE_AT - 1), 'ночь', 'секундой раньше подъёма уже не ночь');
+    assert.equal(nightAt(WAKE_AT), CAMP_NIGHT, 'рассвет начинается не с полной темноты');
+    assert.equal(phaseAt(WAKE_AT + AWAKE_SEC), 'ночь', 'бодрствование кончилось не с темнотой');
+    assert.equal(SLEEP_SEC + AWAKE_SEC, SHIFT_SEC, 'сон и явь не складываются в смену');
   });
 
   test('ничего не тикает: свет — функция часов, а не накопленного', () => {

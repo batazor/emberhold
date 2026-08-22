@@ -254,6 +254,19 @@ export const dayStartShift = (day: number): number => day * SHIFTS_PER_DAY;
 const PHASE = { день: 0.42, закат: 0.13, ночь: 0.32 } as const;
 
 /**
+ * Границы фаз **в секундах**, а не в долях, и посчитаны один раз.
+ *
+ * Доли выглядели честнее, но 0,32 в двоичной дроби не точна, и `0.87 × 2400`
+ * оказывалось то чуть больше 2088, то чуть меньше. На эпсилон расходились
+ * ровно две вещи, которым расходиться нельзя: свет говорил «ещё ночь»,
+ * а расписание уже будило жильца. Одни и те же секунды у обоих снимают
+ * вопрос вместо того, чтобы прятать его за округлением.
+ */
+const DUSK_AT = Math.round(PHASE.день * SHIFT_SEC);
+const DARK_AT = Math.round((PHASE.день + PHASE.закат) * SHIFT_SEC);
+const DAWN_AT = Math.round((PHASE.день + PHASE.закат + PHASE.ночь) * SHIFT_SEC);
+
+/**
  * Свет полудня. То же число, каким светилась поляна пролога: сутки
  * не переосвещают день, они добавляют к нему всё остальное.
  */
@@ -267,6 +280,20 @@ export const CAMP_DAY = 0.12;
  */
 export const CAMP_NIGHT = 0.8;
 
+/**
+ * Ночь в секундах смены — и её начало. Отсюда же берёт расписание рутина
+ * (`sim/chores.ts`): жильцы спят ровно ту фазу, которую небо показывает
+ * тёмной, и второго числа на это нет. Разойдись они — жилец ложился бы
+ * при свете или работал в темноте, и починить это можно было бы только
+ * подгонкой одного под другое.
+ */
+export const SLEEP_FROM = DARK_AT;
+export const SLEEP_SEC = DAWN_AT - DARK_AT;
+/** Начало рассвета: с него у рутины отсчёт, потому что с него встают. */
+export const WAKE_AT = DAWN_AT;
+/** Сколько смены жилец на ногах. Столько же длятся все его круги вместе. */
+export const AWAKE_SEC = SHIFT_SEC - SLEEP_SEC;
+
 /** Сглаженная ступень: перелом без излома на краях, иначе закат читается
  *  щелчком выключателя, а не заходом солнца. */
 const smooth = (u: number): number => u * u * (3 - 2 * u);
@@ -278,23 +305,21 @@ const smooth = (u: number): number => u * u * (3 - 2 * u);
  * отрабатывает сама, потому что часы настенные.
  */
 export function nightAt(t: number): number {
-  const u = (((t % SHIFT_SEC) + SHIFT_SEC) % SHIFT_SEC) / SHIFT_SEC;
-  const dusk = PHASE.день + PHASE.закат;
-  const dark = dusk + PHASE.ночь;
+  const s = ((t % SHIFT_SEC) + SHIFT_SEC) % SHIFT_SEC;
   const lerp = (k: number): number => CAMP_DAY + (CAMP_NIGHT - CAMP_DAY) * smooth(k);
-  if (u < PHASE.день) return CAMP_DAY;
-  if (u < dusk) return lerp((u - PHASE.день) / PHASE.закат);
-  if (u < dark) return CAMP_NIGHT;
-  return lerp(1 - (u - dark) / (1 - dark));
+  if (s < DUSK_AT) return CAMP_DAY;
+  if (s < DARK_AT) return lerp((s - DUSK_AT) / (DARK_AT - DUSK_AT));
+  if (s < DAWN_AT) return CAMP_NIGHT;
+  return lerp(1 - (s - DAWN_AT) / (SHIFT_SEC - DAWN_AT));
 }
 
 /** Время суток словом — отладочным сценам и прибору, а не игроку: в кадре
  *  время суток называет свет, а не подпись. */
 export function phaseAt(t: number): 'день' | 'закат' | 'ночь' | 'рассвет' {
-  const u = (((t % SHIFT_SEC) + SHIFT_SEC) % SHIFT_SEC) / SHIFT_SEC;
-  if (u < PHASE.день) return 'день';
-  if (u < PHASE.день + PHASE.закат) return 'закат';
-  if (u < PHASE.день + PHASE.закат + PHASE.ночь) return 'ночь';
+  const s = ((t % SHIFT_SEC) + SHIFT_SEC) % SHIFT_SEC;
+  if (s < DUSK_AT) return 'день';
+  if (s < DARK_AT) return 'закат';
+  if (s < DAWN_AT) return 'ночь';
   return 'рассвет';
 }
 

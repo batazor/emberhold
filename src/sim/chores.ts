@@ -35,12 +35,27 @@
  * приходятся на разворот, где подмены не видно.
  *
  * **Встреча назначается, а не случается.** Работники разбиты на пары,
- * и паре выдан **общий круг и общая фаза** — значит домой они приходят
- * в одну секунду каждый раз, а стоянка у костра удлинена ровно на разговор
+ * и паре выдан **общий круг** — значит домой они приходят в одну секунду
+ * каждый раз, а стоянка у костра удлинена ровно на разговор
  * (`CHAT_SECONDS`). Ловить сближение по расстоянию было бы вторым способом
  * считать движение и потребовало бы памяти; назначенная встреча оставляет
  * кадр чистой функцией времени и заодно ставит разговор туда, где ему
  * место, — к огню, а не посреди тропы.
+ *
+ * **Круги укладываются в смену, и ночью жилец спит (§24).** Расписания
+ * своего у рутины нет: она берёт его у неба — сколько смены светло
+ * и сколько темно, считает `world.ts`, и жилец ложится ровно тогда, когда
+ * темнеет. Число кругов подобрано так, чтобы последний кончился к темноте,
+ * а остаток времени ушёл в рабочую стоянку: у кого тропа короче, тот дольше
+ * рубит. Ночью тот, у кого есть крыша, доходит до палатки и **пропадает
+ * из кадра**; у кого крыши нет — тому тропы не дали вовсе, и он сидит
+ * у костра, где сидел. Ночь ничего не платит и ничего не запирает (§24.1):
+ * `workDone` её не замечает, и сон не становится второй зарплатой.
+ *
+ * Личной фазы поэтому больше нет ни у кого: на рассвете лагерь выходит
+ * разом. Один момент в смене, когда видно, что он проснулся, дороже ровного
+ * размазывания выходов по утру, — а разъезжаются жильцы всё равно сразу,
+ * потому что тропы у них разной длины.
  */
 import { DWELLER_SPEED } from './garrison';
 import { findPath } from './pathfinding';
@@ -52,6 +67,9 @@ import type { Rng } from '../core/rng';
 // Время на разговор берётся у того, кто его считает: сколько длится обмен
 // репликами, знает `talk.ts`, а маршрут обязан выделить ровно столько же.
 import { CHAT_SECONDS } from './talk';
+// Расписание берётся у неба (§24): жилец спит ровно ту фазу смены, которую
+// показывает тёмной `nightAt`. Свои числа тут были бы вторыми сутками.
+import { AWAKE_SEC, SHIFT_SEC, SLEEP_SEC, WAKE_AT } from './world';
 import type { Cell } from './types';
 import type { Resident } from './residents';
 
@@ -98,12 +116,17 @@ interface Stop {
 export interface Chore {
   readonly path: readonly Cell[];
   readonly stops: readonly Stop[];
-  /** Полный круг в секундах — ход плюс все стоянки. */
-  readonly cycle: number;
-  /** Сдвиг начала: жильцы вышли не строем, а кто когда. */
-  readonly phase: number;
+  /** Один круг в секундах — ход плюс все стоянки. */
+  readonly circuit: number;
+  /** Сколько кругов до сна. Все вместе они и есть бодрствование смены. */
+  readonly laps: number;
   /** Номер напарника по разговору; null — ходит и молчит. */
   readonly partner: number | null;
+  /**
+   * Дорога ко сну: от дома до порога палатки. Пусто — спать негде, и жилец
+   * коротает ночь у огня там же, где стоял днём.
+   */
+  readonly bed: readonly Cell[];
 }
 
 /** Где жилец на момент `t`: рендеру хватает этих чисел. */
@@ -122,6 +145,12 @@ export interface ChoreFrame extends Body {
    * маршрут назначает время и место, а не реплики.
    */
   readonly talk: { readonly since: number; readonly round: number } | null;
+  /**
+   * Спит в палатке, и потому его не видно вовсе. Не «стоит внутри», а именно
+   * скрыт: тело, оставленное на клетке палатки, торчало бы сквозь неё, а
+   * положенное рядом читалось бы спящим на земле при живой крыше.
+   */
+  readonly hidden: boolean;
 }
 
 /**
@@ -135,6 +164,13 @@ export interface ChoreSite {
   /** Клетка костра: дом маршрута. */
   readonly fire: Cell;
   readonly seed: number;
+  /**
+   * Палатки по номерам жильцов: у кого крыша, тот в ней и спит. Связь
+   * та же, что у `hasRoof` (`residents.ts`) и у площадки лагеря, — номер,
+   * потому что больше их ничто не связывает. Короче списка жильцов —
+   * значит последним крыши не досталось, и ночуют они у огня.
+   */
+  readonly tents: readonly Cell[];
 }
 
 /**
@@ -280,7 +316,30 @@ export function choresOf(
     readonly alone: number;
     readonly spot: Cell;
     readonly rng: Rng;
+    /** Дорога от дома к порогу палатки; пусто — крыши нет. */
+    readonly bed: Cell[];
   }
+
+  /**
+   * Дорога ко сну: от места у костра до **порога** палатки, а не до неё
+   * самой. Клетка палатки занята (её закрывает та же маска, что и следы
+   * построек), и путь внутрь искать нечего: жилец доходит до двери
+   * и пропадает. Крыши нет — дороги нет, и ночь он сидит там, где стоял.
+   */
+  const bedPath = (from: Cell, tent: Cell | undefined): Cell[] => {
+    if (tent === undefined) return [];
+    let best: Cell[] = [];
+    for (const [dx, dz] of [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+      const door = { x: tent.x + dx, z: tent.z + dz };
+      if (door.x < 0 || door.z < 0 || door.x >= site.size || door.z >= site.size) continue;
+      if (site.blocked[idx(site.size, door.x, door.z)] !== 0) continue;
+      if (door.x === from.x && door.z === from.z) return [{ ...from }];
+      const leg = findPath(site.size, site.blocked, from, door);
+      if (leg.length === 0) continue;
+      if (best.length === 0 || leg.length < best.length) best = [{ ...from }, ...leg.map((c) => ({ x: c.x, z: c.z }))];
+    }
+    return best;
+  };
   const drafts: (Draft | null)[] = residents.map(() => null);
 
   residents.forEach((r, i) => {
@@ -308,7 +367,9 @@ export function choresOf(
       return pool[randInt(rng, pool.length)] ?? null;
     };
 
-    let built: Draft | null = null;
+    // Дорога ко сну прикладывается при укладке в список: она зависит
+    // от места у костра, а его выбирает та же ветка, что и тропу.
+    let built: Omit<Draft, 'bed'> | null = null;
     if (r.answer === 'строим') {
       const work = pickSpot(takenWork, 24);
       if (work !== null) {
@@ -371,23 +432,40 @@ export function choresOf(
     }
     if (built === null) return;
     takenBase.push(base);
-    drafts[i] = built;
+    drafts[i] = { ...built, bed: bedPath(base, site.tents[i]) };
   });
 
   /**
-   * Сведение круга. Одиночке круг остаётся свой, паре — общий, и это
-   * единственный способ назначить встречу, не заводя памяти: у обоих
-   * одинаковые цикл и фаза, значит домой они приходят в одну и ту же
-   * секунду каждый круг, и «встретились» перестаёт быть случайностью.
+   * Сведение круга — и всё расписание разом.
    *
-   * Лишнее время достаётся **рабочей стоянке, а не костру**. Тот, у кого
-   * тропа короче, дольше рубит — и это читается делом. Отдай эти секунды
-   * дому, и он стоял бы у огня втрое дольше напарника: со стороны это
-   * не «ждёт», а «бездельничает».
+   * **Круги укладываются в бодрствование смены.** Число кругов подбирается
+   * так, чтобы последний кончился ровно к темноте, а остаток времени уходит
+   * в рабочую стоянку: у кого тропа короче, тот дольше рубит. Отдай эти
+   * секунды дому — и он стоял бы у огня втрое дольше соседа, а это со
+   * стороны не «работает медленнее», а «бездельничает».
+   *
+   * Отсюда же встреча пары: обоим выдан **один и тот же круг**, значит домой
+   * они приходят в одну и ту же секунду каждый раз. Ловить сближение
+   * по расстоянию значило бы завести память о том, кто с кем уже поговорил;
+   * общий круг оставляет кадр чистой функцией времени.
+   *
+   * Личной фазы ни у кого нет, и это решение: на рассвете лагерь выходит
+   * разом. Один момент в смене, когда видно, что он проснулся, дороже
+   * ровного размазывания выходов по утру — а разъезжаются жильцы всё равно
+   * сразу, потому что тропы у них разной длины.
    */
-  const settle = (d: Draft, mate: number | null, longest: number, phase: number, beside: Cell | null): Chore => {
-    const pad = longest - d.alone;
+  const settle = (d: Draft, mate: number | null, longest: number, beside: Cell | null): Chore | null => {
     const talks = mate !== null;
+    const base = longest + (talks ? CHAT_SECONDS : 0);
+    // Круг длиннее целой смены не укладывается в неё ни разу: такой жилец
+    // остаётся у костра, чем ложился бы спать посреди дороги.
+    if (base <= 0 || base > AWAKE_SEC) return null;
+    const laps = Math.max(1, Math.min(Math.round(AWAKE_SEC / base), Math.floor(AWAKE_SEC / base)));
+    const circuit = AWAKE_SEC / laps;
+    // Добавка **личная**, а не общая на пару: у напарников тропы разной
+    // длины, и одинаковая добавка оставила бы им разные круги — то есть
+    // развела бы по времени ровно тех, кого круг сводит.
+    const pad = circuit - d.alone - (talks ? CHAT_SECONDS : 0);
     return {
       path: d.path,
       stops: d.stops.map((s) => {
@@ -399,9 +477,10 @@ export function choresOf(
         }
         return s.takes === true ? { ...s, pause: s.pause + pad } : s;
       }),
-      cycle: longest + (talks ? CHAT_SECONDS : 0),
-      phase,
+      circuit,
+      laps,
       partner: mate,
+      bed: d.bed,
     };
   };
 
@@ -413,19 +492,82 @@ export function choresOf(
     // Напарник не вышел на тропу — пары нет: разговаривать не с кем,
     // и круг остаётся своим.
     if (mate === null || other === null || other === undefined) {
-      // Фаза своя у каждого: вышедшие строем читались бы конвейером, а не
-      // жизнью, — то же решение, что фаза шага у гарнизона.
-      out[i] = settle(d, null, d.alone, d.rng() * d.alone, null);
+      out[i] = settle(d, null, d.alone, null);
       return;
     }
     const longest = Math.max(d.alone, other.alone);
-    // Фаза общая — она и есть встреча. Берётся у первого из пары, чтобы
-    // не зависеть от порядка обхода.
-    const phase = d.rng() * (longest + CHAT_SECONDS);
-    out[i] = settle(d, mate, longest, phase, other.spot);
-    out[mate] = settle(other, i, longest, phase, d.spot);
+    out[i] = settle(d, mate, longest, other.spot);
+    out[mate] = settle(other, i, longest, d.spot);
   });
   return out;
+}
+
+/**
+ * Ночь жильца: `s` секунд от темноты. Три отрезка — дойти до палатки,
+ * проспать в ней и выйти к рассвету.
+ *
+ * Спящий **скрыт, а не поставлен внутрь**: тело на клетке палатки торчало бы
+ * сквозь неё, а положенное рядом читалось бы спящим на земле при живой
+ * крыше — то есть врало бы ровно о том, ради чего ночь и заведена (§24).
+ *
+ * Крыши нет — нет и дороги: безкрышный работник (такой бывает только
+ * мгновение между постройкой палатки и пересадкой) ночует там, где стоял.
+ * Обычно же его вовсе нет в этом списке: без крыши тропы не дают.
+ */
+function sleepAt(c: Chore, s: number): ChoreFrame {
+  const home = c.path[0]!;
+  const bed = c.bed;
+  // Пусто — крыши нет. Одна клетка — крыша есть, а идти до неё некуда:
+  // место у костра само оказалось порогом палатки, и жилец скрывается
+  // не сходя с него. Считать это «крыши нет» значило бы оставить его
+  // ночевать снаружи ровно потому, что палатка близко.
+  if (bed.length === 0) {
+    return { x: home.x, z: home.z, facing: 0, walking: false, working: false, carrying: false, talk: null, hidden: false };
+  }
+  let walk = 0;
+  for (let i = 0; i + 1 < bed.length; i++) {
+    const a = bed[i]!;
+    const b = bed[i + 1]!;
+    walk += Math.hypot(b.x - a.x, b.z - a.z);
+  }
+  walk /= DWELLER_SPEED;
+  // Ночь короче двух концов дороги не бывает при нынешних числах, но если
+  // станет — жилец просто спит на пороге: пропасть по дороге хуже.
+  const legs = Math.min(walk, SLEEP_SEC / 2);
+  const along = (u: number): ChoreFrame => {
+    let left = u * walk;
+    for (let i = 0; i + 1 < bed.length; i++) {
+      const from = bed[i]!;
+      const to = bed[i + 1]!;
+      const dx = to.x - from.x;
+      const dz = to.z - from.z;
+      const span = Math.hypot(dx, dz) / DWELLER_SPEED;
+      if (left < span || i + 2 === bed.length) {
+        const share = span === 0 ? 0 : Math.min(1, left / span);
+        return {
+          x: from.x + dx * share,
+          z: from.z + dz * share,
+          facing: Math.atan2(dx, dz),
+          walking: true,
+          working: false,
+          carrying: false,
+          talk: null,
+          hidden: false,
+        };
+      }
+      left -= span;
+    }
+    const door = bed[bed.length - 1]!;
+    return { x: door.x, z: door.z, facing: 0, walking: false, working: false, carrying: false, talk: null, hidden: false };
+  };
+  if (s < legs) return along(s / legs);
+  if (s >= SLEEP_SEC - legs) {
+    // Обратно тем же путём: у порога разворачиваются, а не проходят сквозь.
+    const back = along(1 - (s - (SLEEP_SEC - legs)) / legs);
+    return { ...back, facing: back.facing + Math.PI };
+  }
+  const door = bed[bed.length - 1]!;
+  return { x: door.x, z: door.z, facing: 0, walking: false, working: false, carrying: false, talk: null, hidden: true };
 }
 
 /**
@@ -434,9 +576,14 @@ export function choresOf(
  * называет положение.
  */
 export function choreAt(c: Chore, t: number): ChoreFrame {
-  let left = c.cycle <= 0 ? 0 : (((t + c.phase) % c.cycle) + c.cycle) % c.cycle;
+  // Отсчёт — от рассвета: с него встают, и потому с него считается всё
+  // остальное. Смена и есть сутки (§24), другого расписания у жильца нет.
+  const since = t - WAKE_AT;
+  const day = ((since % SHIFT_SEC) + SHIFT_SEC) % SHIFT_SEC;
+  if (day >= AWAKE_SEC) return sleepAt(c, day - AWAKE_SEC);
+  let left = day % c.circuit;
   // Номер круга: по нему разговор каждой встречи звучит своими словами.
-  const round = c.cycle <= 0 ? 0 : Math.floor((t + c.phase) / c.cycle);
+  const round = Math.floor(since / c.circuit);
   /**
    * Полны ли руки. Не хранится, а выводится заново на каждом вызове: обход
    * всегда начинается с вершины 0 — а это дом сразу после разгрузки, —
@@ -462,6 +609,7 @@ export function choreAt(c: Chore, t: number): ChoreFrame {
         working: false,
         carrying: laden,
         talk: null,
+        hidden: false,
       };
     }
     left -= walk;
@@ -480,6 +628,7 @@ export function choreAt(c: Chore, t: number): ChoreFrame {
           // приходятся на разворот, где их и не видно.
           carrying: laden,
           talk: stop.talk === true ? { since: left, round } : null,
+          hidden: false,
         };
       }
       left -= stop.pause;
@@ -499,6 +648,7 @@ export function choreAt(c: Chore, t: number): ChoreFrame {
     working: false,
     carrying: false,
     talk: null,
+    hidden: false,
   };
 }
 
