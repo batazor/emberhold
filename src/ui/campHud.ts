@@ -13,6 +13,13 @@ import {
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { ARROW_PACK, ARROW_PACK_COST, canBuyArrows } from '../sim/camp';
+import {
+  CHEST_BONUS,
+  CHEST_COST,
+  CHEST_REASON,
+  chestBlock,
+  chestBonus as chestBonusOf,
+} from '../sim/chests';
 import { GEAR, GEAR_COST, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine, gearMods } from '../sim/gear';
 import type { GearSlot, Offhand } from '../sim/gear';
 import {
@@ -68,6 +75,9 @@ export interface CampCallbacks {
   onOffhand(offhand: Offhand): void;
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
+  /** Поставить сундук-хранилище (`sim/chests.ts`): карточка вооружает
+   *  режим, дальше тап по клетке — тем же жестом, что палатка. */
+  onChest(): void;
   /**
    * Лист открылся или закрылся. Панель зовёт это на переходе состояния,
    * а не на каждом `openSheet`: смена раздела внутри открытого листа —
@@ -124,6 +134,11 @@ export class CampHud {
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
   private readonly gearRows = new Map<GearSlot, Row>();
+  /** Карточка сундука (`sim/chests.ts`) в листе Склада. */
+  private chestCount!: HTMLElement;
+  private chestEffect!: HTMLElement;
+  private chestStatus!: HTMLElement;
+  private chestButton!: HTMLButtonElement;
   /** Карта региона (§4). Живёт в том же листе, где раньше был список ярусов. */
   private readonly map: WorldMap;
   /** Отряд, отданный лагерю снаружи (§26): карте он нужен, чтобы знать,
@@ -253,6 +268,37 @@ export class CampHud {
     this.gearSection.className = 'gear';
     for (const slot of GEAR_ORDER) this.gearSection.appendChild(this.makeGearRow(slot));
     this.sections.get('forge')?.appendChild(this.gearSection);
+
+    // Сундуки (`sim/chests.ts`) — в карточке Склада: оба про одну величину,
+    // вместимость рюкзака, и отдельная вкладка разорвала бы эту связь —
+    // тот же довод, каким сток снаряжения живёт в Мастерской.
+    const chest = document.createElement('div');
+    chest.className = 'card b';
+    const chestTop = document.createElement('div');
+    chestTop.className = 'row b-top';
+    const chestName = document.createElement('b');
+    chestName.textContent = 'Сундук';
+    this.chestCount = document.createElement('span');
+    this.chestCount.className = 'badge';
+    chestTop.append(chestName, this.chestCount);
+    this.chestEffect = document.createElement('div');
+    this.chestEffect.className = 'b-eff';
+    const chestBottom = document.createElement('div');
+    chestBottom.className = 'row mid b-bot';
+    this.chestStatus = document.createElement('span');
+    this.chestStatus.className = 'dim';
+    this.chestButton = document.createElement('button');
+    this.chestButton.className = 'act';
+    this.chestButton.textContent = 'Поставить';
+    // Лист закрывается, как у перестановки: дальше жест по земле, и сцена
+    // обязана быть видна.
+    this.chestButton.addEventListener('click', () => {
+      this.cb.onChest();
+      this.close();
+    });
+    chestBottom.append(this.chestStatus, this.chestButton);
+    chest.append(chestTop, this.chestEffect, chestBottom);
+    this.sections.get('storage')?.appendChild(chest);
 
     // §20.4 — перестановка бесплатна и мгновенна, поэтому это кнопка
     // в карточке, а не отдельный режим редактирования лагеря.
@@ -672,6 +718,9 @@ export class CampHud {
   private syncBuilding(camp: CampState, id: BuildingId, now: number): void {
     const row = this.rows.get(id);
     if (row === undefined) return;
+    // Карточка сундука живёт в листе Склада и красится вместе с ним —
+    // в том числе пока Склад строится: стройка занимает слот, а не сундуки.
+    if (id === 'storage') this.syncChest(camp);
     const level = camp.levels[id];
     const c = camp.construction;
 
@@ -703,6 +752,19 @@ export class CampHud {
       block === 'ok' || block === 'resources'
         ? this.priceLine(level + 1)
         : UPGRADE_REASON[block];
+  }
+
+  /** Карточка сундука (`sim/chests.ts`): счёт, суммарная прибавка и цена. */
+  private syncChest(camp: CampState): void {
+    const block = chestBlock(camp);
+    this.chestCount.textContent = `×${camp.chests.length}`;
+    this.chestEffect.textContent =
+      `Рюкзак +${CHEST_BONUS} за каждый · сейчас +${chestBonusOf(camp)}`;
+    this.chestButton.disabled = block !== 'ok';
+    this.chestStatus.textContent =
+      block === 'ok' || block === 'resources'
+        ? `дерево ${CHEST_COST.wood ?? 0}`
+        : CHEST_REASON[block];
   }
 
   /** Снаряжение. Компромисс слота показывается всегда, а не только когда

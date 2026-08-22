@@ -1,5 +1,6 @@
 import type { BuildingId, CampState } from './camp';
 import { BUILDING_ORDER, campArea, campStones, createCamp } from './camp';
+import { adoptChest } from './chests';
 import { DWELLER_LOOKS } from './garrison';
 import type { DwellerLook } from './garrison';
 import { SELF_ANSWERS } from './settler';
@@ -113,6 +114,14 @@ interface SaveV1 {
    */
   residents?: { name: string; look: string; answer: string; seed?: number; rest?: boolean }[];
   tents?: { x: number; z: number }[];
+  /**
+   * Сундуки-хранилища (`chests.ts`). Необязательное — сейв прежних этапов
+   * обязан открываться; но отсутствие поля читается не пустотой, а миграцией:
+   * первый сундук достаётся прологом вместе с палаткой, и лагерь, разбитый
+   * до этой механики, получает его при чтении — иначе +30 рюкзака достались
+   * бы только новым сейвам.
+   */
+  chests?: { x: number; z: number }[];
 }
 
 export interface LoadResult {
@@ -163,6 +172,7 @@ export function save(
       ...(r.rest ? { rest: true } : {}),
     })),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
+    chests: camp.chests.map((c) => ({ x: c.x, z: c.z })),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -346,6 +356,17 @@ export function load(): LoadResult {
       camp.tents = data.tents
         .filter((t) => t != null && typeof t.x === 'number' && typeof t.z === 'number')
         .map((t) => ({ x: Math.floor(t.x), z: Math.floor(t.z) }));
+    }
+    if (Array.isArray(data.chests)) {
+      camp.chests = data.chests
+        .filter((c) => c != null && typeof c.x === 'number' && typeof c.z === 'number')
+        .map((c) => ({ x: Math.floor(c.x), z: Math.floor(c.z) }));
+    } else {
+      // Миграция: лагерь, разбитый до сундуков, получает свой первый —
+      // тот, что новым игрокам ставит пролог. Ближайшая свободная клетка
+      // к Жилью, как у пролога; места нет — сундук подождёт перестановки:
+      // прибавка считается от списка, и пустой список честнее фантомного.
+      adoptChest(camp, { x: -1, z: -1 });
     }
 
     for (const slot of GEAR_ORDER) {

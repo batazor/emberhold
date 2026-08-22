@@ -15,6 +15,7 @@ import { forestMaterial } from './forest';
 import { WOODS, cellHash, forest as forestTree, treeGeometry, treeStand, type Tree } from './woods';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { fenceGeometry, graveyardMaterial } from './graveyard';
+import { chestGeometry, dungeonMaterial } from './dungeon';
 import type { GraveyardPartModelName } from './graveyard';
 import type { FencePiece } from '../sim/fence';
 import type { CastlePartModelName } from './castle';
@@ -91,6 +92,10 @@ const STONE_SHAKE = 0.18;
  */
 const TENT_LOOK = 0.5;
 
+/** Высота сундука (`sim/chests.ts`) — то же число, что в кадре поляны
+ *  (`raidView.ts`): один предмет обязан быть одного роста в обоих лагерях. */
+const CHEST_HEIGHT = 0.58;
+
 /** Насколько далеко за поляну уходит лес, в клетках. */
 const FOREST_DEPTH = 5;
 /** Полоса между поляной и первым деревом: иначе лес закрывает крайние здания. */
@@ -106,6 +111,10 @@ export class CampView {
   /** Палатки жильцов: без имени, потому что различать их нечем и незачем —
    *  тап по палатке ничего не открывает. */
   private readonly tents: THREE.Group[] = [];
+  /** Сундуки-хранилища (`sim/chests.ts`): различать их, как палатки, нечем. */
+  private readonly chestMeshes: THREE.Mesh[] = [];
+  /** Общий материал запечённого набора: цвет в вершинах, меши делят один. */
+  private readonly chestMat: THREE.Material;
   /**
    * Жильцы лагеря. Со скелетом — как все прочие тела игры: пока герой в лагере
    * стоял неподвижной геометрией, неподвижными держались и они, чтобы
@@ -143,6 +152,7 @@ export class CampView {
   private readonly blocking = this.track(blockingMaterial());
 
   constructor(private camp: CampState) {
+    this.chestMat = this.track(dungeonMaterial());
     this.moveToOrigin();
     this.buildGround();
     this.buildMeadow();
@@ -462,6 +472,7 @@ export class CampView {
     // и жилец с топором после «носить камень» был бы жильцом с чужим делом.
     const withTents =
       `${signature}|т${this.camp.tents.map((t) => `${t.x},${t.z}`).join(';')}` +
+      `|с${this.camp.chests.map((c) => `${c.x},${c.z}`).join(';')}` +
       `|ж${this.camp.residents.map((r) => `${r.look}:${r.rest ? 'отдых' : r.answer}`).join(';')}`;
     const area = campArea(this.camp.levels.hq);
     if (withTents === this.builtLevels && area === this.area) return;
@@ -472,6 +483,8 @@ export class CampView {
     this.buildings.clear();
     for (const g of this.tents) g.removeFromParent();
     this.tents.length = 0;
+    for (const m of this.chestMeshes) m.removeFromParent();
+    this.chestMeshes.length = 0;
     for (const rig of this.folk) {
       rig.root.removeFromParent();
       rig.dispose();
@@ -506,6 +519,19 @@ export class CampView {
       g.position.set(t.x, 0, t.z);
       this.group.add(g);
       this.tents.push(g);
+    }
+
+    // Сундуки-хранилища (`sim/chests.ts`): предмет набора KayKit Dungeon,
+    // тот же меш, что на поляне (`raidView.setChests`), — хранилище обязано
+    // выглядеть одинаково в обоих лагерях. Клетка 1×1 лежит центром
+    // в целых координатах, как у палатки.
+    for (const c of this.camp.chests) {
+      const mesh = new THREE.Mesh(chestGeometry('простой', CHEST_HEIGHT), this.chestMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.position.set(c.x, 0, c.z);
+      this.group.add(mesh);
+      this.chestMeshes.push(mesh);
     }
 
     /*

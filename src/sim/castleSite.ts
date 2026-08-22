@@ -22,7 +22,15 @@
 import { distanceField, idx } from './grid';
 import { STONES, scatterStones } from './stones';
 import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
-import type { Cell, GameLocation } from './types';
+import type { Cell, Container, GameLocation } from './types';
+
+/**
+ * Сколько стражи поднимает вскрытая казна. Трое — черновое число (§22.6):
+ * больше одного, чтобы стража читалась гарнизоном, а не сторожем,
+ * и меньше патруля (`SQUAD` = 4), чтобы у героя с ковкой остался бой,
+ * а не приговор.
+ */
+export const GUARD_AMBUSH = 3;
 
 /** Поле между лесом и стеной: место, где замок видно целиком. */
 export const FIELD = 4;
@@ -317,13 +325,66 @@ export function generateCastleSite(seed: number): CastleSite {
       && !clear.has(`${x}:${z}`),
   );
 
+  /*
+   * Сундук казны (§13.6) — в каждом замке ровно один. Стоит во дворе,
+   * в стороне и от ворот, и от торговца: рядом с торговцем его вскрытие
+   * попадало бы в радиус панели обмена, и две сделки — честная и кража —
+   * слились бы в одном шаге. Вскрывается, как любой контейнер, — приходом
+   * на клетку, но это единственный контейнер с ценой, которую не пишут
+   * на карточке: стража поднимается от ворот (`ambush`), догоняет
+   * и завязывает бой. Замок перестаёт быть местом, где не бывает ничего, —
+   * но только для того, кто сам сунул руку в казну.
+   */
+  let chest: Cell | null = null;
+  {
+    let best = -1;
+    for (const spot of castle.yard) {
+      const cell = spotAt({ at }, spot);
+      const c: Cell = { x: cell.x + (CASTLE_CELL >> 1), z: cell.z + (CASTLE_CELL >> 1) };
+      if (c.x < 0 || c.z < 0 || c.x >= size || c.z >= size) continue;
+      if (blocked[idx(size, c.x, c.z)]) continue;
+      if (trader !== null && (c.x - trader.x) ** 2 + (c.z - trader.z) ** 2 < 9) continue;
+      const d = (c.x - gate.x) ** 2 + (c.z - gate.z) ** 2;
+      if (d > best) { best = d; chest = c; }
+    }
+  }
+  const containers: Container[] = [];
+  if (chest !== null) {
+    // Середина арки: стража выбегает из-под ворот и веером расходится
+    // на первые свободные клетки — фильтрует их `springAmbush`.
+    const gc: Cell = { x: gate.x + (CASTLE_CELL >> 1), z: gate.z + (CASTLE_CELL >> 1) };
+    const inX = -out[0]!;
+    const inZ = -out[1]!;
+    const spawn: Cell[] = [];
+    for (let k = 1; k <= 2; k++) {
+      for (const side of [0, -1, 1]) {
+        spawn.push({
+          x: gc.x + inX * k + (inZ === 0 ? 0 : side),
+          z: gc.z + inZ * k + (inX === 0 ? 0 : side),
+        });
+      }
+    }
+    containers.push({
+      id: 1,
+      x: chest.x,
+      z: chest.z,
+      // Железо: поверхностный замок не отдаёт кристалл яруса 3, но и камнем
+      // казна была бы насмешкой. Счёт черновой до перемера (§22.6).
+      amount: 4 + ((seed >>> 2) % 3),
+      kind: 'iron',
+      opened: false,
+      look: 'сундук',
+      ambush: { kind: 'guard', count: GUARD_AMBUSH, at: spawn },
+    });
+  }
+
   const loc: GameLocation = {
     seed,
     tier: 0,
     size,
     blocked,
     evac,
-    containers: [],
+    containers,
     stones,
     enemies: [],
     backSteps: distanceField(size, blocked, evac),

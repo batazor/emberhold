@@ -27,8 +27,13 @@ export interface Cell {
  */
 export type RaidEnemyKind = 'minion' | 'warrior' | 'mage';
 
-/** Все, кого умеет вести бой: трое ярусных и обитатель кладбища (§6.1.7). */
-export type EnemyKind = RaidEnemyKind | 'ghost';
+/**
+ * Все, кого умеет вести бой: трое ярусных, обитатель кладбища (§6.1.7)
+ * и стражник замка. Стражник — не ярусный тип и в `TIER_ROSTER` не входит:
+ * он привязан к месту, как привидение, и появляется одним способом —
+ * засадой вскрытого сундука (`Container.ambush`).
+ */
+export type EnemyKind = RaidEnemyKind | 'ghost' | 'guard';
 
 /** §15 — три типа, по одному на диапазон ярусов, различимы силуэтом. */
 export interface EnemyStats {
@@ -98,6 +103,13 @@ export interface Enemy {
   /** Секунды до конца замаха; 0 — замаха нет. */
   telegraph: number;
   cooldown: number;
+  /**
+   * Не отпускает: правило «отстал — уснул» (`stepContact`) к нему
+   * не применяется. Ставится противникам из засады (`Container.ambush`):
+   * стражник, поднятый вскрытием сундука, обязан добежать, иначе засада —
+   * это два шага в сторону.
+   */
+  readonly relentless?: boolean;
 }
 
 export interface Container {
@@ -108,6 +120,19 @@ export interface Container {
   /** §13 — что именно лежит: вид выпадает по ярусу, а не по контейнеру. */
   readonly kind: ResourceKind;
   opened: boolean;
+  /**
+   * Чем контейнер стоит в кадре. Обычный лежит кучкой своего ресурса
+   * (`RESOURCE_MODEL`); сундук — моделью набора KayKit Dungeon: простой
+   * в замке, золотой — редкая находка яруса 3.
+   */
+  readonly look?: 'сундук' | 'золотой';
+  /**
+   * Засада: кто поднимается при вскрытии. `at` — клетки, откуда идут
+   * (стража замка — от ворот); без них противники встают кольцом вокруг
+   * контейнера. Спавн — `raid.ts`, и это единственный источник противников
+   * после генерации.
+   */
+  readonly ambush?: { readonly kind: EnemyKind; readonly count: number; readonly at?: readonly Cell[] };
 }
 
 export interface GameLocation {

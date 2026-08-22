@@ -50,6 +50,7 @@ import { hexToWorld } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
 import type {
   Cell,
+  Container,
   EnemyKind,
   GameLocation,
   Fighter,
@@ -114,6 +115,13 @@ export interface RaidOptions {
   /** Вместимость вместо складской. Для пролога: Склада в нём тоже ещё нет,
    *  и сумка там — то, с чем герой вышел, а не уровень здания. */
   readonly capacity?: number;
+  /**
+   * Плоская прибавка к рюкзаку от сундуков лагеря (`chests.ts`). Слагаемое
+   * после классового множителя — как снаряжение и карты: сундук общий
+   * на лагерь, а не свой у каждого класса. По умолчанию ноль: замеры, бот
+   * и золотой мастер считают вылазку так, как её калибровали.
+   */
+  readonly chestBonus?: number;
   /**
    * Цена вскрытия контейнера вместо `FOOD_COST.container`. Ноль — пролог:
    * там провиант это шаги, и только шаги (`prologue.ts`). В вылазке подбор
@@ -263,7 +271,10 @@ export function createRaid(opts: RaidOptions): RaidState {
       1,
       (opts.capacity ??
         Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity) +
-        draft.bag,
+        draft.bag +
+        // Сундуки лагеря (`chests.ts`): прибавка общая, поэтому после доли
+        // класса — тем же правилом, что снаряжение и карта сборов.
+        (opts.chestBonus ?? 0),
     ),
     path: [],
     status: 'running',
@@ -445,6 +456,67 @@ export function useSkill(state: RaidState): boolean {
   return true;
 }
 
+/**
+ * Засада вскрытого сундука (`Container.ambush`): единственный способ
+ * добавить противника после генерации.
+ *
+ * Встают сразу проснувшимися и с меткой `relentless`: их подняло действие
+ * игрока, а не его приближение, и правила сна к ним не относятся —
+ * ни «не заметил», ни «отстал — уснул». Бой начнётся обычным контактом
+ * (`stepContact`), когда они добегут: погоня и есть цена сундука.
+ *
+ * Клетки — из `ambush.at` (стража замка идёт от ворот); без них — кольцо
+ * свободных клеток вокруг сундука: скелеты поднимаются из земли рядом.
+ */
+function springAmbush(state: RaidState, container: Container): void {
+  const ambush = container.ambush;
+  if (ambush === undefined) return;
+  const { loc } = state;
+  const spots: Cell[] = [];
+  const free = (x: number, z: number): boolean =>
+    x >= 0 && z >= 0 && x < loc.size && z < loc.size && loc.blocked[idx(loc.size, x, z)] === 0;
+  for (const at of ambush.at ?? []) {
+    if (spots.length >= ambush.count) break;
+    if (free(at.x, at.z)) spots.push(at);
+  }
+  // Кольцо расходится от сундука, пока не наберётся счёт: ближние клетки
+  // раньше дальних, обход детерминированный — сид уже отработал в генерации,
+  // и второй источник случайности здесь завёл бы два разных боя на один сейв.
+  for (let r = 1; r <= 3 && spots.length < ambush.count; r++) {
+    for (let dz = -r; dz <= r && spots.length < ambush.count; dz++) {
+      for (let dx = -r; dx <= r && spots.length < ambush.count; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const x = container.x + dx;
+        const z = container.z + dz;
+        if (!free(x, z)) continue;
+        if (spots.some((s) => s.x === x && s.z === z)) continue;
+        spots.push({ x, z });
+      }
+    }
+  }
+  const nextId = loc.enemies.reduce((top, e) => Math.max(top, e.id), 0) + 1;
+  spots.forEach((at, i) => {
+    loc.enemies.push({
+      id: nextId + i,
+      kind: ambush.kind,
+      x: at.x,
+      z: at.z,
+      prevX: at.x,
+      prevZ: at.z,
+      hp: ENEMY_STATS[ambush.kind].hp,
+      awake: true,
+      telegraph: 0,
+      cooldown: 0,
+      relentless: true,
+    });
+  });
+  if (spots.length > 0) {
+    state.events.push(
+      ambush.kind === 'guard' ? 'Стража спешит ко двору!' : 'Из земли поднимаются скелеты!',
+    );
+  }
+}
+
 function arriveAt(state: RaidState, cell: Cell): void {
   state.steps += 1;
   spend(state, stepFoodCost(state));
@@ -477,6 +549,8 @@ function arriveAt(state: RaidState, cell: Cell): void {
       }
       const found = `+${taken} · ${RESOURCE_NAME[container.kind]}`;
       state.events.push(state.risk ? `${found} · под угрозой ${atRisk(state)}` : found);
+      // Засада вскрытого сундука: добыча уже в рюкзаке, счёт предъявлен.
+      if (container.ambush !== undefined) springAmbush(state, container);
     }
   }
 
@@ -624,7 +698,9 @@ function stepContact(state: RaidState, dt: number, vision: number): void {
       enemy.awake = true;
     }
     if (!enemy.awake) continue;
-    if (dist > vision + 2) {
+    // Засадный (`relentless`) не отпускает: стражник, поднятый сундуком,
+    // обязан добежать — иначе засада обходится двумя шагами в сторону.
+    if (dist > vision + 2 && enemy.relentless !== true) {
       enemy.awake = false;
       continue;
     }
