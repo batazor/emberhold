@@ -159,6 +159,7 @@ import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { TitleView } from './render/titleView';
+import { streetScene } from './render/village';
 import { CampHud } from './ui/campHud';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
@@ -1162,7 +1163,7 @@ function buy(id: ConsumableId): boolean {
  * перенесло в чужой лагерь» — второй лагерь существует чисто для тестов
  * и границу сохранения не пересекает.
  */
-const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'встреча'] as const;
+const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'встреча', 'город'] as const;
 const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
 
 function persist(): void {
@@ -3062,6 +3063,46 @@ if (debugGrave !== null) {
       материал: graveSite.material,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+  };
+}
+
+/**
+ * `?город` — улица генератора домов (§6.1, набор Medieval Village MegaKit),
+ * `?город=СИД` — с назначенным сидом. Города в игре ещё нет, и сцена заведена
+ * под один вопрос: читается ли порядок домов — пролёты, этажи, материалы
+ * и крыши, собранные планом (`render/village.ts`), — раньше, чем городу
+ * появится место на карте. Ждать этого места, чтобы посмотреть на дом,
+ * было бы не проверкой, а лотереей.
+ *
+ * Ручка `камень.город(сид)` пересобирает улицу на месте: сравнивать два сида
+ * перезагрузкой значило бы терять кадр, на который смотришь.
+ */
+const debugTown = debugParams.get('город');
+if (debugTown !== null) {
+  // Площадка напрямую, мимо маршрутизатора, как у прочих отладочных кадров;
+  // лагерь прячется целиком — улица приносит свою землю.
+  toPadCamp();
+  campView.group.visible = false;
+  let town: ReturnType<typeof streetScene> | null = null;
+  const show = (seed: number): number => {
+    if (town !== null) {
+      rig.world.remove(town.group);
+      town.dispose();
+    }
+    town = streetScene(seed, 10);
+    rig.world.add(town.group);
+    rig.lookAt(town.center[0], town.center[1], true);
+    rig.setZoom(34, true);
+    return seed;
+  };
+  const first = Number(debugTown);
+  show(debugTown === '' || !Number.isFinite(first) ? 1 : first);
+  (window as unknown as { камень: unknown }).камень = {
+    rig,
+    город: (seed: number) => show(seed),
+    // Спецификации домов улицы: пролёт, глубина, этажи, материал — то,
+    // чего не прочитать глазом, если дом загородил соседа.
+    дома: () => town?.street.map((h) => ({ ...h.spec, x: +h.x.toFixed(1), z: +h.z.toFixed(1) })) ?? null,
   };
 }
 
