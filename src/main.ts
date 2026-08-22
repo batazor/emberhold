@@ -197,7 +197,7 @@ import {
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
 import type { Chore } from './sim/chores';
-import { phraseAt } from './sim/talk';
+import { chatAt, phraseAt } from './sim/talk';
 import type { Talker } from './sim/talk';
 import { Bubbles } from './render/bubbles';
 import type { Bubble } from './render/bubbles';
@@ -936,6 +936,11 @@ function controlResident(idx: number): void {
   raid.hero.z = raid.hero.prevZ = at.z;
   raid.path.length = 0;
   raidView.setHeroParked(true);
+  // Ношу рутины жилец складывает, переходя в руку игрока: дальше он рубит
+  // по указке, а не несёт своё, и бревно в свободной руке обещало бы
+  // прибавку, которой от этой рубки не будет.
+  raidView.setResidentLoad(idx, null);
+  carried[idx] = false;
   controlled = idx;
 }
 
@@ -971,11 +976,22 @@ let choreMask: Uint8Array | null = null;
 let seatedBodies: { x: number; z: number }[] = [];
 
 /**
+ * У кого сейчас полны руки. Кэш, а не запрос каждый кадр: ноша меняется
+ * дважды за круг, а кадров в круге пять тысяч, и пересобирать меш на каждом
+ * значило бы платить за предмет, который не менялся.
+ */
+let carried: (boolean | undefined)[] = [];
+
+/**
  * Маршруты пересобираются с посадкой и с приказом карточки: кто идёт,
  * а кто сидит, решает та же экономика, что начисляет работу (`workDone`), —
  * отдыхающий и безкрышный маршрута не получают.
  */
 function planChores(): void {
+  // Тропы переложены — про ношу в руках известно заново: кэш чистится
+  // вместе с маршрутами, иначе первый же тик сочтёт руки полными по памяти
+  // о прошлой раскладке.
+  carried = [];
   if (raid === null) {
     chores = [];
     choreMask = null;
@@ -1071,6 +1087,47 @@ function seatResidents(): void {
 }
 
 /**
+ * Кто что говорит сейчас — по строке на жильца, null — молчит.
+ *
+ * **Разговор двоих старше присказки.** Пара сходится у костра по расписанию
+ * маршрута (`sim/chores.ts`), а очередь присказок про это расписание
+ * не знает вовсе; совпади они — в кадре висели бы два пузыря там, где голос
+ * обязан быть один. Поэтому пока пара стоит вместе, присказки молчат все,
+ * включая паузу в конце разговора: молчание после последней реплики — часть
+ * разговора, а не свободная секунда.
+ *
+ * Чистая функция часов лагеря, как и всё остальное здесь: зовут её и тик,
+ * и кадр, и оба получают одно и то же.
+ */
+function campSpeech(): (string | null)[] {
+  const talkers = campTalkers();
+  const out: (string | null)[] = camp.residents.map(() => null);
+  let chatting = false;
+  chores.forEach((c, i) => {
+    // Пара разбирается один раз — со стороны младшего номера: он же и первый
+    // говорящий, `who === 0`.
+    if (c === null || c.partner === null || c.partner < i) return;
+    // Ведомого игроком в разговоре нет: его устами ходит игрок, и напарник
+    // остался бы говорить с телом, которое водит чужая рука.
+    if (i === controlled || c.partner === controlled) return;
+    const at = choreAt(c, campTime);
+    if (at.talk === null) return;
+    chatting = true;
+    const first = talkers[i];
+    const second = talkers[c.partner];
+    if (first === undefined || second === undefined) return;
+    const line = chatAt(first, second, at.talk.since, at.talk.round);
+    if (line !== null) out[line.who === 0 ? i : c.partner] = line.text;
+  });
+  if (chatting) return out;
+  camp.residents.forEach((_, i) => {
+    if (i === controlled) return;
+    out[i] = phraseAt(talkers, i, campTime);
+  });
+  return out;
+}
+
+/**
  * Тик рутины: маршруты — чистая функция часов лагеря, разведённая телами
  * вокруг сидящих, героя и гостя. Ведомого игроком не трогаем: его позиция
  * принадлежит руке (§16.1).
@@ -1088,35 +1145,38 @@ function stepChores(dt: number): void {
     return choreMask === null || choreMask[idx(size, cx, cz)] === 0;
   };
   const frames = choresAt(chores, campTime, pinned, free);
-  const talkers = campTalkers();
+  const speech = campSpeech();
   frames.forEach((f, i) => {
     if (f === null || i === controlled) return;
-    const talking = !f.walking && !f.working && phraseAt(talkers, i, campTime) !== null;
+    const talking = !f.walking && !f.working && speech[i] !== null;
     raidView!.driveResident(i, f.x, f.z, f.walking, f.working, dt, {
       speed: DWELLER_SPEED,
       workClip: 'рубит',
       talking,
       glide: true,
     });
-    // Лицо стоянки — к делу: рубящий смотрит на ствол, отдыхающий — на огонь.
+    // Лицо стоянки — к делу: рубящий смотрит на ствол, говорящий —
+    // на напарника, вернувшийся — на огонь.
     if (!f.walking) raidView!.faceResident(i, f.facing, dt);
+    // Ноша меняется дважды за круг — и ровно тогда её и перекладывают.
+    if (f.carrying !== carried[i]) {
+      carried[i] = f.carrying;
+      raidView!.setResidentLoad(i, f.carrying ? camp.residents[i]?.answer ?? null : null);
+    }
   });
 }
 
 /**
- * Реплики кадра: слова над головами. Говорит один за раз (`sim/talk.ts`),
- * ведомый молчит — его устами сейчас ходит игрок.
+ * Реплики кадра: слова над головами. Кто говорит — решает `campSpeech`,
+ * здесь остаётся то, чего симуляция не знает: где у говорящего макушка.
  */
 function campBubbles(): void {
   if (raidView === null) {
     bubbles.clear();
     return;
   }
-  const talkers = campTalkers();
   const said: Bubble[] = [];
-  camp.residents.forEach((_, i) => {
-    if (i === controlled) return;
-    const text = phraseAt(talkers, i, campTime);
+  campSpeech().forEach((text, i) => {
     if (text === null) return;
     const at = raidView!.residentAt(i);
     if (at === null) return;

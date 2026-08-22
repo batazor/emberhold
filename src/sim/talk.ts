@@ -18,6 +18,7 @@
  * заведённой шарманкой, а не людьми.
  */
 import { mulberry32, pick } from '../core/rng';
+import type { Rng } from '../core/rng';
 
 /**
  * Сколько секунд видна реплика. Ровно срок строки полосы (`BANNER_SECONDS`):
@@ -62,6 +63,18 @@ export const TALK_TEXT: Record<string, string> = {
   'idle-3': 'Вечером бы похлёбки.',
   'home-1': 'Палатку бы — под небом спится так себе.',
   'home-2': 'Крыша — не роскошь, а сон.',
+  /**
+   * Отклики: то, чем разговор отличается от двух присказок рядом. Отклик
+   * не о деле, а о собеседнике — он ничего не сообщает и не обязан: его
+   * работа в том, чтобы сказанное было услышано. Поэтому он короткий
+   * и почти пустой по смыслу, и поэтому же он на «ты»: канал диалога —
+   * единственный, где это разрешено (§23.1).
+   */
+  'reply-1': 'И не говори.',
+  'reply-2': 'Твоя правда.',
+  'reply-3': 'Это точно.',
+  'reply-4': 'Кому ты рассказываешь.',
+  'reply-5': 'Вот и я о том же.',
 };
 
 const group = (prefix: string): string[] =>
@@ -81,6 +94,9 @@ const POOLS: Record<TalkMood, readonly string[]> = {
   'без крыши': group('home-'),
 };
 
+/** Отклики — общий пул на всех: они не о деле говорящего. */
+const REPLIES: readonly string[] = group('reply-');
+
 /** Говорящий: сид лица и о чём ему говорить. */
 export interface Talker {
   readonly seed: number;
@@ -90,6 +106,10 @@ export interface Talker {
 /**
  * Реплика жильца `i` на момент `t`; null — молчит. Чистая функция:
  * перемотка времени отдаёт те же слова тем же людям.
+ *
+ * Это присказка в одиночку — то, что человек говорит при других, а не им.
+ * Разговор двоих (`chatAt`) её перебивает: он назначен маршрутами и потому
+ * знает своё время, а очередь присказок про него не знает вовсе.
  */
 export function phraseAt(folk: readonly Talker[], i: number, t: number): string | null {
   const n = folk.length;
@@ -104,4 +124,74 @@ export function phraseAt(folk: readonly Talker[], i: number, t: number): string 
   if (rng() > TALK_CHANCE) return null;
   const pool = POOLS[who.mood];
   return pool.length === 0 ? null : pick(rng, pool);
+}
+
+/* ---------- разговор двоих ---------- */
+
+/**
+ * Реплик в одном разговоре. Четыре, и порядок их не случаен: **мысль —
+ * отклик — мысль — отклик**. Каждый говорит своё и слышит чужое, и это
+ * единственное, чем обмен отличается от двух присказок, произнесённых
+ * рядом. Трёх было бы мало — кто-то остался бы неуслышанным; пять уже
+ * держат обоих у костра дольше, чем длится дорога.
+ */
+export const CHAT_LINES = 4;
+
+/** Сколько длится разговор целиком. Столько же пара стоит у костра. */
+export const CHAT_SECONDS = CHAT_LINES * TALK_SECONDS;
+
+/** Реплика разговора: кто из двоих её сказал и что. */
+export interface ChatLine {
+  /** 0 — первый из пары, 1 — второй. Чей это номер, знает зовущий. */
+  readonly who: 0 | 1;
+  readonly text: string;
+}
+
+/**
+ * Весь обмен целиком. Считается разом, а не по реплике: иначе двое сказали
+ * бы одно и то же слово в одном разговоре — пулы у них пересекаются
+ * общими присказками, и «славный нынче день» дважды подряд читается
+ * не разговором, а эхом.
+ */
+function exchange(a: Talker, b: Talker, round: number): ChatLine[] {
+  const rng = mulberry32(
+    (a.seed ^ Math.imul(b.seed, 0x85ebca6b) ^ Math.imul(round + 1, 0xc2b2ae35)) | 0,
+  );
+  // Заговаривает то один, то другой: всегда начинающий первым — это не
+  // разговор, а доклад по расписанию.
+  const flip = (((round % 2) + 2) % 2) === 1;
+  const lead: 0 | 1 = flip ? 1 : 0;
+  const echo: 0 | 1 = flip ? 0 : 1;
+  const said = new Set<string>();
+  const say = (who: 0 | 1, pool: readonly string[], gen: Rng): ChatLine => {
+    for (let k = 0; k < 8 && pool.length > said.size; k++) {
+      const text = pick(gen, pool);
+      if (!said.has(text)) {
+        said.add(text);
+        return { who, text };
+      }
+    }
+    return { who, text: pool[0] ?? '' };
+  };
+  const moodOf = (who: 0 | 1): TalkMood => (who === 0 ? a.mood : b.mood);
+  return [
+    say(lead, POOLS[moodOf(lead)], rng),
+    say(echo, REPLIES, rng),
+    say(echo, POOLS[moodOf(echo)], rng),
+    say(lead, REPLIES, rng),
+  ];
+}
+
+/**
+ * Что звучит на `since`-й секунде разговора; null — пауза или разговор
+ * кончился. Пара стоит у костра дольше, чем говорит: последние секунды
+ * молчания — это не пропуск, а то, ради чего пауза вообще существует.
+ *
+ * `round` — номер встречи (круг маршрута): без него каждая встреча повторяла
+ * бы предыдущую слово в слово, а видятся эти двое каждую минуту.
+ */
+export function chatAt(a: Talker, b: Talker, since: number, round: number): ChatLine | null {
+  const slot = Math.floor(since / TALK_SECONDS);
+  if (slot < 0 || slot >= CHAT_LINES) return null;
+  return exchange(a, b, round)[slot] ?? null;
 }

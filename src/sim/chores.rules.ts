@@ -116,4 +116,85 @@ describe('Рутина жильцов', () => {
     // домашней, иначе рутина читается сидением с вылазками за дровами.
     assert.ok(CHOP_PAUSE > UNLOAD_PAUSE * 2);
   });
+
+  test('домой с ношей, обратно налегке', () => {
+    // Половина круга с полными руками — это и есть ответ на вопрос,
+    // зачем он ходил. Проверяется порядок, а не доля: за круг руки
+    // наполняются и пустеют ровно по разу, и ноша занимает не весь круг.
+    for (const answer of ['строим', 'ходим'] as const) {
+      const c = choresOf(site(), folk([{ answer }]), () => true)[0] as Chore;
+      const step = 0.2;
+      let flips = 0;
+      let laden = 0;
+      let prev = choreAt(c, 0).carrying;
+      for (let t = step; t <= c.cycle; t += step) {
+        const now = choreAt(c, t).carrying;
+        if (now) laden++;
+        if (now !== prev) flips++;
+        prev = now;
+      }
+      assert.equal(flips, 2, `${answer}: ноша меняется ${flips} раз за круг вместо двух`);
+      assert.ok(laden > 0, `${answer}: ноша не появилась ни разу`);
+      assert.ok(laden * step < c.cycle, `${answer}: ноша не выпускается из рук весь круг`);
+    }
+  });
+
+  test('ношу берут у дела, а кладут дома', () => {
+    // Обе подмены приходятся на первый шаг после стоянки — и это решение:
+    // предмет, возникающий на ходу посреди поляны, читался бы сбоем,
+    // а на развороте подмены не видно.
+    for (const answer of ['строим', 'ходим'] as const) {
+      const c = choresOf(site(), folk([{ answer }]), () => true)[0] as Chore;
+      const home = c.path[0]!;
+      const step = 0.1;
+      for (let t = 0; t < c.cycle; t += step) {
+        const now = choreAt(c, t);
+        const next = choreAt(c, t + step);
+        if (now.carrying === next.carrying) continue;
+        assert.equal(now.walking, false, `${answer}: ноша сменилась на бегу, t=${t}`);
+        const far = Math.hypot(now.x - home.x, now.z - home.z);
+        if (next.carrying) assert.ok(far > 1, `${answer}: ноша взялась у костра, t=${t}`);
+        else assert.ok(far < 1e-6, `${answer}: ношу бросили по дороге, t=${t}`);
+      }
+    }
+  });
+
+  test('пара приходит домой в одну секунду и говорит одновременно', () => {
+    const residents = folk([{ answer: 'строим' }, { answer: 'ходим' }]);
+    const [a, b] = choresOf(site(), residents, () => true) as [Chore, Chore];
+    assert.equal(a.partner, 1);
+    assert.equal(b.partner, 0);
+    // Общий круг — это и есть механика встречи: разойдись циклы, и пара
+    // виделась бы раз в общее кратное, то есть никогда.
+    assert.equal(a.cycle, b.cycle);
+    assert.equal(a.phase, b.phase);
+    let together = 0;
+    for (let t = 0; t < a.cycle * 3; t += 0.25) {
+      const fa = choreAt(a, t);
+      const fb = choreAt(b, t);
+      assert.equal(
+        fa.talk === null,
+        fb.talk === null,
+        `на t=${t} говорит один из пары, а второй нет`,
+      );
+      if (fa.talk === null || fb.talk === null) continue;
+      together++;
+      assert.equal(fa.talk.round, fb.talk.round, 'у пары разошёлся номер встречи');
+      assert.ok(Math.abs(fa.talk.since - fb.talk.since) < 1e-9, 'разговор идёт вразнобой');
+      // Разговаривают, стоя рядом: через весь лагерь это перекличка.
+      assert.ok(Math.hypot(fa.x - fb.x, fa.z - fb.z) <= 4, 'напарники встали слишком далеко');
+    }
+    assert.ok(together > 0, 'за три круга пара ни разу не встретилась');
+  });
+
+  test('одиночке пары не досталось, и он всё равно ходит', () => {
+    // Нечётный работник — не дефект: он ходит и молчит, как ходили все
+    // до разговора.
+    const chores = choresOf(site(), folk([{}, {}, { answer: 'ходим' }]), () => true);
+    assert.deepEqual(chores.map((c) => (c === null ? 'без тропы' : c.partner)), [1, 0, null]);
+    const lone = chores[2] as Chore;
+    for (let t = 0; t < lone.cycle; t += 0.5) {
+      assert.equal(choreAt(lone, t).talk, null, 'одиночка заговорил сам с собой');
+    }
+  });
 });
