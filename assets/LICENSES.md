@@ -42,6 +42,7 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-tools/gltf/*.gltf`, `*.bin` — 49 моделей: топор, кирка, лопата, молот, киянка, пила, клещи, наковальня, точило, ножовка, стамеска, дрель, рубанок, фонарь, факелы, вёдра, верёвки, карты, чертежи, журналы, циркули, лупа, гвозди, винты, отвёртки, ключи | [kaylousberg.itch.io/rpg-tools-bits](https://kaylousberg.itch.io/rpg-tools-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-tools/gltf/tools_bits_*.png` — атлас набора и три текстуры карт/чертежа | там же | CC0 1.0 | Kay Lousberg |
 | `dobo-ui/*.png` — 5 картинок интерфейса из демо-версии: рамка листа, кнопка, корыто полосы, две ячейки слота; берёт их `src/style.css` девятидольной нарезкой | [dobo-ui.itch.io/fantasy-rpg-ui-pack](https://dobo-ui.itch.io/fantasy-rpg-ui-pack), тариф DEMO (бесплатный) | своя: личные и коммерческие проекты — да; перепродажа/раздача, крипто/NFT, обучение ИИ — нет | dobo_ui |
+| `sungraphica-icons/*.png` — 2 значка из бесплатной версии: стрелка поворота (вправо — зеркалится CSS) и дом; красятся маской в `currentColor`. CC-BY: авторство названо в окне настроек | [sungraphica.itch.io/minimal-game-icons-pack](https://sungraphica.itch.io/minimal-game-icons-pack), тариф FREE | CC BY 4.0 | SunGraphica |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,

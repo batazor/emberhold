@@ -135,6 +135,23 @@
 /** Силуэт. Заливкой без обводки — тем же приёмом, что и низкополигональный арт. */
 .glyph { width: 25px; height: 25px; fill: currentColor; }
 
+/**
+ * Значок из набора SunGraphica (CC BY 4.0, реестр: assets/LICENSES.md;
+ * авторство названо в настройках). Картинка — маска, цвет — currentColor
+ * кнопки: тот же приём, каким `.glyph` берёт цвет через fill. Куда какой
+ * значок — решает модификатор; поворот вправо — зеркало того же файла,
+ * пара стрелок обязана быть зеркальной, а не «похожей».
+ */
+.icon {
+  display: inline-block; width: 15px; height: 15px; background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+  vertical-align: -2px;
+}
+.icon.turn { --icon: url('../assets/sungraphica-icons/Back 256 px.png'); }
+.icon.turn.r { transform: scaleX(-1); }
+.icon.home { --icon: url('../assets/sungraphica-icons/House 256 px.png'); }
+
 /** Кнопка действия в строке. Одна ширина на список, иначе правый край рваный. */
 .act { min-width: 104px; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }

@@ -117,10 +117,10 @@ export class Hud {
         <div id="h-hint" class="chip hint"></div>
         <div id="h-prompt" class="prompt"></div>
         <div class="ctl">
-          <button data-act="rot-l" data-row="controls">⟲</button>
-          <button data-act="rot-r" data-row="controls">⟳</button>
+          <button data-act="rot-l" data-row="controls" aria-label="Повернуть влево"><i class="icon turn" aria-hidden="true"></i></button>
+          <button data-act="rot-r" data-row="controls" aria-label="Повернуть вправо"><i class="icon turn r" aria-hidden="true"></i></button>
           <button data-act="skill" id="h-skill" data-row="controls">Умение</button>
-          <button data-act="evac" data-row="evac">Домой</button>
+          <button data-act="evac" data-row="evac"><i class="icon home" aria-hidden="true"></i> Домой</button>
         </div>
       </div>`;
     parent.appendChild(this.root);
