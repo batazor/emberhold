@@ -13,9 +13,9 @@
  * отвилок удлиняет путь назад, а не срезает его: срезка отменяет длину,
  * ради которой локация заведена.
  *
- * Четвёртое: **это прогулка**. Ни добычи, ни валунов-сделок, ни противников:
- * пустая тропа — обещание карточки карты, и засады сюда придут своим
- * записанным решением, а не молча.
+ * Четвёртое: **это прогулка с работой**. Противников и находок нет — засады
+ * придут своим записанным решением, — а добыча руками есть: валуны стоят
+ * на обочине, и карточка карты обещает «дерево и камень», а не «нет».
  *
  * И как у всякой точки карты: **один сид — одна тропа** (§4).
  *
@@ -65,6 +65,28 @@ describe('Тропа: по ней можно пройти', () => {
       assert.ok(
         site.path.some((c) => c.x === loc.evac.x && c.z === loc.evac.z),
         `сид ${loc.seed}: вход мимо грунта`,
+      );
+    }
+  });
+
+  /**
+   * У дороги два конца, и оба выходы. Дальний — на грунте, на дальнем краю
+   * хода, и идти до него не короче самого хода: выход, до которого ближе,
+   * чем длина тропы, отменял бы длину, ради которой локация заведена.
+   */
+  test('дальний выход стоит в конце хода, и путь до него не короче хода', () => {
+    for (const site of sites) {
+      const { loc } = site;
+      assert.equal(loc.blocked[idx(loc.size, site.exit.x, site.exit.z)], 0);
+      assert.ok(
+        site.path.some((c) => c.x === site.exit.x && c.z === site.exit.z),
+        `сид ${loc.seed}: дальний выход мимо грунта`,
+      );
+      assert.equal(site.exit.x, WOOD + site.length - 1, `сид ${loc.seed}: выход не на краю хода`);
+      const steps = loc.backSteps[idx(loc.size, site.exit.x, site.exit.z)]!;
+      assert.ok(
+        steps >= site.length - 1,
+        `сид ${loc.seed}: до дальнего выхода ${steps} шагов при длине ${site.length}`,
       );
     }
   });
@@ -198,31 +220,41 @@ describe('Тропа: она ветвится в тупики', () => {
   });
 });
 
-describe('Тропа: это прогулка', () => {
-  test('ни добычи, ни валунов-сделок, ни противников — ни на одном сиде', () => {
+describe('Тропа: прогулка с работой', () => {
+  test('ни находок, ни противников — ни на одном сиде', () => {
     for (const site of sites) {
-      assert.equal(site.loc.containers.length, 0, `сид ${site.loc.seed}: на тропе добыча`);
-      assert.equal(site.loc.stones.length, 0, `сид ${site.loc.seed}: на тропе валуны-сделки`);
+      assert.equal(site.loc.containers.length, 0, `сид ${site.loc.seed}: на тропе находки`);
       assert.equal(site.loc.enemies.length, 0, `сид ${site.loc.seed}: на тропе противники`);
     }
   });
 
-  test('камни — картинка на опушке: заняты и видны с хода, но не добыча', () => {
+  /**
+   * Валуны — добыча камня без глубины (§13.4). Стоят на обочине: клетка
+   * проходима — по валуну по колено ходят, — но не на грунте: катить
+   * камень на дорогу незачем, и ход остаётся ходом. Разнос — чтобы
+   * обочина не читалась каменоломней.
+   */
+  test('валуны стоят на обочине: проходимо, не на грунте, вразнос', () => {
     for (const site of sites) {
       const { loc } = site;
-      assert.ok(site.rocks.length > 0, `сид ${loc.seed}: обочина без единого камня`);
-      for (const r of site.rocks) {
-        assert.equal(loc.blocked[idx(loc.size, r.x, r.z)], 1, `сид ${loc.seed}: камень на ходу`);
-        let edge = false;
-        for (let dz = -1; dz <= 1 && !edge; dz++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (!loc.blocked[idx(loc.size, r.x + dx, r.z + dz)]) {
-              edge = true;
-              break;
-            }
-          }
+      assert.ok(loc.stones.length >= 3, `сид ${loc.seed}: валунов ${loc.stones.length} — обочина пустая`);
+      assert.ok(loc.stones.length <= 10, `сид ${loc.seed}: валунов ${loc.stones.length} — каменоломня`);
+      for (const s of loc.stones) {
+        assert.equal(s.taken, false);
+        assert.equal(loc.blocked[idx(loc.size, s.x, s.z)], 0, `сид ${loc.seed}: валун в лесу`);
+        assert.ok(
+          !site.path.some((c) => c.x === s.x && c.z === s.z),
+          `сид ${loc.seed}: валун ${s.x},${s.z} на грунте`,
+        );
+      }
+      for (const a of loc.stones) {
+        for (const b of loc.stones) {
+          if (a.id >= b.id) continue;
+          assert.ok(
+            Math.max(Math.abs(a.x - b.x), Math.abs(a.z - b.z)) > 3,
+            `сид ${loc.seed}: валуны ${a.id} и ${b.id} слиплись`,
+          );
         }
-        assert.ok(edge, `сид ${loc.seed}: камень ${r.x},${r.z} спрятан в глуши`);
       }
     }
   });
@@ -236,7 +268,8 @@ describe('Тропа: один сид — одна тропа', () => {
       assert.equal(a.length, b.length);
       assert.deepEqual(a.spine, b.spine);
       assert.deepEqual(a.branches, b.branches);
-      assert.deepEqual(a.rocks, b.rocks);
+      assert.deepEqual(a.loc.stones, b.loc.stones);
+      assert.deepEqual(a.exit, b.exit);
       assert.deepEqual(a.path, b.path);
       assert.deepEqual([...a.loc.blocked], [...b.loc.blocked]);
       assert.deepEqual(a.loc.evac, b.loc.evac);
