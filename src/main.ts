@@ -114,7 +114,8 @@ import type { RaidState } from './sim/raid';
 import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
-import { load, save, wipe } from './sim/save';
+import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
+import { cloudPull, cloudPush, cloudWipe } from './core/cloud';
 import {
   KIND,
   SHIFT_SEC,
@@ -1667,7 +1668,12 @@ new SettingsMenu(app, {
   onNewGame: () => {
     wiped = true;
     wipe();
-    location.reload();
+    // Облачную строку тоже стереть — иначе сейв воскреснет при следующем
+    // входе. Но не дольше пары секунд: без сети «Новая игра» обязана
+    // работать, как работала без облака.
+    void Promise.race([cloudWipe(), new Promise((done) => setTimeout(done, 2000))]).finally(() =>
+      location.reload(),
+    );
   },
 });
 
@@ -1698,7 +1704,56 @@ const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
 function persist(): void {
   if (wiped || debugScene) return;
   save(camp, roster, clock.watermark, onboarding.step);
+  pushCloud();
 }
+
+/* ---------- облачная копия сейва (§6) ---------- */
+
+/**
+ * Облако — копия, не источник: игра стартует с localStorage, как раньше,
+ * и живёт без сети. На входе один вопрос: не свежее ли облачная строка
+ * здешней — тогда её принесли с другого устройства, она ложится в хранилище
+ * и кадр перезагружается уже на ней. Сверка по отметке часов, а не по
+ * «кто позже записал»: перевод часов не должен решать, чей лагерь настоящий.
+ *
+ * Пуш включается только после этой сверки: отдать старый локальный сейв
+ * до неё значило бы затереть в облаке свежий.
+ */
+let cloudReady = false;
+let cloudTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Отложка на несколько секунд: persist() зовётся на каждом событии,
+ *  а облаку хватает последнего состояния, не каждого. */
+function pushCloud(): void {
+  if (!cloudReady || cloudTimer !== null) return;
+  cloudTimer = setTimeout(() => {
+    cloudTimer = null;
+    const raw = rawSave();
+    if (raw !== null) void cloudPush(raw, clock.watermark);
+  }, 3000);
+}
+
+// Свёрнутая вкладка — последний шанс дожать отложенное: таймеры там не идут.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden' || !cloudReady || wiped || debugScene) return;
+  if (cloudTimer !== null) {
+    clearTimeout(cloudTimer);
+    cloudTimer = null;
+  }
+  const raw = rawSave();
+  if (raw !== null) void cloudPush(raw, clock.watermark);
+});
+
+void (async () => {
+  if (debugScene) return; // тестовые кадры границу сохранения не пересекают
+  const remote = await cloudPull();
+  if (remote !== null && remote.watermark > clock.watermark && adoptRaw(remote.raw)) {
+    location.reload();
+    return;
+  }
+  cloudReady = true;
+  pushCloud();
+})();
 
 /**
  * Показ кадра — единственное место, где онбординг что-то показывает или

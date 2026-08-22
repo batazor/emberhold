@@ -33,6 +33,7 @@
     "fan": "tsx scripts/fan.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "three": "^0.185.1"
   },
   "devDependencies": {

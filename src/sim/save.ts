@@ -208,6 +208,34 @@ export function save(
   }
 }
 
+/**
+ * Сейв как есть — для облачной копии (§6). Облако возит blob, не зная его
+ * формы; форма остаётся заботой этого файла.
+ */
+export function rawSave(): string | null {
+  try {
+    return localStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Приём облачного сейва. Кладётся в хранилище только знакомая версия:
+ * blob чужой формы, легший под ключ, при следующем чтении молча стёр бы
+ * лагерь — load() читает незнакомую версию как «начать заново».
+ */
+export function adoptRaw(raw: string): boolean {
+  try {
+    const data = JSON.parse(raw) as Partial<SaveV1>;
+    if (data.version !== VERSION) return false;
+    localStorage.setItem(KEY, raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Сид лица из имени: для жильцов, записанных до того, как лицо появилось. */
 export function seedOfName(name: string): number {
   let h = 2166136261;
