@@ -113,7 +113,7 @@ import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/r
 import type { RaidState } from './sim/raid';
 import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
-import { RESOURCE_NAME, emptyResources } from './sim/resources';
+import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import {
   KIND,
@@ -172,9 +172,12 @@ import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
 import {
+  GUEST_REASON,
+  GUEST_TERM_COST,
   GUEST_WORK,
   advanceGuest,
   castleGuestAt,
+  guestBlock,
   guestPitch,
   startGuestMeet,
 } from './sim/castleGuest';
@@ -2262,6 +2265,15 @@ function guestCallbacks(): MeetPanelCallbacks {
     },
     onInvite: () => {
       if (castleGuest === null || guestMeet === null || castleNow === null) return;
+      // Уговор сперва оплачивается, потом заключается: отказ называет,
+      // чего не хватает, — той же полосой, что отказы обмена рядом (§13.5).
+      const block = guestBlock(camp, castleGuest);
+      if (block !== 'ok') {
+        play('deny');
+        raid?.events.push(GUEST_REASON[block]);
+        return;
+      }
+      spend(camp.resources, GUEST_TERM_COST[castleGuest.term]);
       guestMeet.invited = true;
       // Сид замка — до всего остального: даже если места в лагере нет,
       // этот гость уже позван и второй раз у стен не сядет.
@@ -4053,6 +4065,8 @@ if (debugCastle !== null) {
             он: castleGuest.who,
             откуда: castleGuest.origin,
             ищет: castleGuest.seek,
+            уговор: castleGuest.term,
+            отказ: guestBlock(camp, castleGuest),
             палатка: castleGuest.tent,
             костёр: castleGuest.fire,
             сидит: castleGuest.sit,
