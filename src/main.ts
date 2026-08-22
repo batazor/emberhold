@@ -80,7 +80,6 @@ import {
 } from './sim/logging';
 import type { Chop } from './sim/logging';
 import {
-  MINE_STONE,
   aimMine,
   mineBlock,
   mineProgress,
@@ -2980,6 +2979,9 @@ function stopCampMining(): void {
 function stepCampMining(dt: number): void {
   if (campMine === null) return;
   const { work, stone } = campMine;
+  // Сколько именно дал валун, знает только сам тик: награда у валунов
+  // разная (3–5), и строка обязана называть настоящее число, а не константу.
+  const stoneBefore = camp.resources.stone;
   const step = stepMineInto(
     campHero,
     campHero.path.length > 0,
@@ -3005,7 +3007,7 @@ function stepCampMining(dt: number): void {
   }
   if (step.taken) {
     campView.takeStone(stone.id);
-    campHud.notify(`+${MINE_STONE} · ${RESOURCE_NAME.stone}`);
+    campHud.notify(`+${camp.resources.stone - stoneBefore} · ${RESOURCE_NAME.stone}`);
     campHud.sync(camp, clock.now(), 0);
     play('levelup');
     stopCampMining();

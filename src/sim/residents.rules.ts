@@ -13,7 +13,7 @@ import { describe, test } from 'node:test';
 import { BUILDING_ORDER, BUILD_COST, campArea, createCamp } from './camp';
 import type { CampState } from './camp';
 import { CHOP_SECONDS, CHOP_WOOD_AVG } from './logging';
-import { MINE_SECONDS } from './stones';
+import { MINE_SECONDS, MINE_STONE_AVG } from './stones';
 import { SELF_ANSWERS, generateSettler } from './settler';
 import {
   RESIDENT_WORK,
@@ -295,13 +295,12 @@ describe('Жильцы и палатки', () => {
 
   /**
    * Жилец медленнее игрока на порядки. Сравнивается цена **единицы** ресурса
-   * руками: у кайла это `MINE_SECONDS` за камень, у топора — секунды дерева
-   * на среднюю награду (рубка с 3–5 брусками с дерева отдаёт единицу дешевле,
-   * чем падает само дерево). Жилец, работающий сравнимо, отменял бы саму
-   * работу руками — выгоднее было бы не играть.
+   * руками: секунды дерева и валуна на их среднюю награду (и топор,
+   * и кайло отдают 3–5 за работу). Жилец, работающий сравнимо, отменял бы
+   * саму работу руками — выгоднее было бы не играть.
    */
   test('жилец работает медленнее рук игрока в сотню раз', () => {
-    const handUnit = Math.min(MINE_SECONDS, CHOP_SECONDS / CHOP_WOOD_AVG);
+    const handUnit = Math.min(MINE_SECONDS / MINE_STONE_AVG, CHOP_SECONDS / CHOP_WOOD_AVG);
     assert.ok(
       WORK_SECONDS >= handUnit * 100,
       `жилец: ${WORK_SECONDS} с против ${handUnit} с за единицу у игрока — слишком быстро`,

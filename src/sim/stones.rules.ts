@@ -30,8 +30,11 @@ import { generateGraveSite } from './graveSite';
 import { LOOT_SHARE } from './resources';
 import {
   MINE_SECONDS,
-  MINE_STONE,
+  MINE_STONE_AVG,
+  MINE_STONE_MAX,
+  MINE_STONE_MIN,
   MINE_SWINGS,
+  mineYield,
   STONES,
   aimMine,
   mineBlock,
@@ -185,7 +188,7 @@ describe('Валуны: где лежат', () => {
 });
 
 describe('Валуны: работа', () => {
-  test('валун разбивается за десять замахов, а не за один тик', () => {
+  test('валун разбивается за положенные замахи, а не за один тик', () => {
     const state = dig(11);
     const { stone, spot } = reachableStone(state);
     stand(state, spot);
@@ -195,7 +198,11 @@ describe('Валуны: работа', () => {
       Math.abs(seconds - MINE_SECONDS) < 0.1,
       `валун разбивался ${seconds.toFixed(2)} с вместо ${MINE_SECONDS}`,
     );
-    assert.equal(state.bag.stone, MINE_STONE, 'камень не попал в сумку');
+    assert.equal(state.bag.stone, mineYield(stone), 'камни не попали в сумку');
+    assert.ok(
+      state.bag.stone >= MINE_STONE_MIN && state.bag.stone <= MINE_STONE_MAX,
+      `валун отдал ${state.bag.stone} камней вне вилки ${MINE_STONE_MIN}–${MINE_STONE_MAX}`,
+    );
   });
 
   test('разбитый валун не возвращается', () => {
@@ -335,7 +342,7 @@ describe('Валуны: медленнее подбора', () => {
     /** Секунда за находку: замер бота, ярус 0 — 10,2 с на заход, 5,8 находки. */
     const PER_FIND = 10.2 / 5.8;
     const found = PER_FIND / (LOOT_SHARE[0].stone ?? 1);
-    const dug = MINE_SECONDS / MINE_STONE;
+    const dug = MINE_SECONDS / MINE_STONE_AVG;
     assert.ok(
       dug > found * 2,
       `камень кайлом ${dug.toFixed(1)} с против ${found.toFixed(1)} с находкой — ` +
