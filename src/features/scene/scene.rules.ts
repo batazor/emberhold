@@ -70,10 +70,10 @@ describe('Сцена: что звучит', () => {
     assert.equal(soundFor('title', 0).pulse, false);
   });
 
-  test('мелодия звучит только в лагере (§18.4)', () => {
+  test('музыка фоном звучит везде', () => {
     assert.equal(soundFor('camp', 0).campTune, true);
-    assert.equal(soundFor('raid', 0).campTune, false);
-    assert.equal(soundFor('title', 0).campTune, false);
+    assert.equal(soundFor('raid', 0).campTune, true);
+    assert.equal(soundFor('title', 0).campTune, true);
   });
 
   test('подложка идёт по ярусу вылазки и молчит вне её', () => {
@@ -84,7 +84,7 @@ describe('Сцена: что звучит', () => {
     assert.equal(soundFor('title', 3).ambient, null);
   });
 
-  test('заставка молчит вся', () => {
-    assert.deepEqual(soundFor('title', 0), { ambient: null, campTune: false, pulse: false });
+  test('заставка: только музыка, без подложки и пульса', () => {
+    assert.deepEqual(soundFor('title', 0), { ambient: null, campTune: true, pulse: false });
   });
 });
