@@ -88,6 +88,13 @@ export type TelemetryEvent =
    */
   | { t: 'trade'; at: number; offer: 'deal'; worth: number; ask: number }
   /**
+   * §26 — отряд, ушедший без игрока. Вопрос у события ровно один и он же
+   * главный риск механики: **не вытесняет ли отправка ручную вылазку.**
+   * Отправок больше, чем заходов, означает, что игрок перестал играть
+   * в игру, и тогда режется доля добычи, а не добавляется удобство.
+   */
+  | { t: 'sortie'; at: number; tier: Tier; failed: boolean; carried: number; seconds: number }
+  /**
    * Кадры онбординга. Метрика раскадровки — доля дошедших до первой
    * возвращения, цель не ниже 85%: всё, что ниже, значит, что мы теряем людей
    * до того, как они увидели саму игру. Вторая цифра — доля тех, кто пошёл
@@ -158,6 +165,9 @@ export interface Summary {
   readonly avgFights: number;
   /** Кто добивает чаще: атрибуция без неё ничего не говорит о том, что чинить. */
   readonly fatalBy: Readonly<Record<string, number>>;
+  /** §26 — отправок на одну ручную вылазку. Больше единицы значит, что игру
+   *  играет бот, а не игрок. */
+  readonly sortiePerRaid: number;
 }
 
 const mean = (xs: number[]): number =>
@@ -230,5 +240,7 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     avgDamageTaken: mean(ends.map((e) => e.damageTaken)),
     avgFights: mean(ends.map((e) => e.fights)),
     fatalBy,
+    sortiePerRaid:
+      ends.length === 0 ? 0 : list.filter((e) => e.t === 'sortie').length / ends.length,
   };
 }

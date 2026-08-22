@@ -19,6 +19,14 @@ import type { ResourceKind } from '../sim/resources';
 import { EVENTS, effectOf } from '../sim/events';
 import type { EventId } from '../sim/events';
 import { formatDuration } from '../core/clock';
+import type { Roster } from '../sim/heroes';
+import {
+  SORTIE_LOOT,
+  SORTIE_MAX_TIER,
+  SORTIE_REASON,
+  sortieBlock,
+  sortieSeconds,
+} from '../sim/sortie';
 import { CLANS, RICH_MAX, SHIFT_SEC, dayAt, lootMul, regionAt, worldAt } from '../sim/world';
 import { KIND } from '../sim/world';
 import type { NodeKind, NodeState, Region, WorldNode } from '../sim/world';
@@ -223,6 +231,8 @@ export function drawCampTent(
 export interface WorldMapCallbacks {
   /** Игрок выбрал место и решил идти. */
   onRaid(node: number): void;
+  /** §26 — то же место, но идёт отряд, а игрок остаётся в лагере. */
+  onSortie(node: number): void;
 }
 
 /**
@@ -249,6 +259,15 @@ const lootLine = (tier: 0 | 1 | 2 | 3): string =>
     .map(([kind]) => RESOURCE_NAME[kind])
     .join(' · ');
 
+/**
+ * Ростер до первой синхронизации: карточка рисуется раньше, чем ей отдают
+ * отряд, и спрашивать у пустоты «есть ли свободный» она обязана без падения.
+ */
+const EMPTY_ROSTER: Roster = { heroes: [], active: 0 };
+
+/** Доля отправки словами карточки: то же число, что режет добычу (§26). */
+const SHARE_TEXT = SORTIE_LOOT.toFixed(1).replace('.', ',');
+
 export class WorldMap {
   readonly root: HTMLElement;
   private readonly canvas: HTMLCanvasElement;
@@ -256,6 +275,16 @@ export class WorldMap {
   private readonly card: HTMLElement;
   private readonly go: HTMLButtonElement;
   private readonly note: HTMLElement;
+  /**
+   * §26 — вторая кнопка карточки. Ниже входа и мельче его намеренно:
+   * §4.1 называет вход единственным необратимым действием экрана, и отправка
+   * этого не меняет — она предлагает то же место на худших условиях.
+   * Причина отказа стоит рядом с кнопкой (`.row.tight`, §6.2), а не в общей
+   * строке под карточкой: та занята сроком восстановления и отказом входа.
+   */
+  private readonly sendRow: HTMLElement;
+  private readonly send: HTMLButtonElement;
+  private readonly sendNote: HTMLElement;
 
   /** Выбранный узел. Карта открывается с выбранным местом, а не пустой:
    *  пустая карточка вынуждает тапнуть дважды, чтобы вообще что-то узнать. */
@@ -264,6 +293,7 @@ export class WorldMap {
   private region: Region = regionAt(0);
   private world: NodeState[] = [];
   private camp: CampState | null = null;
+  private roster: Roster | null = null;
   private now = 0;
   /**
    * Единственное место, открытое первой вылазкой (§16.2); null — карта открыта
@@ -296,7 +326,16 @@ export class WorldMap {
     this.go.className = 'cta';
     this.go.addEventListener('click', () => this.cb.onRaid(this.node().id));
 
-    this.root.append(this.canvas, this.card, this.note, this.go);
+    this.sendRow = document.createElement('div');
+    this.sendRow.className = 'row tight send';
+    this.send = document.createElement('button');
+    this.send.className = 'act';
+    this.send.addEventListener('click', () => this.cb.onSortie(this.node().id));
+    this.sendNote = document.createElement('span');
+    this.sendNote.className = 'map-note';
+    this.sendRow.append(this.send, this.sendNote);
+
+    this.root.append(this.canvas, this.card, this.note, this.go, this.sendRow);
   }
 
   /** Место, с которого карта открывается: самое богатое из тех, что есть.
@@ -322,8 +361,9 @@ export class WorldMap {
     this.paint();
   }
 
-  sync(camp: CampState, now: number): void {
+  sync(camp: CampState, now: number, roster: Roster): void {
     this.camp = camp;
+    this.roster = roster;
     // Мир меняется сменами по 40 минут — пересчитывать его каждый кадр
     // незачем, а вот срок восстановления в карточке идёт вживую.
     if (Math.floor(now / SHIFT_SEC) !== Math.floor(this.now / SHIFT_SEC)) {
@@ -598,6 +638,26 @@ export class WorldMap {
     // Отказ говорит причиной и перебивает срок восстановления: игроку сейчас
     // важнее, почему сюда нельзя, чем когда сюда снова будет выгодно.
     if (block !== 'ok') this.note.textContent = ENTRY_REASON[block];
+    this.paintSend(node, block);
+  }
+
+  /**
+   * §26 — предложение отправить отряд. Глубже `SORTIE_MAX_TIER` строки нет
+   * вовсе: там этой механики не существует, и запрещать нечего — запрет
+   * рассказывал бы о механике, которой на этом ярусе не бывает.
+   *
+   * Запертое Кухней место отправке тоже закрыто: она ходит туда же, куда
+   * и игрок, и объяснять два раза одну причину незачем.
+   */
+  private paintSend(node: WorldNode, entry: EntryBlock): void {
+    const off =
+      KIND[node.kind].gated === false || node.tier > SORTIE_MAX_TIER || entry !== 'ok';
+    this.sendRow.style.display = off ? 'none' : 'flex';
+    if (off) return;
+    const block = sortieBlock(this.camp?.sortie ?? null, this.roster ?? EMPTY_ROSTER, node.tier);
+    this.send.textContent = `Отправить · ${formatDuration(sortieSeconds(node.tier))}`;
+    this.send.disabled = block !== 'ok';
+    this.sendNote.textContent = block === 'ok' ? `добыча ×${SHARE_TEXT}` : SORTIE_REASON[block];
   }
 
   /**

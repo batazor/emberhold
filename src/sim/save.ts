@@ -58,6 +58,12 @@ interface SaveV1 {
    */
   walls?: CampState['walls'];
   /**
+   * Отряд в пути (§26). Хранится **вход, а не итог**: сервер (§6) обязан
+   * уметь пересчитать поход сам, а итог он не проверит ничем. Поле
+   * необязательное — сейв, записанный до отправок, обязан открываться.
+   */
+  sortie?: CampState['sortie'];
+  /**
    * Отряд (§11.8). Поле необязательное, и версия сейва ради него не поднята:
    * сохранение этапов 1–4 обязано открываться — иначе на каждом этапе игрок
    * терял бы лагерь, а мы — возможность сравнить замеры до и после.
@@ -140,6 +146,7 @@ export function save(
     offhand: camp.offhand,
     arrows: camp.arrows,
     walls: camp.walls,
+    sortie: camp.sortie ?? null,
     // Заходы старше окна на богатство уже не влияют — в сохранение они
     // не едут, иначе список растёт без предела.
     visits: liveVisits(camp.visits, watermark).map((v) => ({ n: v.node, s: v.shift })),
@@ -287,6 +294,22 @@ export function load(): LoadResult {
       };
     }
 
+    // Отряд в пути. Читается по полям, как стены: чужой сейв не должен
+    // подсовывать симуляции билет неизвестной формы, а пропущенное поле
+    // входа сделало бы поход невоспроизводимым.
+    const so = data.sortie;
+    if (
+      so != null &&
+      typeof so.endsAt === 'number' &&
+      typeof so.seed === 'number' &&
+      typeof so.hero === 'number' &&
+      so.at != null &&
+      typeof so.at.kitchen === 'number' &&
+      typeof so.at.storage === 'number'
+    ) {
+      camp.sortie = so;
+    }
+
     // Валуны: список — это то, что ещё лежит. Разбитые в сейв не попадают,
     // поэтому читать их обратно нечего, а нумерация раздаётся заново.
     if (Array.isArray(data.stones)) {
@@ -339,7 +362,7 @@ export function load(): LoadResult {
       camp.arrows = Math.floor(data.arrows);
     }
 
-    readRoster(roster, data.heroes);
+    readRoster(roster, data.heroes, camp.sortie ?? null);
     // Состав догоняется до уровня Жилья: сейв мог быть записан правилами,
     // где гейты §11.8 стояли иначе, и отряд не должен от этого рассыпаться.
     while (syncRoster(roster, camp.levels.hq) !== null) { /* добираем по одному */ }
@@ -374,8 +397,14 @@ const STATUSES: readonly HeroState['status'][] = ['ready', 'raid', 'healing', 't
  * поле, которому нельзя верить на сервере, нельзя записывать и здесь (§6).
  * Герой «в вылазке» на момент записи возвращается готовым — вылазка
  * не переживает перезапуск, и оставлять его занятым навсегда нельзя.
+ *
+ * **Кроме ушедшего без игрока** (§26). Отправка перезапуск переживает —
+ * её билет лежит в том же сейве, — и вернуть её героя готовым значило бы
+ * отдать игроку бойца, который сейчас в пути: он ушёл бы во вторую вылазку,
+ * а по возвращении первой лагерь выдернул бы его оттуда лечиться.
+ * Поэтому занятость снимается всем, кроме того, чей билет открыт.
  */
-function readRoster(roster: Roster, saved: SaveV1['heroes']): void {
+function readRoster(roster: Roster, saved: SaveV1['heroes'], sortie: CampState['sortie']): void {
   if (saved === undefined || !Array.isArray(saved.list) || saved.list.length === 0) return;
   const heroes: HeroState[] = [];
   saved.list.forEach((h, i) => {
@@ -389,15 +418,16 @@ function readRoster(roster: Roster, saved: SaveV1['heroes']): void {
     if (cls === undefined) return;
     const level = typeof h.level === 'number' ? Math.floor(h.level) : 1;
     const status = STATUSES.find((s) => s === h.status) ?? 'ready';
+    const away = status === 'raid' && sortie != null && sortie.hero === i;
     heroes.push({
       id: i,
       cls,
       level: Math.max(1, Math.min(MAX_HERO_LEVEL, level)),
       xp: typeof h.xp === 'number' && h.xp >= 0 ? Math.floor(h.xp) : 0,
       wounds: typeof h.wounds === 'number' && h.wounds >= 0 ? Math.floor(h.wounds) : 0,
-      status: status === 'raid' ? 'ready' : status,
+      status: status === 'raid' && !away ? 'ready' : status,
       busyUntil:
-        status !== 'raid' && typeof h.busyUntil === 'number' ? h.busyUntil : null,
+        (status !== 'raid' || away) && typeof h.busyUntil === 'number' ? h.busyUntil : null,
     });
   });
   if (heroes.length === 0) return;

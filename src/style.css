@@ -541,13 +541,23 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Заголовок стоит в сцене буквами, поэтому здесь только вход в игру.
    Кнопка крупнее прочих: это единственное, что на экране можно нажать. */
 #start {
-  position: fixed; inset: auto 0 0 0; display: flex; justify-content: center;
+  position: fixed; inset: auto 0 0 0; display: flex; justify-content: flex-end;
+  flex-direction: column; align-items: center; gap: 12px;
   padding: 0 16px calc(32px + env(safe-area-inset-bottom));
   pointer-events: none;
 }
 #start button {
   pointer-events: auto; font-size: 15px; padding: 13px 44px; letter-spacing: 0.04em;
 }
+/* Хроника (§25) над кнопкой. Ширина её же: два столбца текста и числа стоят
+   ровно настолько, насколько широка кнопка входа, и лист не спорит с ней
+   за внимание. Читается, но не нажимается — решение на экране одно. */
+#chron {
+  flex-direction: column; gap: 3px; width: min(360px, 100%); font-size: 12px;
+}
+/* Число хроники не переносится: перенесённое, оно уезжает под подпись
+   и перестаёт читаться как её значение. */
+#chron .num { white-space: nowrap; }
 
 /* ---------- настройки (§18.5) ---------- */
 /* Верхний левый угол: панель HUD стоит по центру, экран возврата и заставка —

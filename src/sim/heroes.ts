@@ -470,6 +470,28 @@ export interface RaidOutcome {
  * сохраняется без пересчёта, а мелкая царапина не отправляет героя лечиться
  * на шесть минут — раньше отправляла, потому что мельче раны ничего не было.
  */
+/** Полное здоровье бойца: класс задаёт прибавку к общему запасу. */
+export const heroFullHp = (cls: HeroClassId): number => HERO_HP + HERO_CLASSES[cls].hp;
+
+/**
+ * Сколько ран увезёт в лагерь боец, у которого осталось `hpLeft`.
+ *
+ * Раны лечения — своя шкала лагеря, а не класса. Класс задаёт, сколько
+ * здоровья у бойца; сколько времени он потом чинится — вопрос §11.8,
+ * и три раны там значат «полностью разбит» для любого класса. Считать
+ * потолок ран от прибавки класса нельзя: у Лучника она нулевая,
+ * и он не лечился бы никогда.
+ *
+ * Функция отдельная, потому что считать раны нужно дважды: лагерю —
+ * чтобы положить героя в Лазарет, и отчёту отправки (§26) — чтобы сказать,
+ * с чем отряд вернулся. Две шкалы ран разошлись бы на первом же округлении.
+ */
+export function woundsFrom(cls: HeroClassId, hpLeft: number): number {
+  const full = heroFullHp(cls);
+  const lost = Math.max(0, full - Math.max(0, hpLeft));
+  return Math.min(MAX_WOUNDS, Math.round((lost / full) * MAX_WOUNDS));
+}
+
 export function applyRaidOutcome(
   hero: HeroState,
   hpLeft: number,
@@ -479,14 +501,7 @@ export function applyRaidOutcome(
   now: number,
   infirmaryLevel = 0,
 ): RaidOutcome {
-  // Раны лечения — своя шкала лагеря, а не класса. Класс задаёт, сколько
-  // здоровья у бойца; сколько времени он потом чинится — вопрос §11.8,
-  // и три раны там значат «полностью разбит» для любого класса. Считать
-  // потолок ран от прибавки класса нельзя: у Лучника она нулевая,
-  // и он не лечился бы никогда.
-  const full = HERO_HP + HERO_CLASSES[hero.cls].hp;
-  const lost = Math.max(0, full - Math.max(0, hpLeft));
-  hero.wounds = Math.min(MAX_WOUNDS, Math.round((lost / full) * MAX_WOUNDS));
+  hero.wounds = woundsFrom(hero.cls, hpLeft);
   hero.status = 'ready';
   hero.busyUntil = null;
   const levels = addXp(hero, raidXp(carried, tier, evacuated));
