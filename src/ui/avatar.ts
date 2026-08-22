@@ -26,13 +26,14 @@ import { mulberry32 } from '../core/rng';
 /** Кого рисуем. Классы героев (§11.7) и виды жильцов (`garrison.ts`). */
 export type AvatarLook =
   | 'knight' | 'archer' | 'rogue'
-  | 'поселенец' | 'торговец' | 'кузнец' | 'охотник';
+  | 'поселенец' | 'поселенка' | 'торговец' | 'кузнец' | 'охотник';
 
 export const AVATAR_LOOKS: readonly AvatarLook[] = [
   'knight',
   'archer',
   'rogue',
   'поселенец',
+  'поселенка',
   'торговец',
   'кузнец',
   'охотник',
@@ -75,6 +76,7 @@ const BACK: Record<AvatarLook, string> = {
   archer: C['металл-тень'],
   rogue: C['металл-тень'],
   поселенец: C.тень,
+  поселенка: C.тень,
   торговец: C.тень,
   кузнец: C.тень,
   охотник: C.тень,
@@ -129,6 +131,15 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
       `<path d="M7 18h30l-4-4a11 11 0 0 0-22 0z" fill="${C.солома}"/>` +
       `<path d="M7 18h30v2H7z" fill="${C['дерево-тень']}"/>` +
       `<path d="M34 36c3-3 4-8 3-12" stroke="${C.трава}" stroke-width="1.5" fill="none"/>`,
+    // Поселенка: волосы с чёлкой и пряди до плеч — модель без чепца,
+    // и лицо без него: волосы и есть шапка (assets/folk, Settler_Female).
+    поселенка:
+      head +
+      eyes +
+      `<path d="M10 19a12 12 0 0 1 24 0v-4a12 12 0 0 0-24 0z" fill="${C.дерево}"/>` +
+      `<path d="M10 17h24v3l-5-2H15l-5 2z" fill="${C.дерево}"/>` +
+      `<rect x="8" y="16" width="5" height="16" rx="2.5" fill="${C.дерево}"/>` +
+      `<rect x="31" y="16" width="5" height="16" rx="2.5" fill="${C.дерево}"/>`,
     // Торговец: широкополая шляпа и монета у плеча.
     торговец:
       head +

@@ -1182,7 +1182,7 @@ const FOLK: Pack = {
   pose: { file: '../kaykit-animations/gltf/Rig_Medium_General.glb', clip: 'Idle_A', at: 0 },
   rigged: true,
   categoryOf: (name) =>
-    ({ Merchant: 'Торговец', Blacksmith: 'Кузнец', Hunter: 'Охотник' } as Record<string, string>)[name]
+    ({ Settler_Female: 'Поселенка', Merchant: 'Торговец', Blacksmith: 'Кузнец', Hunter: 'Охотник' } as Record<string, string>)[name]
       ?? 'Поселенец',
   /**
    * Четыре модели и есть весь набор: рисовать «на всякий случай» здесь нечего,
@@ -1191,7 +1191,7 @@ const FOLK: Pack = {
    * не двигается, а на общем риге предмет в кулаке (кость `hand.r`) ходит
    * вместе с кистью в любом клипе.
    */
-  adopted: ['Settler', 'Merchant', 'Blacksmith', 'Hunter'],
+  adopted: ['Settler', 'Settler_Female', 'Merchant', 'Blacksmith', 'Hunter'],
   data: { file: 'src/render/folk.data.ts', prefix: 'FOLK', type: 'Folk' },
 };
 

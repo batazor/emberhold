@@ -592,6 +592,7 @@ export const enemyParts = (kind: RaidEnemyKind): RiggedParts => ENEMY_PARTS[kind
  */
 const DWELLER_MODEL: Record<DwellerLook, FolkModelName> = {
   'поселенец': 'Settler',
+  'поселенка': 'Settler_Female',
   'торговец': 'Merchant',
   // Кузнец и охотник съездили в игру статикой набора §6.1.13 и перерисованы
   // сюда: на общем риге они дышат в покое, а молот и нож сидят на кости
