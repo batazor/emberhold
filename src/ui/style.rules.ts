@@ -121,6 +121,36 @@ describe('словарь панелей', () => {
     );
   });
 
+  test('рамка корыта не съедает заливку полосы', () => {
+    // Словарная `.bar` несёт рамку-корыто со всех сторон, а box-sizing
+    // в проекте border-box: у полосы ниже двух рамок контентная область —
+    // ноль, и заливка невидима при любом прогрессе. Это уже случилось
+    // трижды — с самой `.bar`, с полосой над рубкой и с полосами карточек, —
+    // и глазом ловится только у той полосы, на которую смотрят.
+    const dict = ALL.find((r) => r.selector === '.bar');
+    assert.notEqual(dict, undefined, 'в словаре не нашлось правила `.bar`');
+    const border = dict!.body.match(/border:\s*(\d+)px/);
+    assert.notEqual(border, null, 'у `.bar` не нашлось рамки — правило ниже мерить не о чем');
+    const eaten = Number(border![1]) * 2;
+    // Полоса, снявшая корыто явно (`border: none` — сегменты ран), меряется
+    // по своим правилам: рамки нет, и съедать заливку нечем.
+    const thin = ALL.filter(
+      (r) =>
+        /(^|[ >])\.bar$|\.bar\b[^ >]*$/.test(r.selector) &&
+        /height:\s*\d+px/.test(r.body) &&
+        !/border:\s*none/.test(r.body),
+    )
+      .map((r) => ({ selector: r.selector, height: Number(r.body.match(/height:\s*(\d+)px/)![1]) }))
+      .filter((r) => r.height <= eaten)
+      .map((r) => `${r.selector} → ${r.height}px при рамке ${eaten}px`);
+    assert.deepEqual(
+      thin,
+      [],
+      'высота полосы не выше двух рамок корыта — заливке остаётся ноль пикселей:\n' +
+        thin.join('\n'),
+    );
+  });
+
   test('каждый токен :root кем-то взят', () => {
     const declared = [...ROOT.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]!);
     assert.notEqual(declared.length, 0, 'в :root не нашлось ни одного токена');
