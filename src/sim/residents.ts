@@ -158,6 +158,13 @@ function taken(camp: CampState, x: number, z: number): boolean {
       return true;
     }
   }
+  // Костры гостей (`castleGuest.ts`) занимают клетку наравне с палатками:
+  // палатка, поставленная в костёр, была бы палаткой в огне.
+  for (const f of camp.fires ?? []) {
+    if (x < f.x + TENT_FOOT && x + TENT_FOOT > f.x && z < f.z + TENT_FOOT && z + TENT_FOOT > f.z) {
+      return true;
+    }
+  }
   return false;
 }
 

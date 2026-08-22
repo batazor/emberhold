@@ -157,6 +157,14 @@ import type { StartBlock } from './sim/campWalls';
 import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
+import {
+  GUEST_WORK,
+  advanceGuest,
+  castleGuestAt,
+  guestPitch,
+  startGuestMeet,
+} from './sim/castleGuest';
+import type { CastleGuest, GuestMeet } from './sim/castleGuest';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
@@ -1077,6 +1085,8 @@ function placeTents(): void {
   if (!inGladeCamp || raidView === null) return;
   const o = campOrigin(camp);
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
+  // Костры гостей — тем же вызовом и в тех же координатах поляны.
+  raidView.setFires((camp.fires ?? []).map((f) => ({ x: o.x + f.x, z: o.z + f.z })));
   if (controlled === -1) seatResidents();
   else planChores();
 }
@@ -1159,7 +1169,8 @@ function planChores(): void {
     }
   }
   // Палатки жильцов — след 1×1 (`TENT_FOOT`), и сквозь них тоже не ходят.
-  for (const t of camp.tents) {
+  // Костры гостей — тем же правилом: сквозь огонь не ходят тем более.
+  for (const t of [...camp.tents, ...(camp.fires ?? [])]) {
     const x = o.x + t.x;
     const z = o.z + t.z;
     if (x >= 0 && z >= 0 && x < size && z < size) mask[idx(size, x, z)] = 1;
@@ -2076,6 +2087,93 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
 let castleNow: CastleSite | null = null;
 
 /**
+ * Гость у стен замка (`sim/castleGuest.ts`) и его разговор. Состояние живёт
+ * при сцене, а не в сейве, — тем же правилом, что знакомство пролога:
+ * не приглашённый сидит у своей палатки каждый заход заново, а приглашённый
+ * вписан в жильцов, и это единственное, что переживает перезагрузку
+ * (плюс сид замка в `camp.guests`, чтобы тот же замок не отдал его дважды).
+ */
+let castleGuest: CastleGuest | null = null;
+let guestMeet: GuestMeet | null = null;
+let guestShown = false;
+
+/**
+ * Разговор с гостем: кадры листает игрок, приглашение вписывает человека
+ * в жильцы и переносит его хозяйство. Палатка достаётся лагерю бесплатно —
+ * гость принёс свою, — а место ей и костру выбирает он сам (`guestPitch`).
+ */
+function guestCallbacks(): MeetPanelCallbacks {
+  const redraw = (): void => {
+    if (castleGuest === null || guestMeet === null) return;
+    meetPanel.showGuest(castleGuest, guestMeet);
+    setHint('');
+  };
+  return {
+    onName: () => {},
+    onAnswer: () => {},
+    onAdvance: () => {
+      if (guestMeet === null) return;
+      advanceGuest(guestMeet);
+      redraw();
+    },
+    onInvite: () => {
+      if (castleGuest === null || guestMeet === null || castleNow === null) return;
+      guestMeet.invited = true;
+      // Сид замка — до всего остального: даже если места в лагере нет,
+      // этот гость уже позван и второй раз у стен не сядет.
+      (camp.guests ??= []).push(castleNow.loc.seed);
+      // Что он ищет, тем и займётся (`GUEST_WORK`) — сид лица приходит
+      // с человеком, как у поселенца знакомства.
+      admit(camp, {
+        name: castleGuest.who.name,
+        look: castleGuest.who.look,
+        seed: castleGuest.who.seed,
+        answer: GUEST_WORK[castleGuest.seek],
+        rest: false,
+      });
+      const pitch = guestPitch(camp, castleGuest.who.seed);
+      if (pitch !== null) {
+        camp.tents.push(pitch.tent);
+        if (pitch.fire !== null) (camp.fires ??= []).push(pitch.fire);
+      }
+      persist();
+      play('build');
+      // Хозяйство он сворачивает с собой: у стен не остаётся ни палатки,
+      // ни костра — они уже в лагере, на месте, которое он выбрал.
+      raidView?.setTents([]);
+      raidView?.setFires([]);
+      // Встаёт и идёт к герою — тем же зовом, что поселенец пролога.
+      if (raid !== null) raidView?.callSettler(raid.hero.x, raid.hero.z);
+      advanceGuest(guestMeet);
+      meetPanel.hide();
+    },
+  };
+}
+
+/**
+ * Разговор с гостем открывается подходом и гаснет уходом — тем же жестом,
+ * что лавка торговца (§13.5) и знакомство пролога: кнопки «закрыть» нет.
+ */
+function syncGuestMeet(): void {
+  if (raid === null || castleGuest === null || guestMeet === null) return;
+  if (guestMeet.invited) return;
+  const near =
+    Math.hypot(
+      raid.hero.x - (castleGuest.sit.x + 0.5),
+      raid.hero.z - (castleGuest.sit.z + 0.5),
+    ) <= 2.5;
+  if (near && !guestShown) {
+    guestShown = true;
+    meetOn = guestCallbacks();
+    meetPanel.showGuest(castleGuest, guestMeet);
+    setHint('');
+  } else if (!near && guestShown) {
+    guestShown = false;
+    meetPanel.hide();
+  }
+}
+
+/**
  * Замок (§6.1.6). Собирается тем же `createRaid`, что вылазка и пролог:
  * ходьба, шаг и камера обязаны считаться одинаково везде, иначе прогулка
  * научит игрока не тому, что его ждёт дальше.
@@ -2114,6 +2212,11 @@ function leaveWalkSites(): void {
   readStone = null;
   trailSite = null;
   tradePanel.setVisible(false);
+  // Гость живёт при сцене замка: сцены нет — нет ни гостя, ни разговора.
+  castleGuest = null;
+  guestMeet = null;
+  if (guestShown) meetPanel.hide();
+  guestShown = false;
 }
 
 function toGraveyard(node: number, seed: number): boolean {
@@ -2181,6 +2284,27 @@ function toCastle(node: number, seed: number): boolean {
     hunger: false,
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null, camp.gear.weapon, mateClasses(raid));
+  // Гость у стен (`sim/castleGuest.ts`): выводится из сида площадки, а живёт
+  // ли ещё здесь — решает лагерь. Позванный не сидит у стен второй раз,
+  // и тёзка живущего не садится вовсе: `admit` различает людей именем,
+  // и второго человека с тем же именем игра завести не может.
+  const guest = castleGuestAt(site);
+  if (
+    guest !== null &&
+    !(camp.guests ?? []).includes(site.loc.seed) &&
+    !camp.residents.some((r) => r.name === guest.who.name)
+  ) {
+    castleGuest = guest;
+    guestMeet = startGuestMeet();
+    raidView.setTents([guest.tent]);
+    raidView.setFires([guest.fire]);
+    raidView.putSettler(
+      guest.who.look,
+      guest.sit.x + 0.5,
+      guest.sit.z + 0.5,
+      Math.atan2(guest.fire.x - (guest.sit.x + 0.5), guest.fire.z - (guest.sit.z + 0.5)),
+    );
+  }
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -2739,6 +2863,7 @@ function toGladeCamp(): void {
   // Палатки — до посадки жильцов: их клетки входят в маску маршрутов,
   // а маску собирает `planChores` внутри `seatResidents`.
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
+  raidView.setFires((camp.fires ?? []).map((f) => ({ x: o.x + f.x, z: o.z + f.z })));
   seatSettler(door);
   bubbles.clear();
   seatResidents();
@@ -3665,10 +3790,21 @@ if (debugCamp !== null) {
  * Ручка `камень` даёт то, чего не видно глазом: где отряд будет через
  * минуту и когда стрелок выйдет на стену. `камень.смена(t)` переводит часы
  * гарнизона — смена длится минуту, и высиживать её незачем.
+ *
+ * `?castle=СИД` — с назначенным сидом, как у `?grave`: гость у стен
+ * (`castleGuest.ts`) есть у трети замков, и ждать сегодняшнего сида
+ * с гостем — не проверка, а лотерея.
  */
-if (debugParams.has('castle')) {
+const debugCastle = debugParams.get('castle');
+if (debugCastle !== null) {
   const place = today.find((n) => n.kind === 'замок');
-  if (place !== undefined) toRaid(place.id);
+  if (debugCastle === '') {
+    if (place !== undefined) toRaid(place.id);
+  } else {
+    const seed = Number(debugCastle);
+    leaveTitle();
+    toCastle(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
+  }
   (window as unknown as { камень: unknown }).камень = {
     site: () => castleNow,
     // Начатая добыча (§13.5) и тот, кто её ведёт. Работы не видно глазом,
@@ -3694,6 +3830,20 @@ if (debugParams.has('castle')) {
       }));
     },
     смена: (t: number) => raidView?.setWatch(t),
+    // Гость у стен (`castleGuest.ts`): кто, откуда, что ищет и где сидит.
+    // Ждать замка с гостем — лотерея, а тут видно и «гостя сегодня нет».
+    гость: () =>
+      castleGuest === null
+        ? null
+        : {
+            он: castleGuest.who,
+            откуда: castleGuest.origin,
+            ищет: castleGuest.seek,
+            палатка: castleGuest.tent,
+            костёр: castleGuest.fire,
+            сидит: castleGuest.sit,
+            шаг: guestMeet?.step ?? null,
+          },
     // Герой и тап по клетке: прозрачность стен (§6.1.6.1) включается тем,
     // что он вошёл во двор, и без ручки к нему сцена этого не показывает —
     // до ворот пришлось бы идти пешком.
@@ -4111,6 +4261,8 @@ startLoop({
         const show = near && !tradeLeft;
         if (show !== tradePanel.visible) tradePanel.setVisible(show);
         if (show) tradePanel.sync(camp);
+        // Гость у стен: разговор тем же жестом подхода, что лавка выше.
+        syncGuestMeet();
       }
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).

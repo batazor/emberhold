@@ -390,6 +390,8 @@ export class RaidView {
   private readonly placed = new Map<BuildingId, THREE.Mesh>();
   /** Свет поставленного костра. Тот же, что потом горит в лагере. */
   private readonly fire = new Fire();
+  /** Костры гостей (`sim/castleGuest.ts`): свой меш и свой огонь каждому. */
+  private fires: { mesh: THREE.Mesh; fire: Fire }[] = [];
   /** Плафоны фонарей замка: один материал на все, ночь поднимает эмиссию. */
   private lampGlow: THREE.MeshLambertMaterial | null = null;
   /** Огоньки фонарей — по точечному на столб, ночь зажигает их разом. */
@@ -1550,6 +1552,39 @@ export class RaidView {
   }
 
   /**
+   * Костры гостей (`sim/castleGuest.ts`) — у стен замка и в лагере на поляне.
+   *
+   * Модель — Кухня первого уровня: она и есть костёр, и рисовать гостевой
+   * огонь другим мешем значило бы сказать, что это другой огонь. Меньше он
+   * тем же числом, что палатка (`TENT_LOOK`), — след у него 1×1.
+   *
+   * Огонь ставится горящим и со своим светом: костёр, который не светит,
+   * читается как макет костра (`place`). Список пересобирается целиком,
+   * как палатки: костров единицы.
+   */
+  setFires(list: readonly { x: number; z: number }[]): void {
+    for (const f of this.fires) {
+      f.mesh.removeFromParent();
+      f.fire.group.removeFromParent();
+      f.fire.dispose();
+    }
+    this.fires = list.map((f) => {
+      const mesh = new THREE.Mesh(this.track(buildingGeometry('kitchen', 1)), this.blocking);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.scale.setScalar(BUILDING_SCALE * TENT_LOOK);
+      // След 1×1 — клетка `f` целиком, центр в целых координатах, как у палатки.
+      mesh.position.set(f.x, 0, f.z);
+      this.group.add(mesh);
+      const fire = new Fire();
+      fire.set('kitchen', 1, f.x, f.z, BUILDING_SCALE * TENT_LOOK);
+      this.group.add(fire.group);
+      this.clearGrassCell(f.x, f.z);
+      return { mesh, fire };
+    });
+  }
+
+  /**
    * Здание выросло на уровень. Геометрия пересобирается той же функцией,
    * что и в лагере: стадия роста — свойство модели, а не сцены (§6.1).
    *
@@ -2382,6 +2417,7 @@ export class RaidView {
     // Костёр мерцает и в прологе, и в вылазке: день приходит числом, потому
     // что поляна — это поверхность, а вылазка — ночь под землёй.
     this.fire.update(time, day);
+    for (const f of this.fires) f.fire.update(time, day);
     // Фонари замка живут тем же днём: гаснут к полудню, горят к ночи.
     if (this.lampGlow !== null) setLampsNight(1 - day, this.lampGlow, this.lampLights);
     if (this.hintRing.visible) {
@@ -2671,6 +2707,7 @@ export class RaidView {
     this.grass?.dispose();
     this.meadow?.dispose();
     this.fire.dispose();
+    for (const f of this.fires) f.fire.dispose();
     this.grass = null;
     this.meadow = null;
     this.group.removeFromParent();
