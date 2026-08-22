@@ -447,6 +447,9 @@ const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
   // Привидение — из набора кладбища (§6.1.7), и скелета у него нет: и здесь,
   // и в вылазке это одна и та же неподвижная модель.
   ghost: () => graveyardGeometry('character-ghost', GHOST_HEIGHT),
+  // Стражник замка — тот же рыцарь с мечом, что ходит дозором (§6.1.6):
+  // засада сундука поднимает гарнизон, а не третью породу людей.
+  guard: () => adventurerGeometry('Knight', heroHeight('knight'), adventurerHeld('sword_1handed')),
   // Те же числа, что в ENEMY_HEIGHT ниже: неподвижная версия обязана стоять
   // ровно там же, где стоит подвижная.
 };
@@ -596,6 +599,9 @@ export const ENEMY_HEIGHT: Record<EnemyKind, number> = {
   // 0,79 в ширину при 0,66 в высоту, и вытягивать её до роста скелета
   // значило бы рисовать другую модель.
   ghost: GHOST_HEIGHT,
+  // Стражник — рост героя, той же меркой, что дозор (§6.1.6): гарнизон
+  // и герой — люди одного мира.
+  guard: heroHeight('knight'),
 };
 
 const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {

@@ -29,6 +29,7 @@ import { PARTS, STAIRS, TOWER, TOWER_MAX, WALK, WALL_TOP, towerHeight } from '..
 import { ELEVATION } from './scene';
 import {
   CASTLE_SLOT_ORDER,
+  DUNGEON_SLOT_ORDER,
   FOREST_SLOT_ORDER,
   GRAVEYARD_SLOT_ORDER,
   MATERIAL,
@@ -37,6 +38,7 @@ import {
   SKELETON_SLOT_ORDER,
   WEAPONS_SLOT_ORDER,
 } from './palette';
+import { DUNGEON_SLOTS } from './dungeon.data';
 import { WEAPONS_MODELS, WEAPONS_SLOTS } from './weapons.data';
 import { WEAPON_LADDER, weaponOf } from './weapons';
 import { MAX_ITEM_LEVEL } from '../sim/gear';
@@ -637,6 +639,7 @@ describe('Артбук: палитра', () => {
   test('порядок слотов в палитре — тот же, что в запечённом наборе', () => {
     assert.deepEqual([...FOREST_SLOT_ORDER], [...FOREST_SLOTS]);
     assert.deepEqual([...SKELETON_SLOT_ORDER], [...SKELETON_SLOTS]);
+    assert.deepEqual([...DUNGEON_SLOT_ORDER], [...DUNGEON_SLOTS]);
   });
 
   test('цвета примитивов и цвета наборов — один список', () => {

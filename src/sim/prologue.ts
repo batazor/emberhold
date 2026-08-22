@@ -370,6 +370,42 @@ export function siteBlock(
 }
 
 /**
+ * Клетка под сундук (`chests.ts`) рядом со следом 2×2 палатки.
+ *
+ * Порядок обхода не случайный: сперва бока и перед (большой z — к камере),
+ * задний ряд последним. Камера поляны не крутится, и «за палаткой» значит
+ * «под свесом шатра, не видно никогда» — тот же довод, что у `behind`
+ * в `residents.ts`. Спрятанная клетка всё равно лучше отказа: сундук
+ * держит прибавку к рюкзаку, и потерять его молча нельзя.
+ */
+export function chestSiteNear(
+  loc: GameLocation,
+  taken: readonly Cell[],
+  hero: Cell,
+  cell: Cell,
+): Cell | null {
+  const ring: readonly [number, number][] = [
+    [2, 1], [2, 0], [-1, 1], [-1, 0], // бока — видны всегда
+    [0, 2], [1, 2], [2, 2], [-1, 2], // перед, к камере
+    [0, -1], [1, -1], [2, -1], [-1, -1], // задний ряд — хуже отказа не бывает
+  ];
+  const { size, blocked } = loc;
+  const hx = Math.round(hero.x);
+  const hz = Math.round(hero.z);
+  for (const [dx, dz] of ring) {
+    const x = cell.x + dx;
+    const z = cell.z + dz;
+    if (x < 0 || z < 0 || x >= size || z >= size) continue;
+    if (blocked[idx(size, x, z)]) continue;
+    // Чужой след 2×2 накрывает клетку 1×1, когда та внутри квадрата [t, t+2).
+    if (taken.some((t) => x >= t.x && x < t.x + 2 && z >= t.z && z < t.z + 2)) continue;
+    if (x === hx && z === hz) continue;
+    return { x, z };
+  }
+  return null;
+}
+
+/**
  * Перенос раскладки поляны в лагерь. Клетки не пересчитываются: где игрок
  * разбил палатку, там она и стоит — площадь лагеря (§20.4) подъезжает под
  * постройки якорем (`camp.origin`), а не постройки под площадь. Прежний

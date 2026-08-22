@@ -68,7 +68,9 @@ import {
   TENT_WOOD,
   UPGRADE_WOOD,
   siteBlock,
+  chestSiteNear,
 } from './sim/prologue';
+import { CHEST_BONUS, CHEST_REASON, adoptChest, buildChest, chestBlock, chestBonus } from './sim/chests';
 import {
   aimChop,
   chopBlock,
@@ -305,6 +307,12 @@ const PITCH_HINT: Partial<Record<BuildingId, string>> = {
 };
 /** Клетки, уже занятые зданиями лагеря. */
 const pitched: Cell[] = [];
+/**
+ * Сундук пролога (`chests.ts`): встаёт рядом с палаткой в момент её
+ * постановки, в лагерь принимается в `endGlade` тем же переносом, что
+ * здания. В глейдовых координатах, пока пролог идёт.
+ */
+let gladeChest: Cell | null = null;
 /** Сколько брусков собрано на поляне. Хранится затем, чтобы кольцо
  *  подсказки переезжало на следующий брусок в момент подбора, а не
  *  пересчитывалось каждый кадр. */
@@ -353,6 +361,8 @@ let lastCampFrame = 0;
 let selected: BuildingId | null = null;
 /** Кнопка «Палатка» вооружила выбор места: следующий тап ставит палатку. */
 let placingTent = false;
+/** Кнопка «Сундук» (`chests.ts`) вооружила выбор места — тем же жестом. */
+let placingChest = false;
 
 /**
  * Отладка, а не механика — как ползунок «Ночь». Плотность травы меряется
@@ -516,6 +526,9 @@ const campHud = new CampHud(app, {
   onMove: (id) => {
     selected = id;
     campView.highlight(selected);
+    // Вооружённых жестов не бывает двух разом — то же правило, что у палатки.
+    placingTent = false;
+    placingChest = false;
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
   onWalls: () => openWalls(),
@@ -554,8 +567,26 @@ const campHud = new CampHud(app, {
     // не бывает двух разом.
     selected = null;
     campView.highlight(null);
+    placingChest = false;
     placingTent = true;
     campHud.notify('Палатка: коснитесь свободного места');
+  },
+  /**
+   * Сундук (`chests.ts`) — тот же жест, что палатка: карточка вооружает
+   * палец, место выбирает игрок. Отказ звучит так же, как виден (§18.3).
+   */
+  onChest: () => {
+    const why = chestBlock(camp);
+    if (why !== 'ok') {
+      play('deny');
+      campHud.notify(CHEST_REASON[why]);
+      return;
+    }
+    selected = null;
+    campView.highlight(null);
+    placingTent = false;
+    placingChest = true;
+    campHud.notify('Сундук: коснитесь свободного места');
   },
   /**
    * Лист накрывает сцену, а веер рисуется поверх всего своим слоем —
@@ -1077,6 +1108,7 @@ function placeTents(): void {
   if (!inGladeCamp || raidView === null) return;
   const o = campOrigin(camp);
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
+  raidView.setChests(camp.chests.map((c) => ({ x: o.x + c.x, z: o.z + c.z })));
   if (controlled === -1) seatResidents();
   else planChores();
 }
@@ -1103,6 +1135,24 @@ function pitchTentAt(x: number, z: number): void {
   // Тот же вид, что и на площадке, — на поляне. Раньше здесь стоял только
   // `campView`, спрятанный в этой сцене, и палатка за пять дерева
   // не появлялась нигде: задание §16.1 закрывалось молча.
+  placeTents();
+  persist();
+}
+
+/**
+ * Тап выбора места сундука (`chests.ts`) — те же правила, что у палатки:
+ * след 1×1, клетка ближайшая целая, жест разряжается любым исходом.
+ */
+function placeChestAt(x: number, z: number): void {
+  placingChest = false;
+  const spot = buildChest(camp, { x: Math.round(x), z: Math.round(z) });
+  if (spot === null) {
+    play('deny');
+    campHud.notify('Сундук: здесь не встанет');
+    return;
+  }
+  play('build');
+  campView.setCamp(camp);
   placeTents();
   persist();
 }
@@ -1158,8 +1208,8 @@ function planChores(): void {
       }
     }
   }
-  // Палатки жильцов — след 1×1 (`TENT_FOOT`), и сквозь них тоже не ходят.
-  for (const t of camp.tents) {
+  // Палатки жильцов и сундуки — след 1×1, и сквозь них тоже не ходят.
+  for (const t of [...camp.tents, ...camp.chests]) {
     const x = o.x + t.x;
     const z = o.z + t.z;
     if (x >= 0 && z >= 0 && x < size && z < size) mask[idx(size, x, z)] = 1;
@@ -2025,6 +2075,8 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
     event,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
+    // Сундуки лагеря (`chests.ts`): плоская прибавка к рюкзаку.
+    chestBonus: chestBonus(camp),
     loadout: loadout(hero),
     followers: followersOf(hero),
     // §14 — снаряжение складывается поверх класса: класс отвечает «кем идём»,
@@ -2278,6 +2330,18 @@ function leaveTitle(): void {
   startScreen.setVisible(false);
 }
 
+/**
+ * Годна ли клетка под след 2×2 — `siteBlock` плюс сундук пролога:
+ * про сундук (`chests.ts`, след 1×1) проверка симуляции не знает,
+ * и костёр мог бы накрыть его молча.
+ */
+function pitchOk(cell: Cell): boolean {
+  if (raid === null) return false;
+  if (siteBlock(raid.loc, pitched, raid.hero, cell) !== 'ok') return false;
+  const c = gladeChest;
+  return c === null || c.x < cell.x || c.x >= cell.x + 2 || c.z < cell.z || c.z >= cell.z + 2;
+}
+
 /** Свободная клетка рядом с героем — с неё начинается выбор места. */
 function siteNearHero(): Cell {
   if (raid === null) return { x: 0, z: 0 };
@@ -2285,7 +2349,7 @@ function siteNearHero(): Cell {
   const hz = Math.round(raid.hero.z);
   for (const [dx, dz] of [[1, 0], [0, 1], [-1, 0], [0, -1]] as const) {
     const c = { x: hx + dx, z: hz + dz };
-    if (siteBlock(raid.loc, pitched, raid.hero, c) === 'ok') return c;
+    if (pitchOk(c)) return c;
   }
   return { x: hx, z: hz };
 }
@@ -2300,13 +2364,13 @@ function startPlacing(id: BuildingId): void {
   placing = id;
   setHint(PITCH_HINT[id] ?? '');
   const c = siteNearHero();
-  raidView?.showSite(id, c.x, c.z, siteBlock(raid.loc, pitched, raid.hero, c) === 'ok');
+  raidView?.showSite(id, c.x, c.z, pitchOk(c));
 }
 
 /** Тап по земле в режиме выбора места. */
 function tryPlace(cell: Cell): void {
   if (placing === null || raid === null) return;
-  const ok = siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok';
+  const ok = pitchOk(cell);
   raidView?.showSite(placing, cell.x, cell.z, ok);
   // Отказ не молчит и не двигает кадр: красное пятно остаётся под пальцем,
   // и следующий тап игрок делает уже зная, почему прошлый не сработал.
@@ -2318,6 +2382,19 @@ function tryPlace(cell: Cell): void {
   raidView?.place(placing, cell.x, cell.z);
   play('build');
   pitched.push(cell);
+  // Вместе с палаткой встаёт её кладовая — первый сундук (`chests.ts`).
+  // Бесплатно и здесь, а не в лагере: прибавка к рюкзаку показывается
+  // в кадре, где игрок только что познакомился с рюкзаком. Сейв, начатый
+  // до сундуков, уже получил свой при чтении — второго не полагается.
+  if (placing === 'hq' && camp.chests.length === 0 && gladeChest === null) {
+    const spot = chestSiteNear(raid.loc, pitched, raid.hero, cell);
+    if (spot !== null) {
+      gladeChest = spot;
+      raidView?.setChests([spot]);
+      raid.capacity += CHEST_BONUS;
+      raid.events.push(`Сундук у палатки: +${CHEST_BONUS} к рюкзаку`);
+    }
+  }
   // Палатка встаёт из принесённого: бруски уходят из сумки на глазах,
   // на той же полосе, в которую их только что клали. Ради этой секунды
   // сбор в прологе и заведён — «здание стоит принесённого» показывается
@@ -2550,6 +2627,15 @@ function endGlade(): void {
   if (raid !== null) {
     adoptGladeLayout(camp, raid.loc.size, PITCH_ORDER, pitched);
     camp.glade = packGlade(raid.loc);
+    // Сундук пролога — тем же переносом, что здания: где встал, там и стоит,
+    // якорь площадки уже посчитан. Не встал на поляне вовсе (лес вплотную) —
+    // примется у Жилья: прибавку к рюкзаку молча терять нельзя.
+    if (camp.chests.length === 0) {
+      const o = campOrigin(camp);
+      adoptChest(camp, gladeChest === null
+        ? { x: -1, z: -1 }
+        : { x: gladeChest.x - o.x, z: gladeChest.z - o.z });
+    }
   }
   onboarding.set('world');
   inGlade = false;
@@ -2622,6 +2708,7 @@ function toGlade(): void {
   ear.reset(raid);
   placing = null;
   pitched.length = 0;
+  gladeChest = null;
   raidView.hideSite();
   // Поляна на поверхности — подложка «Подступы», светлая (§18.4).
   showScene('raid', 0);
@@ -2739,6 +2826,7 @@ function toGladeCamp(): void {
   // Палатки — до посадки жильцов: их клетки входят в маску маршрутов,
   // а маску собирает `planChores` внутри `seatResidents`.
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
+  raidView.setChests(camp.chests.map((c) => ({ x: o.x + c.x, z: o.z + c.z })));
   seatSettler(door);
   bubbles.clear();
   seatResidents();
@@ -2863,6 +2951,11 @@ function campTap(clientX: number, clientY: number): void {
   // вооружённый жест съедает тап, отказ обязан быть слышен.
   if (placingTent) {
     pitchTentAt(hit.x, hit.z);
+    return;
+  }
+  // Сундук вооружён карточкой Склада — правило то же, что у палатки.
+  if (placingChest) {
+    placeChestAt(hit.x, hit.z);
     return;
   }
 
@@ -3194,6 +3287,11 @@ canvas.addEventListener('pointerdown', (e) => {
       pitchTentAt(hit.x - o.x, hit.z - o.z);
       return;
     }
+    // Сундук — тем же жестом и в тех же клетках площадки, что палатка.
+    if (placingChest) {
+      placeChestAt(hit.x - o.x, hit.z - o.z);
+      return;
+    }
     // Тап по сидящему жильцу — его карточка и передача ведения: то же,
     // что тап по лицу в веере. Человек спрашивается раньше палатки:
     // он сидит в её запасе, и иначе тап по нему открывал бы здание.
@@ -3326,7 +3424,7 @@ canvas.addEventListener('pointermove', (e) => {
   // Палец показывает середину следа 2×2, данные держат его угловую клетку:
   // полклетки вычитаются, как у перестановки зданий (`moveSelected`).
   const cell = { x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) };
-  raidView?.showSite(placing, cell.x, cell.z, siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok');
+  raidView?.showSite(placing, cell.x, cell.z, pitchOk(cell));
 });
 
 // Курсор ушёл с холста — ветру не за кем идти. Палец, снятый с экрана,

@@ -286,3 +286,20 @@ export const VILLAGE_SLOT_ORDER = [
 ] as const;
 
 export const VILLAGE_PALETTE = paletteOf(VILLAGE_SLOT_ORDER);
+
+/**
+ * Набор KayKit Dungeon (§6.1.2) — сундуки. Двенадцать слотов — лесные,
+ * тринадцатый, «золото», — единственный слот наборов, которого нет среди
+ * 34 цветов артбука: окованный сундук набор красит тем же жёлтым, каким
+ * герои и скелеты красят латунь, и слот отдан ей, а не новому цвету.
+ */
+export const DUNGEON_SLOT_ORDER = [
+  'хвоя-тень', 'хвоя', 'мох', 'трава',
+  'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+  'камень', 'камень-свет', 'скол', 'соль-тень',
+  'золото',
+] as const;
+
+export const DUNGEON_PALETTE = paletteOf(
+  DUNGEON_SLOT_ORDER.map((name) => (name === 'золото' ? 'латунь' : name)),
+);

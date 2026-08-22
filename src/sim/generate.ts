@@ -1,6 +1,6 @@
 import { mulberry32, randInt } from '../core/rng';
 import type { Rng } from '../core/rng';
-import { ENEMY_DEPTH_SHARE } from './balance';
+import { ENEMY_DEPTH_SHARE, GOLD_CHEST_CHANCE } from './balance';
 import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
 import { ENEMY_STATS, TIER_ROSTER } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
@@ -251,6 +251,38 @@ export function generateLocation(
       kind: rollLoot(rng, tier),
       opened: false,
     });
+  }
+
+  /**
+   * Золотой сундук (§13.6) — редкая находка яруса 3, и только его: выше
+   * уровня игра пока не знает, а ниже кристалл не лежит. «Иногда» — меньше
+   * половины заходов: сундук обязан оставаться событием, а не строкой
+   * росписи. Стоит в глубокой части, как всё дорогое (§12.1), кристаллом —
+   * единственным ресурсом, которого нет в обычной росписи contained яруса.
+   *
+   * Цена написана не на карточке, а в засаде: вскрытие поднимает из земли
+   * 1–3 скелетов-воинов (`Container.ambush`, спавн — `raid.ts`). Сундук
+   * закрыт крышкой — единственный контейнер, не показывающий содержимого, —
+   * и это честно: что внутри, известно (кристалл), неизвестна цена.
+   */
+  if (tier === 3 && rng() < GOLD_CHEST_CHANCE) {
+    // Сначала тупик, но тупики к этому ходу обычно разобраны находками —
+    // тогда глубокая треть локации: «редкий» обязан значить «бросок выше»,
+    // а не «бросок выше и повезло с клеткой».
+    const cell =
+      takeFrom(deadEnds) ?? takeFrom(open.slice(0, Math.max(1, Math.ceil(open.length * 0.3))));
+    if (cell !== null) {
+      containers.push({
+        id: containerCount,
+        x: cell % size,
+        z: (cell / size) | 0,
+        amount: Math.max(1, Math.round((4 + randInt(rng, 3)) * lootMul)),
+        kind: 'crystal',
+        opened: false,
+        look: 'золотой',
+        ambush: { kind: 'warrior', count: 1 + randInt(rng, 3) },
+      });
+    }
   }
 
   // «Обходится по кругу» — обещание, которое обязано выполняться: узкий
