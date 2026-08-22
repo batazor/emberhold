@@ -398,10 +398,15 @@ describe('Пролог: отдых у лагеря', () => {
 
 describe('Пролог: место под здание', () => {
   const loc = glade(5);
+  // Угловая клетка, чей след 2×2 свободен целиком: правило проверяет след,
+  // и помощник обязан искать тем же правилом.
   const free = (): { x: number; z: number } => {
-    for (let z = 1; z < loc.size - 1; z++) {
-      for (let x = 1; x < loc.size - 1; x++) {
-        if (!loc.blocked[idx(loc.size, x, z)]) return { x, z };
+    for (let z = 1; z < loc.size - 2; z++) {
+      for (let x = 1; x < loc.size - 2; x++) {
+        const clear = [0, 1].every((dz) =>
+          [0, 1].every((dx) => !loc.blocked[idx(loc.size, x + dx, z + dz)]),
+        );
+        if (clear) return { x, z };
       }
     }
     throw new Error('поляна заросла целиком');
@@ -420,14 +425,28 @@ describe('Пролог: место под здание', () => {
     assert.equal(siteBlock(loc, [], { x: -9, z: -9 }, { x: loc.size, z: 3 }), 'tree');
   });
 
+  test('след, вылезающий за кромку углом, — тоже нельзя', () => {
+    assert.equal(siteBlock(loc, [], { x: -9, z: -9 }, { x: loc.size - 1, z: 3 }), 'tree');
+  });
+
   test('поверх уже стоящего здания — нельзя', () => {
     const c = free();
     assert.equal(siteBlock(loc, [c], { x: -9, z: -9 }, c), 'busy');
   });
 
+  test('внахлёст со стоящим следом — нельзя: следы 2×2, а не клетка', () => {
+    const c = free();
+    assert.equal(siteBlock(loc, [{ x: c.x + 1, z: c.z + 1 }], { x: -9, z: -9 }, c), 'busy');
+  });
+
   test('под ноги герою — нельзя: он оказался бы внутри', () => {
     const c = free();
     assert.equal(siteBlock(loc, [], { x: c.x + 0.2, z: c.z - 0.3 }, c), 'hero');
+  });
+
+  test('герой в дальней клетке следа — тоже внутри', () => {
+    const c = free();
+    assert.equal(siteBlock(loc, [], { x: c.x + 1, z: c.z + 1 }, c), 'hero');
   });
 });
 

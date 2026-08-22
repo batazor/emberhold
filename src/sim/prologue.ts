@@ -336,6 +336,12 @@ export type SiteBlock = 'ok' | 'tree' | 'busy' | 'hero';
  * по той же причине, что и в лагере (`camp.ts`): игрок должен видеть, что
  * мешает, а не молчащий красный квадрат.
  *
+ * `cell` — угловая клетка следа, и проверяется след 2×2 целиком: именно
+ * эти четыре клетки станут занятыми в лагере (`campBlocked`, маска рутины),
+ * и пятно выбора места показывает ровно их. Раньше проверялась одна угловая
+ * клетка — здание вставало углом на чистое место, а тремя четвертями следа
+ * на дерево, на чужой след или на героя.
+ *
  * Расстояния до героя в правиле нет намеренно: лагерь ставится там, где
  * игрок решил остаться, и «слишком далеко» здесь ничего не защищает.
  */
@@ -346,10 +352,20 @@ export function siteBlock(
   cell: Cell,
 ): SiteBlock {
   const { size, blocked } = loc;
-  if (cell.x < 0 || cell.z < 0 || cell.x >= size || cell.z >= size) return 'tree';
-  if (blocked[idx(size, cell.x, cell.z)]) return 'tree';
-  if (taken.some((t) => t.x === cell.x && t.z === cell.z)) return 'busy';
-  if (Math.round(hero.x) === cell.x && Math.round(hero.z) === cell.z) return 'hero';
+  for (let dz = 0; dz < 2; dz++) {
+    for (let dx = 0; dx < 2; dx++) {
+      const x = cell.x + dx;
+      const z = cell.z + dz;
+      if (x < 0 || z < 0 || x >= size || z >= size) return 'tree';
+      if (blocked[idx(size, x, z)]) return 'tree';
+    }
+  }
+  // Чужие следы — тоже 2×2 от своей угловой клетки: пересечение — это
+  // разница углов меньше следа по обеим осям.
+  if (taken.some((t) => Math.abs(t.x - cell.x) < 2 && Math.abs(t.z - cell.z) < 2)) return 'busy';
+  const hx = Math.round(hero.x);
+  const hz = Math.round(hero.z);
+  if (hx >= cell.x && hx < cell.x + 2 && hz >= cell.z && hz < cell.z + 2) return 'hero';
   return 'ok';
 }
 
