@@ -194,7 +194,14 @@ import {
   roofs,
   tentBlock,
 } from './sim/residents';
-import { RESIDENT_TOOL } from './render/models';
+import { RESIDENT_TOOL, guardHeight } from './render/models';
+import { choreAt, choresAt, choresOf } from './sim/chores';
+import type { Chore } from './sim/chores';
+import { phraseAt } from './sim/talk';
+import type { Talker } from './sim/talk';
+import { Bubbles } from './render/bubbles';
+import type { Bubble } from './render/bubbles';
+import { DWELLER_SPEED } from './sim/garrison';
 import { ResidentCard } from './ui/residentCard';
 import type { DwellerLook } from './sim/garrison';
 import type { MeetState, SelfAnswer, Settler } from './sim/settler';
@@ -367,6 +374,10 @@ setMix(loadMix());
 bindPageAudio();
 
 const rig = new SceneRig(app);
+
+/** Пузыри реплик жильцов (§23.5): слой один на игру, живёт он только
+ *  в лагере на поляне — остальные кадры чистят его каждый рендер. */
+const bubbles = new Bubbles(rig);
 
 /**
  * Ночь сцены. Заданная адресом перебивает сценарную: замер на конкретной
@@ -764,6 +775,14 @@ const residentCard = new ResidentCard(app, {
     if (r !== undefined) {
       raidView?.setResidentTool(index, r.rest ? null : RESIDENT_TOOL[r.answer]);
     }
+    // Приказ меняет и маршрут: вставший к делу выходит на тропу, отпущенный
+    // отдыхать с неё сходит. Без ведомого жильцы пересаживаются целиком;
+    // при ведомом — только перекладываются тропы, к новым местам остальные
+    // доходят ногами (`glide`), а сам ведомый остаётся в руке игрока.
+    if (inGladeCamp) {
+      if (controlled === -1) seatResidents();
+      else planChores();
+    }
     persist();
   },
 });
@@ -923,8 +942,9 @@ function controlResident(idx: number): void {
 function controlHero(): void {
   if (!inGladeCamp || raid === null || controlled === -1) return;
   stopChopping();
-  // Жилец остаётся стоять, где остановился: до следующего входа в лагерь —
-  // потом он снова сядет к костру (`seatResidents`).
+  // Жилец остаётся стоять, где остановился, и сам возвращается к делу:
+  // рутина ведёт его к маршруту шагом (`glide` в driveResident), а сидевший
+  // так и стоит до следующего входа в лагерь — потом сядет (`seatResidents`).
   if (parkedHero !== null) {
     raid.hero.x = raid.hero.prevX = parkedHero.x;
     raid.hero.z = raid.hero.prevZ = parkedHero.z;
@@ -935,13 +955,76 @@ function controlHero(): void {
   parkedHero = null;
 }
 
+/* ---------- рутина жильцов (§6.1.15) ---------- */
+
+/** Часы лагеря на поляне: по ним идут маршруты рутины и очередь реплик.
+ *  Свои, а не clock.now(): рутина — функция времени от входа в сцену. */
+let campTime = 0;
+
+/** Маршруты рутины, по одному на жильца; null — сидит у костра. */
+let chores: (Chore | null)[] = [];
+
+/** Маска проходимости рутины: лес поляны плюс следы построек в кадре. */
+let choreMask: Uint8Array | null = null;
+
+/** Где сидят сидящие: идущие обходят их, а не толкают. */
+let seatedBodies: { x: number; z: number }[] = [];
+
 /**
- * Жильцы в кадре: сидят у костра, лицом к огню — те же люди, что в веере.
+ * Маршруты пересобираются с посадкой и с приказом карточки: кто идёт,
+ * а кто сидит, решает та же экономика, что начисляет работу (`workDone`), —
+ * отдыхающий и безкрышный маршрута не получают.
+ */
+function planChores(): void {
+  if (raid === null) {
+    chores = [];
+    choreMask = null;
+    return;
+  }
+  const o = campOrigin(camp);
+  const size = raid.loc.size;
+  const mask = Uint8Array.from(raid.loc.blocked);
+  // Следы построек в кадре: снимок поляны их не знает — здания встали
+  // после него, — а жилец, идущий сквозь палатку, читается привидением.
+  for (const id of PITCH_ORDER) {
+    const p = camp.layout[id];
+    for (let dz = 0; dz < 2; dz++) {
+      for (let dx = 0; dx < 2; dx++) {
+        const x = o.x + p.x + dx;
+        const z = o.z + p.z + dz;
+        if (x >= 0 && z >= 0 && x < size && z < size) mask[idx(size, x, z)] = 1;
+      }
+    }
+  }
+  // Сидящий гость знакомства — тоже не проход.
+  if (meetAt !== null) mask[idx(size, meetAt.x, meetAt.z)] = 1;
+  choreMask = mask;
+  const fire = { x: o.x + camp.layout.kitchen.x + 1, z: o.z + camp.layout.kitchen.z + 1 };
+  chores = choresOf(
+    // Сид — якорь лагеря, как у поселенца знакомства: тот же лагерь —
+    // те же тропы, и после перезахода никто не меняет дорогу.
+    { size, blocked: mask, fire, seed: (o.x * 73 + o.z * 131) ^ 0x0c40 },
+    camp.residents,
+    (i) => hasRoof(camp, i),
+  );
+}
+
+/** О чём кому говорить (`sim/talk.ts`): положение перекрывает занятие. */
+const campTalkers = (): Talker[] =>
+  camp.residents.map((r, i) => ({
+    seed: r.seed,
+    mood: !hasRoof(camp, i) ? 'без крыши' : r.rest ? 'отдых' : r.answer,
+  }));
+
+/**
+ * Жильцы в кадре. Кто при деле — стоит на своём маршруте (дальше его водит
+ * рутина), остальные сидят у костра лицом к огню — те же люди, что в веере.
  * Места ищутся тем же правилом, что у поселенца знакомства: свободная
  * клетка с чистыми соседями, мимо следов построек и мимо сидящего гостя.
  */
 function seatResidents(): void {
   if (raid === null || raidView === null) return;
+  planChores();
   const o = campOrigin(camp);
   const fire = { x: o.x + camp.layout.kitchen.x + 1, z: o.z + camp.layout.kitchen.z + 1 };
   const busy: Cell[] = [];
@@ -953,11 +1036,27 @@ function seatResidents(): void {
       return x >= o.x + p.x && x <= o.x + p.x + 1 && z >= o.z + p.z && z <= o.z + p.z + 1;
     });
   };
-  const list = camp.residents.flatMap((r) => {
-    const sit = sitSpotNear(fire, raid!.loc, taken);
-    if (sit === null) return [];
+  seatedBodies = [];
+  const list = camp.residents.map((r, i) => {
+    const chore = chores[i];
+    if (chore !== undefined && chore !== null) {
+      const at = choreAt(chore, campTime);
+      return {
+        look: r.look,
+        tool: RESIDENT_TOOL[r.answer],
+        x: at.x,
+        z: at.z,
+        facing: at.facing,
+        seated: false,
+      };
+    }
+    // Список обязан остаться той же длины, что жильцы: номера в нём — те же,
+    // что в веере и в driveResident, и выпавший сдвинул бы всех за собой.
+    // Не нашлось места у костра — жилец встаёт за огонь, а не исчезает.
+    const sit = sitSpotNear(fire, raid!.loc, taken) ?? { x: fire.x + i, z: fire.z + 2 };
     busy.push(sit);
-    return [{
+    seatedBodies.push({ x: sit.x + 0.5, z: sit.z + 0.5 });
+    return {
       look: r.look,
       // Инструмент занятия — и у костра: топор у дерева, кирка у камня,
       // у отдыхающего руки пустые (§6.1.14).
@@ -965,9 +1064,67 @@ function seatResidents(): void {
       x: sit.x + 0.5,
       z: sit.z + 0.5,
       facing: Math.atan2(fire.x - (sit.x + 0.5), fire.z - (sit.z + 0.5)),
-    }];
+      seated: true,
+    };
   });
   raidView.setResidents(list);
+}
+
+/**
+ * Тик рутины: маршруты — чистая функция часов лагеря, разведённая телами
+ * вокруг сидящих, героя и гостя. Ведомого игроком не трогаем: его позиция
+ * принадлежит руке (§16.1).
+ */
+function stepChores(dt: number): void {
+  if (raid === null || raidView === null || chores.length === 0) return;
+  campTime += dt;
+  const pinned = [{ x: raid.hero.x, z: raid.hero.z }, ...seatedBodies];
+  if (meetAt !== null) pinned.push({ x: meetAt.x + 0.5, z: meetAt.z + 0.5 });
+  const size = raid.loc.size;
+  const free = (x: number, z: number): boolean => {
+    const cx = Math.round(x);
+    const cz = Math.round(z);
+    if (cx < 0 || cz < 0 || cx >= size || cz >= size) return false;
+    return choreMask === null || choreMask[idx(size, cx, cz)] === 0;
+  };
+  const frames = choresAt(chores, campTime, pinned, free);
+  const talkers = campTalkers();
+  frames.forEach((f, i) => {
+    if (f === null || i === controlled) return;
+    const talking = !f.walking && !f.working && phraseAt(talkers, i, campTime) !== null;
+    raidView!.driveResident(i, f.x, f.z, f.walking, f.working, dt, {
+      speed: DWELLER_SPEED,
+      workClip: 'рубит',
+      talking,
+      glide: true,
+    });
+    // Лицо стоянки — к делу: рубящий смотрит на ствол, отдыхающий — на огонь.
+    if (!f.walking) raidView!.faceResident(i, f.facing, dt);
+  });
+}
+
+/**
+ * Реплики кадра: слова над головами. Говорит один за раз (`sim/talk.ts`),
+ * ведомый молчит — его устами сейчас ходит игрок.
+ */
+function campBubbles(): void {
+  if (raidView === null) {
+    bubbles.clear();
+    return;
+  }
+  const talkers = campTalkers();
+  const said: Bubble[] = [];
+  camp.residents.forEach((_, i) => {
+    if (i === controlled) return;
+    const text = phraseAt(talkers, i, campTime);
+    if (text === null) return;
+    const at = raidView!.residentAt(i);
+    if (at === null) return;
+    const seated = chores[i] === undefined || chores[i] === null;
+    // Якорь — над макушкой: сидящему ниже, чем стоящему.
+    said.push({ x: at.x, y: guardHeight() * (seated ? 0.75 : 1.05) + 0.3, z: at.z, text });
+  });
+  bubbles.sync(said);
 }
 
 /**
@@ -2184,6 +2341,10 @@ function toGladeCamp(): void {
   }
   raidView.hideSite();
   seatSettler(door);
+  // Часы рутины — с нуля на каждый вход: маршруты и очередь реплик считаются
+  // от входа в сцену, и перемотка «где кто» не зависит от стенных часов.
+  campTime = 0;
+  bubbles.clear();
   seatResidents();
   rig.lookAt(raid.hero.x, raid.hero.z, true);
   rig.setZoom(20, true);
@@ -3318,6 +3479,8 @@ startLoop({
           dt,
         );
       }
+      // Остальные живут сами: маршруты рутины и очередь реплик (§6.1.15).
+      stepChores(dt);
       syncMeet();
       stepCampSystems(dt, now);
       return;
@@ -3472,6 +3635,10 @@ startLoop({
 
     returnScreen.update();
     stepWind(dt);
+    // Пузыри живут только в лагере на поляне: любой другой кадр их чистит,
+    // и слова не переживают говорящего при смене сцены.
+    if (inGladeCamp) campBubbles();
+    else bubbles.clear();
 
     if (mode === 'title' && titleView !== null) {
       // Полная частота, а не 30 кадров лагеря: камеру здесь тянут пальцем,
