@@ -14,6 +14,8 @@ import { folkGeometry, folkParts } from './folk';
 import type { FolkModelName } from './folk.data';
 import { toolGeometry } from './tools';
 import type { ToolModelName } from './tools';
+import { RESOURCE_MODEL, resourceGeometry } from './resources';
+import { RESIDENT_WORK } from '../sim/residents';
 import type { SelfAnswer } from '../sim/settler';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
@@ -623,6 +625,30 @@ export const RESIDENT_TOOL: Record<SelfAnswer, ToolModelName> = {
 export const RESIDENT_WORK_CLIP: Record<SelfAnswer, RigClipName> = {
   строим: 'рубит',
   ходим: 'кайлит',
+};
+
+/**
+ * Ноша занятия (§6.1.15) — во **вторую** руку: в первой инструмент, и класть
+ * туда же значило бы менять топор на бревно, то есть терять занятие ровно
+ * тогда, когда оно наконец видно.
+ *
+ * Модель не назначается своя, а берётся у ресурса через `RESIDENT_WORK`:
+ * бревно в руках жильца обязано быть тем же бревном, что лежит в контейнере
+ * вылазки (§6.1.5), — иначе принесённое домой и найденное в земле оказались
+ * бы разными вещами с одним именем.
+ *
+ * Рост — единственное, что здесь названо числом, и назван он потому, что
+ * набор ресурсов мерит вещи в своём масштабе: бревно вполчеловека читалось
+ * бы брёвнышком, а в натуральную величину — брёвном на плечах. Взято
+ * по высоте модели, а не по длине: у набора это единственная мерка,
+ * общая с `fitOf`.
+ */
+const LOAD_HEIGHT: Record<SelfAnswer, number> = { строим: 0.55, ходим: 0.35 };
+
+/** Геометрия ноши: бревно носящему дерево, порода носящему камень. */
+export const residentLoad = (answer: SelfAnswer): THREE.BufferGeometry | null => {
+  const name = RESOURCE_MODEL[RESIDENT_WORK[answer]];
+  return name === null ? null : resourceGeometry(name, LOAD_HEIGHT[answer]);
 };
 
 export const dwellerParts = (look: DwellerLook, tool?: ToolModelName): RiggedParts => {

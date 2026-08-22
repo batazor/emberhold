@@ -27,6 +27,20 @@
  * киркой тут не по чему — он ходит с ношей, как и назван. Оба возвращаются
  * к костру: склада в кадре поляны нет, а огонь — то место, которое лагерь
  * читает домом.
+ *
+ * **Домой с ношей, обратно налегке.** Половина круга с бревном на руках —
+ * это и есть всё объяснение, зачем он ходил: строка карточки «носит дерево»
+ * перестаёт быть обещанием ровно в ту секунду, когда в руках появляется
+ * бревно. Ноша берётся на рабочей стоянке и кладётся дома, и обе подмены
+ * приходятся на разворот, где подмены не видно.
+ *
+ * **Встреча назначается, а не случается.** Работники разбиты на пары,
+ * и паре выдан **общий круг и общая фаза** — значит домой они приходят
+ * в одну секунду каждый раз, а стоянка у костра удлинена ровно на разговор
+ * (`CHAT_SECONDS`). Ловить сближение по расстоянию было бы вторым способом
+ * считать движение и потребовало бы памяти; назначенная встреча оставляет
+ * кадр чистой функцией времени и заодно ставит разговор туда, где ему
+ * место, — к огню, а не посреди тропы.
  */
 import { DWELLER_SPEED } from './garrison';
 import { findPath } from './pathfinding';
@@ -34,6 +48,10 @@ import { keepApart } from './crowd';
 import type { Body } from './crowd';
 import { idx } from './grid';
 import { mulberry32, randInt } from '../core/rng';
+import type { Rng } from '../core/rng';
+// Время на разговор берётся у того, кто его считает: сколько длится обмен
+// репликами, знает `talk.ts`, а маршрут обязан выделить ровно столько же.
+import { CHAT_SECONDS } from './talk';
 import type { Cell } from './types';
 import type { Resident } from './residents';
 
@@ -70,6 +88,10 @@ interface Stop {
   readonly facing: number | null;
   /** Рабочая стоянка: рендер играет труд, а не покой. */
   readonly working: boolean;
+  /** Отсюда жилец уходит с ношей: здесь он её и взял. */
+  readonly takes?: boolean;
+  /** Стоянка разговора: напарник стоит рядом и в это же время. */
+  readonly talk?: boolean;
 }
 
 /** Маршрут одного жильца: замкнутая ломаная со стоянками, как `YardWalk`. */
@@ -80,13 +102,26 @@ export interface Chore {
   readonly cycle: number;
   /** Сдвиг начала: жильцы вышли не строем, а кто когда. */
   readonly phase: number;
+  /** Номер напарника по разговору; null — ходит и молчит. */
+  readonly partner: number | null;
 }
 
-/** Где жилец на момент `t`: рендеру хватает этих пяти чисел. */
+/** Где жилец на момент `t`: рендеру хватает этих чисел. */
 export interface ChoreFrame extends Body {
   readonly facing: number;
   readonly walking: boolean;
   readonly working: boolean;
+  /**
+   * Руки полны: домой жилец идёт с ношей, обратно налегке. Это и есть весь
+   * круг, сказанный без подписи, — «носит дерево» наконец что-то носит.
+   */
+  readonly carrying: boolean;
+  /**
+   * Идёт разговор с напарником: сколько секунд назад он начался и какая
+   * это по счёту встреча. Слова по этим двум числам выдаёт `sim/talk.ts` —
+   * маршрут назначает время и место, а не реплики.
+   */
+  readonly talk: { readonly since: number; readonly round: number } | null;
 }
 
 /**
@@ -134,8 +169,13 @@ const dist = (a: Cell, b: Cell): number => Math.hypot(a.x - b.x, a.z - b.z);
 /**
  * Точка выхода: свободная клетка возле костра. У каждого своя — двое,
  * выходящие с одной, разводились бы телами каждый круг на одном месте.
+ *
+ * `mate` — место напарника, если оно уже выбрано: тогда берётся ближайшая
+ * к нему свободная клетка, а не любая. Разговор через весь лагерь читался
+ * бы перекличкой; полтора шага — это и есть расстояние, на котором стоят
+ * двое говорящих, и обеспечено оно тем же порогом «врозь», что и всегда.
  */
-function baseSpot(site: ChoreSite, rng: () => number, taken: Cell[]): Cell | null {
+function baseSpot(site: ChoreSite, rng: Rng, taken: Cell[], mate?: Cell): Cell | null {
   const { size, blocked, fire } = site;
   const ring: Cell[] = [];
   for (let dz = -3; dz <= 3; dz++) {
@@ -150,7 +190,37 @@ function baseSpot(site: ChoreSite, rng: () => number, taken: Cell[]): Cell | nul
       ring.push({ x, z });
     }
   }
-  return ring.length === 0 ? null : ring[randInt(rng, ring.length)]!;
+  if (ring.length === 0) return null;
+  if (mate === undefined) return ring[randInt(rng, ring.length)]!;
+  return ring.reduce((best, c) => (dist(c, mate) < dist(best, mate) ? c : best));
+}
+
+/**
+ * Кто с кем разговаривает. Пары — подряд идущие работники: первый со вторым,
+ * третий с четвёртым. Считаются **до** маршрутов, а не после, потому что
+ * напарник решает, где встать у костра, и выбирать место, не зная,
+ * с кем стоишь, значит выбирать его дважды.
+ *
+ * Нечётному пары не досталось, и это не дефект: он ходит и говорит
+ * присказками, как ходили все до разговора.
+ */
+function pairsOf(
+  residents: readonly Resident[],
+  works: (i: number) => boolean,
+): (number | null)[] {
+  const partner: (number | null)[] = residents.map(() => null);
+  let waiting: number | null = null;
+  for (let i = 0; i < residents.length; i++) {
+    if (!works(i)) continue;
+    if (waiting === null) {
+      waiting = i;
+      continue;
+    }
+    partner[waiting] = i;
+    partner[i] = waiting;
+    waiting = null;
+  }
+  return partner;
 }
 
 /** Ломаная из отрезков `findPath` с длиной; null — какой-то ноги не нашлось. */
@@ -196,14 +266,32 @@ export function choresOf(
   const spots = treeSpots(site);
   const takenWork: Cell[] = [];
   const takenBase: Cell[] = [];
+  const works = (i: number): boolean => {
+    const r = residents[i];
+    return r !== undefined && !r.rest && roofed(i);
+  };
+  const partner = pairsOf(residents, works);
 
-  return residents.map((r, i) => {
-    if (r.rest || !roofed(i)) return null;
+  /** Тропа до сведения пар: круг ещё свой, а не общий с напарником. */
+  interface Draft {
+    readonly path: Cell[];
+    readonly stops: Stop[];
+    /** Круг в одиночку — ход и все стоянки, без времени на разговор. */
+    readonly alone: number;
+    readonly spot: Cell;
+    readonly rng: Rng;
+  }
+  const drafts: (Draft | null)[] = residents.map(() => null);
+
+  residents.forEach((r, i) => {
+    if (!works(i)) return;
     // Сид маршрута — сид лица: тот же человек ходит той же дорогой,
     // и после перезахода в лагерь его не подменяет двойник с другой тропой.
     const rng = mulberry32((r.seed ^ site.seed ^ 0xc40e) | 0);
-    const base = baseSpot(site, rng, takenBase);
-    if (base === null) return null;
+    const mate = partner[i];
+    const beside = mate === null ? undefined : drafts[mate]?.spot;
+    const base = baseSpot(site, rng, takenBase, beside);
+    if (base === null) return;
 
     // Рабочие точки: ближние к дому предпочтительнее — носильщик ходит
     // по делу, а не через всю поляну, — но выбор качается сидом, чтобы
@@ -220,7 +308,7 @@ export function choresOf(
       return pool[randInt(rng, pool.length)] ?? null;
     };
 
-    let built: Chore | null = null;
+    let built: Draft | null = null;
     if (r.answer === 'строим') {
       const work = pickSpot(takenWork, 24);
       if (work !== null) {
@@ -230,19 +318,30 @@ export function choresOf(
           built = {
             path: ring.path,
             stops: [
-              // У дерева — работа лицом к стволу; дома — передышка лицом к огню.
-              { at: toWork!, pause: CHOP_PAUSE, facing: faceTo(work.spot, work.tree), working: true },
+              // У дерева — работа лицом к стволу, и оттуда же он уходит
+              // с бревном: ноша берётся там, где сделана работа.
+              {
+                at: toWork!,
+                pause: CHOP_PAUSE,
+                facing: faceTo(work.spot, work.tree),
+                working: true,
+                takes: true,
+              },
+              // Дома — передышка лицом к огню; с напарником она станет
+              // разговором, и лицо повернётся к нему.
               { at: home!, pause: UNLOAD_PAUSE, facing: faceTo(base, site.fire), working: false },
             ],
-            cycle: ring.length / DWELLER_SPEED + CHOP_PAUSE + UNLOAD_PAUSE,
-            phase: 0,
+            alone: ring.length / DWELLER_SPEED + CHOP_PAUSE + UNLOAD_PAUSE,
+            spot: base,
+            rng,
           };
           takenWork.push(work.spot);
         }
       }
     } else {
       // Носящий камень: два угла кромки и дом. Смотрит со стоянки в лес —
-      // туда, где его дорога вниз; кирка остаётся на плече.
+      // туда, где его дорога вниз; кирка остаётся на плече. Породу он
+      // набирает на дальней стоянке — оттуда и идёт домой с полными руками.
       const first = pickSpot(takenWork, 24);
       const second = first === null ? null : pickSpot([...takenWork, first.spot], 24);
       if (first !== null && second !== null) {
@@ -253,22 +352,80 @@ export function choresOf(
             path: ring.path,
             stops: [
               { at: toFirst!, pause: LOOK_PAUSE, facing: faceTo(first.spot, first.tree), working: false },
-              { at: toSecond!, pause: LOOK_PAUSE, facing: faceTo(second.spot, second.tree), working: false },
+              {
+                at: toSecond!,
+                pause: LOOK_PAUSE,
+                facing: faceTo(second.spot, second.tree),
+                working: false,
+                takes: true,
+              },
               { at: home!, pause: UNLOAD_PAUSE, facing: faceTo(base, site.fire), working: false },
             ],
-            cycle: ring.length / DWELLER_SPEED + LOOK_PAUSE * 2 + UNLOAD_PAUSE,
-            phase: 0,
+            alone: ring.length / DWELLER_SPEED + LOOK_PAUSE * 2 + UNLOAD_PAUSE,
+            spot: base,
+            rng,
           };
           takenWork.push(first.spot, second.spot);
         }
       }
     }
-    if (built === null) return null;
+    if (built === null) return;
     takenBase.push(base);
-    // Фаза своя у каждого: вышедшие строем читались бы конвейером, а не
-    // жизнью, — то же решение, что фаза шага у гарнизона.
-    return { ...built, phase: rng() * built.cycle };
+    drafts[i] = built;
   });
+
+  /**
+   * Сведение круга. Одиночке круг остаётся свой, паре — общий, и это
+   * единственный способ назначить встречу, не заводя памяти: у обоих
+   * одинаковые цикл и фаза, значит домой они приходят в одну и ту же
+   * секунду каждый круг, и «встретились» перестаёт быть случайностью.
+   *
+   * Лишнее время достаётся **рабочей стоянке, а не костру**. Тот, у кого
+   * тропа короче, дольше рубит — и это читается делом. Отдай эти секунды
+   * дому, и он стоял бы у огня втрое дольше напарника: со стороны это
+   * не «ждёт», а «бездельничает».
+   */
+  const settle = (d: Draft, mate: number | null, longest: number, phase: number, beside: Cell | null): Chore => {
+    const pad = longest - d.alone;
+    const talks = mate !== null;
+    return {
+      path: d.path,
+      stops: d.stops.map((s) => {
+        // Дом — вершина 0: кольцо кончается там, где началось.
+        if (s.at === 0) {
+          return talks && beside !== null
+            ? { ...s, pause: s.pause + CHAT_SECONDS, talk: true, facing: faceTo(d.spot, beside) }
+            : s;
+        }
+        return s.takes === true ? { ...s, pause: s.pause + pad } : s;
+      }),
+      cycle: longest + (talks ? CHAT_SECONDS : 0),
+      phase,
+      partner: mate,
+    };
+  };
+
+  const out: (Chore | null)[] = residents.map(() => null);
+  drafts.forEach((d, i) => {
+    if (d === null || out[i] !== null) return;
+    const mate = partner[i];
+    const other = mate === null ? null : drafts[mate];
+    // Напарник не вышел на тропу — пары нет: разговаривать не с кем,
+    // и круг остаётся своим.
+    if (mate === null || other === null || other === undefined) {
+      // Фаза своя у каждого: вышедшие строем читались бы конвейером, а не
+      // жизнью, — то же решение, что фаза шага у гарнизона.
+      out[i] = settle(d, null, d.alone, d.rng() * d.alone, null);
+      return;
+    }
+    const longest = Math.max(d.alone, other.alone);
+    // Фаза общая — она и есть встреча. Берётся у первого из пары, чтобы
+    // не зависеть от порядка обхода.
+    const phase = d.rng() * (longest + CHAT_SECONDS);
+    out[i] = settle(d, mate, longest, phase, other.spot);
+    out[mate] = settle(other, i, longest, phase, d.spot);
+  });
+  return out;
 }
 
 /**
@@ -278,6 +435,15 @@ export function choresOf(
  */
 export function choreAt(c: Chore, t: number): ChoreFrame {
   let left = c.cycle <= 0 ? 0 : (((t + c.phase) % c.cycle) + c.cycle) % c.cycle;
+  // Номер круга: по нему разговор каждой встречи звучит своими словами.
+  const round = c.cycle <= 0 ? 0 : Math.floor((t + c.phase) / c.cycle);
+  /**
+   * Полны ли руки. Не хранится, а выводится заново на каждом вызове: обход
+   * всегда начинается с вершины 0 — а это дом сразу после разгрузки, —
+   * и потому состояние ноши восстанавливается из одного `t`, как и всё
+   * остальное в этом модуле.
+   */
+  let laden = false;
   for (let i = 0; i < c.path.length; i++) {
     const from = c.path[i]!;
     const to = c.path[(i + 1) % c.path.length]!;
@@ -294,6 +460,8 @@ export function choreAt(c: Chore, t: number): ChoreFrame {
         facing,
         walking: true,
         working: false,
+        carrying: laden,
+        talk: null,
       };
     }
     left -= walk;
@@ -307,15 +475,31 @@ export function choreAt(c: Chore, t: number): ChoreFrame {
           facing: stop.facing ?? facing,
           walking: false,
           working: stop.working,
+          // На рабочей стоянке руки ещё пусты — ношу берут, уходя; дома
+          // они ещё полны — её кладут, отворачиваясь от огня. Обе подмены
+          // приходятся на разворот, где их и не видно.
+          carrying: laden,
+          talk: stop.talk === true ? { since: left, round } : null,
         };
       }
       left -= stop.pause;
+      if (stop.takes === true) laden = true;
+      // Дом — вершина 0, и уходят оттуда налегке.
+      if (stop.at === 0) laden = false;
     }
   }
   // Сюда не приходят: сумма отрезков и стоянок и есть цикл. Но вернуть
   // дом честнее, чем ничего.
   const home = c.path[0]!;
-  return { x: home.x, z: home.z, facing: 0, walking: false, working: false };
+  return {
+    x: home.x,
+    z: home.z,
+    facing: 0,
+    walking: false,
+    working: false,
+    carrying: false,
+    talk: null,
+  };
 }
 
 /**

@@ -9,9 +9,11 @@ import {
   guardParts,
   heroGeometry,
   heroParts,
+  residentLoad,
 } from './models';
 import { toolGeometry } from './tools';
 import type { ToolModelName } from './tools';
+import type { SelfAnswer } from '../sim/settler';
 import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
@@ -125,6 +127,11 @@ const MARK_HEIGHT: Record<string, number> = {
  * выглядеть по-разному в двух сценах, иначе это два разных здания.
  */
 const BUILDING_SCALE = 0.55;
+
+/** Во сколько раз палатка жильца меньше здания. То же число, что на площадке
+ *  (`campView.ts`): след у неё 1×1 против 2×2, и размер здесь не украшение,
+ *  а то же число, которым считается место. */
+const TENT_LOOK = 0.5;
 
 /**
  * Высота добычи на клетке. Октаэдр, которым она рисовалась до набора, был
@@ -876,6 +883,9 @@ export class RaidView {
   /** Жильцы лагеря у костра (§6.1.4): сидят, как сидел поселенец знакомства. */
   private residents: Rigged[] = [];
 
+  /** Палатки жильцов на поляне — по одной на приглашённого под крышей. */
+  private tents: THREE.Mesh[] = [];
+
   /**
    * Ведение передано жильцу (§16.1): герой стоит, где остановился, и сцена
    * его не возит — позиция симуляции в это время принадлежит жильцу.
@@ -897,6 +907,19 @@ export class RaidView {
   /** Сменить инструмент в руке жильца на месте — приказ карточки (§6.1.14). */
   setResidentTool(i: number, tool: ToolModelName | null): void {
     this.residents[i]?.setHeld('handslot.r', tool === null ? null : toolGeometry(tool));
+  }
+
+  /**
+   * Дать жильцу ношу или забрать её (§6.1.15). Вторая рука, а не первая:
+   * в первой инструмент, и подмена его бревном стирала бы занятие ровно
+   * тогда, когда оно наконец видно.
+   *
+   * Зовётся не каждый кадр, а на смене состояния: геометрия общая и лежит
+   * в кэше набора, но пересобирать меш шестьдесят раз в секунду ради
+   * предмета, который меняется дважды за минуту, незачем.
+   */
+  setResidentLoad(i: number, answer: SelfAnswer | null): void {
+    this.residents[i]?.setHeld('handslot.l', answer === null ? null : residentLoad(answer));
   }
 
   /**
@@ -1275,6 +1298,35 @@ export class RaidView {
       this.group.add(this.fire.group);
     }
     this.grass?.clearCell(x, z);
+  }
+
+  /**
+   * Палатки жильцов (`sim/residents.ts`) на поляне.
+   *
+   * До этого их тут не было вовсе, и это был не выбор, а пропуск: `onTent`
+   * пересобирал `campView` — площадку, которая в кадре поляны спрятана, —
+   * и палатка, стоившая пяти дерева, не появлялась нигде. Игрок платил
+   * по заданию §16.1, слышал стук стройки и видел ровно то же, что до него.
+   *
+   * Модель и масштаб — те же, что на площадке: палатка и есть Жильё, только
+   * чужая, а меньше она потому, что след у неё 1×1 против 2×2 у зданий.
+   * Второй мешью она сказала бы, что это другое жильё.
+   *
+   * Список пересобирается целиком: палаток единицы, и следить за диффом
+   * дороже, чем поставить заново.
+   */
+  setTents(list: readonly { x: number; z: number }[]): void {
+    for (const mesh of this.tents) mesh.removeFromParent();
+    this.tents = list.map((t) => {
+      const mesh = new THREE.Mesh(this.track(buildingGeometry('hq', 1)), this.blocking);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.scale.setScalar(BUILDING_SCALE * TENT_LOOK);
+      mesh.position.set(t.x + 0.5, 0, t.z + 0.5);
+      this.group.add(mesh);
+      this.grass?.clearCell(t.x, t.z);
+      return mesh;
+    });
   }
 
   /**
