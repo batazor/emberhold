@@ -68,6 +68,14 @@ export interface CampCallbacks {
   onOffhand(offhand: Offhand): void;
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
+  /**
+   * Лист открылся или закрылся. Панель зовёт это на переходе состояния,
+   * а не на каждом `openSheet`: смена раздела внутри открытого листа —
+   * не событие для тех, кто снаружи. Нужен он ровно одному слушателю —
+   * вееру у большого пальца (`features/fan`): тот рисуется поверх всего
+   * слоем и иначе стоит на карточке места, споря с ней за палец и за глаз.
+   */
+  onSheet(open: boolean): void;
 }
 
 const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
@@ -446,6 +454,7 @@ export class CampHud {
   /* ---------- лист: открыть, закрыть, назвать ---------- */
 
   openSheet(kind: SheetKind): void {
+    const was = this.open !== null;
     this.open = kind;
     this.sheet.style.display = kind === null ? 'none' : '';
     for (const [key, el] of this.sections) el.style.display = key === kind ? '' : 'none';
@@ -467,6 +476,9 @@ export class CampHud {
     } else {
       this.moveButton.style.display = 'none';
     }
+    // На переходе, а не на каждом зове: конструктор закрывает закрытый лист,
+    // и слушатель в этот момент ещё не создан.
+    if (was !== (kind !== null)) this.cb.onSheet(kind !== null);
   }
 
   /** Тап по зданию в сцене. Открывает карточку именно этого здания. */
@@ -805,6 +817,12 @@ export class CampHud {
 
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
+  }
+
+  /** Виден ли лагерный интерфейс. Спрашивает вёрстку, а не свой флаг:
+   *  второй флаг рядом с `display` разошёлся бы с ним молча. */
+  get visible(): boolean {
+    return this.root.style.display !== 'none';
   }
 
   /**
