@@ -1095,6 +1095,8 @@ export class RaidView {
   /** Палатки жильцов на поляне — по одной на приглашённого под крышей. */
   private tents: THREE.Mesh[] = [];
   private chests: THREE.Mesh[] = [];
+  /** Пятно 1×1 под палатку и сундук (`showSpot`). */
+  private spot: THREE.Mesh | null = null;
 
   /**
    * Ведение передано жильцу (§16.1): герой стоит, где остановился, и сцена
@@ -1614,6 +1616,29 @@ export class RaidView {
       this.clearGrassCell(f.x, f.z);
       return { mesh, fire };
     });
+  }
+
+  /**
+   * Пятно 1×1 под палатку и сундук — младший брат `showSite`: след меньше
+   * здания, и пятно обязано говорить правду о размере. Зелёное — встанет,
+   * красное — нет; клетка 1×1 лежит центром в целых координатах.
+   */
+  showSpot(x: number, z: number, ok: boolean): void {
+    if (this.spot === null) {
+      this.spot = new THREE.Mesh(
+        this.track(new THREE.PlaneGeometry(0.94, 0.94)),
+        this.track(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.4, depthWrite: false })),
+      );
+      this.spot.rotation.x = -Math.PI / 2;
+      this.group.add(this.spot);
+    }
+    (this.spot.material as THREE.MeshBasicMaterial).color.setHex(ok ? PALETTE.siteOk : PALETTE.siteNo);
+    this.spot.position.set(x, 0.06, z);
+    this.spot.visible = true;
+  }
+
+  hideSpot(): void {
+    if (this.spot !== null) this.spot.visible = false;
   }
 
   /**

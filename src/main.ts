@@ -70,7 +70,16 @@ import {
   siteBlock,
   chestSiteNear,
 } from './sim/prologue';
-import { CHEST_BONUS, CHEST_REASON, adoptChest, buildChest, chestBlock, stash } from './sim/chests';
+import {
+  CHEST_BONUS,
+  CHEST_REASON,
+  adoptChest,
+  buildChest,
+  chestBlock,
+  chestFits,
+  chestSpot,
+  stash,
+} from './sim/chests';
 
 /** Одна строка на все потери у потолка кладовой (§13.6): канал события. */
 const STORE_FULL = 'Кладовая полна — часть добычи пропала';
@@ -228,6 +237,8 @@ import {
   residentState,
   roofs,
   tentBlock,
+  tentFits,
+  tentSpot,
 } from './sim/residents';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
@@ -543,6 +554,7 @@ const campHud = new CampHud(app, {
     // Вооружённых жестов не бывает двух разом — то же правило, что у палатки.
     placingTent = false;
     placingChest = false;
+    hidePlacingSpot();
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
   onWalls: () => openWalls(),
@@ -584,6 +596,10 @@ const campHud = new CampHud(app, {
     placingChest = false;
     placingTent = true;
     campHud.notify('Палатка: коснитесь свободного места');
+    // Пятно — сразу, на предложенной клетке: на телефоне наведения нет,
+    // и без него игрок не понял бы, какого размера след он выбирает.
+    const spot = tentSpot(camp);
+    if (spot !== null) showPlacingSpot(spot);
   },
   /**
    * Сундук (`chests.ts`) — тот же жест, что палатка: карточка вооружает
@@ -601,6 +617,9 @@ const campHud = new CampHud(app, {
     placingTent = false;
     placingChest = true;
     campHud.notify('Сундук: коснитесь свободного места');
+    // То же пятно, что у палатки, — след у них один.
+    const spot = chestSpot(camp);
+    if (spot !== null) showPlacingSpot(spot);
   },
   /**
    * Лист накрывает сцену, а веер рисуется поверх всего своим слоем —
@@ -1140,6 +1159,7 @@ function placeTents(): void {
  */
 function pitchTentAt(x: number, z: number): void {
   placingTent = false;
+  hidePlacingSpot();
   const spot = buildTent(camp, { x: Math.round(x), z: Math.round(z) });
   if (spot === null) {
     play('deny');
@@ -1156,11 +1176,32 @@ function pitchTentAt(x: number, z: number): void {
 }
 
 /**
+ * Пятно 1×1 под вооружённый палец (палатка или сундук) — в клетках площадки.
+ * Показывается сразу при вооружении, ведётся наведением и гаснет любым
+ * исходом: то же правило, что у пятна зданий в прологе (`showSite`).
+ */
+function showPlacingSpot(at: { x: number; z: number }): void {
+  const ok = placingTent ? tentFits(camp, at.x, at.z) : chestFits(camp, at.x, at.z);
+  if (inGladeCamp) {
+    const o = campOrigin(camp);
+    raidView?.showSpot(o.x + at.x, o.z + at.z, ok);
+  } else {
+    campView.showSpot(at.x, at.z, ok);
+  }
+}
+
+function hidePlacingSpot(): void {
+  raidView?.hideSpot();
+  campView.hideSpot();
+}
+
+/**
  * Тап выбора места сундука (`chests.ts`) — те же правила, что у палатки:
  * след 1×1, клетка ближайшая целая, жест разряжается любым исходом.
  */
 function placeChestAt(x: number, z: number): void {
   placingChest = false;
+  hidePlacingSpot();
   const spot = buildChest(camp, { x: Math.round(x), z: Math.round(z) });
   if (spot === null) {
     play('deny');
@@ -3599,6 +3640,13 @@ canvas.addEventListener('pointermove', (e) => {
   if (mode === 'camp' && buildTool === 'стена') {
     if (e.buttons !== 0 || stroke !== null) buildAt(hit, false);
     return;
+  }
+  // Вооружённая палатка или сундук: пятно 1×1 едет за мышью, как пятно
+  // здания в прологе. На телефоне наведения нет — пятно остаётся на
+  // предложенной клетке, показанной при вооружении.
+  if (placingTent || placingChest) {
+    const o = inGladeCamp ? campOrigin(camp) : { x: 0, z: 0 };
+    showPlacingSpot({ x: Math.round(hit.x) - o.x, z: Math.round(hit.z) - o.z });
   }
   // §11.3 — в бою наведение показывает, куда можно шагнуть. На телефоне
   // наведения нет, и подсветка там просто не появится: жест от этого

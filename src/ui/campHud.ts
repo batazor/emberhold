@@ -136,14 +136,13 @@ export class CampHud {
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
   private readonly gearRows = new Map<GearSlot, Row>();
-  /** Лист кладовой (§13.6): полоса занятости, запас, карточка сундука. */
+  /** Лист кладовой (§13.6): полоса занятости и карточка сундука. */
   private storeLevel!: HTMLElement;
   private storeBarWrap!: HTMLElement;
   private storeBar!: HTMLElement;
-  private storeList!: HTMLElement;
   /** Счёт кладовой в полосе ресурсов: «занято/вместимость». */
   private storeMeter!: HTMLElement;
-  private chestCount!: HTMLElement;
+  private chestName!: HTMLElement;
   private chestEffect!: HTMLElement;
   private chestStatus!: HTMLElement;
   private chestButton!: HTMLButtonElement;
@@ -305,9 +304,10 @@ export class CampHud {
     this.storeBarWrap.className = 'bar';
     this.storeBar = document.createElement('i');
     this.storeBarWrap.appendChild(this.storeBar);
-    this.storeList = document.createElement('div');
-    this.storeList.className = 'b-eff';
-    storeBox.append(storeTop, this.storeBarWrap, this.storeList);
+    // Запаса по видам здесь нет намеренно: он и так стоит в полосе ресурсов
+    // прямо над листом, и вторая копия тех же чисел — это два места, где
+    // взгляд обязан сверить одно и то же.
+    storeBox.append(storeTop, this.storeBarWrap);
     store.appendChild(storeBox);
     this.sections.set('store', store);
     this.sheet.appendChild(store);
@@ -316,11 +316,10 @@ export class CampHud {
     chest.className = 'card b';
     const chestTop = document.createElement('div');
     chestTop.className = 'row b-top';
-    const chestName = document.createElement('b');
-    chestName.textContent = 'Сундук';
-    this.chestCount = document.createElement('span');
-    this.chestCount.className = 'badge';
-    chestTop.append(chestName, this.chestCount);
+    // Счёт — в самом имени, а не бейджем в углу: «×0» тусклым кеглем
+    // не читался, а сколько сундуков стоит — первое, что тут спрашивают.
+    this.chestName = document.createElement('b');
+    chestTop.append(this.chestName);
     this.chestEffect = document.createElement('div');
     this.chestEffect.className = 'b-eff';
     const chestBottom = document.createElement('div');
@@ -799,20 +798,19 @@ export class CampHud {
         : UPGRADE_REASON[block];
   }
 
-  /** Лист кладовой (§13.6): занятость, запас по видам, карточка сундука. */
+  /** Лист кладовой (§13.6): занятость и карточка сундука. */
   private syncStore(camp: CampState): void {
     const used = storeUsed(camp);
     const cap = storeCapacity(camp);
     this.storeLevel.textContent = `Занято ${used} из ${cap}`;
     this.storeBar.style.width = `${Math.min(100, (used / Math.max(1, cap)) * 100).toFixed(1)}%`;
-    // Переполненный старый сейв — полоса тревоги: приток стоит, пока не потратят.
-    this.storeBar.className = used >= cap ? 'warn' : '';
-    this.storeList.textContent = RESOURCE_ORDER
-      .map((kind) => `${RESOURCE_NAME[kind]} ${camp.resources[kind]}`)
-      .join(' · ');
+    // Три ступени, как у «хорошо/плохо» всей игры: зелёная — место есть,
+    // жёлтая с четырёх пятых — «пора строить сундук» говорится до потери
+    // добычи, красная — приток стоит (в том числе перебор старого сейва).
+    this.storeBar.className = used >= cap ? 'bad' : used >= cap * 0.8 ? 'warn' : 'good';
 
     const block = chestBlock(camp);
-    this.chestCount.textContent = `×${camp.chests.length}`;
+    this.chestName.textContent = camp.chests.length > 0 ? `Сундук ×${camp.chests.length}` : 'Сундук';
     this.chestEffect.textContent = `Кладовая +${CHEST_BONUS} за каждый`;
     this.chestButton.disabled = block !== 'ok';
     this.chestStatus.textContent =

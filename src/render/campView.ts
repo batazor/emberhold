@@ -136,6 +136,8 @@ export class CampView {
   private heroAt = { x: 0, y: 0, z: 0 };
   private heroFacing = 0;
   private site: THREE.Mesh | null = null;
+  /** Пятно 1×1 под палатку и сундук (`showSpot`). */
+  private spotMesh: THREE.Mesh | null = null;
   /** Свет костра. Один на лагерь: горит тот огонь, что стоит у кухни. */
   private readonly fire = new Fire();
   /** Костры гостей (`sim/castleGuest.ts`): меш и огонь каждому. */
@@ -1069,6 +1071,29 @@ export class CampView {
 
   hideWallGhost(): void {
     this.ghost.clear();
+  }
+
+  /**
+   * Пятно 1×1 под палатку и сундук — те же два цвета, что у стройки:
+   * «хорошо» и «плохо» обязаны говорить одним цветом во всей игре.
+   * Клетка 1×1 лежит центром в целых координатах, как сами палатки.
+   */
+  showSpot(x: number, z: number, ok: boolean): void {
+    if (this.spotMesh === null) {
+      this.spotMesh = new THREE.Mesh(
+        this.track(new THREE.PlaneGeometry(0.94, 0.94)),
+        this.track(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.4, depthWrite: false })),
+      );
+      this.spotMesh.rotation.x = -Math.PI / 2;
+      this.group.add(this.spotMesh);
+    }
+    (this.spotMesh.material as THREE.MeshBasicMaterial).color.setHex(ok ? PALETTE.siteOk : PALETTE.siteNo);
+    this.spotMesh.position.set(x, 0.07, z);
+    this.spotMesh.visible = true;
+  }
+
+  hideSpot(): void {
+    if (this.spotMesh !== null) this.spotMesh.visible = false;
   }
 
   /** Куда пришёл герой. Клетка — то же, что и в вылазке, плюс полклетки. */
