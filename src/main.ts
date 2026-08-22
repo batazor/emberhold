@@ -2221,9 +2221,10 @@ function toTrail(node: number, seed: number): boolean {
   rig.world.add(raidView.group);
   campView.group.visible = false;
   rig.lookAt(raid.hero.x, raid.hero.z, true);
-  // Ниже прогулок-участков: рассматривать здесь нечего, а теснота просеки
-  // и стена стволов по бокам читаются только с близкой камеры.
-  rig.setZoom(20, true);
+  // Ниже всех сцен игры, ниже даже вылазки: рассматривать здесь нечего,
+  // а теснота просеки, стена стволов и «конца не видно» читаются только
+  // с близкой камеры — высокая раскрывала карту и отменяла длину.
+  rig.setZoom(15, true);
   // Лесная тень: светлее сумерек кладбища, темнее двора замка — под кронами
   // не полдень, но и не вечер.
   setNight(0.2);
@@ -3768,12 +3769,14 @@ if (debugTrail !== null) {
   (window as unknown as { камень: unknown }).камень = {
     rig,
     site: () => trailSite,
-    // Длина и теснота — те два числа, ради которых сцена и заведена:
-    // тропа обещает быть длиннее своей ширины, и обещание видно ручкой.
+    // Длина, ветвление и обочина — числа, ради которых сцена и заведена:
+    // тропа обещает быть длиннее ширины и вести в тупики, и это видно ручкой.
     тропа: () => (trailSite === null ? null : {
       локация: trailSite.loc.size,
       длина: trailSite.length,
       грунта: trailSite.path.length,
+      отвилков: trailSite.branches.length,
+      камней: trailSite.rocks.length,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
