@@ -35,6 +35,7 @@ import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
 import type { GearSlot, Offhand } from './sim/gear';
 import {
   HERO_CLASSES,
+  SKILLS,
   activeHero,
   applyRaidOutcome,
   firstReady,
@@ -45,7 +46,11 @@ import {
   spendStat,
   startTraining,
   syncRoster,
+  stats,
   trainBlock,
+  trainCap,
+  trainPerLevel,
+  xpToNext,
   RAID_REASON,
   TRAIN_REASON,
 } from './sim/heroes';
@@ -239,6 +244,7 @@ import {
   assignWork,
   buildTent,
   collectWork,
+  RESIDENT_WORK,
   hasRoof,
   homeless,
   residentState,
@@ -258,6 +264,8 @@ import type { WorkItem } from './render/workbar';
 import type { Bubble } from './render/bubbles';
 import { DWELLER_SPEED } from './sim/garrison';
 import { ResidentCard } from './ui/residentCard';
+import { CharacterPage } from './features/character';
+import type { CharacterSubject } from './features/character';
 import type { DwellerLook } from './sim/garrison';
 import type { MeetState, SelfAnswer, Settler } from './sim/settler';
 import { panelsFor, soundFor } from './features/scene';
@@ -833,8 +841,134 @@ function finishWall(result: StartBlock, subject?: string): boolean {
 let shownHero = roster.active;
 
 const heroCard = new HeroCard(app, {
-  onTrain: (index) => {
-    const hero = roster.heroes[index];
+  onAbout: (index) => openCharacter({ kind: 'герой', index }),
+});
+
+/**
+ * Кого показывает страница персонажа (`features/character`), и показывает ли
+ * вообще. Один экран на героя и жильца, поэтому и указатель один: два поля
+ * рядом разошлись бы первым же случаем, когда открыты оба.
+ */
+let about: { readonly kind: 'герой' | 'жилец'; readonly index: number } | null = null;
+
+function openCharacter(who: { readonly kind: 'герой' | 'жилец'; readonly index: number }): void {
+  about = who;
+  characterPage.setVisible(true);
+  syncCharacter();
+}
+
+function closeCharacter(): void {
+  about = null;
+  characterPage.setVisible(false);
+}
+
+/**
+ * Что страница показывает про этого человека. Собирается здесь, а не в самой
+ * странице: разбор читает и ростер, и лагерь, и часы, а страница про игру
+ * знать не обязана — ей достаточно того, что нарисовать.
+ *
+ * У жильца пустуют уровень, опыт и характеристики, и это не пропуск: игра их
+ * не считает (§11.7 — показанное число обязано на что-то влиять). Страница
+ * говорит об этом словами, а не подставляет ноль.
+ */
+function characterSubject(): CharacterSubject | null {
+  if (about === null) return null;
+  const now = clock.now();
+  if (about.kind === 'герой') {
+    const hero = roster.heroes[about.index];
+    if (hero === undefined) return null;
+    const def = HERO_CLASSES[hero.cls];
+    const s = stats(hero);
+    const skill = SKILLS[def.skill];
+    const block = trainBlock(roster, hero, camp.levels.yard);
+    return {
+      key: `герой:${hero.id}`,
+      name: def.name,
+      kind: 'герой',
+      look: hero.cls,
+      seed: hero.id,
+      status: heroStatusLine(hero, now),
+      good: hero.status === 'ready' && hero.wounds === 0,
+      level: hero.level,
+      xp: hero.xp / xpToNext(hero.level),
+      // «Сила» не показывается: её не читает ни бой, ни обзор, ни генератор
+      // (§11.7), и строка о ней была бы враньём на целый экран.
+      stats: [
+        { name: 'Атака', key: 'attack', value: s.attack },
+        { name: 'Защита', key: 'defense', value: s.defense },
+        { name: 'Знание', key: 'knowledge', value: s.knowledge },
+        { name: 'Ловкость', key: 'agility', value: s.agility },
+      ],
+      points: hero.statPoints,
+      note: `${skill.name} — ${skill.effect} · ${def.strong}, ${def.weak}`,
+      train: {
+        text:
+          hero.status === 'training'
+            ? `Тренируется · ${formatDuration(Math.max(0, (hero.busyUntil ?? now) - now))}`
+            : block === 'ok'
+              ? `Тренировать · ${formatDuration(trainPerLevel(camp.levels.yard))} · до ур. ${trainCap(roster)}`
+              : TRAIN_REASON[block],
+        disabled: block !== 'ok',
+      },
+      gear: camp.gear,
+      offhand: camp.offhand,
+      model: { kind: 'герой', cls: hero.cls, weapon: camp.gear.weapon },
+    };
+  }
+  const r = camp.residents[about.index];
+  if (r === undefined) return null;
+  const roofed = hasRoof(camp, about.index);
+  const carry = RESOURCE_NAME[RESIDENT_WORK[r.answer]].toLowerCase();
+  return {
+    key: `жилец:${r.seed}:${r.name}`,
+    name: r.name,
+    kind: 'жилец',
+    look: r.look,
+    seed: r.seed,
+    status: roofed ? residentState(r) : 'без крыши',
+    good: roofed,
+    level: null,
+    xp: -1,
+    stats: [],
+    points: 0,
+    note: `Занятие: носит ${carry} — прибавка в кладовую, пока есть крыша`,
+    train: null,
+    gear: camp.gear,
+    offhand: camp.offhand,
+    model: { kind: 'жилец', look: r.look },
+  };
+}
+
+/** Строка состояния героя — та же, что в карточке, но считается здесь один раз. */
+function heroStatusLine(hero: HeroState, now: number): string {
+  if (hero.status === 'ready') return hero.wounds > 0 ? `ран ${hero.wounds}` : 'готов';
+  if (hero.busyUntil === null) return hero.status === 'raid' ? 'в вылазке' : hero.status;
+  const left = formatDuration(Math.max(0, hero.busyUntil - now));
+  const what =
+    hero.status === 'healing' ? 'лечится' : hero.status === 'training' ? 'тренируется' : 'в вылазке';
+  return `${what} · ${left}`;
+}
+
+function syncCharacter(): void {
+  const subject = characterSubject();
+  if (subject === null) {
+    closeCharacter();
+    return;
+  }
+  characterPage.sync(subject);
+}
+
+const characterPage = new CharacterPage(app, {
+  // §11.7 — очко ложится по тапу и сразу видно в строке: решение игрока,
+  // а не автоматика класса.
+  onSpend: (key) => {
+    const hero = about?.kind === 'герой' ? roster.heroes[about.index] : undefined;
+    if (hero === undefined || !spendStat(hero, key)) return;
+    syncCharacter();
+    persist();
+  },
+  onTrain: () => {
+    const hero = about?.kind === 'герой' ? roster.heroes[about.index] : undefined;
     if (hero === undefined) return;
     const block = trainBlock(roster, hero, camp.levels.yard);
     if (block !== 'ok') {
@@ -845,16 +979,9 @@ const heroCard = new HeroCard(app, {
     track({ t: 'train_start', at: clock.now(), cls: hero.cls, level: hero.level });
     persist();
   },
-  // §11.7 — очко ложится по тапу и сразу видно в строке: решение игрока,
-  // а не автоматика класса.
-  onSpend: (index, key) => {
-    const hero = roster.heroes[index];
-    if (hero === undefined || !spendStat(hero, key)) return;
-    heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard, camp.gear, camp.offhand);
-    persist();
-  },
   // §14.2 — тот же выбор, что в «Припасах»: вход второй, рука одна.
   onOffhand: (hand) => swapOffhand(hand),
+  onClose: () => closeCharacter(),
 });
 
 /**
@@ -920,11 +1047,11 @@ const heroFan = new FanControl({
     const block = raidBlock(hero);
     if (block !== 'ok') {
       campHud.notify(refusal(HERO_CLASSES[hero.cls].name, RAID_REASON[block]));
-      heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard, camp.gear, camp.offhand);
+      heroCard.sync(roster, shownHero, clock.now());
       return;
     }
     selectHero(roster, index);
-    heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard, camp.gear, camp.offhand);
+    heroCard.sync(roster, shownHero, clock.now());
     persist();
   },
 });
@@ -959,8 +1086,7 @@ const residentCard = new ResidentCard(app, {
     }
     persist();
   },
-  // §14.2 — механика едина с героем: рука одна на лагерь, вход третий.
-  onOffhand: (hand) => swapOffhand(hand),
+  onAbout: (index) => openCharacter({ kind: 'жилец', index }),
 });
 
 /**
@@ -1558,6 +1684,7 @@ function dialogHud(on: boolean): void {
   if (on) {
     heroCard.setVisible(false);
     residentCard.setVisible(false);
+    closeCharacter();
   }
 }
 
@@ -2033,9 +2160,11 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   campHud.setVisible(panels.campHud);
   heroFan.setVisible(panels.roster);
   // Карточки героя и жильца не переживают смену сцены: их открывает тап
-  // по лицу, а не сцена.
+  // по лицу, а не сцена. Страница персонажа уходит с ними: она о человеке
+  // лагеря, а сцена сменилась.
   heroCard.setVisible(false);
   residentCard.setVisible(false);
+  closeCharacter();
   // Сводка закрывается со сменой сцены: она смотрит на игру со стороны,
   // и её незачем нести из лагеря в вылазку.
   statsPanel.close();
@@ -4568,10 +4697,13 @@ function stepCampSystems(dt: number, now: number): void {
     if (shownHero >= roster.heroes.length) shownHero = roster.active;
     heroFan.draw();
     heroCard.setBottom(campHud.bands().bottom + 6);
-    heroCard.sync(roster, shownHero, now, camp.levels.yard, camp.gear, camp.offhand);
+    heroCard.sync(roster, shownHero, now);
     residentCard.setBottom(campHud.bands().bottom + 6);
     // Крыша могла появиться или пропасть, пока карточка открыта.
     if (residentCard.visible) residentCard.sync(camp, shownResident);
+    // Таймеры Плаца и Лазарета идут и под открытой страницей: разбор обязан
+    // считать то же, что карточка, а не застывать на кадре открытия.
+    if (characterPage.visible) syncCharacter();
 }
 
 startLoop({

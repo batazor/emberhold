@@ -1,20 +1,8 @@
 import { formatDuration } from '../core/clock';
-import {
-  HERO_CLASSES,
-  SKILLS,
-  healSeconds,
-  stats,
-  TRAIN_REASON,
-  trainBlock,
-  trainCap,
-  trainPerLevel,
-  xpToNext,
-} from '../sim/heroes';
-import type { HeroState, Roster, SpendableStat } from '../sim/heroes';
-import type { GearState, Offhand } from '../sim/gear';
+import { HERO_CLASSES, healSeconds } from '../sim/heroes';
+import type { HeroState, Roster } from '../sim/heroes';
 import { avatarSvg } from './avatar';
 import { revealCard } from './cardReveal';
-import { GearSection } from './gearSection';
 
 /**
  * Карточка выбранного героя (§11.8) — то, что осталось от списка отряда,
@@ -32,12 +20,16 @@ import { GearSection } from './gearSection';
  * (§11.7). Карточка обязана открыться и на нём, иначе «сколько ему ещё
  * лечиться» негде прочитать.
  *
- * **Два состояния, а не одно.** Развёрнутая карточка стояла на лагере
- * постоянно и накрывала четверть кадра — сцена читалась из-под панели.
- * Теперь тап по лицу открывает меню — шапку с командами, — а полный
- * разбор (характеристики, опыт, умение, Плац) раскрывает команда
- * «О персонаже». Закрытие возвращает меню: чужому герою не показывают
- * разбор предыдущего.
+ * **Карточка — меню, разбор живёт отдельно.** Развёрнутая карточка стояла
+ * на лагере постоянно и накрывала четверть кадра — сцена читалась из-под
+ * панели. Потом разбор прятался за команду «О персонаже» и раскрывался
+ * на месте, в 172 пикселя ширины: характеристики, опыт, умение, Плац
+ * и пять слотов помещались туда только тем, что мельчали.
+ *
+ * Теперь та же команда открывает страницу персонажа
+ * (`features/character`) — целый экран поверх лагеря, один на героя
+ * и жильца. Здесь остаётся ровно то, ради чего в карточку смотрят, не
+ * отрываясь от сцены: кто это и что с ним.
  */
 const STATUS_TEXT: Record<string, string> = {
   ready: 'готов',
@@ -47,11 +39,8 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 export interface HeroCardCallbacks {
-  onTrain(index: number): void;
-  /** §11.7 — положить очко в характеристику: рост героя решает игрок. */
-  onSpend(index: number, key: SpendableStat): void;
-  /** §14.2 — переложить предмет в левой руке: тот же выбор, что в «Припасах». */
-  onOffhand(hand: Offhand): void;
+  /** Открыть страницу персонажа на этом герое (`features/character`). */
+  onAbout(index: number): void;
 }
 
 export class HeroCard {
@@ -59,15 +48,6 @@ export class HeroCard {
   private readonly face: HTMLElement;
   private readonly name: HTMLElement;
   private readonly status: HTMLElement;
-  private readonly meta: HTMLElement;
-  private readonly xp: HTMLElement;
-  private readonly bar: HTMLElement;
-  private readonly skill: HTMLElement;
-  private readonly gear: GearSection;
-  private readonly train: HTMLButtonElement;
-  private readonly acts: HTMLElement;
-  /** Меню или полный разбор: полный открывается только командой «О персонаже». */
-  private mode: 'menu' | 'full' = 'menu';
   private shown = 0;
   /** Чьё лицо нарисовано: карточка обновляется кадром, лицо — сменой героя. */
   private faceKey = '';
@@ -83,43 +63,18 @@ export class HeroCard {
     this.root.innerHTML = `
       <div class="r-id"><span class="face" id="hc-face"></span>
         <span><b id="hc-name"></b><span id="hc-status" class="dim"></span></span></div>
-      <div class="r-acts" id="hc-acts"><button id="hc-about">О персонаже</button></div>
-      <div class="r-meta" id="hc-meta"></div>
-      <div class="bar" id="hc-bar"><i id="hc-xp"></i></div>
-      <div class="r-skill" id="hc-skill"></div>
-      <button id="hc-train"></button>`;
+      <div class="r-acts"><button id="hc-about">О персонаже</button></div>`;
     const pick = <T extends HTMLElement>(id: string): T => this.root.querySelector<T>(`#${id}`)!;
     this.face = pick('hc-face');
     this.name = pick('hc-name');
     this.status = pick('hc-status');
-    this.meta = pick('hc-meta');
-    this.xp = pick('hc-xp');
-    this.bar = pick('hc-bar');
-    this.skill = pick('hc-skill');
-    this.acts = pick('hc-acts');
-    this.train = pick<HTMLButtonElement>('hc-train');
-    // Секция общая с карточкой жильца (`gearSection.ts`): механика едина.
-    this.gear = new GearSection((hand) => this.cb.onOffhand(hand));
-    this.root.insertBefore(this.gear.el, this.train);
-    this.train.addEventListener('click', () => this.cb.onTrain(this.shown));
-    // Кнопки «+» перерисовываются каждым sync — слушатель один, на контейнере.
-    this.meta.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-stat]');
-      if (b !== null) this.cb.onSpend(this.shown, b.dataset['stat'] as SpendableStat);
-    });
-    pick<HTMLButtonElement>('hc-about').addEventListener('click', () => {
-      this.mode = 'full';
-      this.applyMode();
-    });
-    this.applyMode();
+    pick<HTMLButtonElement>('hc-about').addEventListener('click', () => this.cb.onAbout(this.shown));
     parent.appendChild(this.root);
     this.setVisible(false);
   }
 
-  /** Открыть меню команд на герое: шапка и кнопки, без разбора. */
+  /** Открыть меню команд на герое: шапка и кнопки. */
   showMenu(): void {
-    this.mode = 'menu';
-    this.applyMode();
     // Растворение — только на появление из скрытого состояния: при
     // перелистывании героев уже видимая карточка не мерцает заново.
     const wasHidden = this.root.style.display === 'none';
@@ -129,21 +84,6 @@ export class HeroCard {
 
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
-    // Спрятанная карточка сворачивается: следующий тап по лицу открывает
-    // меню, а не разбор того, кого смотрели в прошлый раз.
-    if (!visible && this.mode !== 'menu') {
-      this.mode = 'menu';
-      this.applyMode();
-    }
-  }
-
-  /** Разбор виден только в полном режиме, команда «О персонаже» — только в меню. */
-  private applyMode(): void {
-    const full = this.mode === 'full';
-    this.acts.style.display = full ? 'none' : 'flex';
-    for (const el of [this.meta, this.bar, this.skill, this.gear.el, this.train]) {
-      el.style.display = full ? '' : 'none';
-    }
   }
 
   /** Отступ снизу: карточка стоит над нижней строкой лагеря, как и веер. */
@@ -152,23 +92,12 @@ export class HeroCard {
   }
 
   /**
-   * Уровень Плаца приходит числом, а не состоянием лагеря: карточка про
-   * лагерь ничего не знает и знать не должна. Лазарет сюда не передаётся —
-   * остаток лечения уже лежит в `busyUntil`.
-   *
-   * Снаряжение приходит тем же путём — слотами и рукой, а не лагерем.
-   * Комплект один на отряд (§14: слот и есть инвентарь), и карточка вправе
-   * показывать его на любом герое: в вылазку идёт один, и несёт он именно
-   * этот комплект.
+   * Карточка показывает «кто это и что с ним» — имя, уровень строкой имени
+   * и состояние. Характеристики, опыт, умение, Плац и снаряжение живут
+   * на странице персонажа (`features/character`): туда их увёл не размер
+   * карточки, а то, что в 172 пикселя они читались только мелким шрифтом.
    */
-  sync(
-    roster: Roster,
-    index: number,
-    now: number,
-    yardLevel = 0,
-    gear: GearState | null = null,
-    offhand: Offhand = 'torch',
-  ): void {
+  sync(roster: Roster, index: number, now: number): void {
     this.shown = Math.min(Math.max(0, index), roster.heroes.length - 1);
     const hero = roster.heroes[this.shown];
     if (hero === undefined) return;
@@ -188,42 +117,6 @@ export class HeroCard {
     this.name.textContent = `${def.name} · ур. ${hero.level}${lead ? ' · ведёт' : ''}`;
     this.status.textContent = this.statusLine(hero, now);
     this.status.className = hero.status === 'ready' && hero.wounds === 0 ? 'good' : 'dim';
-
-    // Три характеристики, а не четыре. «Сила» стояла здесь четвёртой
-    // и не читалась ничем: ни боем, ни обзором, ни генератором. Показанное
-    // число обязано на что-то влиять; до тех пор строка врёт.
-    //
-    // §11.7 — при свободных очках у каждой строки вырастает «+»: рост
-    // перестал быть автоматикой класса, и класть очки — решение игрока.
-    const s = stats(hero);
-    const rows: readonly [string, SpendableStat, number][] = [
-      ['Атака', 'attack', s.attack],
-      ['Защита', 'defense', s.defense],
-      ['Знание', 'knowledge', s.knowledge],
-      ['Ловкость', 'agility', s.agility],
-    ];
-    const free = hero.statPoints;
-    this.meta.innerHTML = rows
-      .map(([name, key, value]) =>
-        `${name} ${value}${free > 0 ? `<button class="hc-plus" data-stat="${key}">+</button>` : ''}`)
-      .join(' · ') + (free > 0 ? ` · <b>очков: ${free}</b>` : '');
-
-    const need = xpToNext(hero.level);
-    this.xp.style.width = `${Math.min(100, (hero.xp / need) * 100).toFixed(1)}%`;
-
-    const skill = SKILLS[def.skill];
-    this.skill.textContent = `${skill.name} — ${skill.effect} · ${def.strong}, ${def.weak}`;
-
-    this.gear.sync(gear, offhand);
-
-    const tb = trainBlock(roster, hero, yardLevel);
-    this.train.disabled = tb !== 'ok';
-    this.train.textContent =
-      hero.status === 'training'
-        ? `Тренируется · ${formatDuration(Math.max(0, (hero.busyUntil ?? now) - now))}`
-        : tb === 'ok'
-          ? `Тренировать · ${formatDuration(trainPerLevel(yardLevel))} · до ур. ${trainCap(roster)}`
-          : TRAIN_REASON[tb];
   }
 
   private statusLine(hero: HeroState, now: number): string {
