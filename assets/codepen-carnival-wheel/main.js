@@ -204,17 +204,35 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   100
 );
-camera.position.set(10, -2.3, -15.4);
+// Стартовый пролёт камеры выключен: с люфтом 5% контролы всё равно
+// защёлкнули бы её у цели первым кадром, был бы рывок вместо пролёта.
+camera.position.set(
+  cameraSetup.cameraTgt.x,
+  cameraSetup.cameraTgt.y,
+  cameraSetup.cameraTgt.z
+);
+cameraSetup.cameraIsSettled = true;
 scene.add(camera);
 
 // Controls
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
-controls.minDistance = 4;
-controls.maxDistance = 7;
+// Камера почти прибита: люфт не более 5% от рабочей точки
+// (дистанция cameraTgt ≈ 5.87, взгляд фронтальный).
+const camDist = Math.hypot(
+  cameraSetup.cameraTgt.x,
+  cameraSetup.cameraTgt.y,
+  cameraSetup.cameraTgt.z
+);
+const camAzimuth = Math.atan2(cameraSetup.cameraTgt.x, cameraSetup.cameraTgt.z);
+const wiggle = (Math.PI / 2) * 0.05;
+controls.minDistance = camDist * 0.95;
+controls.maxDistance = camDist * 1.05;
+controls.minPolarAngle = Math.PI / 2 - wiggle;
 controls.maxPolarAngle = Math.PI / 2;
-controls.maxAzimuthAngle = 0.785;
-controls.minAzimuthAngle = -1.5;
+controls.minAzimuthAngle = camAzimuth - wiggle;
+controls.maxAzimuthAngle = camAzimuth + wiggle;
+controls.enablePan = false;
 //
 const renderer = new THREE.WebGLRenderer({
   canvas: canvas,
@@ -264,7 +282,9 @@ gltfLoader.load("./assets/carnival.glb", (gltf) => {
     // console.log(child.name);
     if (child.name == "lever") {
       lever = child;
-      lever.rotation.x = 2;
+      // Вместе с пролётом выключен и интро-довод рычага 2→1: рычаг
+      // сразу в покое.
+      lever.rotation.x = 1;
       child.material = bakedMaterial;
     } else if (child.name == "hitarea") {
       hitArea = child;
