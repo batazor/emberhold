@@ -51,6 +51,12 @@ export class AuthCard {
     parent.appendChild(this.root);
     this.card = this.root.querySelector('.panel') as HTMLElement;
 
+    // Тап по затемнению — назад к заставке: карточку игрок открыл сам
+    // кнопкой «Играть», тем же жестом её можно и отложить.
+    this.root.addEventListener('click', (e) => {
+      if (e.target === this.root) this.hide();
+    });
+
     this.card.addEventListener('click', (e) => {
       if (!(e.target instanceof HTMLButtonElement)) return;
       const act = e.target.dataset.act;

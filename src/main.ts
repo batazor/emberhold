@@ -1587,10 +1587,18 @@ const draftScreen = new DraftScreen(app, {
 /** Куда игрок собрался, пока выбирает карту. */
 let pendingNode = 0;
 
+/** Кнопка «Играть» ведёт сюда — и карточка входа после успеха тоже. */
+const enterGame = (): void => (onboarding.step === 'glade' ? toGlade() : toCamp());
+
 const startScreen = new StartScreen(app, {
   // До лагеря игрок доходит сам: кнопка открывает поляну, а лагерь
-  // появляется в конце пролога как его результат.
-  onPlay: () => (onboarding.step === 'glade' ? toGlade() : toCamp()),
+  // появляется в конце пролога как его результат. Но сперва — сессия:
+  // заставка встречает всех, а карточка входа проявляется по «Играть»,
+  // и только когда входить действительно нужно.
+  onPlay: () => {
+    if (hasSession) enterGame();
+    else authCard.show();
+  },
 });
 
 // Приглашение вселяется в нижнюю панель вылазки, а не приходит отдельным
@@ -1679,15 +1687,23 @@ new SettingsMenu(app, {
 });
 
 /**
- * Ворота облака: игра спрашивает сессию на входе. Она есть и жива —
- * карточка не показывается вовсе; нет — поверх заставки проявляется
- * вход или регистрация, и до них кнопка «Играть» недосягаема.
+ * Ворота облака. Сессия спрашивается заранее, но молча: заставка с травой
+ * и названием встречает всех, а карточка входа проявляется по «Играть» —
+ * и только если входить действительно нужно. После входа — сверка с
+ * облаком: чужой сейв свежее — кадр перезагрузится уже на нём, иначе
+ * игра продолжается тем же нажатием, которым началась.
  */
-const authCard = new AuthCard(app, {
-  onDone: () => void syncCloud(),
-});
+let hasSession = false;
 void cloudUser().then((email) => {
-  if (email === null) authCard.show();
+  hasSession = email !== null;
+});
+const authCard = new AuthCard(app, {
+  onDone: () => {
+    hasSession = true;
+    void syncCloud().then((adopted) => {
+      if (!adopted) enterGame();
+    });
+  },
 });
 
 const statsPanel = new StatsPanel(app);
@@ -1757,16 +1773,21 @@ document.addEventListener('visibilitychange', () => {
   if (raw !== null) void cloudPush(raw, clock.watermark);
 });
 
-/** Сверка с облаком — на входе, если сессия есть, и после входа из меню. */
-async function syncCloud(): Promise<void> {
-  if (debugScene) return; // тестовые кадры границу сохранения не пересекают
+/**
+ * Сверка с облаком — на входе, если сессия жива, и сразу после входа
+ * с карточки. Отвечает, принят ли облачный сейв: принятый перезагружает
+ * кадр, и продолжать нажатие «Играть» тогда не нужно.
+ */
+async function syncCloud(): Promise<boolean> {
+  if (debugScene) return false; // тестовые кадры границу сохранения не пересекают
   const remote = await cloudPull();
   if (remote !== null && remote.watermark > clock.watermark && adoptRaw(remote.raw)) {
     location.reload();
-    return;
+    return true;
   }
   cloudReady = true;
   pushCloud();
+  return false;
 }
 void syncCloud();
 
