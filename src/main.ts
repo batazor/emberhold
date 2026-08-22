@@ -115,12 +115,15 @@ import type { RaidState } from './sim/raid';
 import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
-import { load, save, wipe } from './sim/save';
+import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
+import { cloudOnSignIn, cloudPull, cloudPush, cloudUser, cloudVisits, cloudWipe } from './core/cloud';
+import { AuthCard } from './ui/authCard';
 import {
   KIND,
   SHIFT_SEC,
   WAKE_AT,
   dayAt,
+  liveVisits,
   lootMul,
   nightAt,
   nodeSeed,
@@ -1594,10 +1597,18 @@ const draftScreen = new DraftScreen(app, {
 /** Куда игрок собрался, пока выбирает карту. */
 let pendingNode = 0;
 
+/** Кнопка «Играть» ведёт сюда — и карточка входа после успеха тоже. */
+const enterGame = (): void => (onboarding.step === 'glade' ? toGlade() : toCamp());
+
 const startScreen = new StartScreen(app, {
   // До лагеря игрок доходит сам: кнопка открывает поляну, а лагерь
-  // появляется в конце пролога как его результат.
-  onPlay: () => (onboarding.step === 'glade' ? toGlade() : toCamp()),
+  // появляется в конце пролога как его результат. Но сперва — сессия:
+  // заставка встречает всех, а карточка входа проявляется по «Играть»,
+  // и только когда входить действительно нужно.
+  onPlay: () => {
+    if (hasSession) enterGame();
+    else authCard.show();
+  },
 });
 
 // Приглашение вселяется в нижнюю панель вылазки, а не приходит отдельным
@@ -1678,10 +1689,36 @@ new SettingsMenu(app, {
   onNewGame: () => {
     wiped = true;
     wipe();
-    location.reload();
+    // Облачную строку тоже стереть — иначе сейв воскреснет при следующем
+    // входе. Но не дольше пары секунд: без сети «Новая игра» обязана
+    // работать, как работала без облака.
+    void Promise.race([cloudWipe(), new Promise((done) => setTimeout(done, 2000))]).finally(() =>
+      location.reload(),
+    );
   },
   // §9 — сводка открывается из настроек: своей кнопки на экране у неё нет.
   onStats: () => statsPanel.open(),
+});
+
+/**
+ * Ворота облака. Сессия спрашивается заранее, но молча: заставка с травой
+ * и названием встречает всех, а карточка входа проявляется по «Играть» —
+ * и только если входить действительно нужно. После входа — сверка с
+ * облаком: чужой сейв свежее — кадр перезагрузится уже на нём, иначе
+ * игра продолжается тем же нажатием, которым началась.
+ */
+let hasSession = false;
+void cloudUser().then((email) => {
+  hasSession = email !== null;
+});
+const authCard = new AuthCard(app);
+// Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
+// о сессии через хранилище — карточка снимается, «Играть» снова играет.
+cloudOnSignIn(() => {
+  if (hasSession) return;
+  hasSession = true;
+  authCard.hide();
+  void syncCloud();
 });
 
 function buy(id: ConsumableId): boolean {
@@ -1709,17 +1746,83 @@ const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
 function persist(): void {
   if (wiped || debugScene) return;
   save(camp, roster, clock.watermark, onboarding.step);
+  pushCloud();
 }
+
+/* ---------- облачная копия сейва (§6) ---------- */
+
+/**
+ * Облако — копия, не источник: игра стартует с localStorage, как раньше,
+ * и живёт без сети. На входе один вопрос: не свежее ли облачная строка
+ * здешней — тогда её принесли с другого устройства, она ложится в хранилище
+ * и кадр перезагружается уже на ней. Сверка по отметке часов, а не по
+ * «кто позже записал»: перевод часов не должен решать, чей лагерь настоящий.
+ *
+ * Пуш включается только после этой сверки: отдать старый локальный сейв
+ * до неё значило бы затереть в облаке свежий.
+ */
+let cloudReady = false;
+let cloudTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Что из меток уже в облаке: гонять список без изменений — пустая сеть. */
+let sentVisits = '';
+
+/** Отложка на несколько секунд: persist() зовётся на каждом событии,
+ *  а облаку хватает последнего состояния, не каждого. */
+function pushCloud(): void {
+  if (!cloudReady || cloudTimer !== null) return;
+  cloudTimer = setTimeout(() => {
+    cloudTimer = null;
+    const raw = rawSave();
+    if (raw !== null) void cloudPush(raw, clock.watermark);
+    // Метки мира (§4) — отдельной таблицей: их читают все, блоб — только хозяин.
+    const live = liveVisits(camp.visits, clock.watermark).map((v) => ({ node: v.node, shift: v.shift }));
+    const key = JSON.stringify(live);
+    if (key !== sentVisits) {
+      sentVisits = key;
+      void cloudVisits(live);
+    }
+  }, 3000);
+}
+
+// Свёрнутая вкладка — последний шанс дожать отложенное: таймеры там не идут.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden' || !cloudReady || wiped || debugScene) return;
+  if (cloudTimer !== null) {
+    clearTimeout(cloudTimer);
+    cloudTimer = null;
+  }
+  const raw = rawSave();
+  if (raw !== null) void cloudPush(raw, clock.watermark);
+});
+
+/**
+ * Сверка с облаком — на входе, если сессия жива, и сразу после входа
+ * с карточки. Отвечает, принят ли облачный сейв: принятый перезагружает
+ * кадр, и продолжать нажатие «Играть» тогда не нужно.
+ */
+async function syncCloud(): Promise<boolean> {
+  if (debugScene) return false; // тестовые кадры границу сохранения не пересекают
+  const remote = await cloudPull();
+  if (remote !== null && remote.watermark > clock.watermark && adoptRaw(remote.raw)) {
+    location.reload();
+    return true;
+  }
+  cloudReady = true;
+  pushCloud();
+  return false;
+}
+void syncCloud();
 
 /**
  * Показ кадра — единственное место, где онбординг что-то показывает или
  * прячет. Полосы включаются здесь, а не в цикле: сравнивать состояние
  * каждый тик значило бы драться с игроком за видимость элементов.
  */
-function showOnb(step: OnbStep, restore = false): void {
+function showOnb(step: OnbStep): void {
   hud.setReveal(reveal(step));
   setHint(ONB_HINT[step] ?? '');
-  campHud.setOnboarding(step, restore);
+  campHud.setOnboarding(step);
   // Второй акт пролога: кольцо ведёт за деревом, а с полной сумкой —
   // обратно к палатке. Оно и есть весь интерфейс улучшения.
   if (step === 'upgrade' && raid !== null) {
