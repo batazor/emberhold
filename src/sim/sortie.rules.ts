@@ -14,11 +14,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { mulberry32 } from '../core/rng';
+import { TIER_HERO_LEVEL } from './balance';
 import { POLICIES, playRaid } from './bot';
 import { EVENT_ORDER } from './events';
 import type { EventId } from './events';
 import { emptyGear } from './gear';
-import { createHero, createRoster } from './heroes';
+import { STAT_POINTS_PER_LEVEL, autoSpend, createHero, createRoster } from './heroes';
 import type { HeroState } from './heroes';
 import {
   SORTIE_LOOT,
@@ -46,6 +47,20 @@ const input = (kitchen = 2, storage = 2): SortieInput => ({
 
 const hero = (): HeroState => createHero('knight', 0);
 
+/**
+ * §22.6 — отряд уровня яруса: противники растут с глубиной, и замер отправки
+ * обязан ходить тем же героем, каким модель меряет ярус (`TIER_HERO_LEVEL`),
+ * — иначе «спокойное место» проверялось бы новичком на телах второго уровня,
+ * то есть встречей, которой лестница темпа не обещает.
+ */
+const heroAt = (level: number): HeroState => {
+  const h = createHero('knight', 0);
+  h.level = level;
+  h.statPoints = (level - 1) * STAT_POINTS_PER_LEVEL;
+  autoSpend(h);
+  return h;
+};
+
 const TIERS: readonly Tier[] = [0, 1];
 const RUNS = 60;
 
@@ -53,7 +68,7 @@ const RUNS = 60;
 function sorties(tier: Tier, event: EventId | null = null): { carried: number; failed: boolean }[] {
   const out: { carried: number; failed: boolean }[] = [];
   for (let seed = 1; seed <= RUNS; seed++) {
-    const h = hero();
+    const h = heroAt(TIER_HERO_LEVEL[tier]);
     const at: SortieInput = { ...input(), event };
     const report = reportOf(ticketOf(0, tier, seed, h, at, 0), h);
     out.push({ carried: report.total, failed: report.failed });
@@ -191,7 +206,7 @@ describe('Отправка отряда', () => {
     // Раны — вторая половина цены, и она есть всегда: отряд, возвращающийся
     // целым каждый раз, не платил бы ничем, кроме ожидания.
     const hurt = Array.from({ length: RUNS }, (_, i) => {
-      const h = hero();
+      const h = heroAt(TIER_HERO_LEVEL[1]);
       return reportOf(ticketOf(0, 1, i + 1, h, input(), 0), h).wounds;
     }).filter((w) => w > 0).length;
     assert.ok(hurt > 0, 'отряд не привозит ран — Лазарет отправке ничего не стоит');

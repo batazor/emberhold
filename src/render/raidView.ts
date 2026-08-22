@@ -47,7 +47,7 @@ import { followSpots } from '../sim/raid';
 import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
-import { ENEMY_STATS } from '../sim/enemies';
+import { ENEMY_STATS, enemyStats } from '../sim/enemies';
 import { inYard } from '../sim/castleSite';
 import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
@@ -132,9 +132,10 @@ const MARK_HEIGHT: Record<string, number> = {
  */
 const BUILDING_SCALE = 0.55;
 
-/** Во сколько раз палатка жильца меньше здания. То же число, что на площадке
- *  (`campView.ts`): след у неё 1×1 против 2×2, и размер здесь не украшение,
- *  а то же число, которым считается место. */
+/** Во сколько раз гостевой костёр меньше Кухни. То же число, что на площадке
+ *  (`campView.ts`): след у него 1×1 против 2×2. Палатка жильца этим числом
+ *  больше не уменьшается: она и есть Жильё ур. 1, и та же модель вполовину
+ *  роста читалась не «дальше стоит», а «другая, игрушечная палатка». */
 const TENT_LOOK = 0.5;
 
 /**
@@ -1540,9 +1541,11 @@ export class RaidView {
    * и палатка, стоившая пяти дерева, не появлялась нигде. Игрок платил
    * по заданию §16.1, слышал стук стройки и видел ровно то же, что до него.
    *
-   * Модель и масштаб — те же, что на площадке: палатка и есть Жильё, только
-   * чужая, а меньше она потому, что след у неё 1×1 против 2×2 у зданий.
-   * Второй мешью она сказала бы, что это другое жильё.
+   * Модель и масштаб — те же, что у Жилья из пролога: палатка и есть Жильё,
+   * только чужая, и это обязано читаться размером тоже — уменьшенная вдвое,
+   * она стояла рядом с оригиналом другой, игрушечной палаткой. След в данных
+   * при этом остаётся 1×1 (`TENT_FOOT`, замер `npm run tents`): модель
+   * свешивается за клетку, как крона дерева свешивается за свою.
    *
    * Список пересобирается целиком: палаток единицы, и следить за диффом
    * дороже, чем поставить заново.
@@ -1553,13 +1556,17 @@ export class RaidView {
       const mesh = new THREE.Mesh(this.track(buildingGeometry('hq', 1)), this.blocking);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.scale.setScalar(BUILDING_SCALE * TENT_LOOK);
+      mesh.scale.setScalar(BUILDING_SCALE);
       // След палатки 1×1 — клетка `t`, а клетка мира лежит центром в целых
       // координатах: жилец, спящий в клетке палатки, стоит ровно в `t`,
       // и меш обязан стоять там же, а не на пол клетки наискось.
       mesh.position.set(t.x, 0, t.z);
       this.group.add(mesh);
-      this.clearGrassCell(t.x, t.z);
+      // Косится 3×3: модель в рост Жилья накрывает миром [t−1, t+1],
+      // и трава соседних клеток торчала бы сквозь скат полотна.
+      for (const [dx, dz] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const) {
+        this.clearGrassCell(t.x + dx, t.z + dz);
+      }
       return mesh;
     });
   }
@@ -1906,7 +1913,7 @@ export class RaidView {
     rig.root.position.set(e.x, 0, e.z);
     this.group.add(rig.root);
 
-    const { root: lifeRoot, fill } = this.buildLifeBar(ENEMY_STATS[e.kind].hp);
+    const { root: lifeRoot, fill } = this.buildLifeBar(enemyStats(e.kind, e.level).hp);
     rig.root.add(lifeRoot);
 
     this.enemyViews.set(e.id, {
@@ -2725,7 +2732,7 @@ export class RaidView {
 
       // Полоска показывается, когда есть что показывать: спящий и целый
       // противник её не носит, иначе локация превращается в приборную панель.
-      const share = (inShow ? this.shownHp.get(e.id) ?? e.hp : e.hp) / ENEMY_STATS[e.kind].hp;
+      const share = (inShow ? this.shownHp.get(e.id) ?? e.hp : e.hp) / enemyStats(e.kind, e.level).hp;
       view.lifeRoot.visible = (e.awake || share < 1) && !this.shownDead.has(e.id);
       view.lifeRoot.position.y = ENEMY_HEIGHT[e.kind] / view.rig.root.scale.y + 0.4;
       view.life.scale.x = (view.life.userData.width as number) * share;

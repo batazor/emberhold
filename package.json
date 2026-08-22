@@ -30,7 +30,8 @@
     "tents": "tsx scripts/tents.ts",
     "shift": "tsx scripts/shift.ts",
     "clans": "tsx scripts/clans.ts",
-    "fan": "tsx scripts/fan.ts"
+    "fan": "tsx scripts/fan.ts",
+    "levels": "tsx scripts/levels.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

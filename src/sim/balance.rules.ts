@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ENCOUNTER_WOUND, MAX_ENEMIES, TIER_KITCHEN_GATE, TIER_SPEC, deriveTier } from './balance';
+import { ENCOUNTER_WOUND, MAX_ENEMIES, SOFT_TIER_VISITS, TIER_ENEMY_LEVEL, TIER_KITCHEN_GATE, TIER_SPEC, deriveTier, tierEnemyLevel } from './balance';
 import { kitchenFood } from './camp';
 import type { Tier } from './types';
 
@@ -141,6 +141,23 @@ describe('Модель баланса (§22)', () => {
       assert.ok(cur.containers > prev.containers, `ярус ${i}: находок не прибавилось`);
       assert.ok(cur.risk >= prev.risk, `ярус ${i}: ставка не выросла`);
       assert.ok(cur.depthValue > prev.depthValue, `ярус ${i}: глубина не стала ценнее`);
+    }
+  });
+
+  test('§22.6б — вход в ярус смягчён, и смягчение кончается', () => {
+    for (const tier of [0, 1, 2, 3] as const) {
+      const full = TIER_ENEMY_LEVEL[tier];
+      // Первые заходы — уровнем ниже, но не ниже первого.
+      assert.equal(tierEnemyLevel(tier, 0), Math.max(1, full - 1), `ярус ${tier}: первый заход`);
+      assert.equal(
+        tierEnemyLevel(tier, SOFT_TIER_VISITS - 1),
+        Math.max(1, full - 1),
+        `ярус ${tier}: последний мягкий заход`,
+      );
+      // Дальше ярус выходит на полную силу — пила, а не вечная скидка.
+      assert.equal(tierEnemyLevel(tier, SOFT_TIER_VISITS), full, `ярус ${tier}: зрелость`);
+      // Без номера захода — полная сила: замеры и калибровка меряют зрелый ярус.
+      assert.equal(tierEnemyLevel(tier), full, `ярус ${tier}: умолчание — зрелый`);
     }
   });
 });

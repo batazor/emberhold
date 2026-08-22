@@ -12,8 +12,9 @@
 import { mulberry32 } from '../src/core/rng';
 import { POLICIES, playRaid } from '../src/sim/bot';
 import { createRaid } from '../src/sim/raid';
+import { referenceLoadout } from '../src/sim/heroes';
 import { findPath } from '../src/sim/pathfinding';
-import { TIER_KITCHEN_GATE } from '../src/sim/balance';
+import { TIER_HERO_LEVEL, TIER_KITCHEN_GATE, tierEnemyLevel } from '../src/sim/balance';
 import { ENEMY_STATS } from '../src/sim/enemies';
 import { emptyResources, RESOURCE_NAME } from '../src/sim/resources';
 import type { ResourceKind, Resources } from '../src/sim/resources';
@@ -80,7 +81,13 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     // пошагового боя: игрок, не умеющий ходить в бою, вешает вылазку,
     // и замер начинает мерить не игру, а обрыв. Одинаковые числа при
     // разных правках — верный признак, что меряется не то.
-    const r = playRaid({ seed, tier, kitchenLevel, storageLevel }, POLICIES.cautious, mulberry32(seed));
+    // §22.6 — ходит модельный герой яруса: обе стороны растут, и мерить
+    // Дно новичком значило бы мерить встречу, которой в игре не бывает.
+    const r = playRaid(
+      { seed, tier, kitchenLevel, storageLevel, loadout: referenceLoadout(TIER_HERO_LEVEL[tier]) },
+      POLICIES.cautious,
+      mulberry32(seed),
+    );
     stat.runs += 1;
     stat.steps += r.steps;
     stat.seconds += r.durationSec;
@@ -373,4 +380,49 @@ console.log('─'.repeat(74));
     console.log(`  цена ${price}: хватило ${(share * 100).toFixed(0)}%${mark}`);
   }
   console.log('  (← — цены, которые покрывает четыре первых вылазки из пяти)');
+}
+
+/**
+ * §22.6б — вход в ярус: пила «пик мощи → переломный момент». Первые
+ * `SOFT_TIER_VISITS` заходов ярус встречает телами уровнем ниже, и блок
+ * отвечает на вопрос, ради которого смягчение заведено: **легче ли первые
+ * заходы зрелого яруса.** Ходит герой уровня открытия (`TIER_HERO_LEVEL`) —
+ * тот, кто в ярус только что пришёл.
+ */
+console.log('\n\nВход в ярус (§22.6б): смягчённые заходы против зрелых');
+console.log('─'.repeat(74));
+{
+  const ENTRY_RUNS = 120;
+  console.log('ярус   тела на входе   успех входа   успех зрелого   пила');
+  for (const tier of [1, 2, 3] as Tier[]) {
+    const play = (visit: number): number => {
+      let ok = 0;
+      for (let i = 0; i < ENTRY_RUNS; i++) {
+        const r = playRaid(
+          {
+            seed: 500 + i,
+            tier,
+            visit,
+            kitchenLevel: TIER_KITCHEN_GATE[tier],
+            storageLevel: tier + 1,
+            loadout: referenceLoadout(TIER_HERO_LEVEL[tier]),
+          },
+          POLICIES.cautious,
+          mulberry32(500 + i),
+        );
+        if (r.status === 'evacuated') ok += 1;
+      }
+      return ok / ENTRY_RUNS;
+    };
+    const soft = play(0);
+    const full = play(Number.MAX_SAFE_INTEGER);
+    const gain = (soft - full) * 100;
+    console.log(
+      `  ${tier}${`ур. ${tierEnemyLevel(tier, 0)} → ${tierEnemyLevel(tier)}`.padStart(15)}` +
+        `${(soft * 100).toFixed(0).padStart(12)}%${(full * 100).toFixed(0).padStart(15)}%` +
+        `${(gain >= 0 ? '   +' : '   ') + gain.toFixed(0)} п.п.`,
+    );
+  }
+  console.log('\n  Вердикт: вход обязан быть легче зрелого яруса на каждом ярусе с ростом');
+  console.log('  тел — иначе смягчение не подключено и пила существует только в коде.');
 }

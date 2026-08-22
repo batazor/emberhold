@@ -433,8 +433,9 @@ button:active { filter: brightness(1.25); }
    у снаряжения остаётся два, и оба про то, чем оно отличается от прочих
    списков, а не про то, как рисуется коробка. */
 #camp .gear .badge { align-self: center; }
-/* Полоса ковки тонкая: во всю высоту она разрывала строку предмета пополам. */
-#camp .gear .bar { height: 4px; }
+/* Полоса ковки тонкая: во всю высоту она разрывала строку предмета пополам.
+   Высота — с рамкой корыта (3px сверху и снизу): в 4px заливке оставалось 0. */
+#camp .gear .bar { height: 10px; }
 /* §20.4 — перестановка бесплатна и мгновенна. Кнопка во всю ширину обещала
    вес, которого у действия нет, и вставала разделителем посреди листа. */
 #camp .move { align-self: flex-start; padding: 7px 12px; font-size: 12px; }
@@ -488,7 +489,9 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #resident-card button { pointer-events: auto; font-size: 12px; padding: 7px; flex: 1; }
 #resident-card b { font-size: 12.5px; }
 #hero-card b { font-size: 12.5px; }
-#hero-card .bar { height: 4px; }
+/* Та же арифметика, что у полосы ковки: 3px рамки сверху и снизу, тонкой
+   заливке нужны свои пиксели поверх них. */
+#hero-card .bar { height: 10px; }
 /* Шапка карточки: лицо слева, имя и состояние колонкой. Лицо то же, что
    в веере (§11.8), но мельче, чем в знакомстве: на него смотрят, выбирая,
    а не разговаривая. Колонка, а не строка: в 172 пикселя «лицо · имя ·
@@ -497,6 +500,14 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .r-id .face { width: 34px; height: 34px; flex: none; }
 .r-id > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .r-meta { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+/* §11.7 — «+» у характеристики: маленькая, но попадаемая пальцем. */
+.hc-plus {
+  margin-left: 2px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 6px;
+}
 .r-skill { font-size: 11px; color: var(--dim); }
 .r-acts { display: flex; gap: 6px; }
 .r-acts button { flex: 1; font-size: 12px; }
@@ -715,7 +726,9 @@ button[disabled] { opacity: 0.4; cursor: default; }
   position: absolute; transform: translate(-50%, -100%);
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
-.workbars .bar { width: 56px; height: 6px; }
+/* Высота — вместе с рамкой корыта (3px сверху и снизу при border-box):
+   в 6px заливке оставалось 0, и полоса стояла пустой при любом прогрессе. */
+.workbars .bar { width: 56px; height: 12px; }
 /* Заливка зелёная и бежит: короткую работу (8 с добычи) неподвижная полоса
    догнать не успевает, а бегущая штриховка говорит «идёт» с первого кадра.
    Штрихи — светлая заливка словаря поверх зелёного, не свой цвет. */

@@ -7,14 +7,15 @@ import { SELF_ANSWERS } from './settler';
 import type { SelfAnswer } from './settler';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
-import { CLASS_ORDER, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
-import type { HeroState, Roster } from './heroes';
+import { CLASS_ORDER, HERO_CLASSES, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
+import type { HeroState, Roster, Stats } from './heroes';
 import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
 import { ONB_ORDER, RENAMED_STEPS, restartStep } from './onboarding';
 import type { OnbStep } from './onboarding';
 import { emptyResources } from './resources';
 import { liveVisits } from './world';
 import type { ResourceKind } from './resources';
+import type { Tier } from './types';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -54,6 +55,10 @@ interface SaveV1 {
   wheelDay?: number;
   loadout?: CampState['loadout'];
   raids: number;
+  /** §22.6б — заходы по ярусам. Необязательное: старый сейв открывается
+   *  со свежими ярусами, и смягчённый вход повторяется один раз — это
+   *  дешевле, чем выводить зрелость из суммарного счётчика вслепую. */
+  tierRaids?: number[];
   /**
    * Стены лагеря (§6.1.6). Поле необязательное, версия сейва ради него
    * не поднята — тем же приёмом, что отряд и снаряжение: сейв, записанный
@@ -74,7 +79,19 @@ interface SaveV1 {
    */
   heroes?: {
     active: number;
-    list: { cls: string; level: number; xp: number; wounds: number; status: string; busyUntil: number | null }[];
+    list: {
+      cls: string;
+      level: number;
+      xp: number;
+      /** §11.7 — купленные уровни характеристик. Нет в старом сейве —
+       *  выводятся из прежнего авто-роста класса (см. readRoster). */
+      spent?: Partial<Record<string, number>>;
+      /** Нераспределённые очки характеристик. */
+      sp?: number;
+      wounds: number;
+      status: string;
+      busyUntil: number | null;
+    }[];
   };
   /**
    * Снаряжение (§14). Тоже необязательное поле и по той же причине, что отряд:
@@ -162,6 +179,7 @@ export function save(
     construction: camp.construction,
     loadout: camp.loadout,
     raids: camp.raids,
+    tierRaids: [0, 1, 2, 3].map((t) => camp.tierRaids[t as Tier]),
     gear: camp.gear,
     offhand: camp.offhand,
     arrows: camp.arrows,
@@ -194,6 +212,8 @@ export function save(
         cls: h.cls,
         level: h.level,
         xp: h.xp,
+        spent: { ...h.spent },
+        sp: h.statPoints,
         wounds: h.wounds,
         status: h.status,
         busyUntil: h.busyUntil,
@@ -306,6 +326,13 @@ export function load(): LoadResult {
     }
     camp.resources = res;
     if (typeof data.raids === 'number') camp.raids = data.raids;
+    // §22.6б — зрелость ярусов. Нет поля — ярусы свежие, вход снова мягкий.
+    if (Array.isArray(data.tierRaids)) {
+      for (const t of [0, 1, 2, 3] as const) {
+        const v = data.tierRaids[t];
+        if (typeof v === 'number' && v >= 0) camp.tierRaids[t] = Math.floor(v);
+      }
+    }
     if (Array.isArray(data.visits)) {
       camp.visits = data.visits
         .filter(
@@ -488,14 +515,47 @@ function readRoster(roster: Roster, saved: SaveV1['heroes'], sortie: CampState['
     const saved = LEGACY_CLASS[h.cls] ?? h.cls;
     const cls = CLASS_ORDER.find((c) => c === saved);
     if (cls === undefined) return;
-    const level = typeof h.level === 'number' ? Math.floor(h.level) : 1;
+    const level = Math.max(
+      1,
+      Math.min(MAX_HERO_LEVEL, typeof h.level === 'number' ? Math.floor(h.level) : 1),
+    );
     const status = STATUSES.find((s) => s === h.status) ?? 'ready';
     const away = status === 'raid' && sortie != null && sortie.hero === i;
+    /**
+     * §11.7 — купленные уровни характеристик. Старый сейв их не писал:
+     * рост был автоматикой класса, и купленное выводится из неё же —
+     * `growth · (уровень − 1)`, то есть герой открывается ровно тем,
+     * кем был записан, а не ослабленным до базы.
+     */
+    const growth = HERO_CLASSES[cls].growth;
+    const legacy: Stats = {
+      attack: growth.attack * (level - 1),
+      defense: growth.defense * (level - 1),
+      knowledge: growth.knowledge * (level - 1),
+      might: growth.might * (level - 1),
+      agility: growth.agility * (level - 1),
+    };
+    const readSpent = (key: keyof Stats): number => {
+      const v = h.spent?.[key];
+      return typeof v === 'number' && v >= 0 ? Math.floor(v) : 0;
+    };
+    const spent: Stats =
+      h.spent === undefined
+        ? legacy
+        : {
+            attack: readSpent('attack'),
+            defense: readSpent('defense'),
+            knowledge: readSpent('knowledge'),
+            might: readSpent('might'),
+            agility: readSpent('agility'),
+          };
     heroes.push({
       id: i,
       cls,
-      level: Math.max(1, Math.min(MAX_HERO_LEVEL, level)),
+      level,
       xp: typeof h.xp === 'number' && h.xp >= 0 ? Math.floor(h.xp) : 0,
+      spent,
+      statPoints: typeof h.sp === 'number' && h.sp >= 0 ? Math.floor(h.sp) : 0,
       wounds: typeof h.wounds === 'number' && h.wounds >= 0 ? Math.floor(h.wounds) : 0,
       status: status === 'raid' && !away ? 'ready' : status,
       busyUntil:

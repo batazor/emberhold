@@ -42,6 +42,7 @@ import {
   raidBlock,
   refreshHeroes,
   selectHero,
+  spendStat,
   startTraining,
   syncRoster,
   trainBlock,
@@ -842,6 +843,14 @@ const heroCard = new HeroCard(app, {
     }
     startTraining(roster, hero, clock.now(), camp.levels.yard);
     track({ t: 'train_start', at: clock.now(), cls: hero.cls, level: hero.level });
+    persist();
+  },
+  // §11.7 — очко ложится по тапу и сразу видно в строке: решение игрока,
+  // а не автоматика класса.
+  onSpend: (index, key) => {
+    const hero = roster.heroes[index];
+    if (hero === undefined || !spendStat(hero, key)) return;
+    heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard, camp.gear, camp.offhand);
     persist();
   },
   // §14.2 — тот же выбор, что в «Припасах»: вход второй, рука одна.
@@ -2292,6 +2301,8 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
     // §4 — истощение множит добычу, а не запирает вход: плохая сделка
     // оставляет решение игроку, запрет отправляет его ждать вне игры.
     lootMul: mul,
+    // §22.6б — первые заходы на ярус встречают тела уровнем ниже.
+    visit: camp.tierRaids[tier],
     // §11.6 — что здесь сегодня. Складывается с богатством: выработанная
     // локация под бурей остаётся выработанной.
     event,
@@ -4706,7 +4717,11 @@ startLoop({
         // §13.6 — потолок кладовой: не поместившееся пропадает, и об этом
         // говорится. Молчаливая потеря добычи хуже самой потери.
         if (stash(camp, result.carried) > 0) campHud.notify(STORE_FULL);
-        if (counts) camp.raids += 1;
+        if (counts) {
+          camp.raids += 1;
+          // §22.6б — ярус взрослеет заходами: смягчение входа кончается.
+          camp.tierRaids[result.tier] += 1;
+        }
         finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);
         for (const id of result.fired) {
           track({ t: 'consumable', at: now, id, phase: 'fire' });

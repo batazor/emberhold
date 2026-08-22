@@ -10,7 +10,7 @@ import {
   trainPerLevel,
   xpToNext,
 } from '../sim/heroes';
-import type { HeroState, Roster } from '../sim/heroes';
+import type { HeroState, Roster, SpendableStat } from '../sim/heroes';
 import type { GearState, Offhand } from '../sim/gear';
 import { avatarSvg } from './avatar';
 import { revealCard } from './cardReveal';
@@ -48,6 +48,8 @@ const STATUS_TEXT: Record<string, string> = {
 
 export interface HeroCardCallbacks {
   onTrain(index: number): void;
+  /** §11.7 — положить очко в характеристику: рост героя решает игрок. */
+  onSpend(index: number, key: SpendableStat): void;
   /** §14.2 — переложить предмет в левой руке: тот же выбор, что в «Припасах». */
   onOffhand(hand: Offhand): void;
 }
@@ -100,6 +102,11 @@ export class HeroCard {
     this.gear = new GearSection((hand) => this.cb.onOffhand(hand));
     this.root.insertBefore(this.gear.el, this.train);
     this.train.addEventListener('click', () => this.cb.onTrain(this.shown));
+    // Кнопки «+» перерисовываются каждым sync — слушатель один, на контейнере.
+    this.meta.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-stat]');
+      if (b !== null) this.cb.onSpend(this.shown, b.dataset['stat'] as SpendableStat);
+    });
     pick<HTMLButtonElement>('hc-about').addEventListener('click', () => {
       this.mode = 'full';
       this.applyMode();
@@ -185,8 +192,21 @@ export class HeroCard {
     // Три характеристики, а не четыре. «Сила» стояла здесь четвёртой
     // и не читалась ничем: ни боем, ни обзором, ни генератором. Показанное
     // число обязано на что-то влиять; до тех пор строка врёт.
+    //
+    // §11.7 — при свободных очках у каждой строки вырастает «+»: рост
+    // перестал быть автоматикой класса, и класть очки — решение игрока.
     const s = stats(hero);
-    this.meta.textContent = `Атака ${s.attack} · Защита ${s.defense} · Знание ${s.knowledge} · Ловкость ${s.agility}`;
+    const rows: readonly [string, SpendableStat, number][] = [
+      ['Атака', 'attack', s.attack],
+      ['Защита', 'defense', s.defense],
+      ['Знание', 'knowledge', s.knowledge],
+      ['Ловкость', 'agility', s.agility],
+    ];
+    const free = hero.statPoints;
+    this.meta.innerHTML = rows
+      .map(([name, key, value]) =>
+        `${name} ${value}${free > 0 ? `<button class="hc-plus" data-stat="${key}">+</button>` : ''}`)
+      .join(' · ') + (free > 0 ? ` · <b>очков: ${free}</b>` : '');
 
     const need = xpToNext(hero.level);
     this.xp.style.width = `${Math.min(100, (hero.xp / need) * 100).toFixed(1)}%`;

@@ -25,8 +25,10 @@ export interface BattleHudHooks {
   readonly onWait: () => void;
 }
 
+// §22.6 — уровень в подписи: сила противника обязана читаться до удара,
+// а не выясняться по полоске.
 const nameOf = (u: BattleUnit): string =>
-  u.side === 'hero' ? 'Герой' : ENEMY_STATS[u.kind!].name;
+  u.side === 'hero' ? 'Герой' : `${ENEMY_STATS[u.kind!].name}${u.level > 1 ? ` ур. ${u.level}` : ''}`;
 
 export class BattleHud {
   private readonly root: HTMLElement;
