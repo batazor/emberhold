@@ -331,7 +331,7 @@ export class CampHud {
     // не улучшение постройки, а свой режим со своим жестом, и прятать её
     // внутрь карточки Штаба значило бы соврать про то, чем она является.
     const walls = document.createElement('button');
-    walls.textContent = 'Стены';
+    walls.textContent = 'Строительство';
     walls.addEventListener('click', () => {
       this.close();
       this.cb.onWalls();
