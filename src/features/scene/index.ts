@@ -55,19 +55,26 @@ export function panelsFor(scene: Scene, quiet = false): Panels {
 export interface Sound {
   /** Ярус подложки или null — тишина. */
   readonly ambient: number | null;
-  /** Фоновая музыка звучит везде: заставка, лагерь, вылазка. */
-  readonly campTune: boolean;
+  /** Фоновая музыка звучит везде; под землёй — свой, пещерный плейлист. */
+  readonly campTune: 'camp' | 'cave';
   /** Пульс провианта отсчитывает только там, где провиант тратится. */
   readonly pulse: boolean;
 }
 
+/** Копи и дно (§18.4): с этого яруса вылазка уходит под землю. */
+const UNDERGROUND_TIER = 2;
+
 export function soundFor(scene: Scene, tier: number): Sound {
   switch (scene) {
     case 'title':
-      return { ambient: null, campTune: true, pulse: false };
+      return { ambient: null, campTune: 'camp', pulse: false };
     case 'camp':
-      return { ambient: null, campTune: true, pulse: false };
+      return { ambient: null, campTune: 'camp', pulse: false };
     case 'raid':
-      return { ambient: tier, campTune: true, pulse: true };
+      return {
+        ambient: tier,
+        campTune: tier >= UNDERGROUND_TIER ? 'cave' : 'camp',
+        pulse: true,
+      };
   }
 }

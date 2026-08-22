@@ -10,7 +10,6 @@ import {
   startCampTune,
   startPulse,
   stopAmbient,
-  stopCampTune,
   stopPulse,
 } from './core/audio';
 import {
@@ -1384,8 +1383,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   const sound = soundFor(scene, tier);
   if (sound.ambient === null) stopAmbient();
   else startAmbient(sound.ambient);
-  if (sound.campTune) startCampTune();
-  else stopCampTune();
+  startCampTune(sound.campTune);
   if (sound.pulse) startPulse();
   else stopPulse();
 

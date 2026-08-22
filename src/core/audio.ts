@@ -621,45 +621,57 @@ let tuneOn = false;
 let tuneAt = 0;
 
 /**
- * Запечённая мелодия лагеря. Как и сэмплы §18.3: файл — это тембр, а не
- * звук. Пока он едет — и если не доедет вовсе — играют фразы CAMP_PHRASES,
- * поэтому лагерь не бывает немым из-за сети.
+ * Запечённая музыка. Как и сэмплы §18.3: файл — это тембр, а не звук.
+ * Плейлиста два: наземный и пещерный (копи и дно, решает сцена в
+ * `soundFor`). Пока файлы едут — и если не доедут вовсе — играют фразы
+ * CAMP_PHRASES, поэтому игра не бывает немой из-за сети.
  */
-const MUSIC_FILES = ['./music/camp0.m4a', './music/camp1.m4a'];
+export type MusicMood = 'camp' | 'cave';
+const MUSIC_FILES: Record<MusicMood, readonly string[]> = {
+  camp: ['./music/camp0.m4a', './music/camp1.m4a'],
+  cave: ['./music/cave0.m4a', './music/cave1.m4a'],
+};
 /** Под шину амбиента: треки смастерены громче процедурных фраз. */
 const MUSIC_GAIN = 0.35;
 /** Пауза между треками: подряд без вдоха они слипаются в радио. */
 const MUSIC_GAP_SEC = 4;
-const musicBufs: (AudioBuffer | null)[] = MUSIC_FILES.map(() => null);
+const musicBufs: Record<MusicMood, (AudioBuffer | null)[]> = {
+  camp: MUSIC_FILES.camp.map(() => null),
+  cave: MUSIC_FILES.cave.map(() => null),
+};
 let musicAsked = false;
+let musicMood: MusicMood = 'camp';
 let musicAt = 0;
 let musicSrc: AudioBufferSourceNode | null = null;
 
 function loadMusic(): void {
   if (musicAsked || ac === null) return;
   musicAsked = true;
-  MUSIC_FILES.forEach((file, i) => {
-    void fetch(file)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(String(res.status));
-        return await ac!.decodeAudioData(await res.arrayBuffer());
-      })
-      .then((buf) => {
-        // Файл доехал посреди игры: фразы уступят ему на ближайшей границе —
-        // playPhrase сам увидит буфер. Перебивать звучащую фразу нельзя,
-        // это два слоя музыки разом.
-        musicBufs[i] = buf;
-      })
-      .catch(() => {});
-  });
+  for (const mood of ['camp', 'cave'] as const) {
+    MUSIC_FILES[mood].forEach((file, i) => {
+      void fetch(file)
+        .then(async (res) => {
+          if (!res.ok) throw new Error(String(res.status));
+          return await ac!.decodeAudioData(await res.arrayBuffer());
+        })
+        .then((buf) => {
+          // Файл доехал посреди игры: фразы уступят ему на ближайшей
+          // границе — playPhrase сам увидит буфер. Перебивать звучащую
+          // фразу нельзя, это два слоя музыки разом.
+          musicBufs[mood][i] = buf;
+        })
+        .catch(() => {});
+    });
+  }
 }
 
-/** Первый уже доехавший трек, начиная с очереди `musicAt`; null — рано. */
+/** Первый уже доехавший трек настроения, начиная с `musicAt`; null — рано. */
 function nextMusic(): AudioBuffer | null {
-  for (let i = 0; i < musicBufs.length; i++) {
-    const buf = musicBufs[(musicAt + i) % musicBufs.length];
-    if (buf !== null) {
-      musicAt = (musicAt + i) % musicBufs.length;
+  const bufs = musicBufs[musicMood];
+  for (let i = 0; i < bufs.length; i++) {
+    const buf = bufs[(musicAt + i) % bufs.length];
+    if (buf !== null && buf !== undefined) {
+      musicAt = (musicAt + i) % bufs.length;
       return buf;
     }
   }
@@ -679,7 +691,7 @@ function playMusic(): void {
   src.onended = (): void => {
     if (musicSrc !== src) return; // остановлен снаружи
     musicSrc = null;
-    musicAt = (musicAt + 1) % musicBufs.length;
+    musicAt = (musicAt + 1) % musicBufs[musicMood].length;
     if (tuneOn) tuneTimer = setTimeout(playMusic, MUSIC_GAP_SEC * 1000);
   };
   src.start();
@@ -711,8 +723,14 @@ function playPhrase(): void {
  * и так звучит — экраном возврата или ростом здания, — и музыка,
  * стартующая одновременно с ними, слышится как каша.
  */
-export function startCampTune(): void {
-  if (tuneOn) return;
+export function startCampTune(mood: MusicMood = 'camp'): void {
+  if (tuneOn) {
+    if (mood === musicMood) return;
+    // Настроение сменилось на ходу — под землю с наземным треком не ходят.
+    stopCampTune();
+  }
+  musicMood = mood;
+  musicAt = 0;
   tuneOn = true;
   loadMusic();
   tuneTimer = setTimeout(playPhrase, 1200);
@@ -762,7 +780,7 @@ export function bindPageAudio(): void {
       if (ac !== null && ac.state === 'suspended') void ac.resume();
       if (tuneHushed) {
         tuneHushed = false;
-        startCampTune();
+        startCampTune(musicMood);
       }
     }
   });
