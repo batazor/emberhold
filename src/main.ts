@@ -171,6 +171,7 @@ import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
 import { TitleView } from './render/titleView';
+import { WheelView } from './render/wheelView';
 import { streetScene } from './render/village';
 import { CampHud } from './ui/campHud';
 import { HeroCard } from './ui/heroCard';
@@ -274,6 +275,8 @@ if (finishedOffline !== null) {
 let mode: 'title' | 'camp' | 'raid' = 'title';
 let raid: RaidState | null = null;
 let titleView: TitleView | null = null;
+/** Колесо призов — оверлей поверх карты, в риг не входит (`wheelView.ts`). */
+let wheelView: WheelView | null = null;
 /** Герой, который сейчас в локации: раны и опыт зачисляются ему. */
 let raidHero: HeroState | null = null;
 /** Место на карте, в котором идёт вылазка (§4). Экран возврата зовёт обратно
@@ -1565,7 +1568,7 @@ function buy(id: ConsumableId): boolean {
  * перенесло в чужой лагерь» — второй лагерь существует чисто для тестов
  * и границу сохранения не пересекает.
  */
-const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город', 'бой'] as const;
+const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город', 'бой', 'колесо'] as const;
 const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
 
 function persist(): void {
@@ -1966,6 +1969,41 @@ function collectSortie(now: number): boolean {
 }
 
 /**
+ * Колесо призов — оверлей поверх карты, сцену рига не трогает. Исход
+ * рождается здесь, из сида дня и места, а не из угла остановки: колесо
+ * в `wheelView.ts` лишь довозит анимацию до готового ответа — иначе
+ * результат зависел бы от кадровой частоты рендера.
+ *
+ * Замок суточный: карточка карты запирает кнопку той же проверкой,
+ * а эта — на случай входа мимо карточки (отладка, гонка смены дня).
+ */
+function toWheel(seed: number): boolean {
+  const day = dayAt(clock.now());
+  if (camp.wheelDay === day) {
+    campHud.notify('Колесо уже крутили сегодня — новая прокрутка завтра');
+    return false;
+  }
+  const answer = 1 + Math.floor(mulberry32(seed ^ 0x5b1e)() * 10);
+  wheelView?.dispose();
+  wheelView = new WheelView(answer, {
+    onClaim: (crystals) => {
+      camp.resources.crystal += crystals;
+      camp.wheelDay = day;
+      persist();
+      campHud.notify(`Выпало ${crystals} — кристаллы уже в лагере`);
+      closeWheel();
+    },
+    onLeave: () => closeWheel(),
+  });
+  return true;
+}
+
+function closeWheel(): void {
+  wheelView?.dispose();
+  wheelView = null;
+}
+
+/**
  * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
  * карточкой карты — сюда приходит уже принятое решение.
  */
@@ -1990,6 +2028,8 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // Тропа (§6.1.17) — прогулка длинная: ход через лес, который проходят,
   // а не рассматривают. Добычи и противников нет — пока.
   if (place.kind === 'тропа') return toTrail(node, nodeSeed(day, node));
+  // Колесо призов — аттракцион: одна прокрутка в день, кристаллы по сектору.
+  if (place.kind === 'призы') return toWheel(nodeSeed(day, node));
   const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
@@ -3856,6 +3896,29 @@ if (debugTrail !== null) {
       валунов: trailSite.loc.stones.length,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+  };
+}
+
+/**
+ * `?колесо` — колесо призов сразу, `?колесо=СИД` — с назначенным сидом.
+ * Сид решает сектор: проверять, что колесо довозит до каждого из десяти,
+ * перебором дней на карте — не проверка, а лотерея про лотерею.
+ * Сейв ручка не пишет: `persist()` глушится любым отладочным кадром.
+ */
+const debugWheel = debugParams.get('колесо');
+if (debugWheel !== null) {
+  const seed = debugWheel === ''
+    ? nodeSeed(dayAt(clock.now()), today.find((n) => n.kind === 'призы')?.id ?? 0)
+    : Number(debugWheel);
+  leaveTitle();
+  toWheel(Number.isFinite(seed) ? seed : 1);
+  (window as unknown as { камень: unknown }).камень = {
+    // Ответ пересчитан той же формулой: ручка обязана говорить, куда колесо
+    // обязано довезти, чтобы расхождение было видно числом, а не на глаз.
+    ответ: () => 1 + Math.floor(mulberry32((Number.isFinite(seed) ? seed : 1) ^ 0x5b1e)() * 10),
+    // Нутро сцены: скрытая панель превью замораживает rAF, и «застряло»
+    // от «крутится» снаружи не отличить — ручка отличает числом.
+    колесо: () => wheelView,
   };
 }
 

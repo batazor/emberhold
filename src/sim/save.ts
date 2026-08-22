@@ -48,6 +48,9 @@ interface SaveV1 {
   glade?: { size: number; cells: string };
   /** Сделки с торговцем (§13.5). Необязательно: без поля лавка незнакома. */
   trades?: number;
+  /** Колесо призов: день последней прокрутки. Необязательно: без поля —
+   *  не крутили. */
+  wheelDay?: number;
   loadout?: CampState['loadout'];
   raids: number;
   /**
@@ -138,6 +141,7 @@ export function save(
     ...(camp.origin !== undefined ? { origin: camp.origin } : {}),
     ...(camp.glade !== undefined ? { glade: camp.glade } : {}),
     ...(camp.trades !== undefined ? { trades: camp.trades } : {}),
+    ...(camp.wheelDay !== undefined ? { wheelDay: camp.wheelDay } : {}),
     resources: camp.resources,
     construction: camp.construction,
     loadout: camp.loadout,
@@ -233,6 +237,7 @@ export function load(): LoadResult {
       camp.glade = { size: g.size, cells: g.cells };
     }
     if (typeof data.trades === 'number' && data.trades >= 0) camp.trades = Math.floor(data.trades);
+    if (typeof data.wheelDay === 'number') camp.wheelDay = Math.floor(data.wheelDay);
 
     const area = campArea(camp.levels.hq);
     const fallback = createCamp().layout;
