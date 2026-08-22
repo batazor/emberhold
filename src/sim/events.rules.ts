@@ -15,6 +15,7 @@ import {
   isGentle,
 } from './events';
 import {
+  KIND,
   RICH_WINDOW,
   SHIFTS_PER_DAY,
   SHIFT_SEC,
@@ -100,13 +101,21 @@ describe('События: модель', () => {
 });
 
 describe('События: замеры на регионе', () => {
-  /** Все точки всех дней окна — выборка, на которой считаются доли. */
+  /**
+   * Точки, носящие события, за все дни окна — выборка, на которой считаются
+   * доли. Прогулочные точки (замок, кладбище, тропа) событий не носят
+   * (`KIND[].events`), и в знаменателе они разбавляли бы долю: `EVENT_SHARE`
+   * обещана на бросок `eventFor`, а он случается только там, где события есть.
+   */
   const sample = (days: number): (string | null)[] => {
     const out: (string | null)[] = [];
     for (let d = 0; d < days; d++) {
       const day = DAY0 + d;
+      const region = regionAt(day);
       const world = worldAt(at(day, RICH_WINDOW), []);
-      for (const state of world) out.push(state.event);
+      world.forEach((state, i) => {
+        if (KIND[region.nodes[i]!.kind].events) out.push(state.event);
+      });
     }
     return out;
   };
@@ -114,7 +123,7 @@ describe('События: замеры на регионе', () => {
   test('событие — отклонение, а не обычный день', () => {
     const all = sample(60);
     const share = all.filter((e) => e !== null).length / all.length;
-    // Замер на 60 днях: 24,5% при заданных 25%.
+    // Замер на 60 днях: 25,7% при заданных 25%.
     assert.ok(share > 0.15, `событий ${(share * 100).toFixed(1)}% — правилом не станут`);
     assert.ok(share < 0.35, `событий ${(share * 100).toFixed(1)}% — это уже обычный день`);
     assert.ok(Math.abs(share - EVENT_SHARE) < 0.05, 'доля разошлась с заданной');
