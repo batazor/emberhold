@@ -1078,15 +1078,17 @@ function placeTents(): void {
 }
 
 /**
- * Тап выбора места палатки — в клетках площадки. Округление то же, что
- * у перестановки зданий (`moveSelected`): след рисуется от угла клетки,
- * а палец показывает её середину. Жест разряжается любым исходом:
+ * Тап выбора места палатки — в клетках площадки. След палатки 1×1, и её
+ * клетка лежит центром в целых координатах — палец показывает середину
+ * клетки, значит клетка ближайшая целая. У перестановки зданий вычитается
+ * полклетки, но там след 2×2: палец показывает середину следа, а данные
+ * держат его угловую клетку. Жест разряжается любым исходом:
  * вооружённый палец, переживший промах, ставил бы палатки по каждому
  * следующему тапу.
  */
 function pitchTentAt(x: number, z: number): void {
   placingTent = false;
-  const spot = buildTent(camp, { x: Math.round(x - 0.5), z: Math.round(z - 0.5) });
+  const spot = buildTent(camp, { x: Math.round(x), z: Math.round(z) });
   if (spot === null) {
     play('deny');
     campHud.notify('Палатка: здесь не встанет');
@@ -3021,11 +3023,9 @@ function syncWorkBars(): void {
       const p = camp.layout[c.building];
       const total = Math.max(1, c.endsAt - c.startedAt);
       const share = (clock.now() - c.startedAt) / total;
-      // Поляна рисует здание в клетке якоря, площадка — на полклетки глубже:
-      // полоса висит над тем, что нарисовано, а не над следом в данных.
-      const at = inGladeCamp
-        ? { x: o.x + p.x, z: o.z + p.z }
-        : { x: o.x + p.x + 0.5, z: o.z + p.z + 0.5 };
+      // Обе сцены рисуют здание в середине следа [p, p+2) — в p+0.5:
+      // полоса висит над нарисованным, и нарисованное совпадает со следом.
+      const at = { x: o.x + p.x + 0.5, z: o.z + p.z + 0.5 };
       // Остаток цифрами — только у стройки: минуты полосой не видны,
       // а восемь секунд рубки видны и без цифр.
       items.push({
@@ -3228,7 +3228,9 @@ canvas.addEventListener('pointerdown', (e) => {
   const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
   // Выбор места перебивает ходьбу: провиант кончился, идти всё равно некуда.
   if (placing !== null) {
-    tryPlace(cell);
+    // Угловая клетка следа 2×2 из точки под пальцем — та же арифметика,
+    // что у наведения выше и у перестановки зданий (`moveSelected`).
+    tryPlace({ x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) });
     return;
   }
   if (raid === null || raid.status !== 'running') return;
@@ -3300,7 +3302,9 @@ canvas.addEventListener('pointermove', (e) => {
   // Место под здание ведётся наведением, без нажатия: мышь показывает,
   // куда встанет, до того как игрок решится.
   if (mode !== 'raid' || placing === null || raid === null) return;
-  const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+  // Палец показывает середину следа 2×2, данные держат его угловую клетку:
+  // полклетки вычитаются, как у перестановки зданий (`moveSelected`).
+  const cell = { x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) };
   raidView?.showSite(placing, cell.x, cell.z, siteBlock(raid.loc, pitched, raid.hero, cell) === 'ok');
 });
 
