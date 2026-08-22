@@ -37,13 +37,16 @@ NC-лицензии несовместимы с любой монетизаци�
 | `craftpix-props/Texture.png` — атлас набора, десять цветовых полос | там же | craftpix royalty-free | craftpix.net |
 | `villager-npc/glb/*.glb` — 5 моделей: кузнец с молотом, охотник с ножом, молот, нож, палка; конвертация из FBX набора Blender'ом: у жителей опущены руки из T-позы, предмет владельца запечён в кулак, риг набора (rigify) в GLB не переносился | [standout7.itch.io/villagernpc](https://standout7.itch.io/villagernpc), тариф FREE | CC0 1.0 | standout7 |
 | `villager-npc/Villagers_Texture.png` — атлас набора, сетка градиентных клеток | там же | CC0 1.0 | standout7 |
+| `kaykit-tools/gltf/*.gltf`, `*.bin` — 49 моделей: топор, кирка, лопата, молот, киянка, пила, клещи, наковальня, точило, ножовка, стамеска, дрель, рубанок, фонарь, факелы, вёдра, верёвки, карты, чертежи, журналы, циркули, лупа, гвозди, винты, отвёртки, ключи | [kaylousberg.itch.io/rpg-tools-bits](https://kaylousberg.itch.io/rpg-tools-bits), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
+| `kaykit-tools/gltf/tools_bits_*.png` — атлас набора и три текстуры карт/чертежа | там же | CC0 1.0 | Kay Lousberg |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
 `kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
 `kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`,
-`kenney-graveyard-kit/License.txt` и `quaternius-ual/License.txt` — файлы лицензий как они пришли
+`kenney-graveyard-kit/License.txt`, `quaternius-ual/License.txt` и
+`kaykit-tools/License.txt` — файлы лицензий как они пришли
 в архивах, без правок.
 
 Атласа у строителя нет: цвет лежит в именованных материалах glTF, и картинки

@@ -1011,6 +1011,71 @@ const WEAPONS: Pack = {
   data: { file: 'src/render/weapons.data.ts', prefix: 'WEAPONS', type: 'Weapon' },
 };
 
+/** Категория инструмента — по первому слову имени файла набора. */
+const TOOL_CATEGORIES: Record<string, string> = {
+  axe: 'Добыча', pickaxe: 'Добыча', shovel: 'Добыча',
+  hammer: 'Стройка', mallet: 'Стройка', saw: 'Стройка', chisel: 'Стройка',
+  handdrill: 'Стройка', handplane: 'Стройка', nail: 'Стройка',
+  screw: 'Стройка', screwdriver: 'Стройка', wrench: 'Стройка',
+  trowel: 'Стройка', file: 'Стройка',
+  anvil: 'Кузня', grindstone: 'Кузня', tongs: 'Кузня',
+  lantern: 'Свет', torch: 'Свет',
+  map: 'Бумага', blueprint: 'Бумага', journal: 'Бумага', pencil: 'Бумага',
+  compass: 'Бумага', drafting: 'Бумага', magnifying: 'Бумага',
+  bucket: 'Утварь', rope: 'Утварь', knife: 'Утварь', scissors: 'Утварь',
+};
+
+/**
+ * Набор инструментов — второй набор, который целиком держат в руке
+ * (первым было оружие §6.1.8). Взят под работу жильцов: занятие жильца
+ * (`sim/residents.ts`) наконец видно предметом, а не только словом карточки.
+ *
+ * Атлас расчерчен тем же способом, что у ресурсов, замка и оружия:
+ * восемь колонок на четыре ряда, в клетке вертикальный градиент.
+ * Кроме главного атласа у набора три картинки-вкладыша — карта, пустая
+ * карта и чертёж; их берут только модели карт и чертежей.
+ */
+const TOOLS: Pack = {
+  id: 'tools',
+  title: 'KayKit RPG Tools Bits 1.0 FREE',
+  dir: 'assets/kaykit-tools',
+  atlas: 'tools_bits_texture.png',
+  ramps: [
+    { id: 'gold', title: 'золото', slots: ['латунь'], hue: [26, 52], sat: [0.6, 1] },
+    { id: 'copper', title: 'медь', slots: ['уголь', 'жар', 'пламя'], hue: [8, 26], sat: [0.6, 1] },
+    { id: 'wood', title: 'дерево', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [8, 60], sat: [0.37, 0.6] },
+    { id: 'hide', title: 'кожа', slots: ['сукно-тень', 'сукно', 'сукно-свет', 'кожа'], hue: [8, 60], sat: [0.005, 0.37] },
+    { id: 'blue', title: 'синее', slots: ['краска-синяя'], hue: [170, 300], sat: [0.6, 1] },
+    { id: 'red', title: 'алое', slots: ['краска-алая'], hue: [300, 8], sat: [0.6, 1] },
+    { id: 'steel', title: 'металл', slots: ['металл-тень', 'металл', 'сталь', 'иней'], hue: [170, 300], sat: [0, 0.6] },
+  ],
+  slots: [
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'сукно-тень', 'сукно', 'сукно-свет', 'кожа',
+    'металл-тень', 'металл', 'сталь', 'иней',
+    'уголь', 'жар', 'пламя', 'латунь',
+    'краска-алая', 'краска-синяя',
+  ],
+  range: 'used',
+  fallback: 'steel',
+  /** Восемь колонок на четыре ряда — так расчерчена картинка набора. */
+  grid: { cols: 8, rows: 4 },
+  /** Порог серого опущен: сталь голов и жести — материал набора, а не пустота. */
+  grey: 0.005,
+  categoryOf: (name) => TOOL_CATEGORIES[name.split('_')[0]!] ?? 'Прочее',
+  /**
+   * Взято два — по инструменту на занятие жильца (`RESIDENT_WORK`):
+   * топор у носящего дерево, кирка у носящего камень. Рукоять у набора
+   * в нуле, как у оружия §6.1.8, поэтому предмет ложится в узел
+   * `handslot.r` общего рига без своей матрицы.
+   *
+   * Остальные 47 меряются и ждут механику, которая их покажет, — то же
+   * правило, каким клип берётся вместе с механикой (`RIG.clips`).
+   */
+  adopted: ['axe', 'pickaxe'],
+  data: { file: 'src/render/tools.data.ts', prefix: 'TOOLS', type: 'Tool' },
+};
+
 
 /**
  * Девятый набор: KayKit Medieval Builder (§6.1.9) — карта мира, а не лагерь.
@@ -1396,7 +1461,7 @@ const VILLAGER: Pack = {
 };
 
 const PACKS: readonly Pack[] =
-  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, BUILDER, FOLK, CAMP, PROPS, VILLAGER];
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, TOOLS, BUILDER, FOLK, CAMP, PROPS, VILLAGER];
 
 /* ---------- png ---------- */
 

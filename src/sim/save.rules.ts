@@ -174,7 +174,7 @@ describe('Сохранение', () => {
    */
   test('жилец возвращается с тем же лицом', () => {
     const camp = createCamp();
-    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 12345, answer: 'строим' }];
+    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 12345, answer: 'строим', rest: false }];
     save(camp, createRoster(), 1);
     assert.deepEqual(load().camp.residents, camp.residents);
     wipe();
@@ -189,7 +189,7 @@ describe('Сохранение', () => {
     // «старый сейв» отличается от нынешнего ровно одним полем, а не формой,
     // которую пришлось бы придумать.
     const camp = createCamp();
-    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 999, answer: 'строим' }];
+    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 999, answer: 'строим', rest: false }];
     save(camp, createRoster(), 1);
     const raw = JSON.parse(localStorage.getItem('emberhold/save')!) as {
       residents: { seed?: number }[];

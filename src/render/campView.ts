@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { blockingMaterial } from './blocking';
-import { buildingGeometry, dwellerParts, heroGeometry, heroParts } from './models';
+import { RESIDENT_TOOL, buildingGeometry, dwellerParts, heroGeometry, heroParts } from './models';
 import { Rigged } from './rigged';
 import { CAMP_SPEED } from '../sim/campWalk';
 import type { HeroClassId } from '../sim/heroes';
@@ -448,9 +448,11 @@ export class CampView {
     }).join('|');
     // Палатки входят в подпись наравне со зданиями и по той же причине:
     // поставленная и не нарисованная палатка — это оплаченное и невидимое.
+    // Занятие и отдых входят в подпись: приказ меняет предмет в руке,
+    // и жилец с топором после «носить камень» был бы жильцом с чужим делом.
     const withTents =
       `${signature}|т${this.camp.tents.map((t) => `${t.x},${t.z}`).join(';')}` +
-      `|ж${this.camp.residents.map((r) => r.look).join(';')}`;
+      `|ж${this.camp.residents.map((r) => `${r.look}:${r.rest ? 'отдых' : r.answer}`).join(';')}`;
     const area = campArea(this.camp.levels.hq);
     if (withTents === this.builtLevels && area === this.area) return;
     this.builtLevels = withTents;
@@ -502,7 +504,13 @@ export class CampView {
     const fire = this.camp.levels.kitchen > 0 ? this.camp.layout.kitchen : this.camp.layout.hq;
     this.camp.residents.forEach((r, i) => {
       const tent = this.camp.tents[i];
-      const rig = new Rigged(dwellerParts(r.look), this.blocking);
+      // Инструмент занятия в руке (§6.1.14): топор у дерева, кирка у камня.
+      // Отдыхающий стоит с пустыми руками — приказ «отдыхать» и есть
+      // отложенный инструмент, и его должно быть видно без карточки.
+      const rig = new Rigged(
+        dwellerParts(r.look, r.rest ? undefined : RESIDENT_TOOL[r.answer]),
+        this.blocking,
+      );
       rig.root.scale.setScalar(VILLAGER_SCALE);
       // Шаг в сторону от следа: стоящий ровно в центре клетки палатки
       // оказывается внутри неё, и снаружи это читается пропавшим жильцом.
@@ -738,6 +746,25 @@ export class CampView {
       if (x >= p.x - 0.2 && x <= p.x + 2.2 && z >= p.z - 0.2 && z <= p.z + 2.2) return id;
     }
     return null;
+  }
+
+  /**
+   * Кто из жильцов стоит под пальцем. Номер — тот же, что в `camp.residents`:
+   * фигуры ставятся `forEach` по этому списку, и порядок у них общий.
+   * Радиус — половина клетки: фигура ловится собой, а не запасом здания,
+   * иначе жилец у палатки стал бы нетапаемым (`buildingAt` берёт с полем).
+   */
+  residentAt(x: number, z: number): number | null {
+    let best: number | null = null;
+    let bestD = 0.55;
+    this.folk.forEach((rig, i) => {
+      const d = Math.hypot(rig.root.position.x - x, rig.root.position.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
   }
 
   highlight(id: BuildingId | null): void {

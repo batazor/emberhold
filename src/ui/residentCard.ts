@@ -1,6 +1,5 @@
-import { RESIDENT_ORDER, RESIDENT_STATE, hasRoof } from '../sim/residents';
-import { SELF_ANSWERS } from '../sim/settler';
-import type { SelfAnswer } from '../sim/settler';
+import { RESIDENT_ORDER, RESIDENT_ORDERS, hasRoof, residentState } from '../sim/residents';
+import type { ResidentOrder } from '../sim/residents';
 import type { CampState } from '../sim/camp';
 
 /**
@@ -8,9 +7,11 @@ import type { CampState } from '../sim/camp';
  * ради чего жильцы встали в веер: лицо отвечает «кто это», карточка —
  * «чем занят и что ему приказать».
  *
- * Приказов ровно столько, сколько занятий у жильца (`residents.ts`):
- * носить дерево или носить камень. Кнопка текущего занятия выключена —
- * приказ, повторяющий происходящее, не приказ.
+ * Приказов три (`residents.ts`): два занятия — носить дерево или носить
+ * камень — и «отдыхать», то есть отложить инструмент. Кнопка текущего
+ * состояния выключена — приказ, повторяющий происходящее, не приказ.
+ * Что приказ исполнен, видно по руке жильца в кадре: занятие держит
+ * инструмент (§6.1.14), отдых — пустые ладони.
  *
  * Про крышу карточка говорит состоянием, а не отказом: без крыши жилец
  * за работу не берётся (`workDone`), но приказ принять может — займётся,
@@ -18,7 +19,7 @@ import type { CampState } from '../sim/camp';
  * прятать само расписание.
  */
 export interface ResidentCardCallbacks {
-  onOrder(index: number, answer: SelfAnswer): void;
+  onOrder(index: number, order: ResidentOrder): void;
 }
 
 export class ResidentCard {
@@ -66,15 +67,17 @@ export class ResidentCard {
     const roofed = hasRoof(camp, this.shown);
     // Занятие видно всегда, крыша — только когда её нет: строка о том,
     // что мешает, а не перечень свойств.
-    this.status.textContent = roofed ? RESIDENT_STATE[r.answer] : 'без крыши';
+    this.status.textContent = roofed ? residentState(r) : 'без крыши';
     this.status.className = roofed ? 'good' : 'dim';
 
     this.acts.replaceChildren(
-      ...SELF_ANSWERS.map((answer) => {
+      ...RESIDENT_ORDERS.map((order) => {
         const b = document.createElement('button');
-        b.textContent = RESIDENT_ORDER[answer];
-        b.disabled = r.answer === answer;
-        b.addEventListener('click', () => this.cb.onOrder(this.shown, answer));
+        b.textContent = RESIDENT_ORDER[order];
+        // Выключена кнопка происходящего: у отдыхающего — «Отдыхать»,
+        // у работающего — его занятие.
+        b.disabled = order === 'отдых' ? r.rest : !r.rest && r.answer === order;
+        b.addEventListener('click', () => this.cb.onOrder(this.shown, order));
         return b;
       }),
     );

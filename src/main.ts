@@ -182,7 +182,6 @@ import { MeetPanel } from './ui/meetPanel';
 import type { MeetPanelCallbacks } from './ui/meetPanel';
 import { advance, answerSelf, generateSettler, giftOf, setHeroName, startMeet } from './sim/settler';
 import {
-  RESIDENT_STATE,
   TENT_REASON,
   admit,
   assignWork,
@@ -190,9 +189,11 @@ import {
   collectWork,
   hasRoof,
   homeless,
+  residentState,
   roofs,
   tentBlock,
 } from './sim/residents';
+import { RESIDENT_TOOL } from './render/models';
 import { ResidentCard } from './ui/residentCard';
 import type { DwellerLook } from './sim/garrison';
 import type { MeetState, SelfAnswer, Settler } from './sim/settler';
@@ -706,7 +707,7 @@ const heroFan = new FanControl({
       kind: 'жилец',
       look: r.look,
       seed: r.seed,
-      state: hasRoof(camp, i) ? RESIDENT_STATE[r.answer] : 'без крыши',
+      state: hasRoof(camp, i) ? residentState(r) : 'без крыши',
       busy: false,
       asking: false,
     })),
@@ -751,10 +752,17 @@ let shownResident = 0;
  * перемена лагеря.
  */
 const residentCard = new ResidentCard(app, {
-  onOrder: (index, answer) => {
-    if (!assignWork(camp, index, answer)) return;
+  onOrder: (index, order) => {
+    if (!assignWork(camp, index, order)) return;
     play('pick');
     residentCard.sync(camp, index);
+    // Приказ виден рукой сразу: площадка лагеря пересоберёт жильца сама
+    // (подпись `rebuildBuildings`), а сидящему на поляне предмет меняется
+    // на месте — пересадка вернула бы ведомого жильца к костру.
+    const r = camp.residents[index];
+    if (r !== undefined) {
+      raidView?.setResidentTool(index, r.rest ? null : RESIDENT_TOOL[r.answer]);
+    }
     persist();
   },
 });
@@ -873,6 +881,7 @@ function meetCallbacks(): MeetPanelCallbacks {
           look: meetSettler.look,
           seed: meetSettler.seed,
           answer: meet.answer,
+          rest: false,
         });
         persist();
       }
@@ -949,6 +958,9 @@ function seatResidents(): void {
     busy.push(sit);
     return [{
       look: r.look,
+      // Инструмент занятия — и у костра: топор у дерева, кирка у камня,
+      // у отдыхающего руки пустые (§6.1.14).
+      ...(r.rest ? {} : { tool: RESIDENT_TOOL[r.answer] }),
       x: sit.x + 0.5,
       z: sit.z + 0.5,
       facing: Math.atan2(fire.x - (sit.x + 0.5), fire.z - (sit.z + 0.5)),
@@ -2345,6 +2357,22 @@ function campTap(clientX: number, clientY: number): void {
 
   }
 
+  // Тап по жильцу — его карточка с приказами: человек в кадре и лицо
+  // в веере — один список, и открываются они одинаково. Жилец спрашивается
+  // раньше здания по той же причине, что валун: здание ловит тап с запасом
+  // в клетку, а человек — только собой, и иначе жилец у палатки был бы
+  // нетапаемым.
+  const resident = campView.residentAt(hit.x, hit.z);
+  if (resident !== null) {
+    campHud.close();
+    campView.highlight(null);
+    shownResident = resident;
+    heroCard.setVisible(false);
+    residentCard.sync(camp, resident);
+    residentCard.setVisible(true);
+    return;
+  }
+
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
   // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
@@ -2533,6 +2561,19 @@ canvas.addEventListener('pointerdown', (e) => {
     if (hit === null) return;
     const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
     const o = campOrigin(camp);
+    // Тап по сидящему жильцу — его карточка и передача ведения: то же,
+    // что тап по лицу в веере. Человек спрашивается раньше палатки:
+    // он сидит в её запасе, и иначе тап по нему открывал бы здание.
+    const near = raidView === null ? null : raidView.residentNear(hit.x, hit.z);
+    if (near !== null) {
+      campHud.close();
+      shownResident = near;
+      heroCard.setVisible(false);
+      residentCard.sync(camp, near);
+      residentCard.setVisible(true);
+      controlResident(near);
+      return;
+    }
     // Запас в клетку вокруг следа 2×2 — как у площадки: в здание надо
     // попадать пальцем, а не курсором. Побеждает ближайший след, а не первый
     // по списку: палатка и костёр стоят рядом, их запасы пересекаются,
@@ -2848,12 +2889,20 @@ if (debugCamp !== null) {
     // Жильцы и палатки (`residents.ts`) числами: строка задания говорит,
     // чего не хватает, но не говорит, кто в лагере и кто что ответил.
     жильцы: () => ({
-      люди: camp.residents.map((r) => `${r.name} (${r.look}, ${r.answer})`),
+      люди: camp.residents.map((r) => `${r.name} (${r.look}, ${residentState(r)})`),
       крыш: roofs(camp),
       'без крыши': homeless(camp),
       палаток: camp.tents.length,
       палатку: tentReason(camp),
     }),
+    // Приказ из консоли: смотреть, как топор сменяется киркой или ложится
+    // на отдых, можно без карточки — тем же `assignWork`, что и кнопка.
+    приказ: (index: number, order: 'строим' | 'ходим' | 'отдых') => {
+      if (!assignWork(camp, index, order)) return 'не приказ';
+      persist();
+      const r = camp.residents[index]!;
+      return `${r.name}: ${residentState(r)}`;
+    },
     // Поставить палатку: цена списывается, место выбирается тем же правилом,
     // что и в игре.
     палатка: () => {
@@ -2884,6 +2933,7 @@ if (debugCamp !== null) {
         look: 'поселенец',
         seed: camp.residents.length + 1,
         answer,
+        rest: false,
       });
       persist();
       return homeless(camp);

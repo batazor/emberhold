@@ -28,6 +28,7 @@ import {
   roofs,
   WORK_CAP,
   WORK_SECONDS,
+  assignWork,
   collectWork,
   tentBlock,
   tentSpot,
@@ -37,7 +38,7 @@ import type { Resident } from './residents';
 import { totalOf } from './resources';
 import type { Resources } from './resources';
 
-const guest = (name: string): Resident => ({ name, look: 'поселенец', seed: name.length, answer: 'строим' });
+const guest = (name: string): Resident => ({ name, look: 'поселенец', seed: name.length, answer: 'строим', rest: false });
 
 const rich = (): CampState => {
   const camp = createCamp();
@@ -78,7 +79,7 @@ describe('Жильцы и палатки', () => {
   test('лицо приходит в лагерь вместе с человеком', () => {
     const camp = rich();
     const met = generateSettler(77);
-    admit(camp, { name: met.name, look: met.look, seed: met.seed, answer: 'строим' });
+    admit(camp, { name: met.name, look: met.look, seed: met.seed, answer: 'строим', rest: false });
     const lives = camp.residents[0]!;
     assert.equal(lives.seed, met.seed, 'жилец сменил лицо на входе');
     assert.equal(lives.look, met.look, 'жилец сменил вид на входе');
@@ -333,15 +334,43 @@ describe('Жильцы и палатки', () => {
 
   test('оба ответа складываются каждый в свой ресурс', () => {
     const camp = rich();
-    admit(camp, { name: 'Строитель', look: 'поселенец', seed: 1, answer: 'строим' });
+    admit(camp, { name: 'Строитель', look: 'поселенец', seed: 1, answer: 'строим', rest: false });
     buildTent(camp);
-    admit(camp, { name: 'Ходок', look: 'торговец', seed: 2, answer: 'ходим' });
+    admit(camp, { name: 'Ходок', look: 'торговец', seed: 2, answer: 'ходим', rest: false });
     buildTent(camp);
     const wood = camp.resources.wood;
     const stone = camp.resources.stone;
     collectWork(camp, WORK_SECONDS * WORK_CAP);
     assert.equal(camp.resources.wood - wood, WORK_CAP, 'дерева пришло не столько');
     assert.equal(camp.resources.stone - stone, WORK_CAP, 'камня пришло не столько');
+  });
+
+  /**
+   * **Отдых — не третье занятие, а отложенный инструмент.** Отдыхающий
+   * не приносит ничего: прибавка от отдыха была бы работой под другим
+   * именем, у которой §20.3 потребовал бы замера. Занятие при этом
+   * не стирается — отдых кончается, и жилец возвращается к своему делу,
+   * а не к умолчанию.
+   */
+  test('отдыхающий не приносит ничего, а занятие помнит', () => {
+    const camp = rich();
+    admit(camp, guest('Гита'));
+    buildTent(camp);
+    assert.ok(assignWork(camp, 0, 'отдых'), 'приказ отдыхать не принят');
+    assert.deepEqual(workDone(camp, WORK_SECONDS * 10), [], 'отдыхающий наработал');
+    assert.equal(camp.residents[0]!.answer, 'строим', 'отдых стёр занятие');
+    assert.ok(assignWork(camp, 0, 'строим'), 'возврат к занятию не принят');
+    assert.equal(workDone(camp, WORK_SECONDS * 10).length, 1, 'вернувшийся не работает');
+  });
+
+  /** Приказ, повторяющий происходящее, — не приказ: и у занятия, и у отдыха. */
+  test('повторный приказ не принимается', () => {
+    const camp = rich();
+    admit(camp, guest('Гита'));
+    assert.equal(assignWork(camp, 0, 'строим'), false, 'повтор занятия прошёл приказом');
+    assert.ok(assignWork(camp, 0, 'отдых'));
+    assert.equal(assignWork(camp, 0, 'отдых'), false, 'повтор отдыха прошёл приказом');
+    assert.ok(assignWork(camp, 0, 'строим'), 'то же занятие после отдыха — уже приказ');
   });
 
   /** Палатка не вылезает за площадку: за кромкой её попросту не видно. */

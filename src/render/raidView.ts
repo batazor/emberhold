@@ -10,6 +10,8 @@ import {
   heroGeometry,
   heroParts,
 } from './models';
+import { toolGeometry } from './tools';
+import type { ToolModelName } from './tools';
 import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
@@ -892,6 +894,29 @@ export class RaidView {
       : { x: rig.root.position.x, z: rig.root.position.z };
   }
 
+  /** Сменить инструмент в руке жильца на месте — приказ карточки (§6.1.14). */
+  setResidentTool(i: number, tool: ToolModelName | null): void {
+    this.residents[i]?.setHeld('handslot.r', tool === null ? null : toolGeometry(tool));
+  }
+
+  /**
+   * Кто из жильцов под пальцем: тап по человеку — то же, что тап по его
+   * лицу в веере. Радиус — половина клетки: человек ловится собой,
+   * а не запасом палатки рядом.
+   */
+  residentNear(x: number, z: number): number | null {
+    let best: number | null = null;
+    let bestD = 0.55;
+    this.residents.forEach((rig, i) => {
+      const d = Math.hypot(rig.root.position.x - x, rig.root.position.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+
   /**
    * Вести жильца рукой лагеря: позиция приходит из той же симуляции, что
    * водит героя, а клип выбирается по делу — идёт, рубит, стоит.
@@ -914,10 +939,14 @@ export class RaidView {
    * Поставить жильцов. Список пересобирается целиком: жильцов единицы,
    * и следить за диффом здесь дороже, чем посадить заново.
    */
-  setResidents(list: readonly { look: DwellerLook; x: number; z: number; facing: number }[]): void {
+  setResidents(
+    list: readonly { look: DwellerLook; tool?: ToolModelName; x: number; z: number; facing: number }[],
+  ): void {
     for (const rig of this.residents) rig.dispose();
     this.residents = list.map((r) => {
-      const rig = new Rigged(dwellerParts(r.look), this.blocking);
+      // Инструмент занятия (§6.1.14) — и у сидящего тоже: чем человек занят,
+      // видно у костра так же, как на площадке лагеря.
+      const rig = new Rigged(dwellerParts(r.look, r.tool), this.blocking);
       rig.root.position.set(r.x, 0, r.z);
       rig.root.rotation.y = r.facing;
       rig.play('сидит');

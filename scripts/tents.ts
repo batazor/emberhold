@@ -30,7 +30,7 @@ for (let hq = 1; hq <= 5; hq++) {
   camp.resources.wood = 99999;
   let tents = 0;
   for (let n = 0; n < 200; n++) {
-    admit(camp, { name: `Гость ${n}`, look: 'поселенец', seed: n, answer: 'строим' });
+    admit(camp, { name: `Гость ${n}`, look: 'поселенец', seed: n, answer: 'строим', rest: false });
     if (buildTent(camp) === null) break;
     tents++;
   }
