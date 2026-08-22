@@ -54,7 +54,7 @@ export interface CampCallbacks {
   onSpeedup(): void;
   /** §4 — идут в место на карте, а не в «ярус»: ярус у места один из трёх чисел. */
   onRaid(node: number): void;
-  /** §25 — отправить отряд в место без игрока. */
+  /** §26 — отправить отряд в место без игрока. */
   onSortie(node: number): void;
   /** §14 — ковка и улучшение это одно действие: слот один, предмет один. */
   onCraft(slot: GearSlot): void;
@@ -118,7 +118,7 @@ export class CampHud {
   private readonly gearRows = new Map<GearSlot, Row>();
   /** Карта региона (§4). Живёт в том же листе, где раньше был список ярусов. */
   private readonly map: WorldMap;
-  /** Отряд, отданный лагерю снаружи (§25): карте он нужен, чтобы знать,
+  /** Отряд, отданный лагерю снаружи (§26): карте он нужен, чтобы знать,
    *  есть ли кого отправить. */
   private roster: Roster | null = null;
   private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
@@ -586,7 +586,7 @@ export class CampHud {
   }
 
   /**
-   * §25 — карте нужен отряд: отправлять некого решает ростер, а лагерь про
+   * §26 — карте нужен отряд: отправлять некого решает ростер, а лагерь про
    * героев не знает (см. `setRanged` — тот же случай и та же причина).
    */
   setRoster(roster: Roster): void {

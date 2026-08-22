@@ -102,7 +102,7 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
-import { KIND, dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import { KIND, dayAt, lootMul, nightAt, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import type { WorldNode } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import {
@@ -745,7 +745,7 @@ const heroFan = new FanControl({
       shownResident = index - roster.heroes.length;
       heroCard.setVisible(false);
       residentCard.sync(camp, shownResident);
-      residentCard.setVisible(true);
+      residentCard.showMenu();
       // На поляне лицо не только открывает карточку — оно передаёт ведение:
       // тап по земле теперь ведёт этого жильца, тап по дереву — рубка.
       controlResident(shownResident);
@@ -753,10 +753,11 @@ const heroFan = new FanControl({
     }
     const hero = roster.heroes[index];
     if (hero === undefined) return;
-    // Карточка открывается на любом, даже на том, кем сейчас не пойти.
+    // Меню открывается на любом, даже на том, кем сейчас не пойти; полный
+    // разбор за ним — по команде «О персонаже».
     shownHero = index;
     residentCard.setVisible(false);
-    heroCard.setVisible(true);
+    heroCard.showMenu();
     controlHero();
     const block = raidBlock(hero);
     if (block !== 'ok') {
@@ -1294,8 +1295,12 @@ function dialogHud(on: boolean): void {
   const quiet = quietFrame();
   campHud.setVisible(!on);
   heroFan.setVisible(!on && !quiet);
-  heroCard.setVisible(!on && !quiet);
-  if (on) residentCard.setVisible(false);
+  // Карточки диалог только закрывает: их открывает тап по лицу, и после
+  // разговора они сами не возвращаются.
+  if (on) {
+    heroCard.setVisible(false);
+    residentCard.setVisible(false);
+  }
 }
 
 /**
@@ -1655,12 +1660,13 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   const panels = panelsFor(scene, quietFrame());
   hud.setVisible(panels.hud);
   campHud.setVisible(panels.campHud);
-  heroCard.setVisible(panels.roster);
   heroFan.setVisible(panels.roster);
-  // Карточка жильца не переживает смену сцены: её открывает тап по лицу.
+  // Карточки героя и жильца не переживают смену сцены: их открывает тап
+  // по лицу, а не сцена.
+  heroCard.setVisible(false);
   residentCard.setVisible(false);
   statsPanel.setVisible(panels.stats);
-  // §24 — хроника пересобирается на каждом показе заставки: к этому моменту
+  // §25 — хроника пересобирается на каждом показе заставки: к этому моменту
   // телеметрия уже пополнилась тем, чем кончилась прошлая сессия.
   if (panels.startScreen) startScreen.setChronicle(chronicle(events()));
   startScreen.setVisible(panels.startScreen);
@@ -1733,7 +1739,7 @@ const mateClasses = (r: RaidState): HeroClassId[] =>
 
 /**
  * Место дня — или отказ, если регион пересобрался, пока панель была открыта.
- * Строка одна на обоих звавших: ручной вход и отправка (§25) упираются
+ * Строка одна на обоих звавших: ручной вход и отправка (§26) упираются
  * в одну и ту же причину, а две её формулировки разошлись бы молча (§23.3).
  */
 function placeAt(day: number, node: number): WorldNode | null {
@@ -1746,7 +1752,7 @@ function placeAt(day: number, node: number): WorldNode | null {
 }
 
 /**
- * §25 — отряд уходит в место без игрока. Билет собирается здесь, потому что
+ * §26 — отряд уходит в место без игрока. Билет собирается здесь, потому что
  * только здесь известны обе стороны: лагерь (`camp`) и отряд (`roster`).
  * Сам поход не считается ни секунды: он чистая функция от билета и будет
  * пересчитан на возвращении.
@@ -1769,7 +1775,7 @@ function sendSortie(node: number): void {
     nodeSeed(day, node),
     hero,
     {
-      // Лагерь и место замораживаются на выходе (§25): достроенный за время
+      // Лагерь и место замораживаются на выходе (§26): достроенный за время
       // пути Склад не имеет права менять поход, который уже идёт.
       kitchen: camp.levels.kitchen,
       storage: camp.levels.storage,
@@ -1791,7 +1797,7 @@ function sendSortie(node: number): void {
 }
 
 /**
- * §25 — отряд вернулся. Зовётся тиком лагеря, поэтому досчитывается и после
+ * §26 — отряд вернулся. Зовётся тиком лагеря, поэтому досчитывается и после
  * закрытой вкладки: тем же способом, что и стройка (`completeIfDue`).
  */
 function collectSortie(now: number): boolean {
@@ -2552,8 +2558,10 @@ function toGladeCamp(): void {
   seatResidents();
   rig.lookAt(raid.hero.x, raid.hero.z, true);
   rig.setZoom(20, true);
-  // Поляна — на поверхности, и это день: тот же свет, что в прологе.
-  setNight(0.12);
+  // Свет лагеря идёт по смене мира (§24): в какой час игрок вошёл,
+  // такой и застал. Ставится и здесь, и каждый кадр — иначе первый кадр
+  // после входа успел бы мигнуть вчерашним значением.
+  setNight(nightAt(clock.now()));
   resultShown = false;
   inGlade = false;
   inGladeCamp = true;
@@ -2735,13 +2743,18 @@ function campTap(clientX: number, clientY: number): void {
     shownResident = resident;
     heroCard.setVisible(false);
     residentCard.sync(camp, resident);
-    residentCard.setVisible(true);
+    residentCard.showMenu();
     return;
   }
 
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
   // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
+  // Карточки людей уступают место любому исходу тапа: листу здания —
+  // иначе они висели бы поверх него, — и просто земле: экран возвращается
+  // игроку целиком.
+  heroCard.setVisible(false);
+  residentCard.setVisible(false);
   if (picked !== null) {
     campHud.openBuilding(picked);
     return;
@@ -2936,7 +2949,7 @@ canvas.addEventListener('pointerdown', (e) => {
       shownResident = near;
       heroCard.setVisible(false);
       residentCard.sync(camp, near);
-      residentCard.setVisible(true);
+      residentCard.showMenu();
       controlResident(near);
       return;
     }
@@ -2954,6 +2967,11 @@ canvas.addEventListener('pointerdown', (e) => {
         picked = id;
       }
     }
+    // Карточки людей уступают место любому исходу тапа: листу здания —
+    // иначе они висели бы поверх него, — и просто земле: экран возвращается
+    // игроку целиком.
+    heroCard.setVisible(false);
+    residentCard.setVisible(false);
     if (picked !== null) {
       campHud.openBuilding(picked);
       return;
@@ -3269,6 +3287,9 @@ if (debugCamp !== null) {
       const r = camp.residents[index]!;
       return `${r.name}: ${residentState(r)}`;
     },
+    // Подбросить дрова у костра (`render/campProps.ts`): проверка, что
+    // физика загрузилась и тела живые, — без похода героя через площадь.
+    пни: () => campView.kickProps(),
     // Поставить палатку: цена списывается, место выбирается тем же правилом,
     // что и в игре.
     палатка: () => {
@@ -3644,7 +3665,7 @@ function stepCampSystems(dt: number, now: number): void {
       campHud.notify(`${BUILDINGS[finished].name} готов`);
       persist();
     }
-    // §25 — отряд возвращается тем же тиком, что и стройка: слот освобождается
+    // §26 — отряд возвращается тем же тиком, что и стройка: слот освобождается
     // одинаково, и досчитывается он после закрытой вкладки так же.
     if (collectSortie(now)) persist();
     if (tickHeroes(now)) persist();
@@ -3653,7 +3674,7 @@ function stepCampSystems(dt: number, now: number): void {
     // лагерь про героев не знает, и сказать ему может только тот, кто знает
     // обоих.
     campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
-    // §25 — карте нужен отряд: есть ли кого отправить, знает ростер.
+    // §26 — карте нужен отряд: есть ли кого отправить, знает ростер.
     campHud.setRoster(roster);
     // Ведущий отмечен на лице, а карточка держит того, кого выбрали.
     heroFan.picked = controlled >= 0 ? roster.heroes.length + controlled : roster.active;
@@ -3860,6 +3881,17 @@ startLoop({
     }
 
     if ((mode === 'raid' || inGladeCamp) && raid !== null && raidView !== null) {
+      /**
+       * Небо лагеря поворачивается по смене мира (§24). Значение идёт
+       * через `setNight`, а не в `rig.night` напрямую, ровно ради `?night=`:
+       * отладочный свет обязан перебивать сценарный, иначе замер на конкретной
+       * темноте перестал бы повторяться.
+       *
+       * Кадр поляны идёт по ветке вылазки — на полной частоте и без
+       * замирания, — поэтому ход неба ничего не стоит по батарее. Вылазку
+       * это не трогает: под землёй время суток не при чём, там своя тьма.
+       */
+      if (inGladeCamp) setNight(nightAt(clock.now()));
       raidView.sync(raid, alpha, dt, now, rig.dayFactor);
       // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
       // теми же правилами, которыми применит ход: кнопка, предлагающая

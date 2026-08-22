@@ -28,6 +28,13 @@ import { avatarSvg } from './avatar';
  * когда смотрят раненого: тапнуть по лечащемуся можно, повести им — нет
  * (§11.7). Карточка обязана открыться и на нём, иначе «сколько ему ещё
  * лечиться» негде прочитать.
+ *
+ * **Два состояния, а не одно.** Развёрнутая карточка стояла на лагере
+ * постоянно и накрывала четверть кадра — сцена читалась из-под панели.
+ * Теперь тап по лицу открывает меню — шапку с командами, — а полный
+ * разбор (характеристики, опыт, умение, Плац) раскрывает команда
+ * «О персонаже». Закрытие возвращает меню: чужому герою не показывают
+ * разбор предыдущего.
  */
 const STATUS_TEXT: Record<string, string> = {
   ready: 'готов',
@@ -47,8 +54,12 @@ export class HeroCard {
   private readonly status: HTMLElement;
   private readonly meta: HTMLElement;
   private readonly xp: HTMLElement;
+  private readonly bar: HTMLElement;
   private readonly skill: HTMLElement;
   private readonly train: HTMLButtonElement;
+  private readonly acts: HTMLElement;
+  /** Меню или полный разбор: полный открывается только командой «О персонаже». */
+  private mode: 'menu' | 'full' = 'menu';
   private shown = 0;
   /** Чьё лицо нарисовано: карточка обновляется кадром, лицо — сменой героя. */
   private faceKey = '';
@@ -64,8 +75,9 @@ export class HeroCard {
     this.root.innerHTML = `
       <div class="r-id"><span class="face" id="hc-face"></span>
         <span><b id="hc-name"></b><span id="hc-status" class="dim"></span></span></div>
+      <div class="r-acts" id="hc-acts"><button id="hc-about">О персонаже</button></div>
       <div class="r-meta" id="hc-meta"></div>
-      <div class="bar"><i id="hc-xp"></i></div>
+      <div class="bar" id="hc-bar"><i id="hc-xp"></i></div>
       <div class="r-skill" id="hc-skill"></div>
       <button id="hc-train"></button>`;
     const pick = <T extends HTMLElement>(id: string): T => this.root.querySelector<T>(`#${id}`)!;
@@ -74,14 +86,44 @@ export class HeroCard {
     this.status = pick('hc-status');
     this.meta = pick('hc-meta');
     this.xp = pick('hc-xp');
+    this.bar = pick('hc-bar');
     this.skill = pick('hc-skill');
+    this.acts = pick('hc-acts');
     this.train = pick<HTMLButtonElement>('hc-train');
     this.train.addEventListener('click', () => this.cb.onTrain(this.shown));
+    pick<HTMLButtonElement>('hc-about').addEventListener('click', () => {
+      this.mode = 'full';
+      this.applyMode();
+    });
+    this.applyMode();
     parent.appendChild(this.root);
+    this.setVisible(false);
+  }
+
+  /** Открыть меню команд на герое: шапка и кнопки, без разбора. */
+  showMenu(): void {
+    this.mode = 'menu';
+    this.applyMode();
+    this.root.style.display = 'flex';
   }
 
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
+    // Спрятанная карточка сворачивается: следующий тап по лицу открывает
+    // меню, а не разбор того, кого смотрели в прошлый раз.
+    if (!visible && this.mode !== 'menu') {
+      this.mode = 'menu';
+      this.applyMode();
+    }
+  }
+
+  /** Разбор виден только в полном режиме, команда «О персонаже» — только в меню. */
+  private applyMode(): void {
+    const full = this.mode === 'full';
+    this.acts.style.display = full ? 'none' : 'flex';
+    for (const el of [this.meta, this.bar, this.skill, this.train]) {
+      el.style.display = full ? '' : 'none';
+    }
   }
 
   /** Отступ снизу: карточка стоит над нижней строкой лагеря, как и веер. */
