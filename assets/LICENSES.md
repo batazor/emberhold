@@ -9,7 +9,7 @@ NC-лицензии несовместимы с любой монетизаци�
 
 | Файл | Источник | Лицензия | Автор |
 |---|---|---|---|
-| `droid_serif_bold.typeface.json` — заголовок стартового экрана | идёт в составе `three` (`three/examples/fonts/droid/`) | Apache 2.0 | The Android Open Source Project |
+| `src/render/fonts/droid_sans_bold.typeface.json` — заголовок стартового экрана | копия из `three@0.180` (`three/examples/fonts/droid/`); с `three@0.185` npm-пакет шрифты не возит | Apache 2.0 | The Android Open Source Project |
 | `kaykit-forest/gltf/*.gltf`, `*.bin` — 105 моделей: деревья, кусты, трава, камни | [kaylousberg.itch.io/kaykit-forest](https://kaylousberg.itch.io/kaykit-forest), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kaykit-forest/forest_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kaykit-dungeon/gltf/*.gltf`, `*.bin` — 211 моделей: стены, полы, лестницы, мебель, тара, утварь, знамёна | [kaylousberg.itch.io/kaykit-dungeon-pack](https://kaylousberg.itch.io/kaykit-dungeon-pack), тариф FREE, версия 1.1 | CC0 1.0 | Kay Lousberg |
@@ -61,8 +61,9 @@ NC-лицензии несовместимы с любой монетизаци�
 ## Apache 2.0 и что она требует
 
 Указания авторства в поставке. Строка выше и есть это указание; при появлении
-экрана «О игре» она обязана попасть туда же. Своей копии шрифта в репозитории
-нет намеренно: он берётся из `three` и не может разъехаться с её версией.
+экрана «О игре» она обязана попасть туда же. Шрифт лежит своей копией в
+`src/render/fonts/`: раньше он брался из `three`, но с 0.185 npm-пакет
+шрифты не поставляет.
 
 ## Craftpix royalty-free и что она требует
 
