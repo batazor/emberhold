@@ -103,6 +103,40 @@ export type BattleAction =
   | { readonly kind: 'guard' }
   | { readonly kind: 'wait' };
 
+/**
+ * Протокол показа (§17.1). Симуляция решает бой мгновенно — вся очередь
+ * противников доигрывается за один тик, и это правильно: пошаговость не должна
+ * заставлять ждать. Но мгновенный бой нечего смотреть: строки `events` знают
+ * «кто кого», а рендеру нужно «откуда, куда и чем кончилось».
+ *
+ * Записи складываются тем же `apply`, что меняет состояние, — протокол
+ * не может разойтись с боем, потому что пишется тем же ходом. Проигрывает
+ * его рендер в своём темпе; симуляция про темп не знает ничего, и замеры
+ * с ботом остаются воспроизводимыми.
+ */
+export type BattlePlay =
+  | {
+      readonly kind: 'move';
+      readonly unit: number;
+      /** Гексы от стойки до места, включая оба конца, — по ним идёт тело. */
+      readonly path: readonly Hex[];
+    }
+  | {
+      readonly kind: 'strike';
+      readonly unit: number;
+      readonly target: number;
+      readonly from: Hex;
+      readonly at: Hex;
+      readonly ranged: boolean;
+      /** Удар пришёлся в блок — цель держит, а не вздрагивает. */
+      readonly blocked: boolean;
+      /** Цель пала: клип падения играется в момент попадания, а не в конце боя. */
+      readonly killed: boolean;
+      /** Стойкость цели после удара — полоска тикает по протоколу. */
+      readonly hpAfter: number;
+    }
+  | { readonly kind: 'guard'; readonly unit: number };
+
 /** Гексов за ход из скорости мира. Не меньше одного: боец, который не может
  *  сдвинуться, превращает бой в перестрелку двух столбов. */
 export const movePerTurn = (speed: number): number =>
@@ -360,7 +394,35 @@ export interface Damage {
  */
 export const GUARD_SHARE = 0.5;
 
-/** Применить действие текущего бойца. Возвращает, потрачен ли ход. */
+/**
+ * Путь шага для протокола показа: гексы от стойки до места. Восстанавливается
+ * спуском по волновому полю — от места к стойке, каждый раз на соседа с числом
+ * шагов на единицу меньше. Сосед такой есть по построению обхода, а порядок
+ * соседей закреплён (`HEX_DIRS`), поэтому путь детерминирован.
+ */
+function pathTo(
+  size: number,
+  blocked: Uint8Array,
+  state: BattleState,
+  unit: BattleUnit,
+  to: { hex: Hex; steps: number },
+): Hex[] {
+  const field = hexReach(size, blocked, unit.hex, unit.move, occupied(state, unit.id));
+  const path: Hex[] = [to.hex];
+  let cur = to;
+  while (cur.steps > 0) {
+    const prev = hexNeighbors(cur.hex)
+      .map((h) => field.get(hexKey(h)))
+      .find((s) => s !== undefined && s.steps === cur.steps - 1);
+    if (prev === undefined) break;
+    path.push(prev.hex);
+    cur = prev;
+  }
+  return path.reverse();
+}
+
+/** Применить действие текущего бойца. Возвращает, потрачен ли ход.
+ *  `plays` — протокол показа: если передан, действие записывает себя в него. */
 export function apply(
   state: BattleState,
   size: number,
@@ -368,6 +430,7 @@ export function apply(
   action: BattleAction,
   damageOf: (from: BattleUnit, to: BattleUnit) => number,
   name: (u: BattleUnit) => string,
+  plays?: BattlePlay[],
 ): boolean {
   const unit = current(state);
   if (unit === undefined || unit.hp <= 0) return false;
@@ -378,6 +441,7 @@ export function apply(
       const reach = moves(state, size, blocked, unit);
       const spot = reach.get(hexKey(action.to));
       if (spot === undefined) return false;
+      plays?.push({ kind: 'move', unit: unit.id, path: pathTo(size, blocked, state, unit, spot) });
       unit.hex = spot.hex;
       unit.moved = true;
       // Шаг хода не кончает: подойти и ударить — один ход, иначе ближний бой
@@ -391,6 +455,17 @@ export function apply(
       const raw = damageOf(unit, target);
       const dealt = target.guarding ? Math.max(1, Math.round(raw * GUARD_SHARE)) : raw;
       target.hp -= dealt;
+      plays?.push({
+        kind: 'strike',
+        unit: unit.id,
+        target: target.id,
+        from: unit.hex,
+        at: target.hex,
+        ranged: unit.ranged,
+        blocked: target.guarding,
+        killed: target.hp <= 0,
+        hpAfter: Math.max(0, target.hp),
+      });
       state.events.push(
         target.guarding
           ? `${name(unit)} бьёт — ${name(target)} держит`
@@ -403,6 +478,7 @@ export function apply(
     case 'guard': {
       unit.guarding = true;
       unit.acted = true;
+      plays?.push({ kind: 'guard', unit: unit.id });
       state.events.push(`${name(unit)} закрывается`);
       return true;
     }

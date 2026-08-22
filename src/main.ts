@@ -164,7 +164,7 @@ import { askOf, makeDeal, worthOf } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
 import { events, loadTelemetry, track } from './sim/telemetry';
-import type { Cell, GameLocation, Tier } from './sim/types';
+import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { CursorWind } from './render/cursorWind';
 import { TiltWind } from './render/tiltWind';
@@ -1565,7 +1565,7 @@ function buy(id: ConsumableId): boolean {
  * перенесло в чужой лагерь» — второй лагерь существует чисто для тестов
  * и границу сохранения не пересекает.
  */
-const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город'] as const;
+const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город', 'бой'] as const;
 const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
 
 function persist(): void {
@@ -1646,14 +1646,20 @@ function shake(): void {
  */
 const battleHud = new BattleHud(app, {
   onAttack: () => heroAttack(),
-  onGuard: () => { if (raid !== null) commandBattle(raid, { kind: 'guard' }); },
-  onWait: () => { if (raid !== null) commandBattle(raid, { kind: 'wait' }); },
+  onGuard: () => {
+    if (raid !== null && raidView?.battleBusy() !== true) commandBattle(raid, { kind: 'guard' });
+  },
+  onWait: () => {
+    if (raid !== null && raidView?.battleBusy() !== true) commandBattle(raid, { kind: 'wait' });
+  },
 });
 
 /** Ударить того, кого достаём. Если целей несколько — самого израненного:
  *  добить дешевле, чем начать нового, и это же правило у бота. */
 function heroAttack(): void {
   if (raid === null || raid.battle === null) return;
+  // Пока показ дочитывает прошлые ходы, новые не принимаются.
+  if (raidView?.battleBusy() === true) return;
   const unit = current(raid.battle);
   if (unit === undefined || unit.side !== 'hero') return;
   const list = targets(raid.battle, raid.loc.size, raid.loc.blocked, unit);
@@ -3250,6 +3256,9 @@ canvas.addEventListener('pointerdown', (e) => {
   // §11.3 — бой перехватывает палец целиком: пока идёт ход, тап значит
   // «шагнуть сюда» или «ударить того», а не «идти по локации».
   if (inBattle(raid)) {
+    // Пока показ дочитывает прошлые ходы, поле не принимает новых: игрок
+    // не должен ходить в бой, которого ещё не увидел.
+    if (raidView?.battleBusy() === true) return;
     const battle = raid.battle!;
     const unit = current(battle);
     if (unit === undefined || unit.side !== 'hero') return;
@@ -3415,6 +3424,63 @@ const debugNode = debugParams.get('node');
 if (debugNode !== null) {
   const n = Number(debugNode);
   if (today.some((place) => place.id === n)) toRaid(n);
+}
+
+/**
+ * Отладочный кадр `?бой` (§6: воспроизводимость): пошаговый бой сразу,
+ * не проходя вылазку до драки. Открывает вылазку — ярус можно задать
+ * через `?tier=N`, иначе берётся первый боевой узел, — и ставит героя
+ * вплотную к противнику: контакт завязывается первым же тиком.
+ * Значение выбирает вид: `?бой=маг`, `?бой=воин`, `?бой=скелет`.
+ */
+const debugBattleKind = debugParams.get('бой');
+if (debugBattleKind !== null) {
+  if (raid === null) {
+    const place = today.find((n) => n.kind === 'вылазка' && n.tier >= 1) ?? today.find((n) => n.kind === 'вылазка');
+    if (place !== undefined) toRaid(place.id);
+  }
+  // `toRaid` пишет модульную переменную; поток типов через вызов этого
+  // не видит, поэтому ссылка перечитывается явно.
+  const fightRaid = raid as RaidState | null;
+  if (fightRaid !== null) {
+    const KIND_BY_NAME: Record<string, EnemyKind> = { 'скелет': 'minion', 'воин': 'warrior', 'маг': 'mage' };
+    const want = KIND_BY_NAME[debugBattleKind];
+    const foes = fightRaid.loc.enemies.filter((e) => e.hp > 0);
+    const target = foes.find((e) => want !== undefined && e.kind === want) ?? foes[0];
+    if (target !== undefined) {
+      // Свободная клетка рядом с противником — герой встаёт на неё всем
+      // отрядом: расстановку по гексам разведёт сам бой (`placeOn`).
+      const { size, blocked } = fightRaid.loc;
+      const near = [
+        { x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 },
+        { x: 1, z: 1 }, { x: -1, z: -1 }, { x: 1, z: -1 }, { x: -1, z: 1 },
+      ]
+        .map((d) => ({ x: Math.round(target.x) + d.x, z: Math.round(target.z) + d.z }))
+        .find((c) => c.x >= 0 && c.z >= 0 && c.x < size && c.z < size && blocked[idx(size, c.x, c.z)] === 0);
+      if (near !== undefined) {
+        for (const f of fightRaid.party) {
+          f.x = near.x;
+          f.z = near.z;
+          f.prevX = near.x;
+          f.prevZ = near.z;
+        }
+        // Будится группа, а не один: кадр заведён смотреть бой, и втягивание
+        // соседей (§11.7) — часть того, на что смотрят.
+        for (const e of foes) {
+          if (Math.hypot(e.x - target.x, e.z - target.z) <= 4.5) e.awake = true;
+        }
+      }
+    }
+    // Ручка к состоянию — тем же приёмом, что `?tier` (`камень`).
+    (window as unknown as { бой: unknown }).бой = {
+      вылазка: () => raid,
+      поле: () => raid?.battle ?? null,
+      показ: () => raidView?.battleBusy() ?? false,
+      // Внутренности показа — поля приватные для кода, но не для отладки.
+      ход: () => (raidView as unknown as { playNow: unknown } | null)?.playNow ?? null,
+      хвост: () => (raidView as unknown as { battlePlays: unknown[] } | null)?.battlePlays.length ?? 0,
+    };
+  }
 }
 
 /**
@@ -4013,7 +4079,12 @@ startLoop({
       // онбординга завёл эту тряску ради первой раны; со сменой модели боя
       // (§11.3) удар стал стоить разного числа ран, и молчать про них
       // за пределами раскадровки перестало быть допустимо.
-      if (raid.hero.hp < woundsBefore) shake();
+      //
+      // Раны боя трясут кадр из показа (`onHeroHit`), а не отсюда: симуляция
+      // решает раунд мгновенно, и тряска раньше видимого удара читалась бы
+      // как сбой. Здесь остаются раны вне боя — голод.
+      if (raidView !== null) raidView.onHeroHit = shake;
+      if (raid.hero.hp < woundsBefore && raid.battle === null) shake();
       if (sayNext !== null) {
         raid.events.push(sayNext);
         sayNext = null;
@@ -4203,19 +4274,27 @@ startLoop({
       // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
       // теми же правилами, которыми применит ход: кнопка, предлагающая
       // невозможное, хуже отсутствующей.
+      const battleBusy = raidView?.battleBusy() === true;
       if (raid.battle !== null) {
         const unit = current(raid.battle);
         const canHit = unit !== undefined && unit.side === "hero"
           && targets(raid.battle, raid.loc.size, raid.loc.blocked, unit).length > 0;
         battleHud.setVisible(true);
-        battleHud.sync(raid.battle, canHit, partyByUnit(raid));
+        // Пока показ дочитывает прошлые ходы, панель молчит: предлагать ход
+        // в бой, которого игрок ещё не увидел, — значит звать ходить вслепую.
+        battleHud.sync(raid.battle, canHit, partyByUnit(raid), battleBusy);
       } else {
         battleHud.setVisible(false);
       }
       // §11.3 — в бою камера ведёт того, чей ход. Иначе игрок смотрит
       // на героя, пока где-то за краем кадра ходит противник, и решение,
       // ради которого бой сделан пошаговым, принимается вслепую.
-      if (raid.battle !== null) {
+      // Пока идёт показ — камера на том, кто ходит на экране, а не на том,
+      // до кого симуляция уже досчитала очередь.
+      const focus = raidView?.battleFocus() ?? null;
+      if (focus !== null) {
+        rig.lookAt(focus.x, focus.z);
+      } else if (raid.battle !== null) {
         const acting = current(raid.battle);
         const at = acting === undefined ? null : hexToWorld(acting.hex);
         if (at !== null) rig.lookAt(at.x, at.z);
