@@ -102,7 +102,18 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
-import { KIND, dayAt, lootMul, nightAt, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import {
+  KIND,
+  SHIFT_SEC,
+  WAKE_AT,
+  dayAt,
+  lootMul,
+  nightAt,
+  nodeSeed,
+  regionAt,
+  shiftAt,
+  worldAt,
+} from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import {
   campNav,
@@ -349,6 +360,27 @@ const nightParam = Number(debugParams.get('night'));
 const debugNight = debugParams.has('night') && Number.isFinite(nightParam)
   ? Math.max(0, Math.min(1, nightParam / 100))
   : null;
+
+/**
+ * Минута смены, с которой начать (§24). Ручка к расписанию, а не только
+ * к свету: `?night=` красит небо, но жильцы по нему не ложатся — они спят
+ * по часам, и без сдвига часов увидеть отбой можно было только высидев
+ * его. §6 требует ровно обратного: «отладочная сцена отматывает часы
+ * и получает нужный кадр сразу», — и у гарнизона такая ручка есть
+ * (`камень.смена`), а у лагеря не было.
+ *
+ * Сдвигаются часы **лагеря целиком**: и небо, и маршруты, и сон. Двигать
+ * что-то одно значило бы развести их — то самое, от чего §24 ушёл, переводя
+ * границы фаз в секунды.
+ *
+ * Смена — сорок минут: `?смена=27` ставит кадр на отбой, `?смена=0` —
+ * на подъём. Сейв она не трогает: сдвиг живёт в адресе и умирает вместе
+ * с вкладкой.
+ */
+const shiftParam = Number(debugParams.get('смена'));
+const debugShift = debugParams.has('смена') && Number.isFinite(shiftParam)
+  ? shiftParam * 60 - ((clock.now() - WAKE_AT) % SHIFT_SEC + SHIFT_SEC) % SHIFT_SEC
+  : 0;
 
 /**
  * Отладочный ряд в вылазке. Собирается только по адресу: ручка к состоянию
@@ -974,7 +1006,7 @@ function controlHero(): void {
  * не жил, пока на него не смотрят. Теперь это те же часы, что у неба
  * и у мира, — и жилец спит ровно тогда, когда темно.
  */
-const campTime = (): number => clock.now();
+const campTime = (): number => clock.now() + debugShift;
 
 /**
  * Палатки жильцов в кадре поляны. Зовётся при входе и после каждой постройки:
@@ -2472,7 +2504,7 @@ function toGladeCamp(): void {
   // Свет лагеря идёт по смене мира (§24): в какой час игрок вошёл,
   // такой и застал. Ставится и здесь, и каждый кадр — иначе первый кадр
   // после входа успел бы мигнуть вчерашним значением.
-  setNight(nightAt(clock.now()));
+  setNight(nightAt(campTime()));
   resultShown = false;
   inGlade = false;
   inGladeCamp = true;
@@ -3784,7 +3816,7 @@ startLoop({
        * замирания, — поэтому ход неба ничего не стоит по батарее. Вылазку
        * это не трогает: под землёй время суток не при чём, там своя тьма.
        */
-      if (inGladeCamp) setNight(nightAt(clock.now()));
+      if (inGladeCamp) setNight(nightAt(campTime()));
       raidView.sync(raid, alpha, dt, now, rig.dayFactor);
       // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
       // теми же правилами, которыми применит ход: кнопка, предлагающая
