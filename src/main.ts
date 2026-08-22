@@ -1092,6 +1092,8 @@ const campPrompt = new CampPrompt(hud.promptSlot, {
  */
 const tradePanel = new TradePanel(app, {
   onTrade: (id: OfferId) => {
+    // Цена сделки — та, что стояла на кнопке: счёт сделок снимается до обмена.
+    const dealsBefore = camp.trades ?? 0;
     if (!trade(camp, id)) {
       // Отказ обязан быть слышен так же, как виден (§18.3).
       play('deny');
@@ -1099,7 +1101,7 @@ const tradePanel = new TradePanel(app, {
     }
     play('build');
     track({ t: 'trade', at: clock.now(), offer: id });
-    if (raid !== null) raid.events.push(TradePanel.gained(id));
+    if (raid !== null) raid.events.push(TradePanel.gained(id, dealsBefore));
     tradePanel.sync(camp);
     persist();
   },

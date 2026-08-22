@@ -46,6 +46,8 @@ interface SaveV1 {
   origin?: { x: number; z: number };
   /** Поляна пролога (§16.1). Необязательна: сейв без неё рисует лес-кольцо. */
   glade?: { size: number; cells: string };
+  /** Сделки с торговцем (§13.5). Необязательно: без поля лавка незнакома. */
+  trades?: number;
   loadout?: CampState['loadout'];
   raids: number;
   /**
@@ -129,6 +131,7 @@ export function save(
     // exactOptionalPropertyTypes: у лагеря без якоря ключа нет вовсе.
     ...(camp.origin !== undefined ? { origin: camp.origin } : {}),
     ...(camp.glade !== undefined ? { glade: camp.glade } : {}),
+    ...(camp.trades !== undefined ? { trades: camp.trades } : {}),
     resources: camp.resources,
     construction: camp.construction,
     loadout: camp.loadout,
@@ -219,6 +222,7 @@ export function load(): LoadResult {
     if (g !== undefined && typeof g.size === 'number' && typeof g.cells === 'string') {
       camp.glade = { size: g.size, cells: g.cells };
     }
+    if (typeof data.trades === 'number' && data.trades >= 0) camp.trades = Math.floor(data.trades);
 
     const area = campArea(camp.levels.hq);
     const fallback = createCamp().layout;

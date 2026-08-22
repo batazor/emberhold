@@ -88,16 +88,107 @@ export interface Offer {
  * у расходников (8, 9, 10 камня, §21.6), где цена «примерно полторы вылазки»
  * уже отмерена — обе системы тратят один и тот же избыточный камень.
  */
-export const OFFERS: Record<OfferId, Offer> = {
+/**
+ * Паритет — курс, к которому приходят отношения. Числа прежние, измеренные
+ * (`scripts/trade.ts`, три критерия): 8 камня или 3 дерева за железо. Это
+ * лучшая цена лавки, и она по-прежнему проигрывает вылазке — условие
+ * существования системы (§13) не сдвинулось ни на число.
+ */
+export const PARITY: Record<OfferId, Offer> = {
   'iron-stone': { id: 'iron-stone', give: { stone: 8 }, take: { iron: 1 } },
   'iron-wood': { id: 'iron-wood', give: { wood: 3 }, take: { iron: 1 } },
 };
+
+/**
+ * Наценка продавца. Незнакомому — четверть сверху, каждая сделка снимает
+ * по пять сотых: после пятой лавка выходит на паритет. Отношения — это
+ * сделки, а не разговоры: торговец верит рукам.
+ *
+ * Наценка в пользу продавца всегда: отрицательной она не бывает, и обмен
+ * не может стать щедрее паритета — иначе критерии §13 рушатся втихую.
+ */
+export const feeOf = (deals: number): number =>
+  Math.max(0, 0.25 - 0.05 * Math.max(0, Math.floor(deals)));
+
+/** Сколько сделок осталось до паритета — интерфейсу, чтобы называть прогресс. */
+export const dealsToParity = (deals: number): number =>
+  Math.max(0, Math.ceil(0.25 / 0.05) - Math.max(0, Math.floor(deals)));
+
+/** Курс с наценкой: цена округляется вверх — в пользу продавца. */
+export function offerOf(id: OfferId, deals: number): Offer {
+  const base = PARITY[id];
+  const fee = feeOf(deals);
+  const give: Partial<Resources> = {};
+  for (const [kind, amount] of Object.entries(base.give) as [ResourceKind, number][]) {
+    give[kind] = Math.ceil(amount * (1 + fee));
+  }
+  return { id, give, take: base.take };
+}
+
+/**
+ * Ценность единицы — общая линейка сделки. Выведена из паритета, а не
+ * назначена: 8 камня = 3 дерева = 1 железо, наименьшие целые — 3, 8, 24.
+ * Кристалл линейки не имеет намеренно: он не продаётся и не принимается
+ * (§13 — «нельзя получить иначе, кроме как рискнув»).
+ */
+export const VALUE: Partial<Record<ResourceKind, number>> = { stone: 3, wood: 8, iron: 24 };
+
+/** Что игрок может класть на прилавок. Железа здесь нет: обратного курса нет. */
+export const GIVABLE: readonly ResourceKind[] = ['stone', 'wood'];
+
+/** Чем торгует торговец. */
+export const SELLABLE: readonly ResourceKind[] = ['iron'];
+
+/** Ценность кучки — по линейке; чего нет в линейке, то не считается. */
+export const worthOf = (part: Partial<Resources>): number =>
+  (Object.entries(part) as [ResourceKind, number][])
+    .reduce((sum, [kind, n]) => sum + (VALUE[kind] ?? 0) * n, 0);
+
+/** Во что торговец оценивает свою сторону: ценность плюс наценка, вверх. */
+export const askOf = (take: Partial<Resources>, deals: number): number =>
+  Math.ceil(worthOf(take) * (1 + feeOf(deals)));
+
+/**
+ * Почему сделка не состоится. 'cheap' — предложено меньше, чем просит
+ * торговец: сделка всегда ровно или в его пользу, недоплаты не бывает.
+ */
+export type DealBlock = 'ok' | 'empty' | 'resources' | 'cheap';
+
+export function dealBlock(
+  camp: CampState,
+  give: Partial<Resources>,
+  take: Partial<Resources>,
+): DealBlock {
+  if (worthOf(take) <= 0) return 'empty';
+  if (!canAfford(camp.resources, give)) return 'resources';
+  if (worthOf(give) < askOf(take, camp.trades ?? 0)) return 'cheap';
+  return 'ok';
+}
+
+/**
+ * Сделка кучками — вход перетаскивания. Та же операция, что `trade`,
+ * только стороны собирает игрок; переплата остаётся торговцу — прилавок
+ * сдачи не даёт, и это в его пользу, как и наценка.
+ */
+export function makeDeal(
+  camp: CampState,
+  give: Partial<Resources>,
+  take: Partial<Resources>,
+): boolean {
+  if (dealBlock(camp, give, take) !== 'ok') return false;
+  spend(camp.resources, give);
+  for (const [kind, amount] of Object.entries(take) as [ResourceKind, number][]) {
+    camp.resources[kind] += amount;
+  }
+  camp.trades = (camp.trades ?? 0) + 1;
+  return true;
+}
 
 /** Почему обменять нельзя. Причина, а не булево, — как везде (§20.3). */
 export type TradeBlock = 'ok' | 'resources';
 
 export function tradeBlock(camp: CampState, id: OfferId): TradeBlock {
-  return canAfford(camp.resources, OFFERS[id].give) ? 'ok' : 'resources';
+  return canAfford(camp.resources, offerOf(id, camp.trades ?? 0).give) ? 'ok' : 'resources';
 }
 
 /**
@@ -108,25 +199,31 @@ export function tradeBlock(camp: CampState, id: OfferId): TradeBlock {
  * в качели, на которых можно ездить туда-сюда, а торговля в этом проекте
  * описана только как то, чего надо избегать: §21.3 боится, что экран возврата
  * станет «торговым автоматом, где нечего решать».
+ *
+ * Сделка двигает отношения: следующая цена ниже. Считаются только
+ * состоявшиеся обмены — отказ по кошельку знакомством не является.
  */
 export function trade(camp: CampState, id: OfferId): boolean {
   if (tradeBlock(camp, id) !== 'ok') return false;
-  const offer = OFFERS[id];
+  const offer = offerOf(id, camp.trades ?? 0);
   spend(camp.resources, offer.give);
   for (const [kind, amount] of Object.entries(offer.take) as [ResourceKind, number][]) {
     camp.resources[kind] += amount;
   }
+  camp.trades = (camp.trades ?? 0) + 1;
   return true;
 }
 
-/** Строка курса для интерфейса: «Камень 8 → Железо 1». */
+/** Строка курса для интерфейса: «Камень 10 → Железо 1» — по текущей наценке. */
 export const offerLine = (
   id: OfferId,
   name: (kind: ResourceKind) => string,
+  deals = 0,
 ): { give: string; take: string } => {
+  const offer = offerOf(id, deals);
   const side = (part: Partial<Resources>): string =>
     (Object.entries(part) as [ResourceKind, number][])
       .map(([kind, amount]) => `${name(kind)} ${amount}`)
       .join(' · ');
-  return { give: side(OFFERS[id].give), take: side(OFFERS[id].take) };
+  return { give: side(offer.give), take: side(offer.take) };
 };

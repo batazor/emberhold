@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { OFFERS, OFFER_ORDER, offerLine, trade, tradeBlock } from './trade';
+import { PARITY, OFFER_ORDER, dealsToParity, feeOf, offerLine, offerOf, trade, tradeBlock } from './trade';
 import { createCamp, BUILD_COST } from './camp';
 import { GEAR_COST } from './gear';
 import { RESOURCE_NAME } from './resources';
@@ -27,7 +27,7 @@ const T0_SECONDS = 12;
 
 /** Сколько заходов нулевого яруса стоит один обмен. */
 const raidsPerTrade = (id: (typeof OFFER_ORDER)[number]): number => {
-  const give = OFFERS[id].give;
+  const give = PARITY[id].give;
   if (give.stone !== undefined) return give.stone / T0_STONE;
   if (give.wood !== undefined) return give.wood / T0_WOOD;
   throw new Error(`курс ${id} не назван ни в камне, ни в дереве`);
@@ -35,7 +35,7 @@ const raidsPerTrade = (id: (typeof OFFER_ORDER)[number]): number => {
 
 /** Железа в минуту, если добывать его обменом, а не глубиной. */
 const ironPerMin = (id: (typeof OFFER_ORDER)[number]): number => {
-  const got = OFFERS[id].take.iron ?? 0;
+  const got = PARITY[id].take.iron ?? 0;
   return (got / (raidsPerTrade(id) * T0_SECONDS)) * 60;
 };
 
@@ -105,7 +105,7 @@ describe('Обмен: курс', () => {
     const kitchenStone = BUILD_COST[2]?.stone ?? 0;
     const raidsToKitchen = kitchenStone / T0_STONE;
     const firstItem = GEAR_COST[1]?.iron ?? 0;
-    const cheapest = Math.min(...OFFER_ORDER.map((id) => raidsPerTrade(id) * (firstItem / (OFFERS[id].take.iron ?? 1))));
+    const cheapest = Math.min(...OFFER_ORDER.map((id) => raidsPerTrade(id) * (firstItem / (PARITY[id].take.iron ?? 1))));
     assert.ok(
       cheapest > raidsToKitchen,
       `наменять на первый предмет (${cheapest.toFixed(1)} заходов) быстрее, чем открыть ярус 1 ` +
@@ -125,16 +125,37 @@ describe('Обмен: курс', () => {
 });
 
 describe('Обмен: операция', () => {
-  test('меняет ровно по курсу и не даёт залезть в долг', () => {
+  test('меняет ровно по текущему курсу и не даёт залезть в долг', () => {
     const camp = createCamp();
-    camp.resources = { stone: 8, wood: 0, iron: 0, crystal: 0 };
+    const price = offerOf('iron-stone', 0).give.stone ?? 0;
+    camp.resources = { stone: price, wood: 0, iron: 0, crystal: 0 };
     assert.equal(tradeBlock(camp, 'iron-stone'), 'ok');
     assert.equal(trade(camp, 'iron-stone'), true);
     assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 1, crystal: 0 });
+    assert.equal(camp.trades, 1, 'сделка записана в отношения');
 
     assert.equal(tradeBlock(camp, 'iron-stone'), 'resources', 'причина, а не молчание');
     assert.equal(trade(camp, 'iron-stone'), false);
     assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 1, crystal: 0 }, 'отказ ничего не тронул');
+    assert.equal(camp.trades, 1, 'отказ знакомством не считается');
+  });
+
+  test('наценка в пользу продавца и тает сделками до паритета', () => {
+    assert.equal(feeOf(0), 0.25, 'незнакомому — четверть сверху');
+    for (let d = 0; d < 8; d++) {
+      assert.ok(feeOf(d + 1) <= feeOf(d), 'наценка не растёт от сделок');
+      for (const id of OFFER_ORDER) {
+        const now = offerOf(id, d).give;
+        const base = PARITY[id].give;
+        for (const kind of Object.keys(base) as (keyof typeof base)[]) {
+          assert.ok((now[kind] ?? 0) >= (base[kind] ?? 0), `${id}: курс щедрее паритета — §13 рушится`);
+        }
+      }
+    }
+    assert.equal(feeOf(5), 0, 'после пятой сделки — своя цена');
+    assert.equal(dealsToParity(0), 5);
+    assert.equal(dealsToParity(5), 0);
+    assert.deepEqual(offerOf('iron-stone', 9), PARITY['iron-stone'], 'дальше паритета курс не идёт');
   });
 
   test('обратного обмена нет ни одного', () => {
@@ -142,16 +163,18 @@ describe('Обмен: операция', () => {
     // лавку в качели, а §21.3 боится ровно «торгового автомата, где нечего
     // решать».
     for (const id of OFFER_ORDER) {
-      const offer = OFFERS[id];
+      const offer = PARITY[id];
       assert.equal(offer.give.iron ?? 0, 0, `${id}: железо отдают обратно`);
       assert.equal(offer.give.crystal ?? 0, 0, `${id}: кристалл вошёл в обмен`);
       assert.ok((offer.take.crystal ?? 0) === 0, `${id}: кристалл продаётся — §13 отменён`);
     }
   });
 
-  test('строка курса называет оба конца словами', () => {
-    const line = offerLine('iron-stone', (k) => RESOURCE_NAME[k]);
-    assert.equal(line.give, 'Камень 8');
-    assert.equal(line.take, 'Железо 1');
+  test('строка курса называет оба конца словами и текущую цену', () => {
+    const start = offerLine('iron-stone', (k) => RESOURCE_NAME[k], 0);
+    assert.equal(start.give, 'Камень 10', 'незнакомому дороже паритета');
+    assert.equal(start.take, 'Железо 1');
+    const parity = offerLine('iron-stone', (k) => RESOURCE_NAME[k], 5);
+    assert.equal(parity.give, 'Камень 8', 'своя цена — измеренный паритет');
   });
 });

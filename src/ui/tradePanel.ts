@@ -11,7 +11,7 @@
  * Ни вкладок, ни валюты-посредника, ни кнопки «закрыть»: игрок отходит,
  * и лавка гаснет сама.
  */
-import { OFFERS, OFFER_ORDER, offerLine, tradeBlock } from '../sim/trade';
+import { OFFER_ORDER, PARITY, dealsToParity, feeOf, offerOf, tradeBlock } from '../sim/trade';
 import type { OfferId } from '../sim/trade';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
@@ -52,11 +52,22 @@ export class TradePanel {
     title.className = 'panel t';
     title.textContent = 'Торговец';
 
-    this.wallet = document.createElement('p');
-    this.wallet.className = 'panel wallet';
+    // Классический прилавок: ваше — слева, его — справа. Слева только счёт,
+    // никаких кнопок: продаёт торговец, а не игрок, и обратного курса нет.
+    const cols = document.createElement('div');
+    cols.className = 'cols panel';
+    const mine = document.createElement('div');
+    mine.className = 'col';
+    const mineTitle = document.createElement('b');
+    mineTitle.textContent = 'Ваше';
+    this.wallet = document.createElement('div');
+    mine.append(mineTitle, this.wallet);
 
-    this.root.append(face, title, this.wallet);
-
+    const his = document.createElement('div');
+    his.className = 'col';
+    const hisTitle = document.createElement('b');
+    hisTitle.textContent = 'Торговца';
+    his.append(hisTitle);
     for (const id of OFFER_ORDER) {
       const box = document.createElement('div');
       box.className = 'row tight';
@@ -65,12 +76,20 @@ export class TradePanel {
       const note = document.createElement('span');
       note.className = 'why';
       box.append(button, note);
-      this.root.append(box);
+      his.append(box);
       this.rows.set(id, { button, note });
     }
+    cols.append(mine, his);
 
+    // Отношения — сделками: наценка видна числом и тает на глазах.
+    this.relation = document.createElement('p');
+    this.relation.className = 'panel rel';
+
+    this.root.append(face, title, cols, this.relation);
     parent.appendChild(this.root);
   }
+
+  private relation!: HTMLElement;
 
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
@@ -89,28 +108,46 @@ export class TradePanel {
    * (§20.3) и у мест под здание в прологе.
    */
   sync(camp: CampState): void {
-    this.wallet.textContent = (['stone', 'wood', 'iron'] as ResourceKind[])
-      .map((kind) => `${RESOURCE_NAME[kind]} ${camp.resources[kind]}`)
-      .join(' · ');
+    const deals = camp.trades ?? 0;
+    this.wallet.replaceChildren(
+      ...(['stone', 'wood', 'iron'] as ResourceKind[]).map((kind) => {
+        const line = document.createElement('div');
+        line.textContent = `${RESOURCE_NAME[kind]} ${camp.resources[kind]}`;
+        return line;
+      }),
+    );
 
     for (const id of OFFER_ORDER) {
       const row = this.rows.get(id);
       if (row === undefined) continue;
-      const line = offerLine(id, (kind) => RESOURCE_NAME[kind]);
-      row.button.textContent = `${line.give} → ${line.take}`;
+      const offer = offerOf(id, deals);
+      const side = (part: Partial<Record<ResourceKind, number>>): string =>
+        (Object.entries(part) as [ResourceKind, number][])
+          .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+          .join(' · ');
+      row.button.textContent = `${side(offer.take)} · за ${side(offer.give)}`;
       const block = tradeBlock(camp, id);
       row.button.disabled = block !== 'ok';
       row.note.textContent = block === 'ok' ? '' : 'не хватает';
     }
+
+    const fee = feeOf(deals);
+    this.relation.textContent = fee > 0
+      ? `Наценка ${Math.round(fee * 100)} на сто · до своей цены ${dealsToParity(deals)} сделок`
+      : 'Своя цена: наценки нет';
   }
 
   /** Что даёт обмен — одной строкой, для всплывающего события. */
-  static gained(id: OfferId): string {
-    const line = offerLine(id, (kind) => RESOURCE_NAME[kind]);
-    return `${line.take} · отдано ${line.give}`;
+  static gained(id: OfferId, deals: number): string {
+    const offer = offerOf(id, deals);
+    const side = (part: Partial<Record<ResourceKind, number>>): string =>
+      (Object.entries(part) as [ResourceKind, number][])
+        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .join(' · ');
+    return `${side(offer.take)} · отдано ${side(offer.give)}`;
   }
 
   static has(id: string): id is OfferId {
-    return id in OFFERS;
+    return id in PARITY;
   }
 }
