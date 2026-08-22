@@ -2052,11 +2052,16 @@ function toWheel(seed: number): boolean {
     campHud.notify('Колесо уже крутили сегодня — новая прокрутка завтра');
     return false;
   }
+  // Колесо открывается с карты, а карта доступна и из прогулок: чужие
+  // флаги сцены снимаются здесь, как у всех входов (см. leaveWalkSites).
+  leaveWalkSites();
   const answer = 1 + Math.floor(mulberry32(seed ^ 0x5b1e)() * 10);
   wheelView?.dispose();
   wheelView = new WheelView(answer, {
     onClaim: (crystals) => {
-      camp.resources.crystal += crystals;
+      // Приз — приток извне, и потолок кладовой (§13.6) для него не
+      // исключение: что не влезло, о том говорится.
+      if (stash(camp, { crystal: crystals }) > 0) campHud.notify(STORE_FULL);
       camp.wheelDay = day;
       persist();
       campHud.notify(`Выпало ${crystals} — кристаллы уже в лагере`);
