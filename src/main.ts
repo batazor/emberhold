@@ -32,7 +32,7 @@ import {
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
 import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
-import type { GearSlot } from './sim/gear';
+import type { GearSlot, Offhand } from './sim/gear';
 import {
   HERO_CLASSES,
   activeHero,
@@ -478,12 +478,7 @@ const campHud = new CampHud(app, {
     campHud.notify(`Стрелы ${camp.arrows} / ${cap}`);
     persist();
   },
-  /** §14.2 — переложить предмет в левой руке. Бесплатно и без таймера. */
-  onOffhand: (hand) => {
-    if (!setOffhand(camp, hand)) return;
-    campHud.notify(`В левой руке: ${OFFHAND[hand].name.toLowerCase()}`);
-    persist();
-  },
+  onOffhand: (hand) => swapOffhand(hand),
   /**
    * Задание «поставить палатку» (`sim/residents.ts`). Отказ звучит так же,
    * как виден (§18.3), а вид пересобирается тем же путём, каким он
@@ -696,7 +691,19 @@ const heroCard = new HeroCard(app, {
     track({ t: 'train_start', at: clock.now(), cls: hero.cls, level: hero.level });
     persist();
   },
+  // §14.2 — тот же выбор, что в «Припасах»: вход второй, рука одна.
+  onOffhand: (hand) => swapOffhand(hand),
 });
+
+/**
+ * §14.2 — переложить предмет в левой руке. Бесплатно и без таймера.
+ * Входов два — «Припасы» и разбор героя, — а рука и слова о ней одни.
+ */
+function swapOffhand(hand: Offhand): void {
+  if (!setOffhand(camp, hand)) return;
+  campHud.notify(`В левой руке: ${OFFHAND[hand].name.toLowerCase()}`);
+  persist();
+}
 
 const heroFan = new FanControl({
   parent: app,
@@ -751,11 +758,11 @@ const heroFan = new FanControl({
     const block = raidBlock(hero);
     if (block !== 'ok') {
       campHud.notify(refusal(HERO_CLASSES[hero.cls].name, RAID_REASON[block]));
-      heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard);
+      heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard, camp.gear, camp.offhand);
       return;
     }
     selectHero(roster, index);
-    heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard);
+    heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard, camp.gear, camp.offhand);
     persist();
   },
 });
@@ -3568,7 +3575,7 @@ function stepCampSystems(dt: number, now: number): void {
     if (shownHero >= roster.heroes.length) shownHero = roster.active;
     heroFan.draw();
     heroCard.setBottom(campHud.bands().bottom + 6);
-    heroCard.sync(roster, shownHero, now, camp.levels.yard);
+    heroCard.sync(roster, shownHero, now, camp.levels.yard, camp.gear, camp.offhand);
     residentCard.setBottom(campHud.bands().bottom + 6);
     // Крыша могла появиться или пропасть, пока карточка открыта.
     if (residentCard.visible) residentCard.sync(camp, shownResident);
