@@ -615,7 +615,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
   border: 1px solid var(--line); background: var(--portrait);
 }
 .face svg { display: block; width: 100%; height: 100%; }
-#trade .face { width: 56px; height: 56px; }
+#exchange .face { width: 56px; height: 56px; }
 /* В строке задания лицо мелкое: там на него смотрят краем глаза, а места
    ровно на строку. */
 #camp .task .face { width: 26px; height: 26px; flex: none; }
@@ -649,25 +649,37 @@ button[disabled] { opacity: 0.4; cursor: default; }
    экран превратил бы лагерь в витрину». Здесь витрина отменила бы прогулку
    по двору, ради которой во двор и шли. Панель стоит внизу, как приглашение
    разбить лагерь, и гаснет, стоит отойти. */
-#trade {
-  position: fixed; inset: auto 0 0 0; display: flex; flex-direction: column;
-  align-items: center; gap: 8px;
-  padding: 0 16px calc(26px + env(safe-area-inset-bottom));
-  pointer-events: none;
+/* Экран обмена (§13.5): классический прилавок с перетаскиванием.
+   Отдельный экран — выбор макетом: сделку собирают, а не жмут строку. */
+#exchange {
+  position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  padding: 16px; background: var(--scrim); backdrop-filter: blur(5px);
+  /* Экран забирает палец целиком: сцена под сделкой не ходит и не рубит. */
+  pointer-events: auto;
 }
-/* Классический прилавок: ваше слева, его справа. */
-#trade .cols { display: flex; gap: 18px; align-items: flex-start; padding: 10px 14px; }
-#trade .col { display: flex; flex-direction: column; gap: 6px; min-width: 118px; }
-#trade .col b { font-size: 12px; letter-spacing: 0.05em; color: var(--dim); }
-#trade .col div { font-size: 12px; color: var(--ink); }
-#trade .rel { margin: 0; font-size: 11px; color: var(--dim); }
-#trade .t {
+#exchange .head { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#exchange .cols { display: flex; gap: 12px; align-items: stretch; width: min(560px, 100%); }
+#exchange .col { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+#exchange .zone b { display: block; font-size: 12px; letter-spacing: 0.05em; color: var(--dim); margin-bottom: 6px; }
+#exchange .cards { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; }
+#exchange .zone.deal .cards {
+  border: 1px dashed var(--line); border-radius: var(--r-chip); padding: 6px; min-height: 44px;
+}
+#exchange .pile { font-size: 13px; padding: 8px 12px; touch-action: none; }
+#exchange .bal { margin: 0; font-size: 12px; color: var(--ink); }
+#exchange .acts { display: flex; gap: 10px; }
+#exchange .acts button { font-size: 14px; padding: 10px 26px; }
+#exchange .rel { margin: 0; font-size: 11px; color: var(--dim); }
+/* Коробку призраку даёт словарь (.chip) — здесь только полёт за пальцем. */
+.drag-ghost {
+  position: fixed; z-index: 40; transform: translate(-50%, -120%); pointer-events: none;
+  font-size: 13px;
+}
+#exchange .t {
   margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--ink);
 }
-#trade .wallet { margin: 0; font-size: 12px; color: var(--dim); }
-#trade button { pointer-events: auto; font-size: 14px; padding: 10px 22px; }
-#trade .why { font-size: 11px; color: var(--bad); min-width: 64px; }
 
 /* ---------- панель стройки стен (§12, §6.1.6) ---------- */
 #camp .build { gap: 10px; align-self: stretch; }

@@ -149,8 +149,7 @@ import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
-import { trade } from './sim/trade';
-import type { OfferId } from './sim/trade';
+import { askOf, makeDeal, worthOf } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
 import { loadTelemetry, track } from './sim/telemetry';
@@ -1090,20 +1089,31 @@ const campPrompt = new CampPrompt(hud.promptSlot, {
  * говорится строкой события — той же, в которой вылазка сообщает о подобранном
  * (§18.1): игрок обязан увидеть, что именно у него прибавилось.
  */
+/**
+ * «Уйти» закрывает экран, но герой ещё стоит у прилавка: без этого флага
+ * подход открыл бы лавку обратно тем же тиком. Сбрасывается уходом ногами.
+ */
+let tradeLeft = false;
+
 const tradePanel = new TradePanel(app, {
-  onTrade: (id: OfferId) => {
-    // Цена сделки — та, что стояла на кнопке: счёт сделок снимается до обмена.
-    const dealsBefore = camp.trades ?? 0;
-    if (!trade(camp, id)) {
+  onDeal: (give, take) => {
+    if (!makeDeal(camp, give, take)) {
       // Отказ обязан быть слышен так же, как виден (§18.3).
       play('deny');
-      return;
+      return false;
     }
     play('build');
-    track({ t: 'trade', at: clock.now(), offer: id });
-    if (raid !== null) raid.events.push(TradePanel.gained(id, dealsBefore));
+    // Сделка свободная: телеметрии важны обе оценки — по ним видно,
+    // сколько переплачивают сверх спроса торговца.
+    track({ t: 'trade', at: clock.now(), offer: 'deal', worth: worthOf(give), ask: askOf(take, (camp.trades ?? 0) - 1) });
+    if (raid !== null) raid.events.push(TradePanel.gained(give, take));
     tradePanel.sync(camp);
     persist();
+    return true;
+  },
+  onLeave: () => {
+    tradeLeft = true;
+    tradePanel.setVisible(false);
   },
 });
 
@@ -3253,8 +3263,10 @@ startLoop({
        */
       if (castleNow !== null) {
         const near = atTrader(castleNow, raid.hero.x, raid.hero.z);
-        if (near !== tradePanel.visible) tradePanel.setVisible(near);
-        if (near) tradePanel.sync(camp);
+        if (!near) tradeLeft = false;
+        const show = near && !tradeLeft;
+        if (show !== tradePanel.visible) tradePanel.setVisible(show);
+        if (show) tradePanel.sync(camp);
       }
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).

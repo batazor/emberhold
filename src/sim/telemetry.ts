@@ -11,7 +11,6 @@
 import type { BuildingId } from './camp';
 import type { ConsumableId } from './consumables';
 import type { DraftCardId } from './draft';
-import type { OfferId } from './trade';
 import type { HeroClassId, SkillId } from './heroes';
 import type { OnbStep } from './onboarding';
 import type { RaidCause } from './raid';
@@ -87,7 +86,7 @@ export type TelemetryEvent =
    * Курс намеренно плохой, и обмен, случающийся чаще вылазки на ярус 1,
    * означает, что он всё-таки щедр.
    */
-  | { t: 'trade'; at: number; offer: OfferId }
+  | { t: 'trade'; at: number; offer: 'deal'; worth: number; ask: number }
   /**
    * Кадры онбординга. Метрика раскадровки — доля дошедших до первой
    * возвращения, цель не ниже 85%: всё, что ниже, значит, что мы теряем людей
