@@ -12,18 +12,18 @@
   ],
   "raidsPerSession": 20,
   "metrics": {
-    "failRate": 0.0687,
-    "avgDamageTaken": 11.3375,
-    "avgFights": 1.475,
-    "avgDepthShare": 0.7856,
-    "buyOfferRate": 0.6937,
-    "buyTakeRate": 0.9843,
-    "avgCarried": 7.4875,
-    "avgLost": 0.0813,
-    "medianReturnMin": 343.75,
-    "hq": 2.25,
+    "failRate": 0,
+    "avgDamageTaken": 5.8006,
+    "avgFights": 1.5625,
+    "avgDepthShare": 0.7946,
+    "buyOfferRate": 0.75,
+    "buyTakeRate": 0.9086,
+    "avgCarried": 7.9813,
+    "avgLost": 0,
+    "medianReturnMin": 487,
+    "hq": 2.125,
     "kitchen": 2,
-    "storage": 1.875,
-    "elapsedHours": 14.8958
+    "storage": 2,
+    "elapsedHours": 14.9031
   }
 }

@@ -12,6 +12,10 @@ import { createCamp } from './camp';
 import { visionRadius } from './config';
 import {
   CACHE_LOOT,
+  STAT_POINTS_PER_LEVEL,
+  autoSpend,
+  spendStat,
+  stats,
   HAUL_CAPACITY,
   HERO_CLASSES,
   MAX_WOUNDS,
@@ -283,6 +287,45 @@ describe('Отряд', () => {
     assert.equal(hero.level, 2);
   });
 
+  test('§11.7 — уровень выдаёт очки характеристик, и тратит их игрок', () => {
+    const hero = createHero('knight', 0);
+    assert.equal(hero.statPoints, 0, 'на старте очков нет');
+    addXp(hero, xpToNext(1));
+    assert.equal(hero.statPoints, STAT_POINTS_PER_LEVEL, 'уровень выдал очки');
+    const before = stats(hero).attack;
+    assert.equal(stats(hero).attack, before, 'сами по себе очки статов не меняют');
+    assert.ok(spendStat(hero, 'attack'), 'очко ложится');
+    assert.equal(stats(hero).attack, before + 1, 'купленное читается статами');
+    hero.statPoints = 0;
+    assert.equal(spendStat(hero, 'attack'), false, 'без очков не купить');
+  });
+
+  test('§11.8 — Плац выдаёт те же очки, что вылазка: уровень один', () => {
+    const roster = createRoster();
+    roster.heroes.push(createHero('archer', 1));
+    roster.heroes[1]!.level = 5;
+    const knight = roster.heroes[0]!;
+    startTraining(roster, knight, 0, 1);
+    refreshHeroes(roster, TRAIN_PER_LEVEL + 1);
+    assert.equal(knight.level, 2);
+    assert.equal(knight.statPoints, STAT_POINTS_PER_LEVEL);
+  });
+
+  test('§11.7 — авто-трата детерминирована и ходит по весам класса', () => {
+    const a = createHero('knight', 0);
+    const b = createHero('knight', 1);
+    for (const h of [a, b]) {
+      h.statPoints = 4;
+      autoSpend(h);
+    }
+    assert.deepEqual(a.spent, b.spent, 'тот же герой — те же числа');
+    assert.equal(a.statPoints, 0, 'очки потрачены до конца');
+    const g = HERO_CLASSES.knight.growth;
+    for (const key of ['attack', 'defense', 'knowledge', 'agility'] as const) {
+      if (g[key] === 0) assert.equal(a.spent[key], 0, `${key}: вес нулевой — очков нет`);
+    }
+  });
+
   test('отряд переживает круг save → load', () => {
     wipe();
     const camp = createCamp();
@@ -294,6 +337,9 @@ describe('Отряд', () => {
     startHealing(roster.heroes[0]!, 500);
     roster.active = 1;
 
+    roster.heroes[1]!.statPoints = 3;
+    spendStat(roster.heroes[1]!, 'agility');
+
     save(camp, roster, 500);
     const back = load().roster;
     // Без localStorage (Node) сейв не пишется — тогда проверяем хотя бы то,
@@ -303,6 +349,32 @@ describe('Отряд', () => {
       assert.equal(back.active, 1);
       assert.equal(back.heroes[1]!.level, 3);
       assert.equal(back.heroes[0]!.status, 'healing', 'лечение переживает перезапуск');
+      assert.equal(back.heroes[1]!.spent.agility, 1, 'купленное переживает перезапуск');
+      assert.equal(back.heroes[1]!.statPoints, 2, 'свободные очки переживают перезапуск');
+    }
+    wipe();
+  });
+
+  test('§11.7 — старый сейв без spent открывается прежним героем, а не базой', () => {
+    // Рост был автоматикой класса; купленное выводится из неё же.
+    wipe();
+    const camp = createCamp();
+    const roster = createRoster();
+    roster.heroes[0]!.level = 4;
+    save(camp, roster, 100);
+    const key = 'emberhold/save';
+    const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(key);
+    if (raw !== null) {
+      const data = JSON.parse(raw);
+      for (const h of data.heroes.list) {
+        delete h.spent;
+        delete h.sp;
+      }
+      localStorage.setItem(key, JSON.stringify(data));
+      const back = load().roster.heroes[0]!;
+      const g = HERO_CLASSES.knight.growth;
+      assert.equal(back.spent.attack, g.attack * 3, 'Атака выведена из прежнего роста');
+      assert.equal(back.spent.defense, g.defense * 3, 'Защита выведена из прежнего роста');
     }
     wipe();
   });

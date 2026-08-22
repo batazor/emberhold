@@ -42,6 +42,7 @@ import {
   raidBlock,
   refreshHeroes,
   selectHero,
+  spendStat,
   startTraining,
   syncRoster,
   trainBlock,
@@ -839,6 +840,14 @@ const heroCard = new HeroCard(app, {
     }
     startTraining(roster, hero, clock.now(), camp.levels.yard);
     track({ t: 'train_start', at: clock.now(), cls: hero.cls, level: hero.level });
+    persist();
+  },
+  // §11.7 — очко ложится по тапу и сразу видно в строке: решение игрока,
+  // а не автоматика класса.
+  onSpend: (index, key) => {
+    const hero = roster.heroes[index];
+    if (hero === undefined || !spendStat(hero, key)) return;
+    heroCard.sync(roster, shownHero, clock.now(), camp.levels.yard, camp.gear, camp.offhand);
     persist();
   },
   // §14.2 — тот же выбор, что в «Припасах»: вход второй, рука одна.

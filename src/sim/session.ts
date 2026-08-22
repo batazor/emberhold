@@ -11,6 +11,7 @@
  * а не отчёт для чтения. Печатью занимается scripts/play.ts.
  */
 import { mulberry32 } from '../core/rng';
+import { CLASS_ORDER, addXp, autoSpend, createHero, loadout, raidXp } from './heroes';
 import { POLICIES, playRaid } from './bot';
 import {
   BUILDING_ORDER,
@@ -61,6 +62,9 @@ export type NoOfferReason = 'слот занят' | 'потолок Жилья' 
 export interface RaidRow {
   readonly n: number;
   readonly tier: Tier;
+  /** §22.6 — уровень героя на входе в вылазку: по нему `npm run levels`
+   *  сверяет темп опыта с лестницей `TIER_HERO_LEVEL`. */
+  readonly heroLevel: number;
   readonly evacuated: boolean;
   readonly carried: number;
   readonly lost: number;
@@ -108,6 +112,13 @@ export function playSession(seed: number): SessionResult {
   const rng = mulberry32(seed);
   setEvents([]);
 
+  /**
+   * §22.6 — герой петли растёт, как в игре: опыт за вылазку, очки — в
+   * характеристики авто-тратой. Вечный новичок был честен, пока не росли
+   * противники; с их ростом он мерил бы встречу, которой в игре нет.
+   */
+  const hero = createHero(CLASS_ORDER[0]!, 0);
+
   let now = 0;
   let watermark = 0;
   const rows: RaidRow[] = [];
@@ -136,12 +147,14 @@ export function playSession(seed: number): SessionResult {
     }
 
     const tier = bestTier(camp);
+    const heroLevel = hero.level;
     const raid = playRaid(
       {
         seed: (rng() * 1e9) | 0,
         tier,
         kitchenLevel: camp.levels.kitchen,
         storageLevel: camp.levels.storage,
+        loadout: loadout(hero),
         gear: camp.gear,
         offhand: camp.offhand,
         arrows: camp.arrows,
@@ -150,6 +163,8 @@ export function playSession(seed: number): SessionResult {
       POLICIES.balanced,
       rng,
     );
+    addXp(hero, raidXp(raid.carriedTotal, tier, raid.status === 'evacuated'));
+    autoSpend(hero);
     // §21 — купленное ушло в вылазку и не возвращается: сгорает независимо
     // от того, пригодилось или нет. Копить нечего.
     camp.loadout = [];
@@ -228,6 +243,7 @@ export function playSession(seed: number): SessionResult {
     rows.push({
       n,
       tier,
+      heroLevel,
       evacuated: raid.status === 'evacuated',
       carried: raid.carriedTotal,
       lost: raid.lost,

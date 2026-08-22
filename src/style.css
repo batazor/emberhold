@@ -497,6 +497,14 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .r-id .face { width: 34px; height: 34px; flex: none; }
 .r-id > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .r-meta { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+/* §11.7 — «+» у характеристики: маленькая, но попадаемая пальцем. */
+.hc-plus {
+  margin-left: 2px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 6px;
+}
 .r-skill { font-size: 11px; color: var(--dim); }
 .r-acts { display: flex; gap: 6px; }
 .r-acts button { flex: 1; font-size: 12px; }

@@ -1,6 +1,37 @@
 import type { EnemyKind, EnemyStats } from './types';
 
 /**
+ * §15/§22.6 — уровень противника. Та же линейка, что у героя: числа первого
+ * уровня лежат в `ENEMY_STATS`, рост — здесь, итог считает `enemyStats`.
+ * Растут только стойкость и Атака: скорость, замах и дальность — рисунок
+ * типа, а не сила, и уровень их не трогает, иначе воин пятого уровня
+ * перестал бы читаться воином.
+ *
+ * Уровень назначает место, а не особь: ярусные противники получают
+ * `TIER_ENEMY_LEVEL` яруса (balance.ts), обитатели мест — привидение,
+ * стражник — живут первым уровнем, пока их место одно.
+ *
+ * Числа черновые до перемера (§22.6): цену присутствия уровня снимает
+ * `npm run encounter`, а не эта таблица.
+ */
+export const ENEMY_GROWTH: Record<EnemyKind, { readonly hp: number; readonly attack: number }> = {
+  minion: { hp: 2, attack: 1 },
+  warrior: { hp: 3, attack: 1 },
+  mage: { hp: 2, attack: 1 },
+  ghost: { hp: 2, attack: 1 },
+  guard: { hp: 3, attack: 1 },
+};
+
+/** Статы противника уровня `level`. Первый уровень — ровно `ENEMY_STATS`. */
+export function enemyStats(kind: EnemyKind, level: number): EnemyStats {
+  const base = ENEMY_STATS[kind];
+  const n = Math.max(1, Math.floor(level)) - 1;
+  if (n === 0) return base;
+  const g = ENEMY_GROWTH[kind];
+  return { ...base, hp: base.hp + g.hp * n, attack: base.attack + g.attack * n };
+}
+
+/**
  * §15 — три типа, по одному на диапазон ярусов. Все трое — скелеты из набора
  * KayKit (§6.1.3), и различает их снаряжение, а не порода: голые кости,
  * доспех с топором, посох. Различимы силуэтом раньше, чем цветом.

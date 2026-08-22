@@ -28,8 +28,9 @@
  */
 import { POLICIES, playRaid } from '../src/sim/bot';
 import { mulberry32 } from '../src/core/rng';
-import { ENCOUNTER_WOUND } from '../src/sim/balance';
-import { ENEMY_STATS } from '../src/sim/enemies';
+import { ENCOUNTER_WOUND, TIER_ENEMY_LEVEL, TIER_HERO_LEVEL } from '../src/sim/balance';
+import { ENEMY_STATS, enemyStats } from '../src/sim/enemies';
+import { referenceLoadout } from '../src/sim/heroes';
 import { generateLocation } from '../src/sim/generate';
 import type { RaidOptions } from '../src/sim/raid';
 import type { EnemyKind, RaidEnemyKind, Tier } from '../src/sim/types';
@@ -48,15 +49,29 @@ const CAMP = { kitchenLevel: 3, storageLevel: 3 };
  * Локация яруса с подменённым составом врагов. Геометрия, находки и провиант
  * остаются теми же — меняется ровно одно, иначе сравнивать будет нечего.
  */
+/**
+ * §22.6 — обе стороны растут с ярусом, и прибор обязан мерить рост:
+ * тела встают уровнем яруса (`TIER_ENEMY_LEVEL`), а ходит модельный герой
+ * яруса (`TIER_HERO_LEVEL`). Мерить Дно новичком значило бы снимать цену
+ * встречи, которой в игре не бывает.
+ */
 function withEnemies(seed: number, kinds: readonly EnemyKind[], tier: Tier = TIER): RaidOptions {
   const loc = generateLocation(seed, tier, 1);
+  const level = TIER_ENEMY_LEVEL[tier];
   const kept = loc.enemies.slice(0, kinds.length);
   const enemies = kept.map((e, i) => ({
     ...e,
     kind: kinds[i]!,
-    hp: ENEMY_STATS[kinds[i]!].hp,
+    level,
+    hp: enemyStats(kinds[i]!, level).hp,
   }));
-  return { ...CAMP, seed, tier, loc: { ...loc, enemies } };
+  return {
+    ...CAMP,
+    seed,
+    tier,
+    loadout: referenceLoadout(TIER_HERO_LEVEL[tier]),
+    loc: { ...loc, enemies },
+  };
 }
 
 /**

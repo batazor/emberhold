@@ -61,6 +61,7 @@ function duelField(kind: EnemyKind, gap: number): GameLocation {
       {
         id: 0,
         kind,
+        level: 1,
         x: mid + gap,
         z: mid,
         prevX: mid + gap,

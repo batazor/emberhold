@@ -47,7 +47,7 @@ import { followSpots } from '../sim/raid';
 import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
-import { ENEMY_STATS } from '../sim/enemies';
+import { ENEMY_STATS, enemyStats } from '../sim/enemies';
 import { inYard } from '../sim/castleSite';
 import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
@@ -1906,7 +1906,7 @@ export class RaidView {
     rig.root.position.set(e.x, 0, e.z);
     this.group.add(rig.root);
 
-    const { root: lifeRoot, fill } = this.buildLifeBar(ENEMY_STATS[e.kind].hp);
+    const { root: lifeRoot, fill } = this.buildLifeBar(enemyStats(e.kind, e.level).hp);
     rig.root.add(lifeRoot);
 
     this.enemyViews.set(e.id, {
@@ -2725,7 +2725,7 @@ export class RaidView {
 
       // Полоска показывается, когда есть что показывать: спящий и целый
       // противник её не носит, иначе локация превращается в приборную панель.
-      const share = (inShow ? this.shownHp.get(e.id) ?? e.hp : e.hp) / ENEMY_STATS[e.kind].hp;
+      const share = (inShow ? this.shownHp.get(e.id) ?? e.hp : e.hp) / enemyStats(e.kind, e.level).hp;
       view.lifeRoot.visible = (e.awake || share < 1) && !this.shownDead.has(e.id);
       view.lifeRoot.position.y = ENEMY_HEIGHT[e.kind] / view.rig.root.scale.y + 0.4;
       view.life.scale.x = (view.life.userData.width as number) * share;

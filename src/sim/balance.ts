@@ -83,11 +83,20 @@ export const WOUND_COST: Record<RaidEnemyKind, number> = {
  * Именно это и ломало лестницу: ярус 2 выходил тяжелее Дна, потому что
  * бюджет пускал туда столько же врагов, сколько на вдвое большую карту.
  */
+/**
+ * **Перемерено в третий раз — под уровни обеих сторон (§22.6).** Тела встают
+ * уровнем яруса (`TIER_ENEMY_LEVEL`), ходит модельный герой яруса
+ * (`TIER_HERO_LEVEL`): мерить Дно новичком значило бы снимать цену встречи,
+ * которой в игре не бывает. Глубокие ярусы подешевели не по ошибке: рост
+ * героя обгоняет рост тел, и то же привидение стоит герою Дна почти ничего —
+ * поэтому бюджет там покупает больше тел, и лестницу держит число, а не
+ * каждый удар.
+ */
 export const ENCOUNTER_WOUND: Record<Tier, Record<RaidEnemyKind, number>> = {
-  0: { minion: 4.42, warrior: 10.63, mage: 14.75 },
-  1: { minion: 4.13, warrior: 9.72, mage: 14.38 },
-  2: { minion: 2.10, warrior: 5.13, mage: 8.50 },
-  3: { minion: 1.20, warrior: 2.93, mage: 6.00 },
+  0: { minion: 3.67, warrior: 8.62, mage: 11.63 },
+  1: { minion: 3.67, warrior: 8.60, mage: 11.60 },
+  2: { minion: 1.28, warrior: 3.14, mage: 4.53 },
+  3: { minion: 0.82, warrior: 0.67, mage: 2.00 },
 };
 
 /**
@@ -330,9 +339,12 @@ export function indifferenceBag(gain: number, failChance: number, risk: number):
  * (насколько опасен бой). Ярус 0 обучающий — там щедрость намеренно высокая.
  */
 export const TIER_SPEC: Record<Tier, TierSpec> = {
-  0: { tier: 0, size: 8, containers: 3, generosity: 0.9, capacityRatio: 1.5, woundBudget: 0.6, depthValue: 1.4, risk: 0, base: 2 },
-  1: { tier: 1, size: 12, containers: 5, generosity: 0.5, capacityRatio: 1.7, woundBudget: 0.7, depthValue: 1.8, risk: 0.3, base: 2 },
-  2: { tier: 2, size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.5, depthValue: 2.6, risk: 0.6, base: 3 },
+  // ω по ярусам пересчитан под §22.6 (уровни обеих сторон): вердикт
+  // npm run measure, а не оценка. 0.6 на ярусе 0 покупал третьего скелета,
+  // и обучающий ярус проваливался в 49% — тяжелее всех.
+  0: { tier: 0, size: 8, containers: 3, generosity: 0.9, capacityRatio: 1.5, woundBudget: 0.5, depthValue: 1.4, risk: 0, base: 2 },
+    1: { tier: 1, size: 12, containers: 5, generosity: 0.5, capacityRatio: 1.7, woundBudget: 0.65, depthValue: 1.8, risk: 0.3, base: 2 },
+  2: { tier: 2, size: 16, containers: 7, generosity: 0.4, capacityRatio: 1.8, woundBudget: 0.45, depthValue: 2.6, risk: 0.6, base: 3 },
   3: { tier: 3, size: 20, containers: 9, generosity: 0.35, capacityRatio: 1.8, woundBudget: 0.55, depthValue: 3.5, risk: 1, base: 3 },
 };
 
@@ -414,3 +426,24 @@ export const modelKitchenFood = (level: number): number =>
 
 /** Ярус k открывается Кухней k+1: запас на этом уровне и есть модельный. */
 export const TIER_KITCHEN_GATE: Record<Tier, number> = { 0: 1, 1: 2, 2: 3, 3: 4 };
+
+/**
+ * §22.6 — уровень противников яруса. Роль «уровня врага» и раньше несла
+ * глубина, но несла составом; теперь ярус задаёт и уровень тел: та же
+ * лестница, что у Кухни, — по уровню на ярус. Читают его генератор
+ * и засады (`raid.ts`), считает статы `enemyStats`.
+ */
+// Дно прыгает через уровень: рост модельного героя (+2 очка за уровень,
+// по два уровня на ярус) обгоняет рост тел (+1 Атаки за уровень), и ровная
+// лестница уровней дала Дну 12% провалов при целевых ~35 (npm run measure).
+export const TIER_ENEMY_LEVEL: Record<Tier, number> = { 0: 1, 1: 2, 2: 3, 3: 5 };
+
+/**
+ * §22.6 — модельный герой яруса: каким уровнем прибор меряет цену
+ * присутствия и лестницу сложности. Пока противники не росли, эталон был
+ * один — первый уровень; с ростом врагов мерить Дно героем-новичком значит
+ * мерить не игру, а невозможную встречу. Лестница задаёт и цель кривой
+ * опыта: к открытию яруса герой в среднем обязан дорасти до этих уровней —
+ * это проверяет `npm run levels`, а не обсуждение.
+ */
+export const TIER_HERO_LEVEL: Record<Tier, number> = { 0: 1, 1: 3, 2: 5, 3: 7 };

@@ -97,6 +97,12 @@ export interface Projectile {
 export interface Enemy {
   readonly id: number;
   readonly kind: EnemyKind;
+  /**
+   * §22.6 — уровень: ярусным даёт `TIER_ENEMY_LEVEL`, обитатели мест
+   * (привидение, стражник) живут первым. Статы уровня считает `enemyStats`;
+   * в `hp` ниже лежит текущее значение, потолок — `enemyStats(kind, level).hp`.
+   */
+  readonly level: number;
   x: number;
   z: number;
   prevX: number;

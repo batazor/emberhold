@@ -45,7 +45,7 @@ function duo(kind: 'minion' | 'warrior' | 'mage' = 'minion', agility = 0, seed =
   const state = createBattle(
     N, open(),
     [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility }],
-    [{ id: 0, kind, x: e.x, z: e.z, hp: ENEMY_STATS[kind].hp }],
+    [{ id: 0, kind, level: 1, x: e.x, z: e.z, hp: ENEMY_STATS[kind].hp }],
     seed,
   );
   if (agility === 0) for (const u of state.units) u.dodge = 0;
@@ -91,8 +91,8 @@ describe('Пошаговый бой', () => {
       N, open(),
       [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0 }],
       [
-        { id: 0, kind: 'minion', x: c.x, z: c.z, hp: 4 },
-        { id: 1, kind: 'minion', x: c.x + 0.01, z: c.z, hp: 4 },
+        { id: 0, kind: 'minion', level: 1, x: c.x, z: c.z, hp: 4 },
+        { id: 1, kind: 'minion', level: 1, x: c.x + 0.01, z: c.z, hp: 4 },
       ],
     );
     const spots = state.units.map((u) => hexKey(u.hex));

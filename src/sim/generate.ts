@@ -1,8 +1,8 @@
 import { mulberry32, randInt } from '../core/rng';
 import type { Rng } from '../core/rng';
-import { ENEMY_DEPTH_SHARE, GOLD_CHEST_CHANCE } from './balance';
+import { ENEMY_DEPTH_SHARE, GOLD_CHEST_CHANCE, TIER_ENEMY_LEVEL } from './balance';
 import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
-import { ENEMY_STATS, TIER_ROSTER } from './enemies';
+import { TIER_ROSTER, enemyStats } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
 import { rollLoot } from './resources';
 import { STONES, scatterStones } from './stones';
@@ -339,8 +339,10 @@ export function generateLocation(
   const roster = TIER_ROSTER[tier];
   const count = Math.max(0, Math.round(roster.length * enemyMul));
   const scaled = Array.from({ length: count }, (_, i) => roster[i % roster.length]!);
+  // §22.6 — ярус задаёт уровень тел, статы уровня считает enemyStats.
+  const level = TIER_ENEMY_LEVEL[tier];
   scaled.forEach((kind, i) => {
-    const stats = ENEMY_STATS[kind];
+    const stats = enemyStats(kind, level);
     // §15 — маг перекрывает маршрут, а не гонится. Значит его место
     // в узком проходе: там обход стоит шагов, а прорыв — ран.
     // Проходы для мага фильтруются по той же глубине: узкий проход у входа
@@ -357,6 +359,7 @@ export function generateLocation(
     enemies.push({
       id: i,
       kind,
+      level,
       x,
       z,
       prevX: x,
