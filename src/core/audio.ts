@@ -119,6 +119,13 @@ export function unlockAudio(): void {
   }
   if (ac.state === 'suspended') void ac.resume();
   loadSamples();
+  loadMusic();
+  // Сейв просыпается прямо в лагере: startCampTune тогда случился до первого
+  // жеста, при пустом контексте, и его таймер умер молча. Перезапуск здесь,
+  // а не в сцене — жест приносит звук, сцена уже на месте.
+  if (tuneOn && tuneTimer === null && musicSrc === null) {
+    tuneTimer = setTimeout(playPhrase, 1200);
+  }
 }
 
 const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
@@ -613,10 +620,80 @@ let tuneTimer: ReturnType<typeof setTimeout> | null = null;
 let tuneOn = false;
 let tuneAt = 0;
 
+/**
+ * Запечённая мелодия лагеря. Как и сэмплы §18.3: файл — это тембр, а не
+ * звук. Пока он едет — и если не доедет вовсе — играют фразы CAMP_PHRASES,
+ * поэтому лагерь не бывает немым из-за сети.
+ */
+const MUSIC_FILES = ['./music/camp0.m4a', './music/camp1.m4a'];
+/** Под шину амбиента: треки смастерены громче процедурных фраз. */
+const MUSIC_GAIN = 0.35;
+/** Пауза между треками: подряд без вдоха они слипаются в радио. */
+const MUSIC_GAP_SEC = 4;
+const musicBufs: (AudioBuffer | null)[] = MUSIC_FILES.map(() => null);
+let musicAsked = false;
+let musicAt = 0;
+let musicSrc: AudioBufferSourceNode | null = null;
+
+function loadMusic(): void {
+  if (musicAsked || ac === null) return;
+  musicAsked = true;
+  MUSIC_FILES.forEach((file, i) => {
+    void fetch(file)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return await ac!.decodeAudioData(await res.arrayBuffer());
+      })
+      .then((buf) => {
+        // Файл доехал посреди игры: фразы уступят ему на ближайшей границе —
+        // playPhrase сам увидит буфер. Перебивать звучащую фразу нельзя,
+        // это два слоя музыки разом.
+        musicBufs[i] = buf;
+      })
+      .catch(() => {});
+  });
+}
+
+/** Первый уже доехавший трек, начиная с очереди `musicAt`; null — рано. */
+function nextMusic(): AudioBuffer | null {
+  for (let i = 0; i < musicBufs.length; i++) {
+    const buf = musicBufs[(musicAt + i) % musicBufs.length];
+    if (buf !== null) {
+      musicAt = (musicAt + i) % musicBufs.length;
+      return buf;
+    }
+  }
+  return null;
+}
+
+function playMusic(): void {
+  if (!tuneOn || ac === null || musicSrc !== null) return;
+  const buf = nextMusic();
+  if (buf === null) return;
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const g = ac.createGain();
+  g.gain.value = MUSIC_GAIN;
+  src.connect(g);
+  g.connect(buses.get('amb')!);
+  src.onended = (): void => {
+    if (musicSrc !== src) return; // остановлен снаружи
+    musicSrc = null;
+    musicAt = (musicAt + 1) % musicBufs.length;
+    if (tuneOn) tuneTimer = setTimeout(playMusic, MUSIC_GAP_SEC * 1000);
+  };
+  src.start();
+  musicSrc = src;
+}
+
 function playPhrase(): void {
   if (tuneTimer !== null) clearTimeout(tuneTimer);
   tuneTimer = null;
   if (!tuneOn || ac === null) return;
+  if (nextMusic() !== null) {
+    playMusic();
+    return;
+  }
 
   const phrase = CAMP_PHRASES[tuneAt % CAMP_PHRASES.length]!;
   const len = phraseSec(phrase);
@@ -637,6 +714,7 @@ function playPhrase(): void {
 export function startCampTune(): void {
   if (tuneOn) return;
   tuneOn = true;
+  loadMusic();
   tuneTimer = setTimeout(playPhrase, 1200);
 }
 
@@ -644,6 +722,14 @@ export function stopCampTune(): void {
   tuneOn = false;
   if (tuneTimer !== null) clearTimeout(tuneTimer);
   tuneTimer = null;
+  if (musicSrc !== null) {
+    try {
+      musicSrc.stop();
+    } catch {
+      /* уже остановлен */
+    }
+    musicSrc = null;
+  }
 }
 
 export function stopAmbient(): void {
@@ -662,14 +748,22 @@ export function bindPageAudio(): void {
   // на канвасе, именно поэтому — первым игрок трогает кнопку «Играть».
   document.addEventListener('pointerdown', () => unlockAudio(), { once: true });
 
+  // Что глушили при сворачивании — чтобы вернуть при развороте: сцена
+  // о сворачивании не знает и перезапускать мелодию сама не станет.
+  let tuneHushed = false;
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      tuneHushed = tuneOn;
       stopPulse();
       stopAmbient();
       stopCampTune();
       if (ac !== null && ac.state === 'running') void ac.suspend();
-    } else if (ac !== null && ac.state === 'suspended') {
-      void ac.resume();
+    } else {
+      if (ac !== null && ac.state === 'suspended') void ac.resume();
+      if (tuneHushed) {
+        tuneHushed = false;
+        startCampTune();
+      }
     }
   });
 }

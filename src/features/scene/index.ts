@@ -55,7 +55,7 @@ export function panelsFor(scene: Scene, quiet = false): Panels {
 export interface Sound {
   /** Ярус подложки или null — тишина. */
   readonly ambient: number | null;
-  /** Единственная мелодия игры звучит только в лагере. */
+  /** Фоновая музыка звучит везде: заставка, лагерь, вылазка. */
   readonly campTune: boolean;
   /** Пульс провианта отсчитывает только там, где провиант тратится. */
   readonly pulse: boolean;
@@ -64,10 +64,10 @@ export interface Sound {
 export function soundFor(scene: Scene, tier: number): Sound {
   switch (scene) {
     case 'title':
-      return { ambient: null, campTune: false, pulse: false };
+      return { ambient: null, campTune: true, pulse: false };
     case 'camp':
       return { ambient: null, campTune: true, pulse: false };
     case 'raid':
-      return { ambient: tier, campTune: false, pulse: true };
+      return { ambient: tier, campTune: true, pulse: true };
   }
 }
