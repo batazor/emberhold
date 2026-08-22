@@ -1,5 +1,5 @@
 import './style.css';
-import { Clock } from './core/clock';
+import { Clock, formatDuration } from './core/clock';
 import { loadMix } from './core/settings';
 import { startLoop } from './core/loop';
 import {
@@ -222,6 +222,8 @@ import type { Chore } from './sim/chores';
 import { chatAt, phraseAt } from './sim/talk';
 import type { Talker } from './sim/talk';
 import { Bubbles } from './render/bubbles';
+import { WorkBars } from './render/workbar';
+import type { WorkItem } from './render/workbar';
 import type { Bubble } from './render/bubbles';
 import { DWELLER_SPEED } from './sim/garrison';
 import { ResidentCard } from './ui/residentCard';
@@ -350,6 +352,8 @@ let resultShown = false;
 let idleSeconds = 0;
 let lastCampFrame = 0;
 let selected: BuildingId | null = null;
+/** Кнопка «Палатка» вооружила выбор места: следующий тап ставит палатку. */
+let placingTent = false;
 
 /**
  * Отладка, а не механика — как ползунок «Ночь». Плотность травы меряется
@@ -421,6 +425,10 @@ const rig = new SceneRig(app);
 /** Пузыри реплик жильцов (§23.5): слой один на игру, живёт он только
  *  в лагере на поляне — остальные кадры чистят его каждый рендер. */
 const bubbles = new Bubbles(rig);
+
+/** Полосы прогресса над стройкой и инструментом (`render/workbar.ts`):
+ *  слой один на игру, наполняет его каждый рендер `syncWorkBars`. */
+const workBars = new WorkBars(rig);
 
 /**
  * Ночь сцены. Заданная адресом перебивает сценарную: замер на конкретной
@@ -524,25 +532,26 @@ const campHud = new CampHud(app, {
   },
   onOffhand: (hand) => swapOffhand(hand),
   /**
-   * Задание «поставить палатку» (`sim/residents.ts`). Отказ звучит так же,
-   * как виден (§18.3), а вид пересобирается тем же путём, каким он
-   * пересобирается после настоящей постройки.
+   * Задание «поставить палатку» (`sim/residents.ts`). Кнопка не ставит,
+   * а вооружает: место выбирает игрок следующим тапом — тем же жестом,
+   * каким переставляются здания (§20.4). Первая версия ставила сама,
+   * и палатка вставала в клетку под визуальным свесом шатра Жилья:
+   * игрок платил пять дерева и видел палатку, выросшую из чужой.
+   * Отказ звучит так же, как виден (§18.3).
    */
   onTent: () => {
-    const spot = buildTent(camp);
-    if (spot === null) {
+    const why = tentBlock(camp);
+    if (why !== 'ok') {
       play('deny');
-      const why = tentBlock(camp);
-      if (why !== 'ok') campHud.notify(TENT_REASON[why]);
+      campHud.notify(TENT_REASON[why]);
       return;
     }
-    play('build');
-    campView.setCamp(camp);
-    // Тот же вид, что и на площадке, — на поляне. Раньше здесь стоял только
-    // `campView`, спрятанный в этой сцене, и палатка за пять дерева
-    // не появлялась нигде: задание §16.1 закрывалось молча.
-    placeTents();
-    persist();
+    // Палатка и перестановка держат один палец: вооружённых жестов
+    // не бывает двух разом.
+    selected = null;
+    campView.highlight(null);
+    placingTent = true;
+    campHud.notify('Палатка: коснитесь свободного места');
   },
   /**
    * Лист накрывает сцену, а веер рисуется поверх всего своим слоем —
@@ -1047,8 +1056,8 @@ const campTime = (): number => clock.now() + debugShift;
 
 /**
  * Палатки жильцов в кадре поляны. Зовётся при входе и после каждой постройки:
- * место палатки выбирает игра (`tentSpot`), и знать о нём сцене больше
- * неоткуда.
+ * место палатки выбрано тапом игрока (`pitchTentAt`), и сцена узнаёт о нём
+ * отсюда.
  *
  * Клетки палаток не закрываются для маршрутов здесь, а закрываются в
  * `planChores` — тем же проходом, что и следы построек: маска рутины
@@ -1066,6 +1075,30 @@ function placeTents(): void {
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
   if (controlled === -1) seatResidents();
   else planChores();
+}
+
+/**
+ * Тап выбора места палатки — в клетках площадки. Округление то же, что
+ * у перестановки зданий (`moveSelected`): след рисуется от угла клетки,
+ * а палец показывает её середину. Жест разряжается любым исходом:
+ * вооружённый палец, переживший промах, ставил бы палатки по каждому
+ * следующему тапу.
+ */
+function pitchTentAt(x: number, z: number): void {
+  placingTent = false;
+  const spot = buildTent(camp, { x: Math.round(x - 0.5), z: Math.round(z - 0.5) });
+  if (spot === null) {
+    play('deny');
+    campHud.notify('Палатка: здесь не встанет');
+    return;
+  }
+  play('build');
+  campView.setCamp(camp);
+  // Тот же вид, что и на площадке, — на поляне. Раньше здесь стоял только
+  // `campView`, спрятанный в этой сцене, и палатка за пять дерева
+  // не появлялась нигде: задание §16.1 закрывалось молча.
+  placeTents();
+  persist();
 }
 
 /** Маршруты рутины, по одному на жильца; null — сидит у костра. */
@@ -2808,6 +2841,14 @@ function campTap(clientX: number, clientY: number): void {
   stopCampMining();
   const picked = campView.buildingAt(hit.x, hit.z);
 
+  // Палатка вооружена кнопкой задания: этот тап — выбор места, и целиком
+  // он и есть, чем бы ни кончился. Правило то же, что у перестановки ниже:
+  // вооружённый жест съедает тап, отказ обязан быть слышен.
+  if (placingTent) {
+    pitchTentAt(hit.x, hit.z);
+    return;
+  }
+
   // §20.4 — перестановка бесплатна и мгновенна: она вооружена из карточки,
   // и тогда следующий тап по свободному месту ставит здание.
   if (selected !== null) {
@@ -2960,6 +3001,58 @@ function stepCampMining(dt: number): void {
   }
 }
 
+/**
+ * Работы текущего кадра — для полос прогресса (`render/workbar.ts`).
+ *
+ * Собирается каждый рендер из того же состояния, которым работа считается:
+ * стройка §20.1 — из слота лагеря, рубка и добыча — из начатой работы.
+ * Своего состояния у полос нет, и врать им не из чего: кончилась работа —
+ * кончилась и полоса, тем же кадром.
+ *
+ * Условие «герой дошёл» то же, что у пятна под работой: пока он в дороге,
+ * работы ещё нет, и полоса над деревом врала бы о том, что топор стучит.
+ */
+function syncWorkBars(): void {
+  const items: WorkItem[] = [];
+  if (mode === 'camp') {
+    const c = camp.construction;
+    if (c !== null) {
+      const o = campOrigin(camp);
+      const p = camp.layout[c.building];
+      const total = Math.max(1, c.endsAt - c.startedAt);
+      const share = (clock.now() - c.startedAt) / total;
+      // Поляна рисует здание в клетке якоря, площадка — на полклетки глубже:
+      // полоса висит над тем, что нарисовано, а не над следом в данных.
+      const at = inGladeCamp
+        ? { x: o.x + p.x, z: o.z + p.z }
+        : { x: o.x + p.x + 0.5, z: o.z + p.z + 0.5 };
+      // Остаток цифрами — только у стройки: минуты полосой не видны,
+      // а восемь секунд рубки видны и без цифр.
+      items.push({
+        x: at.x,
+        y: 1.6,
+        z: at.z,
+        share,
+        left: formatDuration(Math.max(0, c.endsAt - clock.now())),
+      });
+    }
+  }
+  if ((mode === 'raid' || inGladeCamp) && raid !== null && raid.path.length === 0) {
+    if (chop !== null) items.push({ x: chop.cell.x, y: 1.9, z: chop.cell.z, share: chopProgress(chop) });
+    if (mine !== null) items.push({ x: mine.cell.x, y: 1.1, z: mine.cell.z, share: mineProgress(mine) });
+  }
+  if (mode === 'camp' && !inGladeCamp && campMine !== null && campHero.path.length === 0) {
+    const o = campOrigin(camp);
+    items.push({
+      x: o.x + campMine.work.cell.x,
+      y: 1.1,
+      z: o.z + campMine.work.cell.z,
+      share: mineProgress(campMine.work),
+    });
+  }
+  workBars.sync(items);
+}
+
 /* ---------- ввод вылазки ---------- */
 
 const canvas = rig.renderer.domElement;
@@ -3076,6 +3169,13 @@ canvas.addEventListener('pointerdown', (e) => {
     if (hit === null) return;
     const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
     const o = campOrigin(camp);
+    // Выбор места палатки — раньше людей и зданий: жест вооружён кнопкой
+    // задания, и этот тап целиком его. Поляна считает в мире, палатка —
+    // в клетках площадки, якорь вычитается здесь же.
+    if (placingTent) {
+      pitchTentAt(hit.x - o.x, hit.z - o.z);
+      return;
+    }
     // Тап по сидящему жильцу — его карточка и передача ведения: то же,
     // что тап по лицу в веере. Человек спрашивается раньше палатки:
     // он сидит в её запасе, и иначе тап по нему открывал бы здание.
@@ -4028,6 +4128,9 @@ startLoop({
     // и слова не переживают говорящего при смене сцены.
     if (inGladeCamp) campBubbles();
     else bubbles.clear();
+    // Полосы прогресса — каждый кадр и в любой сцене: список сам пустеет
+    // там, где работ нет, и чистить его отдельной веткой не нужно.
+    syncWorkBars();
 
     if (mode === 'title' && titleView !== null) {
       // Полная частота, а не 30 кадров лагеря: камеру здесь тянут пальцем,
