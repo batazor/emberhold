@@ -17,7 +17,7 @@ import type { ToolModelName } from './tools';
 import type { SelfAnswer } from '../sim/settler';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
-import type { RiggedParts } from './rigged';
+import type { RigClipName, RiggedParts } from './rigged';
 import { graveyardGeometry } from './graveyard';
 import { skeletonGeometry, skeletonParts } from './skeleton';
 
@@ -613,6 +613,16 @@ const DWELLER_MODEL: Record<DwellerLook, FolkModelName> = {
 export const RESIDENT_TOOL: Record<SelfAnswer, ToolModelName> = {
   строим: 'axe',
   ходим: 'pickaxe',
+};
+
+/**
+ * Клип занятия — пара к инструменту: топор рубит, кирка кайлит. Играет его
+ * только работающий жилец: отдыхающий и жилец без крыши стоят в покое —
+ * то же правило, каким `workDone` считает прибавку.
+ */
+export const RESIDENT_WORK_CLIP: Record<SelfAnswer, RigClipName> = {
+  строим: 'рубит',
+  ходим: 'кайлит',
 };
 
 export const dwellerParts = (look: DwellerLook, tool?: ToolModelName): RiggedParts => {

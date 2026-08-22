@@ -927,8 +927,9 @@ export class RaidView {
    * в стороне, и телепорт читался бы сбоем. Ведомому игроком `glide`
    * не ставится: его позиция и есть симуляция, отставать ей не от чего.
    *
-   * Клип труда у рутины свой (`рубка`): «удар» синхронизирован со звуком
-   * и дрожью цели (§17.3), а у рутины цели нет — её замах ничего не рубит.
+   * Клип труда у рутины — рабочий цикл занятия (`рубит`): «удар»
+   * синхронизирован со звуком и дрожью цели (§17.3), а у рутины цели нет —
+   * её замах ничего не валит.
    */
   driveResident(
     i: number,
@@ -937,7 +938,7 @@ export class RaidView {
     walking: boolean,
     working: boolean,
     dt: number,
-    opts?: { speed?: number; workClip?: 'удар' | 'рубка'; talking?: boolean; glide?: boolean },
+    opts?: { speed?: number; workClip?: 'удар' | 'рубит'; talking?: boolean; glide?: boolean },
   ): void {
     const rig = this.residents[i];
     if (rig === undefined) return;
@@ -965,7 +966,7 @@ export class RaidView {
     rig.root.position.set(tx, 0, tz);
     if (walking) rig.play('ходьба', rateFor(speed, rig.root.scale.y));
     else if (working) {
-      if (opts?.workClip === 'рубка') rig.play('рубка');
+      if (opts?.workClip === 'рубит') rig.play('рубит');
       else rig.play('удар', STRIKE / SWING_SECONDS);
     } else if (opts?.talking === true) rig.play('разговор');
     else rig.play('покой');

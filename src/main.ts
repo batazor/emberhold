@@ -1094,7 +1094,7 @@ function stepChores(dt: number): void {
     const talking = !f.walking && !f.working && phraseAt(talkers, i, campTime) !== null;
     raidView!.driveResident(i, f.x, f.z, f.walking, f.working, dt, {
       speed: DWELLER_SPEED,
-      workClip: 'рубка',
+      workClip: 'рубит',
       talking,
       glide: true,
     });
