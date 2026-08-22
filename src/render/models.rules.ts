@@ -299,8 +299,12 @@ describe('Артбук: бюджет треугольников', () => {
    */
   test('у своих моделей все грани смотрят наружу', () => {
     for (const [name, model] of Object.entries(FOLK_MODELS)) {
-      const idx = new Uint16Array(Buffer.from(model.idx, 'base64').buffer.slice(0));
-      const pos = new Int16Array(Buffer.from(model.pos, 'base64').buffer.slice(0));
+      // Не `.buffer.slice(0)`: маленькие Buffer живут в общем пуле, и его
+      // ArrayBuffer шире самих данных — вид обязан взять свой диапазон.
+      const idxB = Buffer.from(model.idx, 'base64');
+      const posB = Buffer.from(model.pos, 'base64');
+      const idx = new Uint16Array(idxB.buffer, idxB.byteOffset, idxB.length / 2);
+      const pos = new Int16Array(posB.buffer, posB.byteOffset, posB.length / 2);
       const key = (v: number): string => `${pos[v * 3]},${pos[v * 3 + 1]},${pos[v * 3 + 2]}`;
       const dir = new Map<string, number>();
       for (let t = 0; t < idx.length / 3; t++) {
