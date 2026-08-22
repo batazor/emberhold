@@ -30,9 +30,11 @@ import { mulberry32, pick, randInt } from '../core/rng';
 import { CASTLE_CELL } from './castle';
 import { WOOD, spotAt } from './castleSite';
 import type { CastleSite } from './castleSite';
-import { campArea } from './camp';
+import { HQ_CLEAR_LEVEL, campArea } from './camp';
 import type { CampState } from './camp';
 import { idx } from './grid';
+import { RESOURCE_NAME, canAfford } from './resources';
+import type { ResourceKind, Resources } from './resources';
 import { tentFits } from './residents';
 import { generateSettler } from './settler';
 import type { SelfAnswer, Settler } from './settler';
@@ -90,11 +92,82 @@ export const GUEST_WORK: Record<GuestSeek, SelfAnswer> = {
   дорога: 'ходим',
 };
 
+/**
+ * Уговор: на каких условиях гость идёт. Приглашение перестаёт быть кнопкой
+ * без цены — у части гостей есть причина не сниматься с места даром,
+ * и причина обязана что-то стоить, иначе она реплика, а не условие.
+ *
+ * Виды выведены из того, чем игрок уже умеет платить: долг и сборы родне
+ * стоят ресурсов (камня и дерева — двух источников, которые не кончаются
+ * навсегда: §13.3 и §13.4), «изба» стоит не ресурсов, а уровня лагеря —
+ * Жильё обязано дорасти до избы (`HQ_CLEAR_LEVEL`). «Даром» остаётся
+ * в списке нарочно: ранний лагерь с пустой кладовой и палаткой вместо
+ * Жилья должен уметь позвать хоть кого-то, иначе механика мертва ровно
+ * тогда, когда жилец нужнее всего.
+ */
+export type GuestTerm = 'даром' | 'долг' | 'родня' | 'изба';
+
+export const GUEST_TERMS: readonly GuestTerm[] = ['даром', 'долг', 'родня', 'изба'];
+
+/** Реплика уговора — речь человека, канал диалога (`voice.rules.ts`). */
+export const GUEST_TERM_TEXT: Record<GuestTerm, string> = {
+  даром: '— Ничего не возьму. Место у огня — и по рукам.',
+  долг: '— Задолжал я страже. Покроешь камнем — пойду.',
+  родня: '— Родне собрать надо в дорогу. С тебя дерево — и я твой.',
+  изба: '— Хватит с меня палаток. Встанет изба — перееду.',
+};
+
+/**
+ * Цена уговора. **Черновая**, как цена палатки (`TENT_COST`), и держится
+ * теми же двумя связями, обе проверяются правилом: платится только деревом
+ * и камнем — источниками, которые не запираются навсегда, — и не дороже
+ * двух палаток: уговор не обязан быть стройкой, он обязан быть заметной
+ * тратой. Пустая цена — условие не в ресурсах («даром», «изба»).
+ */
+export const GUEST_TERM_COST: Record<GuestTerm, Partial<Resources>> = {
+  даром: {},
+  долг: { stone: 4 },
+  родня: { wood: 6 },
+  изба: {},
+};
+
+/** Цена строкой — именительный и число, как в лавке (`giftLine`, §13.5). */
+export function termLine(term: GuestTerm): string {
+  const parts: string[] = [];
+  const order: readonly ResourceKind[] = ['wood', 'stone', 'iron', 'crystal'];
+  for (const kind of order) {
+    const n = GUEST_TERM_COST[term][kind] ?? 0;
+    if (n > 0) parts.push(`${RESOURCE_NAME[kind]} ${n}`);
+  }
+  return parts.length === 0 ? '' : `Уговор: ${parts.join(' · ')}`;
+}
+
+export type GuestBlock = 'ok' | 'resources' | 'home';
+
+/**
+ * Почему гостя сейчас не позвать. Причина, а не булево, — то же правило,
+ * что у `tentBlock` (§23.3): отказ обязан называть, чего не хватает.
+ * Платится из кладовой лагеря — тем же кошельком, каким игрок меняется
+ * у торговца в этом же замке (§13.5).
+ */
+export function guestBlock(camp: CampState, guest: CastleGuest): GuestBlock {
+  if (guest.term === 'изба' && camp.levels.hq < HQ_CLEAR_LEVEL) return 'home';
+  if (!canAfford(camp.resources, GUEST_TERM_COST[guest.term])) return 'resources';
+  return 'ok';
+}
+
+export const GUEST_REASON: Record<Exclude<GuestBlock, 'ok'>, string> = {
+  resources: 'В кладовой не хватает на уговор',
+  home: 'Жильё ещё не изба',
+};
+
 export interface CastleGuest {
   /** Имя, внешность и сид лица — тем же генератором, что поселенец пролога. */
   readonly who: Settler;
   readonly origin: GuestOrigin;
   readonly seek: GuestSeek;
+  /** На каких условиях идёт (`GUEST_TERM_COST`, `guestBlock`). */
+  readonly term: GuestTerm;
   /** Клетка палатки — след 1×1, как у палаток лагеря (`TENT_FOOT`). */
   readonly tent: Cell;
   /** Костёр — соседняя клетка. */
@@ -159,16 +232,21 @@ export function castleGuestAt(site: CastleSite): CastleGuest | null {
     who: generateSettler(site.loc.seed ^ 0x9e57),
     origin: pick(rng, GUEST_ORIGINS),
     seek: pick(rng, GUEST_SEEKS),
+    term: pick(rng, GUEST_TERMS),
     tent,
     fire: { x: tent.x + 1, z: tent.z },
     sit: { x: tent.x + 1, z: tent.z + 1 },
   };
 }
 
-/** Шаги разговора. Кадра три — кто, откуда, что ищет, — и четвёртого нет. */
-export type GuestStep = 'кто' | 'откуда' | 'дело' | 'кончено';
+/**
+ * Шаги разговора. Кадра четыре: кто, откуда, что ищет — и уговор.
+ * Уговор стоит последним намеренно: цену гость называет в ответ
+ * на приглашение, а не вместо знакомства, — сперва человек, потом торг.
+ */
+export type GuestStep = 'кто' | 'откуда' | 'дело' | 'уговор' | 'кончено';
 
-export const GUEST_ORDER: readonly GuestStep[] = ['кто', 'откуда', 'дело', 'кончено'];
+export const GUEST_ORDER: readonly GuestStep[] = ['кто', 'откуда', 'дело', 'уговор', 'кончено'];
 
 export interface GuestMeet {
   step: GuestStep;

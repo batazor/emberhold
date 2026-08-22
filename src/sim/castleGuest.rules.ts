@@ -21,11 +21,16 @@ import {
   GUEST_SEEKS,
   GUEST_SEEK_TEXT,
   GUEST_SHARE,
+  GUEST_TERMS,
+  GUEST_TERM_COST,
+  GUEST_TERM_TEXT,
   GUEST_WORK,
   advanceGuest,
   castleGuestAt,
+  guestBlock,
   guestPitch,
   startGuestMeet,
+  termLine,
 } from './castleGuest';
 import { idx } from './grid';
 import { SELF_ANSWERS } from './settler';
@@ -132,6 +137,57 @@ describe('Гость у стен замка', () => {
     for (const seek of GUEST_SEEKS) {
       assert.ok(SELF_ANSWERS.includes(GUEST_WORK[seek]), `занятие «${GUEST_WORK[seek]}» неизвестно жильцам`);
     }
+    assert.deepEqual(Object.keys(GUEST_TERM_TEXT).sort(), [...GUEST_TERMS].sort());
+    assert.deepEqual(Object.keys(GUEST_TERM_COST).sort(), [...GUEST_TERMS].sort());
+  });
+
+  test('уговор платится деревом и камнем и не дороже двух палаток', () => {
+    // Две связи из `GUEST_TERM_COST`: цена не запирается навсегда (дерево
+    // и камень — бесконечные источники, §13.3 и §13.4) и уговор — трата,
+    // а не стройка (потолок — две палатки по 5 дерева).
+    for (const term of GUEST_TERMS) {
+      const cost = GUEST_TERM_COST[term];
+      assert.equal(cost.iron ?? 0, 0, `уговор «${term}» просит железо — дефицит §13.2`);
+      assert.equal(cost.crystal ?? 0, 0, `уговор «${term}» просит кристалл — дефицит §13.2`);
+      assert.ok((cost.wood ?? 0) + (cost.stone ?? 0) <= 10, `уговор «${term}» дороже двух палаток`);
+    }
+    // Хотя бы один уговор стоит ресурсов, иначе цена — декорация.
+    assert.ok(GUEST_TERMS.some((t) => (GUEST_TERM_COST[t].wood ?? 0) + (GUEST_TERM_COST[t].stone ?? 0) > 0));
+    // Строка цены есть ровно у платных: пустой «Уговор:» читался бы поломкой.
+    for (const term of GUEST_TERMS) {
+      const paid = (GUEST_TERM_COST[term].wood ?? 0) + (GUEST_TERM_COST[term].stone ?? 0) > 0;
+      assert.equal(termLine(term) !== '', paid, `строка цены расходится с ценой у «${term}»`);
+    }
+  });
+
+  test('отказ уговора называет, чего не хватает, и снимается', () => {
+    const guestOf = (term: (typeof GUEST_TERMS)[number]): Parameters<typeof guestBlock>[1] =>
+      ({ term } as Parameters<typeof guestBlock>[1]);
+    const camp = createCamp();
+    camp.resources.wood = 0;
+    camp.resources.stone = 0;
+    // Пустая кладовая: платные уговоры отказывают, бесплатные — нет.
+    assert.equal(guestBlock(camp, guestOf('даром')), 'ok');
+    assert.equal(guestBlock(camp, guestOf('долг')), 'resources');
+    assert.equal(guestBlock(camp, guestOf('родня')), 'resources');
+    // Пополнение снимает отказ.
+    camp.resources.stone = 4;
+    camp.resources.wood = 6;
+    assert.equal(guestBlock(camp, guestOf('долг')), 'ok');
+    assert.equal(guestBlock(camp, guestOf('родня')), 'ok');
+    // «Изба» стоит не ресурсов, а уровня Жилья — и снимается им же.
+    assert.equal(guestBlock(camp, guestOf('изба')), 'home');
+    camp.levels.hq = 3;
+    assert.equal(guestBlock(camp, guestOf('изба')), 'ok');
+  });
+
+  test('замер: на 120 сидах встречаются все четыре уговора', () => {
+    const seen = new Set<string>();
+    for (const seed of SEEDS) {
+      const guest = castleGuestAt(generateCastleSite(seed));
+      if (guest !== null) seen.add(guest.term);
+    }
+    assert.deepEqual([...seen].sort(), [...GUEST_TERMS].sort());
   });
 
   test('разговор идёт только вперёд и кончается', () => {
