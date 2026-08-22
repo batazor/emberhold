@@ -499,6 +499,10 @@ const campHud = new CampHud(app, {
     }
     play('build');
     campView.setCamp(camp);
+    // Тот же вид, что и на площадке, — на поляне. Раньше здесь стоял только
+    // `campView`, спрятанный в этой сцене, и палатка за пять дерева
+    // не появлялась нигде: задание §16.1 закрывалось молча.
+    placeTents();
     persist();
   },
 });
@@ -966,6 +970,29 @@ function controlHero(): void {
  *  Свои, а не clock.now(): рутина — функция времени от входа в сцену. */
 let campTime = 0;
 
+/**
+ * Палатки жильцов в кадре поляны. Зовётся при входе и после каждой постройки:
+ * место палатки выбирает игра (`tentSpot`), и знать о нём сцене больше
+ * неоткуда.
+ *
+ * Клетки палаток не закрываются для маршрутов здесь, а закрываются в
+ * `planChores` — тем же проходом, что и следы построек: маска рутины
+ * собирается в одном месте, и второй её сборщик разошёлся бы с первым молча.
+ *
+ * Жильцы пересаживаются следом, и это не запас: новая палатка даёт крышу
+ * тому, у кого её не было, а с крышей он выходит на тропу (§6.1.15).
+ * Пересадка — тот же путь, каким приказ карточки переводит жильца
+ * с занятия на занятие; при ведомом она откладывается, чтобы не вынимать
+ * человека из руки игрока.
+ */
+function placeTents(): void {
+  if (!inGladeCamp || raidView === null) return;
+  const o = campOrigin(camp);
+  raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
+  if (controlled === -1) seatResidents();
+  else planChores();
+}
+
 /** Маршруты рутины, по одному на жильца; null — сидит у костра. */
 let chores: (Chore | null)[] = [];
 
@@ -1011,6 +1038,12 @@ function planChores(): void {
         if (x >= 0 && z >= 0 && x < size && z < size) mask[idx(size, x, z)] = 1;
       }
     }
+  }
+  // Палатки жильцов — след 1×1 (`TENT_FOOT`), и сквозь них тоже не ходят.
+  for (const t of camp.tents) {
+    const x = o.x + t.x;
+    const z = o.z + t.z;
+    if (x >= 0 && z >= 0 && x < size && z < size) mask[idx(size, x, z)] = 1;
   }
   // Сидящий гость знакомства — тоже не проход.
   if (meetAt !== null) mask[idx(size, meetAt.x, meetAt.z)] = 1;
@@ -2400,6 +2433,9 @@ function toGladeCamp(): void {
     raidView.setLevel(id, camp.levels[id]);
   }
   raidView.hideSite();
+  // Палатки — до посадки жильцов: их клетки входят в маску маршрутов,
+  // а маску собирает `planChores` внутри `seatResidents`.
+  raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
   seatSettler(door);
   // Часы рутины — с нуля на каждый вход: маршруты и очередь реплик считаются
   // от входа в сцену, и перемотка «где кто» не зависит от стенных часов.
