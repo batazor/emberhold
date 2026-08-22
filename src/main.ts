@@ -840,6 +840,8 @@ const residentCard = new ResidentCard(app, {
     }
     persist();
   },
+  // §14.2 — механика едина с героем: рука одна на лагерь, вход третий.
+  onOffhand: (hand) => swapOffhand(hand),
 });
 
 /**
