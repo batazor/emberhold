@@ -17,7 +17,7 @@
  * Ходьба, которая в лагере считается иначе, чем в вылазке, научила бы
  * игрока не тому, что его ждёт дальше.
  */
-import { BUILDING_ORDER, campArea, type CampState } from './camp';
+import { BUILDING_ORDER, campArea, clearanceOf, type CampState } from './camp';
 import { walkBlocked, wallSpotOf } from './campWalls';
 import { topCenter, topWalkable, wallTop, type Level, type Portal, type WallTop } from './campTop';
 import { CASTLE_CELL } from './castle';
@@ -92,8 +92,11 @@ export function campBlocked(camp: CampState): Uint8Array {
   for (const id of BUILDING_ORDER) {
     if (camp.levels[id] <= 0) continue;
     const p = camp.layout[id];
-    for (let dz = 0; dz < 2; dz++) {
-      for (let dx = 0; dx < 2; dx++) {
+    // Свободная зона (`clearanceOf`): изба шире следа, и клетка вплотную —
+    // это «в стене». Кольцо закрыто для ходьбы тем же проходом, что след.
+    const pad = clearanceOf(id, camp.levels.hq);
+    for (let dz = -pad; dz < 2 + pad; dz++) {
+      for (let dx = -pad; dx < 2 + pad; dx++) {
         const x = p.x + dx;
         const z = p.z + dz;
         if (x < 0 || z < 0 || x >= area || z >= area) continue;

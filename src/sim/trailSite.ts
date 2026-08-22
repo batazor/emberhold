@@ -27,6 +27,7 @@
  */
 import { mulberry32, randInt, type Rng } from '../core/rng';
 import { distanceField, idx } from './grid';
+import type { Stone } from './stones';
 import type { Cell, GameLocation } from './types';
 
 /** Толщина леса по краю локации: та же рамка, что у кладбища. */
@@ -112,12 +113,12 @@ export interface TrailSite {
   /** Отвилки: каждый кончается тупиком в лесу, а не вторым выходом. */
   readonly branches: readonly TrailBranch[];
   /**
-   * Камни вдоль хода: лежат в лесу у самой просеки. Рендеру это валун
-   * вместо дерева, симуляции — та же занятая клетка. Добычей они не
-   * становятся (§13.4): это прогулка, и камень здесь картинка места,
-   * а не сделка.
+   * Дальний конец хода — второй выход. У дороги два конца, и оба выходы:
+   * тропа, которую можно пройти только назад, была бы не дорогой,
+   * а карманом. Сим знает один `evac` (вход), второй конец сторожит
+   * сцена — и рисует над ним тот же луч.
    */
-  readonly rocks: readonly Cell[];
+  readonly exit: Cell;
 }
 
 /** Есть ли в `cells` клетка ближе `r` по Чебышёву. Списки здесь короткие —
@@ -289,25 +290,30 @@ export function generateTrailSite(seed: number): TrailSite {
 
   const path: Cell[] = [...dirt].map((i) => ({ x: i % size, z: (i / size) | 0 }));
 
-  // Камни — по опушке: занятые клетки, с которых видно просеку. Камень,
-  // которого не видно с хода, не картинка, а потраченная клетка. Редкие:
-  // камень через каждую дюжину клеток опушки — обочина, а не каменоломня.
-  const rocks: Cell[] = [];
-  for (let cz = WOOD; cz < size - WOOD; cz++) {
-    for (let cx = WOOD; cx < size - WOOD; cx++) {
-      if (!blocked[idx(size, cx, cz)]) continue;
-      let edge = false;
-      for (let dz = -1; dz <= 1 && !edge; dz++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (!blocked[idx(size, cx + dx, cz + dz)]) {
-            edge = true;
-            break;
-          }
-        }
-      }
-      if (edge && rng() < 0.08) rocks.push({ x: cx, z: cz });
+  /**
+   * Валуны — по обочине (§13.4): добыча камня без глубины, как во дворе
+   * замка. На грунт не встают — ход остаётся ходом, — и разнесены: обочина,
+   * а не каменоломня. Число не от площади, а от длины: валуны стоят вдоль
+   * хода, и мерить их квадратом значило бы считать лес.
+   */
+  const verge: Cell[] = [];
+  for (let cz = 0; cz < size; cz++) {
+    for (let cx = 0; cx < size; cx++) {
+      const at = idx(size, cx, cz);
+      if (blocked[at] === 0 && !dirt.has(at)) verge.push({ x: cx, z: cz });
     }
   }
+  const stones: Stone[] = [];
+  const wantStones = 5 + randInt(rng, 4);
+  for (let tries = 0; stones.length < wantStones && tries < 200; tries++) {
+    const cell = verge[randInt(rng, verge.length)];
+    if (cell === undefined) break;
+    if (stones.some((s) => Math.abs(s.x - cell.x) <= 3 && Math.abs(s.z - cell.z) <= 3)) continue;
+    stones.push({ id: stones.length, x: cell.x, z: cell.z, taken: false });
+  }
+
+  // Дальний конец хода: там же, где кончается осевая, — на грунте.
+  const exit: Cell = { x: spine[spine.length - 1]!.x, z: spine[spine.length - 1]!.z };
 
   // Вход — ближний конец хода, на самом грунте. Дальний конец и все тупики
   // глухие: тропа пока никуда не ведёт, и честнее упереть её в лес, чем
@@ -320,12 +326,13 @@ export function generateTrailSite(seed: number): TrailSite {
     size,
     blocked,
     evac,
-    // Прогулка (§4): ни добычи, ни валунов, ни противников — пока. Засады
-    // и охота придут сюда своими решениями, а не пустыми массивами.
+    // Контейнеров и противников нет — пока: засады и охота придут своими
+    // решениями. А вот добыча руками здесь есть с самого начала: валуны
+    // на обочине и рубка леса — тропа кормит работой, а не находками.
     containers: [],
-    stones: [],
+    stones,
     enemies: [],
     backSteps: distanceField(size, blocked, evac),
   };
-  return { loc, path, length, spine, branches, rocks };
+  return { loc, path, length, spine, branches, exit };
 }

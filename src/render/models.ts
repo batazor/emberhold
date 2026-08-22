@@ -21,6 +21,7 @@ import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import type { RigClipName, RiggedParts } from './rigged';
 import { graveyardGeometry } from './graveyard';
+import { hutParts } from './hut';
 import { skeletonGeometry, skeletonParts } from './skeleton';
 
 /**
@@ -40,7 +41,8 @@ import { skeletonGeometry, skeletonParts } from './skeleton';
  * как §6.1 и предписывает, а рисует их теперь готовый набор (§6.1.3).
  */
 
-/** §6.1 — три стадии роста на шесть уровней здания. */
+/** §6.1 — стадий роста меньше, чем уровней, и число их не закреплено:
+ *  их может стать и больше и меньше, стадия — замена модели, а не уровень. */
 export const stageOf = (level: number): 0 | 1 | 2 => (level <= 2 ? 0 : level <= 4 ? 1 : 2);
 
 const hash = (x: number, y: number): number => {
@@ -448,8 +450,31 @@ const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
   // ровно там же, где стоит подвижная.
 };
 
-export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry =>
-  merge(BUILDING_STAGES[id][stageOf(level)]());
+/**
+ * Средняя стадия Жилья — изба набора camp (§6.1.11), а не блокинг из
+ * примитивов: бревенчатый дом `hqLodge` был времянкой до своей модели,
+ * и она сделана.
+ *
+ * Рост меряется героем, а не конёком блокинга. Первая версия взяла высоту
+ * старого дома (2,05) — и изба вышла ростом с персонажа: дом, в который
+ * не войти. Решение 2026-08-22 — дом обязан быть минимум втрое выше
+ * человека; конёк поднят втрое от блокинга, и в кадре изба теперь жильё,
+ * а не будка.
+ *
+ * Берётся корпус с окном и без дверного полотна: за проёмами избы лежит
+ * слот «мрак», и тёмный вход читается так же, как у примитивов, — а полотно
+ * стоит треугольников, которых бюджету здания (≤1500) уже не хватает.
+ * Клон, а не кэш `hutParts`: сцены геометрию зданий освобождают, и общий
+ * экземпляр после первого же выхода из лагеря стал бы невидимым.
+ */
+const HUT_HEIGHT = 6.15;
+const hutLodge = (): THREE.BufferGeometry =>
+  hutParts({ door: 'plank', window: 'cross' }, HUT_HEIGHT).body.clone();
+
+export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry => {
+  if (id === 'hq' && stageOf(level) === 1) return hutLodge();
+  return merge(BUILDING_STAGES[id][stageOf(level)]());
+};
 
 /**
  * Классы, которым модель набора уже взята в бандл (§6.1.4). Класс без строки

@@ -685,7 +685,15 @@ button[disabled] { opacity: 0.4; cursor: default; }
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
 .workbars .bar { width: 56px; height: 6px; }
-.workbars .bar > i { background: var(--gold); }
+/* Заливка зелёная и бежит: короткую работу (8 с добычи) неподвижная полоса
+   догнать не успевает, а бегущая штриховка говорит «идёт» с первого кадра.
+   Штрихи — светлая заливка словаря поверх зелёного, не свой цвет. */
+.workbars .bar > i {
+  background-color: var(--good);
+  background-image: repeating-linear-gradient(-45deg, var(--press) 0 4px, transparent 4px 8px);
+  animation: workbar-flow 0.6s linear infinite;
+}
+@keyframes workbar-flow { to { background-position: 11.314px 0; } }
 /* Остаток времени — цифры при полосе, а не подпись: у долгой стройки полоса
    глазом неподвижна, и без цифр она читается застрявшей. */
 .workbars span { font-size: 11px; letter-spacing: 0.04em; color: var(--ink); }

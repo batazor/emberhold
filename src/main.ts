@@ -2215,6 +2215,10 @@ function toTrail(node: number, seed: number): boolean {
     evacOpen: true,
     containerFood: 0,
     hunger: false,
+    // §13.3 — на тропе рубят: лес вокруг и есть то, что здесь добывают.
+    // Кромка не открывается никогда (`logging.ts`), так что просека
+    // расширяется, но локацию не вскрывает.
+    logging: true,
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'trail', null, null, site, camp.gear.weapon, mateClasses(raid));
   hud.setGrass(grassPerTile);
@@ -3776,7 +3780,7 @@ if (debugTrail !== null) {
       длина: trailSite.length,
       грунта: trailSite.path.length,
       отвилков: trailSite.branches.length,
-      камней: trailSite.rocks.length,
+      валунов: trailSite.loc.stones.length,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
@@ -4034,6 +4038,19 @@ startLoop({
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).
       stepChopping(dt);
       stepMining(dt);
+      // §6.1.17 — у тропы два конца, и дальний тоже выход. Сим знает один
+      // `evac` (вход), второй конец сторожит сцена: та же клетка — тот же
+      // уход, с тем же лучом над ней.
+      if (
+        trailSite !== null &&
+        raid.status === 'running' &&
+        raid.steps > 0 &&
+        raid.hero.x === trailSite.exit.x &&
+        raid.hero.z === trailSite.exit.z
+      ) {
+        raid.status = 'evacuated';
+        raid.path = [];
+      }
       ear.hear(raid);
       if (inGlade) {
         hud.sync(raid, dt);

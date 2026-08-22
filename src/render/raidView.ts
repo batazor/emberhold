@@ -51,7 +51,7 @@ import { inYard } from '../sim/castleSite';
 import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
-import type { EnemyKind, GameLocation, RaidState } from '../sim/types';
+import type { Cell, EnemyKind, GameLocation, RaidState } from '../sim/types';
 import type { HeroClassId } from '../sim/heroes';
 import { forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
@@ -314,7 +314,8 @@ export class RaidView {
    *  показывает жест вместо того, чтобы называть его словами. */
   private hintRing!: THREE.Mesh;
   /** На поляне выхода нет, и кольца тоже: показывать некуда (§12.1). */
-  private evacRing: THREE.Mesh | null = null;
+  /** Кольца выходов. Обычно одно; у тропы два — по выходу на конец хода. */
+  private readonly evacRings: THREE.Mesh[] = [];
   /** Здания, поставленные в конце пролога. До него их нет вовсе. */
   private readonly placed = new Map<BuildingId, THREE.Mesh>();
   /** Свет поставленного костра. Тот же, что потом горит в лагере. */
@@ -412,7 +413,9 @@ export class RaidView {
     if (this.keep !== null) this.buildCastle(this.keep);
     if (this.keep !== null) this.buildGarrison(this.keep);
     if (this.grave !== null) this.buildGraveyard(this.grave);
-    if (flavor !== 'glade') this.buildEvac();
+    if (flavor !== 'glade') this.buildEvac(this.loc.evac);
+    // §6.1.17 — у дороги два конца, и дальний тоже выход: над ним тот же луч.
+    if (this.trail !== null) this.buildEvac(this.trail.exit);
     this.buildContainers();
     this.buildStones();
     this.buildEnemies();
@@ -580,11 +583,6 @@ export class RaidView {
     const wood = this.keep === null
       ? null
       : new Set(this.keep.trees.map((s) => idx(size, s.x, s.z)));
-    // Камни тропы (§6.1.17): на своих клетках вместо дерева встаёт валун.
-    const trailRocks = this.trail === null
-      ? null
-      : new Set(this.trail.rocks.map((c) => idx(size, c.x, c.z)));
-    const rockCells: number[][] = RAID_ROCKS.map(() => []);
     // Стоит ли клетка у просеки: рядом с ходом стволы обязаны стоять стеной —
     // граница читается, — и прореживается только глубь.
     const nearOpen = (cx: number, cz: number): boolean => {
@@ -598,20 +596,27 @@ export class RaidView {
       }
       return false;
     };
+    // Сухостой тропы: глубь леса дышит, а клетка остаётся занятой честно.
+    const snags: number[] = [];
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
         const at = idx(size, x, z);
         if (!blocked[at]) continue;
         if (wood !== null && !wood.has(at)) continue;
-        if (trailRocks !== null) {
-          if (trailRocks.has(at)) {
-            rockCells[cellHash(x * 5.1, z * 9.3, RAID_ROCKS.length)]!.push(x, z);
-            continue;
-          }
-          // Глубь леса дышит: сплошной строй крон читался стеной до горизонта.
-          // Просвет у самой просеки прореживание не трогает — он читался бы
-          // проходом, которого нет.
-          if (!nearOpen(x, z) && (x * 3 + z * 7) % 10 >= 6) continue;
+        // Глубь леса тропы разрежена: сплошной строй крон читался стеной
+        // до горизонта. Кроны остаются на четырёх клетках из десяти, треть
+        // остального — пеньки старой вырубки, прочее — тёмный подлесок.
+        // Первый ряд у просеки прореживание не трогает — просвет у самой
+        // тропы читался бы проходом, которого нет. Пробовался и сухостой
+        // в рост: масса голых стволов читалась завалом брёвен, а не лесом.
+        //
+        // Записанный долг: клетка подлеска занята симуляцией, но пуста
+        // глазу, и прорубившийся вглубь получит дерево с пустого места.
+        // До просеки такие клетки не достают на два ряда, и добраться
+        // туда можно только срубив видимый ряд.
+        if (this.trail !== null && !nearOpen(x, z) && (x * 3 + z * 7) % 10 >= 4) {
+          if ((x * 5 + z * 11) % 3 === 0) snags.push(x, z);
+          continue;
         }
         cells[cellHash(x * 5.1, z * 9.3, models.length)]!.push(x, z);
       }
@@ -638,21 +643,22 @@ export class RaidView {
       this.group.add(mesh);
     }
 
-    // Камни тропы — тем же строем, что стены копей: валун на клетке,
-    // порода от координаты. В `this.trees` они не попадают — камень
-    // не рубят (§13.3), и добычей он не становится (§13.4).
-    for (let v = 0; v < rockCells.length; v++) {
-      const list = rockCells[v]!;
-      if (list.length === 0) continue;
+    // Пеньки старой вырубки — те же, что остаются от срубленного дерева.
+    // Рубятся как дерево: клетка занята, топор её открывает (§13.3),
+    // поэтому каждый числится в `this.trees` наравне с кронами.
+    if (snags.length > 0) {
       const mesh = new THREE.InstancedMesh(
-        treeGeometry({ set: 'forest', model: RAID_ROCKS[v]! }, 1),
+        treeGeometry(STUMP, STUMP_HEIGHT),
         mat,
-        list.length / 2,
+        snags.length / 2,
       );
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      for (let i = 0; i < list.length; i += 2) {
-        mesh.setMatrixAt(i / 2, treeStand(list[i]!, list[i + 1]!, false, 0));
+      for (let i = 0; i < snags.length; i += 2) {
+        const x = snags[i]!;
+        const z = snags[i + 1]!;
+        mesh.setMatrixAt(i / 2, treeStand(x, z, true, 0));
+        this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
       }
       this.group.add(mesh);
     }
@@ -1421,8 +1427,8 @@ export class RaidView {
    * что и в лагере: стадия роста — свойство модели, а не сцены (§6.1).
    *
    * На уровнях 1–2 стадия одна и та же (`stageOf`), и палатка ур. 2 выглядит
-   * как палатка ур. 1. Это не забытая модель, а решение §6.1 «три стадии на
-   * шесть уровней»: подделывать рост масштабом здесь было бы враньём.
+   * как палатка ур. 1. Это не забытая модель, а решение §6.1 «стадий меньше,
+   * чем уровней»: подделывать рост масштабом здесь было бы враньём.
    */
   setLevel(id: BuildingId, level: number): void {
     const mesh = this.placed.get(id);
@@ -1482,14 +1488,14 @@ export class RaidView {
     if (this.ghost !== null) this.ghost.visible = false;
   }
 
-  private buildEvac(): void {
-    const { evac } = this.loc;
+  private buildEvac(at: Cell): void {
     const ringMat = this.track(
       new THREE.MeshBasicMaterial({ color: PALETTE.evac, transparent: true, opacity: 0.7, fog: false }),
     );
-    this.evacRing = new THREE.Mesh(this.track(new THREE.TorusGeometry(1.2, 0.08, 8, 36)), ringMat);
-    this.evacRing.rotation.x = -Math.PI / 2;
-    this.evacRing.position.set(evac.x, 0.06, evac.z);
+    const ring = new THREE.Mesh(this.track(new THREE.TorusGeometry(1.2, 0.08, 8, 36)), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(at.x, 0.06, at.z);
+    this.evacRings.push(ring);
 
     // Луч виден сквозь туман (fog: false) — точка выхода обязана читаться
     // с любой глубины, иначе решение «назад» принимается вслепую.
@@ -1507,8 +1513,8 @@ export class RaidView {
         }),
       ),
     );
-    beam.position.set(evac.x, 13, evac.z);
-    this.group.add(this.evacRing, beam);
+    beam.position.set(at.x, 13, at.z);
+    this.group.add(ring, beam);
   }
 
   /**
@@ -2137,10 +2143,10 @@ export class RaidView {
     for (const rig of this.residents) rig.update(dt);
     this.syncGrass(hx, hz, time);
 
-    if (this.evacRing !== null) {
-      const ringMat = this.evacRing.material as THREE.MeshBasicMaterial;
+    for (const ring of this.evacRings) {
+      const ringMat = ring.material as THREE.MeshBasicMaterial;
       ringMat.opacity = 0.5 + Math.sin(time / 400) * 0.25;
-      this.evacRing.scale.setScalar(1 + Math.sin(time / 400) * 0.05);
+      ring.scale.setScalar(1 + Math.sin(time / 400) * 0.05);
     }
 
     if (this.marker.visible) {
