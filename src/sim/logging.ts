@@ -25,6 +25,7 @@
  * (§13.4). Здесь остаётся ровно то, что про лес: что стоит на клетке и что
  * ложится в рюкзак.
  */
+import { mulberry32, randInt } from '../core/rng';
 import { distanceField, idx } from './grid';
 import { commandMove } from './raid';
 import { RESOURCE_NAME } from './resources';
@@ -34,17 +35,34 @@ import type { Cell, GameLocation, RaidState } from './types';
 
 export { SWING_SECONDS } from './work';
 
-/** Дерева за одно дерево. Один брусок — то же, что лежит на поляне. */
-export const CHOP_WOOD = 1;
+/**
+ * Дерева за одно дерево: распиленный ствол — это несколько брусков, а не
+ * один. Сколько именно — решает дерево, а не бросок кубика на замахе:
+ * награда выводится из сида локации и клетки (`chopYield`), потому что
+ * локация обязана совпадать сама с собой между заходами (§6), и дерево
+ * на кромке при повторной рубке отдаёт столько же, сколько в прошлый раз.
+ */
+export const CHOP_WOOD_MIN = 3;
+export const CHOP_WOOD_MAX = 5;
+
+/** Средняя награда — ею считают цену бруска правила ограды. */
+export const CHOP_WOOD_AVG = (CHOP_WOOD_MIN + CHOP_WOOD_MAX) / 2;
+
+/** Брусков с дерева на этой клетке. Детерминировано сидом и координатой. */
+export function chopYield(loc: GameLocation, cell: Cell): number {
+  const rng = mulberry32((loc.seed * 73856093) ^ (cell.x * 19349663) ^ (cell.z * 83492791));
+  return CHOP_WOOD_MIN + randInt(rng, CHOP_WOOD_MAX - CHOP_WOOD_MIN + 1);
+}
 
 /**
- * Замахов на дерево. Число не назначено, а выведено из требования «рубка
- * медленнее подбора» (`logging.rules.ts`): жадный маршрут за тремя брусками
- * занимает 6,8–10,2 с, рубка тех же трёх — 16,4–28,2, и худший запас между
- * ними 7,1 секунды. На восьми замахах запас ужимался до двух секунд,
- * то есть до дрожания генератора.
+ * Замахов на дерево. Выросло вместе с наградой: при одном бруске с дерева
+ * десять замахов держали требование «рубка медленнее подбора»
+ * (`logging.rules.ts`), при трёх–пяти брусках дерево обязано стоить
+ * пропорционально дольше, иначе бесконечный источник обгоняет конечный.
+ * Тридцать замахов — 24 с на дерево, 4,8–8 с за брусок против прежних 8;
+ * запас над подбором проверяется тем же замером на шестидесяти сидах.
  */
-export const CHOP_SWINGS = 10;
+export const CHOP_SWINGS = 30;
 
 /** Сколько секунд падает одно дерево. */
 export const CHOP_SECONDS = SWING_SECONDS * CHOP_SWINGS;
@@ -149,9 +167,10 @@ export function stepChop(state: RaidState, chop: Chop, dt: number): ChopStep {
 }
 
 /**
- * Дерево падает: брусок в сумку, клетка освобождается. На кромке — только
- * брусок: рамка остаётся стеной, и это то же решение, что «выхода с поляны
- * нет» (§12.1), а не поблажка рубке.
+ * Дерево падает: бруски в сумку (сколько — см. `chopYield`; что не влезло
+ * в рюкзак, пропадает — рюкзак и есть потолок). На кромке — только бруски:
+ * рамка остаётся стеной, и это то же решение, что «выхода с поляны нет»
+ * (§12.1), а не поблажка рубке.
  *
  * Путь назад пересчитывается здесь же. Он посчитан один раз на входе
  * (§11.1) и после просеки соврал бы — а число «до выхода N шагов» стоит
@@ -160,7 +179,7 @@ export function stepChop(state: RaidState, chop: Chop, dt: number): ChopStep {
 export function fell(state: RaidState, cell: Cell): boolean {
   if (chopBlock(state, cell) !== 'ok') return false;
   const { loc } = state;
-  const taken = Math.min(CHOP_WOOD, state.capacity - state.bagTotal);
+  const taken = Math.min(chopYield(loc, cell), state.capacity - state.bagTotal);
   state.bag.wood += taken;
   state.bagTotal += taken;
   state.events.push(`+${taken} · ${RESOURCE_NAME.wood}`);

@@ -17,8 +17,10 @@ import { distanceField, idx } from './grid';
 import {
   CHOP_SECONDS,
   CHOP_SWINGS,
-  CHOP_WOOD,
+  CHOP_WOOD_MAX,
+  CHOP_WOOD_MIN,
   aimChop,
+  chopYield,
   chopBlock,
   fell,
   isEdge,
@@ -138,10 +140,13 @@ describe('Вырубка: кромка карты', () => {
     const state = glade(3);
     const { tree, stand: spot } = reachableTree(state, true);
     stand(state, spot);
+    // Награда клетки детерминирована: повторная рубка той же кромки обязана
+    // отдавать столько же, сколько в прошлый раз, а не бросать кубик заново.
+    const per = chopYield(state.loc, tree);
     for (let i = 1; i <= 5; i++) {
       assert.equal(chopBlock(state, tree), 'ok', `на ${i}-й раз кромка перестала рубиться`);
       chopDown(state, tree);
-      assert.equal(state.bag.wood, i * CHOP_WOOD, `на ${i}-й раз дерева не прибавилось`);
+      assert.equal(state.bag.wood, i * per, `на ${i}-й раз дерева не прибавилось`);
     }
   });
 });
@@ -152,7 +157,11 @@ describe('Вырубка: дерево внутри поляны', () => {
     const { tree, stand: spot } = reachableTree(state, false);
     stand(state, spot);
     chopDown(state, tree);
-    assert.equal(state.bag.wood, CHOP_WOOD, 'брусок не попал в сумку');
+    assert.equal(state.bag.wood, chopYield(state.loc, tree), 'бруски не попали в сумку');
+    assert.ok(
+      state.bag.wood >= CHOP_WOOD_MIN && state.bag.wood <= CHOP_WOOD_MAX,
+      `дерево отдало ${state.bag.wood} брусков вне вилки ${CHOP_WOOD_MIN}–${CHOP_WOOD_MAX}`,
+    );
     assert.ok(!treeAt(state.loc, tree), 'дерево срублено, а клетка занята');
     assert.equal(chopBlock(state, tree), 'gone', 'по пустой клетке снова рубят');
   });
@@ -215,7 +224,7 @@ describe('Вырубка: когда нельзя', () => {
     }
   });
 
-  test('дерево падает за десять замахов, а не за один тик', () => {
+  test('дерево падает за положенные замахи, а не за один тик', () => {
     const state = glade(11);
     const { tree, stand: spot } = reachableTree(state, false);
     stand(state, spot);
@@ -297,11 +306,11 @@ describe('Вырубка: медленнее подбора', () => {
   }
 
   /**
-   * Замер на 60 сидах: подбор трёх брусков — 6,8–10,2 с (в среднем 8,1),
-   * рубка тех же трёх — 16,4–28,2 (23,2). Худший запас рубки над подбором
-   * 7,1 секунды, и десять замахов на дерево (`CHOP_SWINGS`) взяты отсюда,
-   * а не назначены: на восьми запас ужимался до двух секунд, то есть
-   * до дрожания генератора.
+   * Замер на 60 сидах. При бруске с дерева и десяти замахах: подбор трёх
+   * брусков — 6,8–10,2 с, рубка — 16,4–28,2, худший запас 7,1 с. С наградой
+   * 3–5 брусков замахов стало тридцать (`CHOP_SWINGS`): лагерь теперь
+   * закрывает одно дерево, но стоит оно 24 секунды у ствола — запас
+   * подтверждается этим же тестом, а не переписан из старого замера.
    */
   test('вырубить лагерь дольше, чем собрать его с земли — на каждом сиде', () => {
     let worst = Infinity;

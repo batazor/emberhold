@@ -23,7 +23,7 @@ import { describe, test } from 'node:test';
 import { CASTLE_CELL, DIRS, TOWER_MAX, keyOf, type Spot } from './castle';
 import { BUILD_COST, BUILD_SECONDS, campArea, createCamp, moveBuilding } from './camp';
 import { emptyResources, type Resources } from './resources';
-import { CHOP_SECONDS, CHOP_WOOD } from './logging';
+import { CHOP_SECONDS, CHOP_WOOD_AVG } from './logging';
 import { LOOT_SHARE } from './resources';
 import { FENCE_MATERIALS, type FenceMaterial } from './fence';
 import { roadPieces } from './roads';
@@ -424,7 +424,7 @@ describe('Ограда в лагере (§6.1.7)', () => {
   const PER_FIND = 10.2 / 5.8;
   const priceOf = (kind: 'stone' | 'wood'): number => {
     const raid = PER_FIND / (LOOT_SHARE[0][kind] ?? 1);
-    return kind === 'wood' ? Math.min(raid, CHOP_SECONDS / CHOP_WOOD) : raid;
+    return kind === 'wood' ? Math.min(raid, CHOP_SECONDS / CHOP_WOOD_AVG) : raid;
   };
   const ringSeconds = (material: FenceMaterial): number =>
     fenceAmount(material, RING) * priceOf(fenceResource(material));
@@ -462,7 +462,7 @@ describe('Ограда в лагере (§6.1.7)', () => {
   test('дощатое кольцо нарубается за один заход в лагерь', () => {
     // §0 отводит лагерю 30 секунд — 2 минуты. Кольцо, которое не нарубается
     // за этот заход, превращает ограду в ожидание у дерева, а не в стройку.
-    const chop = fenceAmount('дерево', RING) * (CHOP_SECONDS / CHOP_WOOD);
+    const chop = fenceAmount('дерево', RING) * (CHOP_SECONDS / CHOP_WOOD_AVG);
     assert.ok(chop <= 120, `кольцо нарубается ${chop.toFixed(0)} с — дольше захода в лагерь`);
   });
 

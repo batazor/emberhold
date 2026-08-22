@@ -28,7 +28,7 @@ import { playRaid, POLICIES } from '../src/sim/bot';
 import { mulberry32 } from '../src/core/rng';
 import { BUILD_COST, BUILD_SECONDS } from '../src/sim/camp';
 import { WALL_COST, WALL_SECONDS } from '../src/sim/campWalls';
-import { CHOP_SECONDS, CHOP_WOOD } from '../src/sim/logging';
+import { CHOP_SECONDS, CHOP_WOOD_AVG } from '../src/sim/logging';
 import { LOOT_SHARE } from '../src/sim/resources';
 import { emptyResources, type ResourceKind, type Resources } from '../src/sim/resources';
 import { CLASS_ORDER, HERO_CLASSES, createHero, loadout } from '../src/sim/heroes';
@@ -111,7 +111,7 @@ console.log(`  секунда за находку ${num(perFind)} с`);
  * источник, и цена — меньшая из двух.
  */
 const raidPrice = (kind: ResourceKind): number => perFind / Math.max(1e-9, LOOT_SHARE[0][kind] ?? 0);
-const chopPrice = CHOP_SECONDS / CHOP_WOOD;
+const chopPrice = CHOP_SECONDS / CHOP_WOOD_AVG;
 const price: Record<'stone' | 'wood', number> = {
   stone: raidPrice('stone'),
   wood: Math.min(raidPrice('wood'), chopPrice),
