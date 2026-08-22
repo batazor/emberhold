@@ -1306,7 +1306,14 @@ export class RaidView {
    * на другую карту значило бы обесценить прогулку, которая эту карту
    * только что показала.
    *
-   * Трава на клетке выкашивается: под зданием её быть не должно.
+   * Трава на клетках следа выкашивается: под зданием её быть не должно.
+   *
+   * `x, z` — угловая клетка следа 2×2, и меш встаёт в его середину:
+   * клетка мира лежит центром в целых координатах (земля, деревья и тела
+   * стоят в целых), след занимает клетки `[p, p+2)`, значит его мировая
+   * середина — `p + 0.5`. Раньше меш стоял в самой угловой клетке, и здание
+   * накрывало соседей слева и сверху, свободных по данным, — палатка жильца
+   * садилась туда по правилам и оказывалась «под шатром».
    */
   place(id: BuildingId, x: number, z: number, level = 1): void {
     if (this.placed.has(id)) return;
@@ -1314,7 +1321,7 @@ export class RaidView {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.scale.setScalar(BUILDING_SCALE);
-    mesh.position.set(x, 0, z);
+    mesh.position.set(x + 0.5, 0, z + 0.5);
     this.placed.set(id, mesh);
     this.group.add(mesh);
     // Костёр ставится горящим: огонь, который не светит, читается как макет
@@ -1322,10 +1329,12 @@ export class RaidView {
     // Условие здесь, а не в свете: палатка ставится после костра только
     // в чужом порядке, но гасить чужой огонь она не должна и тогда.
     if (fireOf(id, 1) !== null) {
-      this.fire.set(id, 1, x, z, BUILDING_SCALE);
+      this.fire.set(id, 1, x + 0.5, z + 0.5, BUILDING_SCALE);
       this.group.add(this.fire.group);
     }
-    this.grass?.clearCell(x, z);
+    for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
+      this.grass?.clearCell(x + dx, z + dz);
+    }
   }
 
   /**
@@ -1350,7 +1359,10 @@ export class RaidView {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.scale.setScalar(BUILDING_SCALE * TENT_LOOK);
-      mesh.position.set(t.x + 0.5, 0, t.z + 0.5);
+      // След палатки 1×1 — клетка `t`, а клетка мира лежит центром в целых
+      // координатах: жилец, спящий в клетке палатки, стоит ровно в `t`,
+      // и меш обязан стоять там же, а не на пол клетки наискось.
+      mesh.position.set(t.x, 0, t.z);
       this.group.add(mesh);
       this.grass?.clearCell(t.x, t.z);
       return mesh;
@@ -1379,12 +1391,17 @@ export class RaidView {
   /**
    * Место под здание: пятно на земле и полупрозрачный силуэт над ним.
    * Зелёное — можно, красное — нельзя. Силуэт нужен затем, что пятно
-   * показывает клетку, а вопрос у игрока другой — «что тут встанет».
+   * показывает след, а вопрос у игрока другой — «что тут встанет».
+   *
+   * `x, z` — угловая клетка следа 2×2, как у `place`: пятно накрывает след
+   * целиком, а не одну клетку, — именно эти четыре клетки станут занятыми
+   * в лагере (`campBlocked`, маска рутины), и врать меньшим пятном значило
+   * бы показывать след 1×1, которого в данных нет.
    */
   showSite(id: BuildingId, x: number, z: number, ok: boolean): void {
     if (this.site === null) {
       this.site = new THREE.Mesh(
-        this.track(new THREE.PlaneGeometry(0.94, 0.94)),
+        this.track(new THREE.PlaneGeometry(1.94, 1.94)),
         this.track(
           new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, fog: false }),
         ),
@@ -1409,8 +1426,8 @@ export class RaidView {
     (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(color);
     this.site.visible = true;
     this.ghost.visible = true;
-    this.site.position.set(x, 0.05, z);
-    this.ghost.position.set(x, 0, z);
+    this.site.position.set(x + 0.5, 0.05, z + 0.5);
+    this.ghost.position.set(x + 0.5, 0, z + 0.5);
   }
 
   hideSite(): void {
