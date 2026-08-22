@@ -11,6 +11,7 @@ import {
   xpToNext,
 } from '../sim/heroes';
 import type { HeroState, Roster } from '../sim/heroes';
+import { avatarSvg } from './avatar';
 
 /**
  * Карточка выбранного героя (§11.8) — то, что осталось от списка отряда,
@@ -41,6 +42,7 @@ export interface HeroCardCallbacks {
 
 export class HeroCard {
   private readonly root: HTMLElement;
+  private readonly face: HTMLElement;
   private readonly name: HTMLElement;
   private readonly status: HTMLElement;
   private readonly meta: HTMLElement;
@@ -48,18 +50,26 @@ export class HeroCard {
   private readonly skill: HTMLElement;
   private readonly train: HTMLButtonElement;
   private shown = 0;
+  /** Чьё лицо нарисовано: карточка обновляется кадром, лицо — сменой героя. */
+  private faceKey = '';
 
   constructor(parent: HTMLElement, private readonly cb: HeroCardCallbacks) {
     this.root = document.createElement('div');
     this.root.id = 'hero-card';
     this.root.className = 'panel';
+    // Лицо — то же, что в веере (§11.8, §6.2.1): карточка отвечает «что
+    // с ним», и без лица «с ним» приходилось сверять по подписи. Имя со
+    // статусом встают колонкой рядом: в 172 пикселя строка «лицо · имя ·
+    // статус» не влезает.
     this.root.innerHTML = `
-      <div class="row r-top"><b id="hc-name"></b><span id="hc-status" class="dim"></span></div>
+      <div class="r-id"><span class="face" id="hc-face"></span>
+        <span><b id="hc-name"></b><span id="hc-status" class="dim"></span></span></div>
       <div class="r-meta" id="hc-meta"></div>
       <div class="bar"><i id="hc-xp"></i></div>
       <div class="r-skill" id="hc-skill"></div>
       <button id="hc-train"></button>`;
     const pick = <T extends HTMLElement>(id: string): T => this.root.querySelector<T>(`#${id}`)!;
+    this.face = pick('hc-face');
     this.name = pick('hc-name');
     this.status = pick('hc-status');
     this.meta = pick('hc-meta');
@@ -90,6 +100,14 @@ export class HeroCard {
     if (hero === undefined) return;
     const def = HERO_CLASSES[hero.cls];
     const lead = roster.active === this.shown;
+
+    // Лицо выводится из класса и сида (§11.8) — тот же вызов, что в веере:
+    // человек в карточке обязан быть тем же, что под пальцем.
+    const faceKey = `${hero.cls}:${hero.id}`;
+    if (faceKey !== this.faceKey) {
+      this.faceKey = faceKey;
+      this.face.innerHTML = avatarSvg(hero.cls, hero.id);
+    }
 
     // «Ведёт» стоит в имени, а не отдельной строкой: в карточке на четыре
     // строки пятая читается шумом, а кто ведёт — видно и по кольцу на лице.

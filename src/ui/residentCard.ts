@@ -2,6 +2,7 @@ import { RESIDENT_ORDER, RESIDENT_STATE, hasRoof } from '../sim/residents';
 import { SELF_ANSWERS } from '../sim/settler';
 import type { SelfAnswer } from '../sim/settler';
 import type { CampState } from '../sim/camp';
+import { avatarSvg } from './avatar';
 
 /**
  * Карточка выбранного жильца — сестра карточки героя (`heroCard.ts`) и то,
@@ -23,18 +24,25 @@ export interface ResidentCardCallbacks {
 
 export class ResidentCard {
   private readonly root: HTMLElement;
+  private readonly face: HTMLElement;
   private readonly name: HTMLElement;
   private readonly status: HTMLElement;
   private readonly acts: HTMLElement;
   private shown = 0;
+  /** Чьё лицо нарисовано: карточка обновляется чаще, чем меняется жилец. */
+  private faceKey = '';
 
   constructor(parent: HTMLElement, private readonly cb: ResidentCardCallbacks) {
     this.root = document.createElement('div');
     this.root.id = 'resident-card';
     this.root.className = 'panel';
+    // Лицо — то же, что в веере и в знакомстве (§11.8): жилец пришёл в лагерь
+    // с этим лицом, и карточка обязана показывать того же человека.
     this.root.innerHTML = `
-      <div class="row r-top"><b id="rc-name"></b><span id="rc-status" class="dim"></span></div>
+      <div class="r-id"><span class="face" id="rc-face"></span>
+        <span><b id="rc-name"></b><span id="rc-status" class="dim"></span></span></div>
       <div class="r-acts" id="rc-acts"></div>`;
+    this.face = this.root.querySelector('#rc-face')!;
     this.name = this.root.querySelector('#rc-name')!;
     this.status = this.root.querySelector('#rc-status')!;
     this.acts = this.root.querySelector('#rc-acts')!;
@@ -61,6 +69,11 @@ export class ResidentCard {
     if (r === undefined) {
       this.setVisible(false);
       return;
+    }
+    const faceKey = `${r.look}:${r.seed}`;
+    if (faceKey !== this.faceKey) {
+      this.faceKey = faceKey;
+      this.face.innerHTML = avatarSvg(r.look, r.seed);
     }
     this.name.textContent = r.name;
     const roofed = hasRoof(camp, this.shown);

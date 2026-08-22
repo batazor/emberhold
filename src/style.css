@@ -443,6 +443,13 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #resident-card b { font-size: 12.5px; }
 #hero-card b { font-size: 12.5px; }
 #hero-card .bar { height: 4px; }
+/* Шапка карточки: лицо слева, имя и состояние колонкой. Лицо то же, что
+   в веере (§11.8), но мельче, чем в знакомстве: на него смотрят, выбирая,
+   а не разговаривая. Колонка, а не строка: в 172 пикселя «лицо · имя ·
+   статус» в один ряд не влезает. */
+.r-id { display: flex; gap: 8px; align-items: center; }
+.r-id .face { width: 34px; height: 34px; flex: none; }
+.r-id > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .r-meta { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .r-skill { font-size: 11px; color: var(--dim); }
 .r-acts { display: flex; gap: 6px; }
@@ -760,7 +767,12 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .turn-chip {
   padding: 2px 7px; border-radius: 999px; font-size: 11px;
   background: var(--fill); color: var(--dim);
+  display: inline-flex; align-items: center; gap: 4px;
 }
+/* Свои в очереди стоят лицами (§11.8): «Герой» на троих читался как один
+   человек, ходящий трижды. Лицо с ноготь — его хватает, чтобы отличить
+   шлем от капюшона, а больше чип и не должен. */
+.turn-chip .face { width: 15px; height: 15px; flex: none; }
 .turn-chip.me { color: var(--ink); }
 .turn-chip.now { background: var(--warn); color: var(--on-warn); }
 .battle-acts { display: flex; gap: 6px; }
