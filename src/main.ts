@@ -102,7 +102,7 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
-import { KIND, dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import { KIND, dayAt, lootMul, nightAt, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import {
   campNav,
@@ -2444,8 +2444,10 @@ function toGladeCamp(): void {
   seatResidents();
   rig.lookAt(raid.hero.x, raid.hero.z, true);
   rig.setZoom(20, true);
-  // Поляна — на поверхности, и это день: тот же свет, что в прологе.
-  setNight(0.12);
+  // Свет лагеря идёт по смене мира (§24): в какой час игрок вошёл,
+  // такой и застал. Ставится и здесь, и каждый кадр — иначе первый кадр
+  // после входа успел бы мигнуть вчерашним значением.
+  setNight(nightAt(clock.now()));
   resultShown = false;
   inGlade = false;
   inGladeCamp = true;
@@ -3747,6 +3749,17 @@ startLoop({
     }
 
     if ((mode === 'raid' || inGladeCamp) && raid !== null && raidView !== null) {
+      /**
+       * Небо лагеря поворачивается по смене мира (§24). Значение идёт
+       * через `setNight`, а не в `rig.night` напрямую, ровно ради `?night=`:
+       * отладочный свет обязан перебивать сценарный, иначе замер на конкретной
+       * темноте перестал бы повторяться.
+       *
+       * Кадр поляны идёт по ветке вылазки — на полной частоте и без
+       * замирания, — поэтому ход неба ничего не стоит по батарее. Вылазку
+       * это не трогает: под землёй время суток не при чём, там своя тьма.
+       */
+      if (inGladeCamp) setNight(nightAt(clock.now()));
       raidView.sync(raid, alpha, dt, now, rig.dayFactor);
       // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
       // теми же правилами, которыми применит ход: кнопка, предлагающая

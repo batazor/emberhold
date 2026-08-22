@@ -22,7 +22,7 @@
  *
  * Запуск: npx tsx scripts/shift.ts
  */
-import { SHIFT_SEC } from '../src/sim/world';
+import { CAMP_DAY, CAMP_NIGHT, SHIFT_SEC, nightAt, phaseAt } from '../src/sim/world';
 
 /** Длина сессии в секундах (§20.2: «игра с двухминутными сессиями»). */
 const SESSION = 2 * 60;
@@ -36,27 +36,20 @@ const GAPS: readonly { readonly name: string; readonly sec: number }[] = [
 ];
 
 /**
- * Фазы суток долями круга. Сумерки нарочно широкие: перелом — единственная
- * фаза, которую **смотрят**, а не застают, и узкий закат игрок не поймает
- * никогда.
+ * Фазы прибор не описывает, а спрашивает у игры (`world.phaseAt`). Своя
+ * таблица долей тут уже стояла и была списана с раздела — то самое, что
+ * §22.8 запретил: прибор, у которого своя копия величины, однажды меряет
+ * не игру, а себя.
+ *
+ * Доля круга переводится в секунды смены: раскладка фаз у всех кандидатов
+ * одна, разной остаётся только длина суток — а её прибор и выбирает.
  */
-const PHASES: readonly { readonly name: string; readonly from: number; readonly to: number }[] = [
-  { name: 'день', from: 0.0, to: 0.42 },
-  { name: 'закат', from: 0.42, to: 0.55 },
-  { name: 'ночь', from: 0.55, to: 0.87 },
-  { name: 'рассвет', from: 0.87, to: 1.0 },
-];
-
-const phaseAt = (share: number): string => {
-  const u = ((share % 1) + 1) % 1;
-  return PHASES.find((p) => u >= p.from && u < p.to)?.name ?? 'день';
-};
+const PHASES = ['день', 'закат', 'ночь', 'рассвет'] as const;
+const phaseOf = (share: number): string => phaseAt((((share % 1) + 1) % 1) * SHIFT_SEC);
 
 /** Ломает ли визит длиной `SESSION`, начатый в доле `u`, границу фазы. */
 function catchesTurn(period: number, u: number): boolean {
-  const start = phaseAt(u);
-  const end = phaseAt(u + SESSION / period);
-  return start !== end;
+  return phaseOf(u) !== phaseOf(u + SESSION / period);
 }
 
 /** Кандидаты в длину суток. Смена мира стоит первой: свои часы заводить
@@ -74,18 +67,18 @@ const STEPS = 20000;
 
 console.log(`Смена мира — ${SHIFT_SEC / 60} мин (world.ts SHIFT_SEC), сессия — ${SESSION / 60} мин.\n`);
 
-const head = ['сутки'.padEnd(15), 'мин'.padStart(5), ...PHASES.map((p) => p.name.padStart(8)), 'перелом'.padStart(9)];
+const head = ['сутки'.padEnd(15), 'мин'.padStart(5), ...PHASES.map((p) => p.padStart(8)), 'перелом'.padStart(9)];
 console.log(head.join(''));
 
 for (const period of PERIODS) {
-  const seen = new Map<string, number>(PHASES.map((p) => [p.name, 0]));
+  const seen = new Map<string, number>(PHASES.map((p) => [p, 0]));
   let turns = 0;
   for (let i = 0; i < STEPS; i++) {
     const u = i / STEPS;
-    seen.set(phaseAt(u), seen.get(phaseAt(u))! + 1);
+    seen.set(phaseOf(u), (seen.get(phaseOf(u)) ?? 0) + 1);
     if (catchesTurn(period.sec, u)) turns++;
   }
-  const cells = PHASES.map((p) => `${Math.round((seen.get(p.name)! / STEPS) * 100)}%`.padStart(8));
+  const cells = PHASES.map((p) => `${Math.round(((seen.get(p) ?? 0) / STEPS) * 100)}%`.padStart(8));
   console.log([
     period.name.padEnd(15),
     `${Math.round(period.sec / 60)}`.padStart(5),
@@ -103,6 +96,30 @@ for (const period of PERIODS) {
   });
   console.log([period.name.padEnd(15), ...cells].join(''));
 }
+
+/**
+ * Кривая света принятых суток — уже не выбор длины, а проверка того,
+ * что выбрано. Печатается вместе с яркостью солнца, потому что «ночь 0,8»
+ * само по себе ничего не говорит: у света своя формула (`render/scene.ts`),
+ * и на глаз из доли темноты она не выводится.
+ */
+console.log('\nСвет принятых суток (смена мира):\n');
+console.log(['доля'.padStart(6), 'мин'.padStart(6), 'фаза'.padStart(9), 'тьма'.padStart(7), 'солнце'.padStart(8)].join(''));
+for (let i = 0; i <= 20; i++) {
+  const u = i / 20;
+  const t = u * SHIFT_SEC;
+  const night = nightAt(t);
+  // Та же формула, что в render/scene.ts: солнце = 0.05 + день × 1.75.
+  const sun = 0.05 + (1 - night) * 1.75;
+  console.log([
+    u.toFixed(2).padStart(6),
+    (t / 60).toFixed(1).padStart(6),
+    phaseAt(t).padStart(9),
+    night.toFixed(2).padStart(7),
+    sun.toFixed(2).padStart(8),
+  ].join(''));
+}
+console.log(`\nразмах: ${CAMP_DAY} … ${CAMP_NIGHT}`);
 
 /**
  * Вердикта прибор не выносит: он печатает доли, а решение — какой из них

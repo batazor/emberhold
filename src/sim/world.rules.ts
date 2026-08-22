@@ -8,6 +8,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  CAMP_DAY,
+  CAMP_NIGHT,
   KIND,
   CLANS,
   DAY_SEC,
@@ -21,7 +23,9 @@ import {
   dayStartShift,
   liveVisits,
   lootMul,
+  nightAt,
   nodeSeed,
+  phaseAt,
   regionAt,
   shiftAt,
   worldAt,
@@ -282,5 +286,85 @@ describe('Мир: карта локаций', () => {
     assert.ok(raidable.length > 0, 'вылазок в дне не осталось');
     assert.ok(raidable.length < nodes.length, 'в дне нет ни одной прогулки — проверять нечего');
     for (const n of raidable) assert.equal(n.kind, 'вылазка');
+  });
+});
+
+describe('Время суток (§24)', () => {
+  /** Шаг обхода смены. Мельче секунды тут нечего ловить. */
+  const STEP = 1;
+
+  test('сутки — это смена, а не своё число', () => {
+    // Второй период рядом с существующим разошёлся бы с ним молча: свет
+    // говорил бы одно, а кланы и богатство — другое.
+    for (const t of [0, 12345, WORLD_EPOCH, WORLD_EPOCH + 987654]) {
+      assert.equal(nightAt(t), nightAt(t + SHIFT_SEC), 'свет не повторяется через смену');
+      assert.equal(phaseAt(t), phaseAt(t + SHIFT_SEC));
+    }
+  });
+
+  test('свет не выходит за день и ночь, а закат длиннее трёх минут', () => {
+    /**
+     * Порог не назначен, а выведен: скорость света меряется тем, за сколько
+     * при ней прошёл бы весь размах от полудня к полуночи. Три минуты — это
+     * полторы двухминутных сессии; закат быстрее читался бы не заходом
+     * солнца, а щелчком выключателя, и застать его целиком успевал бы
+     * один заход из многих.
+     */
+    const FASTEST = (CAMP_NIGHT - CAMP_DAY) / (3 * 60);
+    let steepest = 0;
+    let prev = nightAt(WORLD_EPOCH);
+    for (let s = STEP; s <= SHIFT_SEC; s += STEP) {
+      const now = nightAt(WORLD_EPOCH + s);
+      assert.ok(now >= CAMP_DAY - 1e-9 && now <= CAMP_NIGHT + 1e-9, `свет ушёл за края: ${now}`);
+      steepest = Math.max(steepest, Math.abs(now - prev) / STEP);
+      prev = now;
+    }
+    assert.ok(
+      steepest <= FASTEST,
+      `весь размах света прошёл бы за ${Math.round((CAMP_NIGHT - CAMP_DAY) / steepest)} с — быстрее трёх минут`,
+    );
+  });
+
+  test('за смену случаются и полдень, и глухая ночь', () => {
+    // Сутки без плато — это не сутки, а качели: игрок обязан застать
+    // и полный день, и полную ночь, а не только переходы между ними.
+    let day = 0;
+    let dark = 0;
+    for (let s = 0; s < SHIFT_SEC; s += STEP) {
+      const now = nightAt(WORLD_EPOCH + s);
+      if (Math.abs(now - CAMP_DAY) < 1e-9) day++;
+      if (Math.abs(now - CAMP_NIGHT) < 1e-9) dark++;
+    }
+    assert.ok(day * STEP > 10 * 60, `полдня всего ${Math.round((day * STEP) / 60)} мин`);
+    assert.ok(dark * STEP > 8 * 60, `ночи всего ${Math.round((dark * STEP) / 60)} мин`);
+  });
+
+  test('ночь темнее сумерек кладбища и светлее подземелья', () => {
+    // Связь, а не вкус: под небом не бывает так же черно, как под землёй,
+    // а лагерь обязан читаться силуэтами и без факела.
+    assert.ok(CAMP_NIGHT > 0.45, 'ночь лагеря светлее сумерек кладбища');
+    assert.ok(CAMP_NIGHT < 1, 'ночь лагеря сравнялась с подземельем');
+    assert.ok(CAMP_DAY < CAMP_NIGHT);
+  });
+
+  test('фазы идут по кругу и каждая случается', () => {
+    const seen = new Set<string>();
+    for (let s = 0; s < SHIFT_SEC; s += STEP) seen.add(phaseAt(WORLD_EPOCH + s));
+    assert.deepEqual([...seen].sort(), ['день', 'закат', 'ночь', 'рассвет']);
+    // Слово и свет обязаны сходиться: «ночь» на светлом небе — это две
+    // разошедшиеся таблицы, ровно то, чего §23.3 не разрешает.
+    for (let s = 0; s < SHIFT_SEC; s += STEP) {
+      const t = WORLD_EPOCH + s;
+      if (phaseAt(t) === 'день') assert.equal(nightAt(t), CAMP_DAY);
+      if (phaseAt(t) === 'ночь') assert.equal(nightAt(t), CAMP_NIGHT);
+    }
+  });
+
+  test('ничего не тикает: свет — функция часов, а не накопленного', () => {
+    // То же правило, на котором стоит весь модуль: закрытая вкладка
+    // отрабатывает сама, потому что спрашивают часы, а не счётчик.
+    const t = WORLD_EPOCH + 1234;
+    assert.equal(nightAt(t), nightAt(t));
+    assert.equal(nightAt(t + SHIFT_SEC * 1000), nightAt(t));
   });
 });
