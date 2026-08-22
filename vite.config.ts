@@ -43,7 +43,7 @@ export default defineConfig({
       output: {
         // three тянет ~160 КБ gzip — держим его отдельным чанком, чтобы код игры
         // инвалидировался без него
-        manualChunks: { three: ['three'] },
+        manualChunks: (id) => (id.includes('/node_modules/three/') ? 'three' : undefined),
       },
     },
   },

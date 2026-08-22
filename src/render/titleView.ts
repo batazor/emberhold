@@ -3,10 +3,9 @@ import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import type { Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-// Шрифт берётся из three и уезжает в сборку отдельным файлом: своей копии
-// в репозитории не заводим, чтобы она не разъехалась с версией three.
+// Копия из three@0.180: начиная с 0.185 npm-пакет three шрифты не возит.
 // Лицензия — assets/LICENSES.md.
-import fontUrl from 'three/examples/fonts/droid/droid_sans_bold.typeface.json?url';
+import fontUrl from './fonts/droid_sans_bold.typeface.json?url';
 import type { Gust } from './cursorWind';
 import { FluffyGrass } from './fluffyGrass';
 import type { SceneRig } from './scene';
