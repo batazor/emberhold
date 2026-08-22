@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стенд: полосы прогресса над работой</title>
+<!--
+  Компонент `render/workbar.ts` без игры: вместо сцены — неподвижная
+  ортокамера и пустая канва, вместо симуляции — таймер, гоняющий долю
+  0…1 по кругу. Заведён после бага, который глаз не ловил: рамка корыта
+  словарной `.bar` съедала контентную область, и заливка имела высоту
+  0px при любом прогрессе. Поэтому под полосами — замер: страница сама
+  меряет прямоугольник заливки и отвечает числами, а не видом.
+
+  Тот же вопрос без браузера задаёт правило «рамка корыта не съедает
+  заливку полосы» в `src/ui/style.rules.ts` (npm run check) — оно ловит
+  регресс в CI, а стенд остаётся для глаза: бегущая штриховка и посадка
+  полосы над точкой мира правилом не проверяются.
+-->
+<style>
+  html, body { margin: 0; height: 100%; }
+  #scene { position: fixed; inset: 0; background: #22301f; }
+  #meter {
+    position: fixed; left: 12px; bottom: 12px; z-index: 9;
+    font: 12px/1.6 ui-monospace, Menlo, monospace; color: #e8e4d8;
+    background: rgba(20, 24, 18, 0.85); padding: 10px 12px; border-radius: 6px;
+    white-space: pre;
+  }
+  #meter b.bad { color: #e07a5f; }
+  #meter b.ok { color: #9fc490; }
+</style>
+<canvas id="scene"></canvas>
+<div id="meter">…</div>
+<script type="module">
+  import * as THREE from 'three';
+  import { WorkBars } from '/src/render/workbar';
+  import '/src/style.css';
+
+  // Ортокамера смотрит на начало координат так же косо, как риг игры, —
+  // полосы должны сесть над тремя точками мира, а не в ряд по экрану.
+  const canvas = document.getElementById('scene');
+  const camera = new THREE.OrthographicCamera();
+  const view = 12;
+  function fit() {
+    canvas.width = innerWidth;
+    canvas.height = innerHeight;
+    const aspect = innerWidth / innerHeight;
+    camera.left = -view * aspect; camera.right = view * aspect;
+    camera.top = view; camera.bottom = -view;
+    camera.position.set(10, 12, 10);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+  }
+  fit();
+  addEventListener('resize', fit);
+
+  // Заглушка рига: компоненту нужны камера и размеры канвы — больше ничего.
+  const bars = new WorkBars({ camera, renderer: { domElement: canvas } });
+
+  // Таймер, не rAF: скрытая вкладка замораживает rAF, а стенд обязан жить
+  // и в превью без фокуса — то же решение, что у отладочных ?кадров.
+  let t = 0;
+  const meter = document.getElementById('meter');
+  setInterval(() => {
+    t = (t + 0.2 / 24) % 1;
+    bars.sync([
+      // Рубка: доля бежит по кругу за 24 с — темп настоящего дерева.
+      { x: 0, y: 1.9, z: 0, share: t },
+      // Добыча: полоса пониже и в противофазе — видно, что слоты независимы.
+      { x: -4, y: 1.1, z: 3, share: 1 - t },
+      // Стройка: почти стоит, с остатком словами — как у настоящей.
+      { x: 4, y: 1.6, z: -3, share: 0.62, left: '1 ч 12 мин' },
+    ]);
+
+    const rows = [...document.querySelectorAll('.workbars .workbar')].map((el, i) => {
+      const box = el.querySelector('.bar').getBoundingClientRect();
+      const fill = el.querySelector('i').getBoundingClientRect();
+      const alive = fill.height >= 1;
+      return `полоса ${i + 1}: заливка ${fill.width.toFixed(1)}×${fill.height}px `
+        + `в корыте ${box.width}×${box.height}px — <b class="${alive ? 'ok' : 'bad'}">`
+        + `${alive ? 'видна' : 'СЪЕДЕНА РАМКОЙ'}</b>`;
+    });
+    meter.innerHTML = rows.join('\n') || 'полос нет';
+  }, 200);
+</script>
