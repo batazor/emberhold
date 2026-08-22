@@ -70,10 +70,13 @@ describe('Сцена: что звучит', () => {
     assert.equal(soundFor('title', 0).pulse, false);
   });
 
-  test('музыка фоном звучит везде', () => {
-    assert.equal(soundFor('camp', 0).campTune, true);
-    assert.equal(soundFor('raid', 0).campTune, true);
-    assert.equal(soundFor('title', 0).campTune, true);
+  test('музыка фоном звучит везде, под землёй — пещерная', () => {
+    assert.equal(soundFor('camp', 0).campTune, 'camp');
+    assert.equal(soundFor('title', 0).campTune, 'camp');
+    assert.equal(soundFor('raid', 0).campTune, 'camp');
+    assert.equal(soundFor('raid', 1).campTune, 'camp');
+    assert.equal(soundFor('raid', 2).campTune, 'cave', 'копи');
+    assert.equal(soundFor('raid', 3).campTune, 'cave', 'дно');
   });
 
   test('подложка идёт по ярусу вылазки и молчит вне её', () => {
@@ -85,6 +88,6 @@ describe('Сцена: что звучит', () => {
   });
 
   test('заставка: только музыка, без подложки и пульса', () => {
-    assert.deepEqual(soundFor('title', 0), { ambient: null, campTune: true, pulse: false });
+    assert.deepEqual(soundFor('title', 0), { ambient: null, campTune: 'camp', pulse: false });
   });
 });
