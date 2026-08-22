@@ -38,7 +38,7 @@
  * Размер при этом не произвол: палатка на одного и обязана быть меньше
  * Кухни. 2×2 было взято у зданий по невнимательности, а не по доводу.
  */
-import { BUILDING_ORDER, campArea } from './camp';
+import { BUILDING_ORDER, campArea, clearanceOf } from './camp';
 import type { CampState } from './camp';
 import type { DwellerLook } from './garrison';
 import type { SelfAnswer } from './settler';
@@ -141,11 +141,14 @@ function taken(camp: CampState, x: number, z: number): boolean {
   for (const id of BUILDING_ORDER) {
     if (camp.levels[id] <= 0) continue;
     const p = camp.layout[id];
+    // Свободная зона (`clearanceOf`): изба шире следа, и палатка вплотную
+    // оказывалась под её свесом — тот же довод, что у ходьбы (`campBlocked`).
+    const pad = clearanceOf(id, camp.levels.hq);
     if (
-      x < p.x + BUILDING_FOOT &&
-      x + TENT_FOOT > p.x &&
-      z < p.z + BUILDING_FOOT &&
-      z + TENT_FOOT > p.z
+      x < p.x + BUILDING_FOOT + pad &&
+      x + TENT_FOOT > p.x - pad &&
+      z < p.z + BUILDING_FOOT + pad &&
+      z + TENT_FOOT > p.z - pad
     ) {
       return true;
     }

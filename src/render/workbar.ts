@@ -47,6 +47,9 @@ export class WorkBars {
    * работ единицы — стройка да инструмент в руках, — и дифф дороже пересбора.
    */
   sync(items: readonly WorkItem[]): void {
+    // Счёт работ на слое — для отладочных сцен: кадр живёт только на видимой
+    // вкладке, и «была ли полоса» иначе можно спросить только у глаза.
+    this.layer.dataset['n'] = String(items.length);
     while (this.pool.length < items.length) {
       const el = document.createElement('div');
       el.className = 'workbar';
