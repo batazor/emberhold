@@ -15,6 +15,10 @@ export interface Gltf {
 
 export interface GltfJson {
   readonly nodes: readonly GltfNode[];
+  /** Расширения и внешние файлы: их читает не обмер, а ресемпл — чтобы отказаться. */
+  readonly extensionsUsed?: readonly string[];
+  readonly images?: readonly { readonly uri?: string }[];
+  readonly buffers?: readonly { readonly uri?: string }[];
   readonly skins?: readonly { readonly joints: readonly number[] }[];
   readonly meshes?: readonly { readonly primitives: readonly GltfPrimitive[] }[];
   readonly animations?: readonly GltfAnimation[];
@@ -61,11 +65,18 @@ export const COMPONENTS: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3,
  * Нужны ровно два — JSON и BIN; всё остальное набор не использует.
  */
 export function readGlb(file: string): Gltf {
-  const buf = readFileSync(file);
+  return parseGlb(readFileSync(file), file);
+}
+
+/**
+ * Тот же контейнер, но уже в памяти. Нужен ресемплу: он сверяет позы файла
+ * до и после, а «после» ещё не на диске и попадать туда до сверки не должно.
+ */
+export function parseGlb(buf: Buffer, file: string): Gltf {
   if (buf.toString('ascii', 0, 4) !== 'glTF') throw new Error(`${file}: не GLB`);
   let at = 12;
   let json: GltfJson | undefined;
-  let bin = Buffer.alloc(0);
+  let bin: Buffer = Buffer.alloc(0);
   while (at + 8 <= buf.length) {
     const length = buf.readUInt32LE(at);
     const type = buf.readUInt32LE(at + 4);
@@ -306,35 +317,69 @@ export function measureSlide(pose: Posed, toes: readonly number[]): number {
  * Пик, а не крайняя точка выноса: у рубящего вынос приходится на конец дуги,
  * у колющего — на её середину, и «дальше всего» у них означает разные фазы.
  * Скорость означает одну и ту же.
+ *
+ * Из равных пиков берётся первый, и строгого `>` для этого мало. Клип, который
+ * успевает повторить свой цикл несколько раз, даёт пики равные по существу,
+ * но не побайтно: `Ranged_2H_Shooting` — четыре выстрела за 1,07 с с пиком
+ * 1,9507 в каждом, и какой из них «главный», решал седьмой знак. Пересчёт
+ * файла перекидывал момент с 0,05 с на 0,32 с, а с ним и вердикт «успевает ли
+ * скелет замахнуться». Поэтому поздний пик обязан быть не просто больше,
+ * а больше заметно — на TIE.
  */
+
+/**
+ * Ширина ничьей между пиками, доля от главного. Не «побольше для верности»:
+ * ширину выбрал замер — 132 ударных клипа, прогнанных до и после прорядки
+ * набора, и доля тех, у кого момент удара не переехал:
+ *
+ *   0      — 129 из 132     1e-4 — 127
+ *   1e-6   — 126            1e-3 — 128
+ *   1e-5   — 126            3e-3 — 130, и дальше не растёт
+ *
+ * Узкая ничья хуже, чем никакая: она ловит только совпадения байт в байт,
+ * а обмер шумит на полпроцента — конечность считается разностью положений,
+ * и прорядка ключей эту разность чуть меняет. С 3e-3 «равные» значит равные
+ * в пределах шума, и это ровно то, ради чего правило вводилось.
+ */
+const TIE = 3e-3;
+
 export function measureStrike(pose: Posed, limbs: readonly number[]): { at: number; peak: number } {
   if (pose.duration === 0 || limbs.length === 0) return { at: 0, peak: 0 };
   const steps = Math.max(2, Math.round(pose.duration * SAMPLES_PER_SECOND));
   const dt = pose.duration / steps;
+
+  // Скорость самой быстрой конечности в каждой выборке. Кто именно быстрее,
+  // клип решает сам: мечом бьют рукой, «Kick» — ногой, и различать их незачем.
+  const speeds: number[] = [];
   let previous: number[][] | undefined;
-  let at = 0;
-  let peak = 0;
   for (let i = 0; i <= steps; i++) {
-    const t = dt * i;
-    const world = pose.world(t);
+    const world = pose.world(dt * i);
     const now = limbs.map((node) => {
       const m = world(node);
       return [m[12]!, m[13]!, m[14]!];
     });
     if (previous !== undefined) {
+      let fastest = 0;
       for (let k = 0; k < now.length; k++) {
         const a = previous[k]!;
         const b = now[k]!;
-        const speed = Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!) / dt;
-        if (speed > peak) {
-          peak = speed;
-          at = t;
-        }
+        fastest = Math.max(fastest, Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!) / dt);
       }
+      speeds.push(fastest);
     }
     previous = now;
   }
-  return { at, peak };
+
+  // Пик сначала весь, момент потом: сравнивать на ходу с текущим максимумом
+  // нельзя — плавно разгоняющаяся рука прошла бы ничью по шагу и оставила
+  // момент в начале разгона. Ничья считается от готового пика.
+  let peak = 0;
+  for (const speed of speeds) peak = Math.max(peak, speed);
+  if (peak === 0) return { at: 0, peak: 0 };
+  const first = speeds.findIndex((speed) => speed >= peak * (1 - TIE));
+  // speeds[j] — скорость на отрезке между выборками j и j+1, то есть к моменту
+  // dt*(j+1): удар случился к концу отрезка, а не в его начале.
+  return { at: dt * (first + 1), peak };
 }
 
 /** Насколько поза в конце клипа не совпала с позой в начале. */
