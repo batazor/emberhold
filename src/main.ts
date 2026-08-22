@@ -1672,15 +1672,17 @@ const setHint = (text: string): void => hud.setHint(meetPanel.visible ? '' : tex
  * дев-меню — сейв переживает перезагрузку, и стереть его из консоли нельзя:
  * игра тут же запишет его обратно.
  */
+const statsPanel = new StatsPanel(app);
+
 new SettingsMenu(app, {
   onNewGame: () => {
     wiped = true;
     wipe();
     location.reload();
   },
+  // §9 — сводка открывается из настроек: своей кнопки на экране у неё нет.
+  onStats: () => statsPanel.open(),
 });
-
-const statsPanel = new StatsPanel(app);
 
 function buy(id: ConsumableId): boolean {
   const block = buyBlock(camp, id);
@@ -1931,7 +1933,9 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   // по лицу, а не сцена.
   heroCard.setVisible(false);
   residentCard.setVisible(false);
-  statsPanel.setVisible(panels.stats);
+  // Сводка закрывается со сменой сцены: она смотрит на игру со стороны,
+  // и её незачем нести из лагеря в вылазку.
+  statsPanel.close();
   // §25 — хроника пересобирается на каждом показе заставки: к этому моменту
   // телеметрия уже пополнилась тем, чем кончилась прошлая сессия.
   if (panels.startScreen) startScreen.setChronicle(chronicle(events()));

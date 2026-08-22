@@ -19,7 +19,6 @@ export interface Panels {
   /** Лист лагеря. */
   readonly campHud: boolean;
   readonly roster: boolean;
-  readonly stats: boolean;
   readonly startScreen: boolean;
   /** Предложение разбить лагерь — его поднимает пролог, а не сцена. */
   readonly campPrompt: boolean;
@@ -29,14 +28,15 @@ export interface Panels {
 
 /**
  * Панели сцены. `quiet` — кадры 9 и 10 раскадровки: лагерь показывает ровно
- * одно действие, отряд и данные ждут своей очереди.
+ * одно действие, отряд ждёт своей очереди. Сводки в таблице больше нет:
+ * она открывается из настроек (`ui/settings.ts`), а шестерня видна во всех
+ * сценах — прятать её сценой было бы уже другим решением.
  */
 export function panelsFor(scene: Scene, quiet = false): Panels {
   const none = {
     hud: false,
     campHud: false,
     roster: false,
-    stats: false,
     startScreen: false,
     campPrompt: false,
     returnScreen: false,
@@ -45,7 +45,7 @@ export function panelsFor(scene: Scene, quiet = false): Panels {
     case 'title':
       return { ...none, startScreen: true };
     case 'camp':
-      return { ...none, campHud: true, roster: !quiet, stats: !quiet };
+      return { ...none, campHud: true, roster: !quiet };
     case 'raid':
       return { ...none, hud: true };
   }
