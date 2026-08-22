@@ -7,21 +7,7 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div id="container">
-    <div id="lottie"> </div>
-    <div id="enter">
-      <button id="enter" onclick="start()">enter</button>
-    </div>
-  </div>
   <canvas class="webgl"></canvas>
-
-  <script>
-    let start = () => {
-      document.getElementById("container").style.display = "none";
-      window.start3 = true;
-      anim.stop();
-    }
-  </script>
   <script type="module" src="./main.js"></script>
 </body>
 </html>

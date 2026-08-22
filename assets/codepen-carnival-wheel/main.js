@@ -1,11 +1,18 @@
-import * as THREE from "https://esm.sh/three@0.174.0";
-import { OrbitControls } from "https://esm.sh/three@0.174.0/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "https://esm.sh/three@0.174.0/examples/jsm/loaders/GLTFLoader.js";
-import { DRACOLoader } from "https://esm.sh/three@0.174.0/examples/jsm/loaders/DRACOLoader";
-import { RGBELoader } from "https://esm.sh/three@0.174.0/examples/jsm/loaders/RGBELoader";
-import Lottie from "https://esm.sh/lottie-web";
+// three — из node_modules проекта (демо гоняется через vite dev),
+// чтобы трава стартового экрана и колесо жили в одном экземпляре three.
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { FluffyGrass } from "../../src/render/fluffyGrass";
 
-window.start3 = false;
+// FluffyGrass грузит свои ассеты по относительному пути grass/…, который
+// от этой страницы указал бы внутрь папки демо; поворачиваем к public/.
+THREE.DefaultLoadingManager.setURLModifier((url) =>
+  url.startsWith("grass/") ? `/${url}` : url
+);
+
+window.start3 = true;
 let cameraSetup = {
   cameraIsSettled: false,
   cameraTgt: {
@@ -24,21 +31,6 @@ let init = () => {
   window.addEventListener("touchend", isUp);
   window.addEventListener("mousemove", isMove);
   window.addEventListener("touchmove", isMove);
-  initLottie();
-};
-let anim = null;
-let initLottie = () => {
-  anim = Lottie.loadAnimation({
-    container: document.getElementById("lottie"),
-    renderer: "svg",
-    loop: true,
-    autoplay: true,
-    path: "./assets/crnvlintro.json"
-  });
-  let loop = () => {
-    anim.goToAndPlay(120, true);
-  };
-  anim.addEventListener("loopComplete", loop);
 };
 let wheel;
 let lever = null;
@@ -46,7 +38,10 @@ let hitArea = null;
 let pullSign = null;
 let ready = false;
 let speed = 0;
-let inc = 0.02;
+// Случайный стартовый импульс: затухание фиксированное (0.001/кадр),
+// поэтому одинаковый inc всегда останавливал колесо на одном и том же
+// секторе — на двойке.
+let inc = 0.05 + Math.random() * 0.3;
 let mouse = {
   direction: null,
   pressing: false,
@@ -73,6 +68,16 @@ let deviceType = null;
 const canvas = document.querySelector("canvas.webgl");
 //
 const scene = new THREE.Scene();
+// Небо и туман — как на стартовом экране игры (дневное небо scene.ts,
+// плотность дымки titleView.ts).
+scene.background = new THREE.Color(0xbcd2e8);
+scene.fog = new THREE.FogExp2(0xbcd2e8, 0.02);
+// Колесо целиком на MeshBasicMaterial, свет нужен только траве и земле.
+scene.add(new THREE.HemisphereLight(0xbcd2e8, 0x2b2519, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(5, 10, 4);
+scene.add(sun);
+let grass = null;
 //
 const textureLoader = new THREE.TextureLoader();
 //
@@ -125,6 +130,9 @@ const isUp = (e) => {
   if (mouse.dragStarted) {
     mouse.dragStarted = false;
     lever.rotation.x = 1;
+    // Случайная добавка к рывку: сам по себе накопленный inc почти
+    // одинаков от раза к разу, и без неё выпадал бы один сектор.
+    inc += 0.05 + Math.random() * 0.35;
   }
 };
 //
@@ -285,7 +293,62 @@ gltfLoader.load("./assets/carnival.glb", (gltf) => {
       child.material = bakedMaterial;
     }
   });
+  // только спин: колесо, рычаг, стрелка, панель результата; фоновые
+  // постройки (шатёр, прилавок, занавес и т.п.) спрятаны
+  // имена — как их отдаёт GLTFLoader: пробелы заменены подчёркиваниями
+  const keep = new Set([
+    "wheel",
+    "wheel_base",
+    "lever",
+    "hitarea",
+    "result_panel",
+    "arrow",
+    "arrow_sign",
+    "Nail",
+    "sign_swing",
+    "spin_sign",
+    "spin_letters",
+    "star_wheel"
+  ]);
+  gltf.scene.children.forEach((child) => {
+    if (!keep.has(child.name)) child.visible = false;
+  });
   scene.add(gltf.scene);
+  // Луг под колесом: земля от подошвы основания, трава — со стартового
+  // экрана (FluffyGrass), только поле меньше и кустик мельче под масштаб.
+  const base = gltf.scene.getObjectByName("wheel_base");
+  // Земля чуть выше подошвы: стоя ровно на плоскости, модель читалась
+  // парящей — притопленное основание выглядит вкопанным.
+  const groundY = new THREE.Box3().setFromObject(base).min.y + 0.08;
+  const groundMat = new THREE.MeshLambertMaterial({
+    color: 0x5e875e,
+    flatShading: true
+  });
+  // Поворот запечён в геометрию: сэмплер травы читает локальные координаты.
+  const groundGeo = new THREE.CircleGeometry(20, 48);
+  groundGeo.rotateX(-Math.PI / 2);
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.position.y = groundY;
+  scene.add(ground);
+  // Под самой моделью трава не растёт: пятачок по подошве основания
+  // с небольшим запасом, штатный reject травы.
+  const foot = new THREE.Box3().setFromObject(base);
+  const pad = 1.0;
+  // К камере (+z) прогалина шире: она стоит почти вровень с землёй,
+  // и травинки даже в паре единиц перед ступенями в кадре ложатся на модель.
+  const reject = (x, z) =>
+    x > foot.min.x - pad &&
+    x < foot.max.x + pad &&
+    z > foot.min.z - pad &&
+    z < foot.max.z + 2;
+  grass = new FluffyGrass(ground, {
+    fieldSize: 40,
+    count: 9000,
+    scale: 1.1,
+    reject
+  });
+  grass.group.position.y = groundY;
+  scene.add(grass.group);
   // console.log(numArr);
 });
 let initResultAnimation = (child, gltf) => {
@@ -447,6 +510,7 @@ const tick = () => {
   //reveal animation
   const delta = clock.getDelta();
   if (animMixer) animMixer.update(delta);
+  if (grass) grass.update(clock.elapsedTime);
   //  console.log(delta);
   // Render
   renderer.render(scene, camera);
@@ -456,4 +520,3 @@ init();
 tick();
 window.camera = camera;
 window.controls = controls;
-window.anim = anim;
