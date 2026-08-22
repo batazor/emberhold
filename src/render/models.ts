@@ -428,8 +428,9 @@ const HERO_SHAPES: Record<HeroClassId, () => Piece[]> = {
  * рогатый шлем с топором и посох.
  *
  * Рост задаётся по скелету, а не по тому, что у него в руках. Простой
- * скелет — 0,72 клетки против 1,3 у героя: мелкий он и на вид; воин 0,95,
- * маг 1,0, и за габарит тела его выносит посох, а не рост.
+ * скелет — 0,95 клетки против 1,3 у героя: мельче героя, но не карлик —
+ * прежние 0,72 в кадре читались игрушкой, а не противником. Воин 1,15,
+ * маг 1,25, и за габарит тела мага выносит посох, а не рост.
  */
 /**
  * Рост привидения. Стоит отдельным числом, потому что нужен раньше таблицы
@@ -440,9 +441,9 @@ const HERO_SHAPES: Record<HeroClassId, () => Piece[]> = {
 const GHOST_HEIGHT = 0.62;
 
 const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
-  minion: () => skeletonGeometry('Skeleton_Minion', 0.72),
-  warrior: () => skeletonGeometry('Skeleton_Warrior', 0.95, 'Skeleton_Axe'),
-  mage: () => skeletonGeometry('Skeleton_Mage', 1, 'Skeleton_Staff'),
+  minion: () => skeletonGeometry('Skeleton_Minion', 0.95),
+  warrior: () => skeletonGeometry('Skeleton_Warrior', 1.15, 'Skeleton_Axe'),
+  mage: () => skeletonGeometry('Skeleton_Mage', 1.25, 'Skeleton_Staff'),
   // Привидение — из набора кладбища (§6.1.7), и скелета у него нет: и здесь,
   // и в вылазке это одна и та же неподвижная модель.
   ghost: () => graveyardGeometry('character-ghost', GHOST_HEIGHT),
@@ -588,9 +589,9 @@ export const enemyGeometry = (kind: EnemyKind): THREE.BufferGeometry => ENEMY_MO
  * что у неподвижной версии, иначе подмена сдвинула бы силуэт.
  */
 export const ENEMY_HEIGHT: Record<EnemyKind, number> = {
-  minion: 0.72,
-  warrior: 0.95,
-  mage: 1,
+  minion: 0.95,
+  warrior: 1.15,
+  mage: 1.25,
   // Привидение мельче простого скелета: в наборе это тряпка с руками
   // 0,79 в ширину при 0,66 в высоту, и вытягивать её до роста скелета
   // значило бы рисовать другую модель.
