@@ -609,14 +609,25 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .set-row input { width: 100%; accent-color: var(--gold); }
 .set-row b { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 #settings .sp-note { margin: 10px 0 0; }
-/* Облако (§6): форма в столбик, поля тем же 16px, что у знакомства, —
-   меньший размер зумит телефон на фокусе, и кадр уезжает из-под окна. */
-#settings .cloud { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
-#settings .cloud input { font: inherit; font-size: 16px; padding: 9px 12px; width: 100%; }
-#settings .cloud button { width: 100%; padding: 11px; }
-#settings .cloud .sp-note { margin: 0 0 2px; }
-#settings .cloud .cloud-note { margin: 0; font-size: 12px; text-align: center; min-height: 0; }
-#settings .cloud .cloud-note:empty { display: none; }
+
+/* ---------- вход в игру (§6) ---------- */
+/* Карточка поверх заставки, тем же затемнением, что настройки, но выше их:
+   пока сессии нет, ничего другого решать нельзя. Поля 16px, как у знакомства, —
+   меньший размер зумит телефон на фокусе, и кадр уезжает из-под карточки. */
+#auth {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 70;
+}
+#auth .panel {
+  width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 7px;
+}
+#auth h2 { margin: 0; font-size: 18px; }
+#auth .sp-note { margin: 0 0 4px; }
+#auth input { font: inherit; font-size: 16px; padding: 9px 12px; width: 100%; }
+#auth button { width: 100%; padding: 11px; }
+#auth .ghost { background: transparent; color: var(--dim); }
+#auth .auth-note { margin: 0; font-size: 12px; text-align: center; }
+#auth .auth-note:empty { display: none; }
 #settings .acts { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
 #settings .acts button { width: 100%; padding: 11px; }
 #settings .acts p { margin: 2px 0 4px; font-size: 12px; text-align: center; }

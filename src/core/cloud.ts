@@ -47,6 +47,21 @@ export async function cloudSignIn(email: string, password: string): Promise<stri
   }
 }
 
+/**
+ * Регистрация. Отвечает null, когда сессия открыта сразу; текстом — и отказ,
+ * и «подтвердите почту»: карточке в обоих случаях нужна строка, а не код.
+ */
+export async function cloudSignUp(email: string, password: string): Promise<string | null> {
+  try {
+    const { data, error } = await client.auth.signUp({ email, password });
+    if (error !== null) return 'Не вышло: другая почта или пароль подлиннее';
+    if (data.session === null) return 'Письмо отправлено — подтвердите почту и войдите';
+    return null;
+  } catch {
+    return 'Не вышло: нет сети';
+  }
+}
+
 export async function cloudSignOut(): Promise<void> {
   try {
     await client.auth.signOut();

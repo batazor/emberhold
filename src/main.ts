@@ -115,7 +115,8 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
-import { cloudPull, cloudPush, cloudWipe } from './core/cloud';
+import { cloudPull, cloudPush, cloudUser, cloudWipe } from './core/cloud';
+import { AuthCard } from './ui/authCard';
 import {
   KIND,
   SHIFT_SEC,
@@ -1675,10 +1676,18 @@ new SettingsMenu(app, {
       location.reload(),
     );
   },
-  onCloudSignIn: () => void syncCloud(),
-  onCloudSignOut: () => {
-    cloudReady = false;
-  },
+});
+
+/**
+ * Ворота облака: игра спрашивает сессию на входе. Она есть и жива —
+ * карточка не показывается вовсе; нет — поверх заставки проявляется
+ * вход или регистрация, и до них кнопка «Играть» недосягаема.
+ */
+const authCard = new AuthCard(app, {
+  onDone: () => void syncCloud(),
+});
+void cloudUser().then((email) => {
+  if (email === null) authCard.show();
 });
 
 const statsPanel = new StatsPanel(app);

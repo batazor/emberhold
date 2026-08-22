@@ -1,6 +1,5 @@
 import { mix, play, setMix } from '../core/audio';
 import type { Mix } from '../core/audio';
-import { cloudSignIn, cloudSignOut, cloudUser } from '../core/cloud';
 import { saveMix } from '../core/settings';
 
 /**
@@ -19,10 +18,6 @@ import { saveMix } from '../core/settings';
  */
 export interface SettingsMenuCallbacks {
   onNewGame(): void;
-  /** Игрок вошёл в облако — main решает, чей сейв свежее (§6). */
-  onCloudSignIn(): void;
-  /** Игрок вышел — пуши в облако прекращаются. */
-  onCloudSignOut(): void;
 }
 
 /**
@@ -50,7 +45,6 @@ export class SettingsMenu {
   private readonly button: HTMLButtonElement;
   private readonly overlay: HTMLElement;
   private readonly acts: HTMLElement;
-  private readonly cloud: HTMLElement;
 
   constructor(parent: HTMLElement, cb: SettingsMenuCallbacks) {
     this.button = document.createElement('button');
@@ -76,34 +70,10 @@ export class SettingsMenu {
           ).join('')}
         </div>
         <p class="sp-note">Амбиент глушится отдельно: пульс провианта идёт по шине боя и останется слышен.</p>
-        <div class="cloud"></div>
         <div class="acts"></div>
       </div>`;
     parent.appendChild(this.overlay);
     this.acts = this.overlay.querySelector('.acts') as HTMLElement;
-    this.cloud = this.overlay.querySelector('.cloud') as HTMLElement;
-
-    /**
-     * Облако (§6). Форма живёт в меню, а не отдельным экраном, по той же
-     * причине, что и громкость: вход нужен не до игры, а когда вспомнили.
-     * Пароль вводит игрок и он отсюда никуда не пишется — уходит одним
-     * вызовом входа и забывается.
-     */
-    this.cloud.addEventListener('click', (e) => {
-      if (!(e.target instanceof HTMLButtonElement)) return;
-      const act = e.target.dataset.cloud;
-      if (act === 'in') void this.signIn(cb);
-      else if (act === 'out') {
-        void cloudSignOut().then(() => {
-          cb.onCloudSignOut();
-          this.paintCloud(null);
-        });
-      }
-    });
-    // Enter в поле пароля — тот же вход, что и кнопка.
-    this.cloud.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void this.signIn(cb);
-    });
 
     this.button.addEventListener('click', () => this.open());
     // Тап по затемнению — тот же выход. Окно ничего не решает за игрока,
@@ -145,45 +115,7 @@ export class SettingsMenu {
   private open(): void {
     this.setConfirming(false);
     this.paint();
-    // Пока облако отвечает, в секции прошлое состояние — оно и есть лучшая
-    // догадка; ответ перерисует, если игрок вошёл или вышел в другой вкладке.
-    void cloudUser().then((email) => this.paintCloud(email));
     this.overlay.classList.add('on');
-  }
-
-  /** Вход в облако: поля читаются из формы и тут же забываются. */
-  private async signIn(cb: SettingsMenuCallbacks): Promise<void> {
-    const email = this.cloud.querySelector('[data-in="email"]');
-    const pass = this.cloud.querySelector('[data-in="pass"]');
-    const note = this.cloud.querySelector('.cloud-note');
-    if (!(email instanceof HTMLInputElement) || !(pass instanceof HTMLInputElement)) return;
-    if (email.value === '' || pass.value === '') return;
-    if (note !== null) note.textContent = 'Вход…';
-    const refusal = await cloudSignIn(email.value, pass.value);
-    if (refusal !== null) {
-      if (note !== null) note.textContent = refusal;
-      return;
-    }
-    play('tap');
-    cb.onCloudSignIn();
-    this.paintCloud(email.value);
-  }
-
-  /**
-   * Секция облака: почта и «Выйти» — или форма входа. Регистрации в игре
-   * нет намеренно: аккаунт в v0 один и уже заведён; форма регистрации
-   * обещала бы механику, которой нет (сброс пароля, подтверждение почты).
-   */
-  private paintCloud(email: string | null): void {
-    this.cloud.innerHTML =
-      email !== null
-        ? `<p class="sp-note">Облако: сейв уходит на <b>${email}</b></p>
-           <button type="button" class="ghost" data-cloud="out">Выйти из облака</button>`
-        : `<p class="sp-note">Облако: вход сохранит лагерь за аккаунтом</p>
-           <input type="email" data-in="email" placeholder="Почта" autocomplete="username">
-           <input type="password" data-in="pass" placeholder="Пароль" autocomplete="current-password">
-           <p class="cloud-note warn"></p>
-           <button type="button" data-cloud="in">Войти</button>`;
   }
 
   private close(): void {
