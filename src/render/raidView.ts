@@ -2135,6 +2135,28 @@ export class RaidView {
     const body = this.battleRigOf(state, play.target);
     if (body === null) return;
 
+    if (play.dodged) {
+      // Уворот (§11.3): удар прошёл мимо — ни вспышки, ни раны, ни отдачи
+      // по линии удара. Цель разворачивается к бьющему и играет «уклон»
+      // (Dodge_Right, клонится вправо от взгляда), а показ сдвигает её туда
+      // же вбок и возвращает: уход с линии виден телом, а не подписью.
+      const from = hexToWorld(play.from);
+      const at = hexToWorld(play.at);
+      const d = Math.hypot(at.x - from.x, at.z - from.z) || 1;
+      this.battleFacing.set(play.target, Math.atan2(from.x - at.x, from.z - at.z));
+      const rig = body.rig;
+      if (rig !== null && rig.state !== 'падение') {
+        if (rig.state === 'уклон') rig.replay();
+        else rig.play('уклон');
+      }
+      this.bumps.set(play.target, {
+        dx: (at.z - from.z) / d,
+        dz: -(at.x - from.x) / d,
+        left: PLAY_BUMP_SECONDS,
+      });
+      return;
+    }
+
     if (body.enemy !== undefined) {
       body.enemy.flash = FLASH_SECONDS;
       body.enemy.hp = play.hpAfter;

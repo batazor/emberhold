@@ -250,7 +250,7 @@ console.log('══ чувствительность: меняем характ�
 const REF: HeroClassId = 'knight';
 const base = KINDS.map((k) => duel(REF, emptyGear(), k));
 
-const bump = (over: Partial<{ attack: number; defense: number }>): Duel[] => {
+const bump = (over: Partial<{ attack: number; defense: number; agility: number }>): Duel[] => {
   const def = HERO_CLASSES[REF];
   const patched = {
     ...def,
@@ -284,6 +284,12 @@ const rows: [string, Duel[]][] = [
   ['Атака +3', bump({ attack: HERO_CLASSES[REF].base.attack + 3 })],
   ['Защита 0', bump({ defense: 0 })],
   ['Защита +6', bump({ defense: HERO_CLASSES[REF].base.defense + 6 })],
+  // Ловкость в обе стороны по тому же доводу, что Защита: у эталона она
+  // не нулевая, и «в бой не входит» надо отличать от «не сдвинулась
+  // на этом отрезке». Дуэль детерминирована сидом, поэтому разница строк —
+  // работа уворота, а не удача прогона.
+  ['Ловкость 0', bump({ agility: 0 })],
+  ['Ловкость +8', bump({ agility: HERO_CLASSES[REF].base.agility + 8 })],
 ];
 
 console.log('вариант    │ ' + KINDS.map((k) => ENEMY_STATS[k].name.padEnd(13)).join(''));
@@ -312,6 +318,7 @@ function verdict(): void {
   const attackDead = same(base, rows[1]![1]);
   // Защита мертва, только если бой не сдвинулся ни по одну сторону порога.
   const defenseDead = same(base, rows[2]![1]) && same(base, rows[3]![1]);
+  const agilityDead = same(base, rows[4]![1]) && same(base, rows[5]![1]);
 
   console.log('');
   if (attackDead && defenseDead) {
@@ -324,6 +331,7 @@ function verdict(): void {
   }
   if (attackDead) console.log('⚠ Атака не меняет бой: строка «Атака +3» совпала с исходной.');
   if (defenseDead) console.log('⚠ Защита не меняет бой: обе её строки совпали с исходной.');
+  if (agilityDead) console.log('⚠ Ловкость не меняет бой: обе её строки совпали с исходной.');
   if (!defenseDead && same(base, rows[3]![1])) {
     console.log(
       '  Защита работает, но у эталона она уже за порогом пробоя: прибавка\n'
@@ -331,7 +339,9 @@ function verdict(): void {
       + '  «Защита 0», а не на «Защита +6».',
     );
   }
-  if (!attackDead && !defenseDead) console.log('✓ Обе характеристики двигают бой.');
+  if (!attackDead && !defenseDead && !agilityDead) {
+    console.log('✓ Все три характеристики двигают бой.');
+  }
 }
 
 const measuredSomething = rows.some(([, got]) =>

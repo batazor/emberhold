@@ -48,6 +48,13 @@ export interface Stats {
    * чем классы различаются дальше, а это решение раздела, а не правки UI.
    */
   readonly might: number;
+  /**
+   * §11.3 — Ловкость. В отличие от `might`, потребитель у неё есть с рождения:
+   * из неё считается база уворота в пошаговом бою (`battle.ts`, `dodgeOf`).
+   * Одна характеристика — у героев и у противников: бой не различает,
+   * кто уходит от удара.
+   */
+  readonly agility: number;
 }
 
 export interface SkillDef {
@@ -149,8 +156,10 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     hp: 0,
     bagMul: 0.75,
     speedMul: 1.1,
-    base: { attack: 4, defense: 3, knowledge: 10, might: 3 },
-    growth: { attack: 1, defense: 0, knowledge: 1, might: 0 },
+    // Ловкость — сильная сторона Лучника, как и скорость: он не держит удар,
+    // он не даёт себя ударить. Числа черновые до перемера (`scripts/combat.ts`).
+    base: { attack: 4, defense: 3, knowledge: 10, might: 3, agility: 6 },
+    growth: { attack: 1, defense: 0, knowledge: 1, might: 0, agility: 1 },
     ranged: true,
   },
   knight: {
@@ -164,8 +173,9 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     hp: 7,
     bagMul: 1,
     speedMul: 1,
-    base: { attack: 5, defense: 6, knowledge: 0, might: 4 },
-    growth: { attack: 1, defense: 1, knowledge: 0, might: 0 },
+    // Рыцарь не уворачивается — он держит: его защита в Защите и здоровье.
+    base: { attack: 5, defense: 6, knowledge: 0, might: 4, agility: 2 },
+    growth: { attack: 1, defense: 1, knowledge: 0, might: 0, agility: 0 },
     ranged: false,
   },
   rogue: {
@@ -177,8 +187,10 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassDef> = {
     hp: 0,
     bagMul: 1.3,
     speedMul: 1,
-    base: { attack: 3, defense: 2, knowledge: 5, might: 5 },
-    growth: { attack: 0, defense: 0, knowledge: 1, might: 1 },
+    // Бандиту слабая Защита куплена увёртливостью: его бьют больно,
+    // но попадают реже.
+    base: { attack: 3, defense: 2, knowledge: 5, might: 5, agility: 5 },
+    growth: { attack: 0, defense: 0, knowledge: 1, might: 1, agility: 1 },
     ranged: false,
   },
 };
@@ -301,6 +313,7 @@ export function stats(hero: HeroState): Stats {
     defense: def.base.defense + def.growth.defense * n,
     knowledge: def.base.knowledge + def.growth.knowledge * n,
     might: def.base.might + def.growth.might * n,
+    agility: def.base.agility + def.growth.agility * n,
   };
 }
 
@@ -567,6 +580,8 @@ export interface HeroLoadout {
   readonly attack: number;
   /** §11.3 — делит пробой: сколько ран стоит удар по герою. */
   readonly defense: number;
+  /** §11.3 — база уворота в пошаговом бою. Растёт с уровнем. */
+  readonly agility: number;
   /**
    * §14.3 — стреляет ли этот класс. Отдельно от числа стрел: пустой колчан
    * у Лучника и отсутствие колчана у Рыцаря — разные состояния, и путать
@@ -598,6 +613,7 @@ export function loadout(hero: HeroState): HeroLoadout {
     // иначе тренировка не чувствуется (§11.8).
     attack: stats(hero).attack,
     defense: stats(hero).defense,
+    agility: stats(hero).agility,
     ranged: def.ranged,
   };
 }
@@ -625,6 +641,9 @@ export const DEFAULT_LOADOUT: HeroLoadout = {
   // на бойце вовсе без Защиты и получал два провала из трёх на двух воинах.
   attack: 4,
   defense: 3,
+  // Ловкость — как Защита, середина между классами (2, 5 и 6), а не ноль:
+  // нулевая мерила бы бой героем, которого в игре не существует.
+  agility: 4,
   // Ближний: этим героем мерилась вся калибровка §20.3, и дальний бой
   // сделал бы её результаты несравнимыми с прежними.
   ranged: false,

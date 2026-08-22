@@ -14,9 +14,11 @@
  * бесплатно — и стоять в бою станет выгоднее, чем идти, а весь §11
  * держится ровно на обратном.
  *
- * Случайности здесь нет по той же причине, что и раньше: шаг вылазки
- * детерминирован (`scripts/arch.ts`), и на этом стоит воспроизводимость
- * замеров. Инициатива считается Скоростью, а не броском.
+ * Случайность здесь одна — уворот (§11.3), и бросок его детерминирован:
+ * считается от сида боя и счётчика ударов (`rollPercent`), а не от
+ * `Math.random`. Шаг вылазки остаётся воспроизводимым (`scripts/arch.ts`) —
+ * тот же сид даёт тот же бой, и на этом по-прежнему стоят замеры, золотой
+ * мастер и разбор бага по сейву. Инициатива считается Скоростью, а не броском.
  */
 import { HERO_RANGED_REACH } from './config';
 import { ENEMY_STATS } from './enemies';
@@ -47,6 +49,43 @@ export const ROUND_SECONDS = 2;
  */
 export const FOOD_PER_ROUND = 1;
 
+/**
+ * §11.3 — уворот. Модель взята из Wasteland Punk: уворот — не вечная лотерея,
+ * а **плавающий ресурс**. База считается из Ловкости; каждый промах сжигает
+ * часть уворота — защитник выложился, уклоняясь, и по нему становится проще
+ * попасть; в свой ход боец переводит дух и часть базы возвращает. Затанковать
+ * увёртливостью бесконечно нельзя по построению, а не по настройке.
+ */
+/** Процентов уворота за очко Ловкости. Черновое до перемера (`scripts/combat.ts`). */
+export const DODGE_PER_AGILITY = 4;
+/** Потолок базы уворота: рост с уровнем не должен доводить до неуязвимости. */
+export const DODGE_MAX = 60;
+/** Ниже этой доли базы уворот не падает — увёртливый остаётся увёртливым. */
+export const DODGE_FLOOR_SHARE = 0.3;
+/** Сколько базы возвращается в начале собственного хода. */
+export const DODGE_REGEN_SHARE = 0.15;
+/** Какую долю точности атаки промах сжигает у уворота цели. */
+export const DODGE_SPENT_SHARE = 0.25;
+/** Точность атаки. Пока константа и одна на всех: шанс попадания —
+ *  точность минус текущий уворот цели, как в первоисточнике. */
+export const ATTACK_ACCURACY = 100;
+
+/** База уворота из Ловкости, в процентах. */
+export const dodgeOf = (agility: number): number =>
+  Math.min(DODGE_MAX, Math.max(0, agility) * DODGE_PER_AGILITY);
+
+/**
+ * Детерминированный «бросок» 0–99: перемешивание сида и номера удара,
+ * а не `Math.random`. Один и тот же бой из сейва проигрывается посимвольно —
+ * случайность видит игрок, но не замер.
+ */
+export function rollPercent(seed: number, n: number): number {
+  let x = (seed + Math.imul(n + 1, 0x9e3779b9)) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x21f0aaad) >>> 0;
+  x = Math.imul(x ^ (x >>> 15), 0x735a2d97) >>> 0;
+  return ((x ^ (x >>> 15)) >>> 0) % 100;
+}
+
 export type Side = 'hero' | 'enemy';
 
 export interface BattleUnit {
@@ -73,6 +112,10 @@ export interface BattleUnit {
   /** Дальность удара в гексах. Ближний бой — единица, то есть соседство. */
   readonly reach: number;
   readonly ranged: boolean;
+  /** База уворота из Ловкости (§11.3). К ней уворот тянется, отдыхая. */
+  readonly dodgeBase: number;
+  /** Текущий уворот — плавает: промахи сжигают, свой ход возвращает. */
+  dodge: number;
   /**
    * Ход состоит из перемещения и действия, и каждого — по одному.
    * Без `moved` боец ходит бесконечно: план «дойти» остаётся выполнимым
@@ -95,6 +138,10 @@ export interface BattleState {
   round: number;
   /** Что случилось за последний ход — для реплик HUD и звука. */
   events: string[];
+  /** Сид боя — из него считаются броски уворота (`rollPercent`). */
+  readonly seed: number;
+  /** Счётчик ударов: номер броска. Растёт с каждым замахом любой стороны. */
+  rolls: number;
 }
 
 export type BattleAction =
@@ -128,6 +175,8 @@ export type BattlePlay =
       readonly from: Hex;
       readonly at: Hex;
       readonly ranged: boolean;
+      /** Цель увернулась: удар прошёл мимо, ран нет — показ без вспышки. */
+      readonly dodged: boolean;
       /** Удар пришёлся в блок — цель держит, а не вздрагивает. */
       readonly blocked: boolean;
       /** Цель пала: клип падения играется в момент попадания, а не в конце боя. */
@@ -235,8 +284,12 @@ export function createBattle(
     ranged: boolean;
     attack: number;
     defense: number;
+    agility: number;
   }[],
   enemies: readonly { id: number; kind: EnemyKind; x: number; z: number; hp: number }[],
+  /** Сид боя для бросков уворота. Приходит из сида локации и номера стычки —
+   *  тот же сейв даёт тот же бой. */
+  seed = 0,
 ): BattleState {
   const units: BattleUnit[] = [];
   const taken = new Set<string>();
@@ -254,6 +307,8 @@ export function createBattle(
       ranged: p.ranged,
       attack: p.attack,
       defense: p.defense,
+      dodgeBase: dodgeOf(p.agility),
+      dodge: dodgeOf(p.agility),
       moved: false,
       acted: false,
       guarding: false,
@@ -276,6 +331,8 @@ export function createBattle(
       ranged: stats.ranged,
       attack: stats.attack,
       defense: 0,
+      dodgeBase: dodgeOf(stats.agility),
+      dodge: dodgeOf(stats.agility),
       moved: false,
       acted: false,
       guarding: false,
@@ -286,7 +343,7 @@ export function createBattle(
     if (u.side !== 'hero') return ENEMY_STATS[u.kind!].speed;
     return party.find((p) => p.id === u.id)?.speed ?? 0;
   });
-  return { units, order: initiative(units, speeds), at: 0, round: 1, events: [] };
+  return { units, order: initiative(units, speeds), at: 0, round: 1, events: [], seed, rolls: 0 };
 }
 
 /**
@@ -368,6 +425,10 @@ export function advance(state: BattleState): void {
       next.guarding = false;
       next.moved = false;
       next.acted = false;
+      // Свой ход — передышка: часть базы уворота возвращается (§11.3).
+      // Не вся: сожжённое промахами противника отыгрывается за несколько
+      // ходов, и серия атак по одному бойцу остаётся способом его пробить.
+      next.dodge = Math.min(next.dodgeBase, next.dodge + next.dodgeBase * DODGE_REGEN_SHARE);
       return;
     }
   }
@@ -452,6 +513,32 @@ export function apply(
       const target = state.units.find((u) => u.id === action.target && u.hp > 0);
       if (target === undefined) return false;
       if (!targets(state, size, blocked, unit).includes(target)) return false;
+      // Уворот (§11.3). Бросок детерминирован сидом и номером удара; блок
+      // уворота не даёт — держащий стоит, а не уходит с линии. Промах
+      // сжигает часть уворота цели, но не ниже трети базы: увёртливого
+      // пробивают серией, а не отменяют одним попаданием.
+      const roll = rollPercent(state.seed, state.rolls++);
+      if (!target.guarding && roll < target.dodge) {
+        target.dodge = Math.max(
+          target.dodgeBase * DODGE_FLOOR_SHARE,
+          target.dodge - ATTACK_ACCURACY * DODGE_SPENT_SHARE,
+        );
+        plays?.push({
+          kind: 'strike',
+          unit: unit.id,
+          target: target.id,
+          from: unit.hex,
+          at: target.hex,
+          ranged: unit.ranged,
+          dodged: true,
+          blocked: false,
+          killed: false,
+          hpAfter: target.hp,
+        });
+        state.events.push(`${name(unit)} бьёт — ${name(target)} уходит от удара`);
+        unit.acted = true;
+        return true;
+      }
       const raw = damageOf(unit, target);
       const dealt = target.guarding ? Math.max(1, Math.round(raw * GUARD_SHARE)) : raw;
       target.hp -= dealt;
@@ -462,6 +549,7 @@ export function apply(
         from: unit.hex,
         at: target.hex,
         ranged: unit.ranged,
+        dodged: false,
         blocked: target.guarding,
         killed: target.hp <= 0,
         hpAfter: Math.max(0, target.hp),

@@ -947,8 +947,12 @@ function openBattle(state: RaidState): void {
       ranged: f.loadout.ranged && f.arrows > 0,
       attack: f.loadout.attack + f.mods.attack,
       defense: f.loadout.defense + f.mods.defense,
+      agility: f.loadout.agility,
     })),
     engaged.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z, hp: e.hp })),
+    // Сид боя — сид локации плюс номер стычки: броски уворота (§11.3)
+    // детерминированы, и тот же сейв даёт тот же бой посимвольно.
+    state.loc.seed + state.fights,
   );
   // Завязка стоит провианта ровно как прежде (§11.1) — цена решения
   // ввязаться не изменилась оттого, что бой стал пошаговым.
