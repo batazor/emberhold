@@ -675,6 +675,21 @@ button[disabled] { opacity: 0.4; cursor: default; }
   max-width: 15em; text-align: center; line-height: 1.3; white-space: normal;
 }
 
+/* ---------- полосы прогресса над работой ---------- */
+/* Стройка, рубка, добыча (`render/workbar.ts`): полоса висит над местом
+   работы, как пузырь над говорящим. Коробку даёт словарь (`.bar`) — здесь
+   только место в кадре и габарит: полоса читается издали, а не измеряется. */
+.workbars { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+.workbars .workbar {
+  position: absolute; transform: translate(-50%, -100%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.workbars .bar { width: 56px; height: 6px; }
+.workbars .bar > i { background: var(--gold); }
+/* Остаток времени — цифры при полосе, а не подпись: у долгой стройки полоса
+   глазом неподвижна, и без цифр она читается застрявшей. */
+.workbars span { font-size: 11px; letter-spacing: 0.04em; color: var(--ink); }
+
 /* ---------- знакомство у прогалины ---------- */
 /* Та же полка внизу, что у приглашения разбить лагерь и у лавки: разговор
    случается там, где игрок стоит. Кнопки «закрыть» нет — отойти можно
