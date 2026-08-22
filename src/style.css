@@ -309,8 +309,16 @@ button:active { filter: brightness(1.25); }
   padding: calc(8px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
 }
 #camp .res { display: flex; justify-content: space-between; gap: 6px; align-self: stretch; }
-.res-item { display: flex; flex-direction: column; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
-.res-item b { font-size: 15px; }
+/* Ресурс в строку «подпись число», а не столбиком: панель вдвое ниже,
+   и сцена лагеря начинается раньше. */
+.res-item { display: flex; align-items: baseline; gap: 5px; font-variant-numeric: tabular-nums; }
+.res-item b { font-size: 13px; }
+/* На узком экране четыре ресурса в строку не помещаются (кнопка настроек
+   съедает 60px слева): два столбца, подпись к левому краю, число к правому. */
+@media (max-width: 480px) {
+  #camp .res { flex-wrap: wrap; column-gap: 14px; row-gap: 3px; }
+  #camp .res .res-item { flex: 1 1 40%; justify-content: space-between; }
+}
 /* Лагерь: сцена первая. Постоянно на экране только ресурсы и нижняя строка,
    всё остальное выезжает листом по тапу. На 360×780 прежние списки закрывали
    поселение целиком — игрок видел набор карточек, а не свой лагерь. */
@@ -575,8 +583,12 @@ button[disabled] { opacity: 0.4; cursor: default; }
    но была полупрозрачной и только в разработке, поэтому никто не замечал.
    Отступ ставится там, где строка идёт во всю ширину: панель вылазки центрована
    и на широком экране до угла не достаёт, а на узком — достаёт. */
-#hud .panel.top { padding-left: 38px; }
-#camp .panel.res { padding-left: 34px; }
+/* Кнопка настроек по факту 54×54 (правый край на 62px от края экрана):
+   прежние 34–38px её не освобождали, шестерня стояла поверх «Камня». */
+#hud .panel.top { padding-left: 64px; }
+/* Панель ресурсов не подлезает под кнопку, а начинается после неё:
+   отступ снаружи, чтобы кнопка и панель читались раздельно. */
+#camp .panel.res { margin-left: 60px; }
 /* Шестерня проворачивается на нажатие — единственная анимация интерфейса,
    и она отвечает пальцу, а не играет сама по себе. */
 #settings-open:active svg { transform: rotate(45deg); }
