@@ -335,6 +335,15 @@ const RIG = {
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_Simulation.glb', clip: 'Sit_Floor_Down', as: 'присесть' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_Simulation.glb', clip: 'Sit_Floor_Idle', as: 'сидит' },
     { file: 'assets/kaykit-animations/gltf/Rig_Medium_Simulation.glb', clip: 'Sit_Floor_StandUp', as: 'встаёт' },
+    // Рутина жильцов лагеря (§6.1.15): работа у кромки видна клипом, а не
+    // подписью. Взят Chopping, а не Chop: рутина — зацикленный труд, а Chop —
+    // одиночный замах, который пришлось бы перезапускать руками, как «удар»
+    // у настоящей рубки. С «ударом» рутина не делит клип намеренно: тот
+    // синхронизирован со звуком и стуком цели (§17.3), а у рутины цели нет.
+    { file: 'assets/kaykit-animations/gltf/Rig_Medium_Tools.glb', clip: 'Chopping', as: 'рубка' },
+    // Речь жильца (§23.5): пузырь без жеста читается подписью над манекеном.
+    // Клип — из UAL, пересаженного на наш риг тем же ретаргетом, что ходьба.
+    { file: 'assets/quaternius-ual/gltf/Rig_Medium_UAL.glb', clip: 'Idle_Talking_Loop', as: 'разговор' },
   ],
 } as const;
 

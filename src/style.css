@@ -604,6 +604,17 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #camp .task button { font-size: 13px; padding: 8px 16px; }
 #camp .task button:disabled { opacity: 0.45; }
 
+/* ---------- пузыри реплик жильцов ---------- */
+/* Речь висит над говорящим: слой не ловит касаний и лежит ниже панелей —
+   человек не вправе перекрыть собой ни карточку, ни диалог знакомства.
+   Коробку пузырю даёт словарь (`.chip` — метка): своя добавляет только
+   место над макушкой и перенос строк. */
+.bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+.bubble {
+  position: absolute; transform: translate(-50%, -100%);
+  max-width: 15em; text-align: center; line-height: 1.3; white-space: normal;
+}
+
 /* ---------- знакомство у прогалины ---------- */
 /* Та же полка внизу, что у приглашения разбить лагерь и у лавки: разговор
    случается там, где игрок стоит. Кнопки «закрыть» нет — отойти можно

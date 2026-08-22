@@ -918,21 +918,64 @@ export class RaidView {
   }
 
   /**
-   * Вести жильца рукой лагеря: позиция приходит из той же симуляции, что
-   * водит героя, а клип выбирается по делу — идёт, рубит, стоит.
+   * Вести жильца: позиция приходит из симуляции — рукой игрока (§16.1) или
+   * маршрутом рутины (`sim/chores.ts`), — а клип выбирается по делу.
+   *
+   * `glide` — догнать цель шагом, а не встать в неё. Нужен рутине в двух
+   * швах: приказ карточки перекладывает маршрут, а возврат ведения оставляет
+   * жильца там, где игрок его бросил, — в обоих случаях цель оказывается
+   * в стороне, и телепорт читался бы сбоем. Ведомому игроком `glide`
+   * не ставится: его позиция и есть симуляция, отставать ей не от чего.
+   *
+   * Клип труда у рутины свой (`рубка`): «удар» синхронизирован со звуком
+   * и дрожью цели (§17.3), а у рутины цели нет — её замах ничего не рубит.
    */
-  driveResident(i: number, x: number, z: number, walking: boolean, working: boolean, dt: number): void {
+  driveResident(
+    i: number,
+    x: number,
+    z: number,
+    walking: boolean,
+    working: boolean,
+    dt: number,
+    opts?: { speed?: number; workClip?: 'удар' | 'рубка'; talking?: boolean; glide?: boolean },
+  ): void {
     const rig = this.residents[i];
     if (rig === undefined) return;
-    const dx = x - rig.root.position.x;
-    const dz = z - rig.root.position.z;
+    const speed = opts?.speed ?? HERO_SPEED;
+    let tx = x;
+    let tz = z;
+    if (opts?.glide === true) {
+      const px = rig.root.position.x;
+      const pz = rig.root.position.z;
+      const far = Math.hypot(x - px, z - pz);
+      // Догоняет в 1,8 шага: заведомо быстрее цели, но всё ещё ногами.
+      const step = speed * 1.8 * dt;
+      if (far > Math.max(step, 0.08)) {
+        tx = px + ((x - px) / far) * step;
+        tz = pz + ((z - pz) / far) * step;
+        walking = true;
+        working = false;
+      }
+    }
+    const dx = tx - rig.root.position.x;
+    const dz = tz - rig.root.position.z;
     if (Math.hypot(dx, dz) > 1e-4) {
       rig.root.rotation.y = RaidView.turnTo(rig.root.rotation.y, Math.atan2(dx, dz), dt);
     }
-    rig.root.position.set(x, 0, z);
-    if (walking) rig.play('ходьба', rateFor(HERO_SPEED, rig.root.scale.y));
-    else if (working) rig.play('удар', STRIKE / SWING_SECONDS);
+    rig.root.position.set(tx, 0, tz);
+    if (walking) rig.play('ходьба', rateFor(speed, rig.root.scale.y));
+    else if (working) {
+      if (opts?.workClip === 'рубка') rig.play('рубка');
+      else rig.play('удар', STRIKE / SWING_SECONDS);
+    } else if (opts?.talking === true) rig.play('разговор');
     else rig.play('покой');
+  }
+
+  /** Довернуть стоящего жильца: лицо стоянки — к делу, а не куда пришёл. */
+  faceResident(i: number, facing: number, dt: number): void {
+    const rig = this.residents[i];
+    if (rig === undefined) return;
+    rig.root.rotation.y = RaidView.turnTo(rig.root.rotation.y, facing, dt);
   }
 
   /**
@@ -940,7 +983,15 @@ export class RaidView {
    * и следить за диффом здесь дороже, чем посадить заново.
    */
   setResidents(
-    list: readonly { look: DwellerLook; tool?: ToolModelName; x: number; z: number; facing: number }[],
+    list: readonly {
+      look: DwellerLook;
+      tool?: ToolModelName;
+      x: number;
+      z: number;
+      facing: number;
+      /** false — жилец на маршруте рутины: стоит, а водит его driveResident. */
+      seated?: boolean;
+    }[],
   ): void {
     for (const rig of this.residents) rig.dispose();
     this.residents = list.map((r) => {
@@ -949,7 +1000,7 @@ export class RaidView {
       const rig = new Rigged(dwellerParts(r.look, r.tool), this.blocking);
       rig.root.position.set(r.x, 0, r.z);
       rig.root.rotation.y = r.facing;
-      rig.play('сидит');
+      rig.play(r.seated === false ? 'покой' : 'сидит');
       this.group.add(rig.root);
       return rig;
     });
