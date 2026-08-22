@@ -8,7 +8,11 @@ import { describe, test } from 'node:test';
 import { CHOP_PAUSE, UNLOAD_PAUSE, choreAt, choresOf } from './chores';
 import type { Chore, ChoreSite } from './chores';
 import { idx } from './grid';
+import { AWAKE_SEC, SHIFT_SEC, SLEEP_SEC, WAKE_AT } from './world';
 import type { Resident } from './residents';
+
+/** Отсчёт от рассвета: расписание рутины начинается с подъёма (§24). */
+const dawn = (s = 0): number => WAKE_AT + s;
 
 /**
  * Площадка на руках: рамка — лес, четыре дерева внутри, костёр в середине.
@@ -27,7 +31,10 @@ function site(): ChoreSite {
   for (const [x, z] of [[4, 4], [11, 5], [5, 11], [10, 10]]) {
     blocked[idx(size, x!, z!)] = 1;
   }
-  return { size, blocked, fire: { x: 8, z: 8 }, seed: 7 };
+  // Палатки — по числу жильцов, которым в тесте дают крышу. Стоят они
+  // поодаль от костра нарочно: место у огня, оказавшееся вплотную к палатке,
+  // не даёт дороге ко сну случиться, и правило про неё проверяло бы пустоту.
+  return { size, blocked, fire: { x: 8, z: 8 }, seed: 7, tents: [{ x: 13, z: 13 }, { x: 2, z: 13 }, { x: 13, z: 3 }] };
 }
 
 const folk = (rows: Partial<Resident>[]): Resident[] =>
@@ -55,7 +62,8 @@ describe('Рутина жильцов', () => {
     const chores = choresOf(s, folk([{ answer: 'строим' }, { answer: 'ходим' }]), () => true);
     for (const c of chores) {
       assert.ok(c !== null);
-      assert.ok(c.cycle > 0);
+      assert.ok(c.circuit > 0);
+      assert.ok(c.laps >= 1);
       for (let i = 0; i < c.path.length; i++) {
         const a: { x: number; z: number } = c.path[i]!;
         const b: { x: number; z: number } = c.path[(i + 1) % c.path.length]!;
@@ -70,12 +78,19 @@ describe('Рутина жильцов', () => {
 
   test('кадр — функция времени: тот же t даёт то же место, цикл замыкается', () => {
     const c = choresOf(site(), folk([{}]), () => true)[0] as Chore;
-    for (const t of [0, 3.7, 11.2, 40.9]) {
-      const a = choreAt(c, t);
-      const b = choreAt(c, t);
+    for (const s of [0, 3.7, 11.2, 40.9]) {
+      const a = choreAt(c, dawn(s));
+      const b = choreAt(c, dawn(s));
       assert.deepEqual(a, b);
-      const wrapped = choreAt(c, t + c.cycle);
-      assert.ok(Math.hypot(wrapped.x - a.x, wrapped.z - a.z) < 1e-6, 'через цикл — то же место');
+      // Круг замыкается внутри дня, а сутки — через смену: два периода,
+      // и оба обязаны повторяться.
+      const lap = choreAt(c, dawn(s + c.circuit));
+      assert.ok(Math.hypot(lap.x - a.x, lap.z - a.z) < 1e-6, 'через круг — то же место');
+      // Через смену — то же место, но не та же встреча: номер круга растёт
+      // всегда, иначе разговор повторялся бы слово в слово каждые сутки.
+      const shift = choreAt(c, dawn(s) + SHIFT_SEC);
+      assert.ok(Math.hypot(shift.x - a.x, shift.z - a.z) < 1e-6, 'через смену расписание не повторилось');
+      assert.equal(shift.hidden, a.hidden);
     }
   });
 
@@ -83,7 +98,8 @@ describe('Рутина жильцов', () => {
     const c = choresOf(site(), folk([{}]), () => true)[0] as Chore;
     let walked = 0;
     let worked = 0;
-    for (let t = 0; t < c.cycle; t += 0.25) {
+    for (let s = 0; s < c.circuit; s += 0.25) {
+      const t = dawn(s);
       const now = choreAt(c, t);
       const next = choreAt(c, t + 0.05);
       const dx = next.x - now.x;
@@ -93,7 +109,7 @@ describe('Рутина жильцов', () => {
         // Ходячий кадр обязан смотреть туда, куда движется, — ровно тот
         // разворот спиной вперёд, который правила гарнизона однажды поймали.
         const diff = Math.abs(Math.atan2(dx, dz) - now.facing) % (Math.PI * 2);
-        assert.ok(Math.min(diff, Math.PI * 2 - diff) < 0.01, `спиной вперёд на t=${t}`);
+        assert.ok(Math.min(diff, Math.PI * 2 - diff) < 0.01, `спиной вперёд на ${s}-й секунде`);
       }
       if (now.working) {
         worked++;
@@ -106,8 +122,8 @@ describe('Рутина жильцов', () => {
 
   test('носящий камень не работает: его дело — дорога', () => {
     const c = choresOf(site(), folk([{ answer: 'ходим' }]), () => true)[0] as Chore;
-    for (let t = 0; t < c.cycle; t += 0.2) {
-      assert.equal(choreAt(c, t).working, false);
+    for (let s = 0; s < c.circuit; s += 0.2) {
+      assert.equal(choreAt(c, dawn(s)).working, false);
     }
   });
 
@@ -123,19 +139,20 @@ describe('Рутина жильцов', () => {
     // наполняются и пустеют ровно по разу, и ноша занимает не весь круг.
     for (const answer of ['строим', 'ходим'] as const) {
       const c = choresOf(site(), folk([{ answer }]), () => true)[0] as Chore;
-      const step = 0.2;
-      let flips = 0;
-      let laden = 0;
-      let prev = choreAt(c, 0).carrying;
-      for (let t = step; t <= c.cycle; t += step) {
-        const now = choreAt(c, t).carrying;
-        if (now) laden++;
-        if (now !== prev) flips++;
-        prev = now;
-      }
+      /**
+       * Выборка замкнута в кольцо: последний отсчёт сравнивается с первым.
+       * Перелом «сгрузил» приходится ровно на стык кругов, и в разомкнутой
+       * выборке его видно, только если шаг сойдётся с длиной круга — то есть
+       * правило ловило бы не ношу, а сложение дробей.
+       */
+      const steps = 400;
+      const seen: boolean[] = [];
+      for (let k = 0; k < steps; k++) seen.push(choreAt(c, dawn((k / steps) * c.circuit)).carrying);
+      const flips = seen.filter((v, k) => v !== seen[(k + steps - 1) % steps]).length;
+      const laden = seen.filter(Boolean).length;
       assert.equal(flips, 2, `${answer}: ноша меняется ${flips} раз за круг вместо двух`);
       assert.ok(laden > 0, `${answer}: ноша не появилась ни разу`);
-      assert.ok(laden * step < c.cycle, `${answer}: ноша не выпускается из рук весь круг`);
+      assert.ok(laden < steps, `${answer}: ноша не выпускается из рук весь круг`);
     }
   });
 
@@ -147,14 +164,14 @@ describe('Рутина жильцов', () => {
       const c = choresOf(site(), folk([{ answer }]), () => true)[0] as Chore;
       const home = c.path[0]!;
       const step = 0.1;
-      for (let t = 0; t < c.cycle; t += step) {
-        const now = choreAt(c, t);
-        const next = choreAt(c, t + step);
+      for (let s = 0; s < c.circuit; s += step) {
+        const now = choreAt(c, dawn(s));
+        const next = choreAt(c, dawn(s + step));
         if (now.carrying === next.carrying) continue;
-        assert.equal(now.walking, false, `${answer}: ноша сменилась на бегу, t=${t}`);
+        assert.equal(now.walking, false, `${answer}: ноша сменилась на бегу, ${s} с`);
         const far = Math.hypot(now.x - home.x, now.z - home.z);
-        if (next.carrying) assert.ok(far > 1, `${answer}: ноша взялась у костра, t=${t}`);
-        else assert.ok(far < 1e-6, `${answer}: ношу бросили по дороге, t=${t}`);
+        if (next.carrying) assert.ok(far > 1, `${answer}: ноша взялась у костра, ${s} с`);
+        else assert.ok(far < 1e-6, `${answer}: ношу бросили по дороге, ${s} с`);
       }
     }
   });
@@ -166,16 +183,16 @@ describe('Рутина жильцов', () => {
     assert.equal(b.partner, 0);
     // Общий круг — это и есть механика встречи: разойдись циклы, и пара
     // виделась бы раз в общее кратное, то есть никогда.
-    assert.equal(a.cycle, b.cycle);
-    assert.equal(a.phase, b.phase);
+    assert.equal(a.circuit, b.circuit);
+    assert.equal(a.laps, b.laps);
     let together = 0;
-    for (let t = 0; t < a.cycle * 3; t += 0.25) {
-      const fa = choreAt(a, t);
-      const fb = choreAt(b, t);
+    for (let s = 0; s < a.circuit * 3; s += 0.25) {
+      const fa = choreAt(a, dawn(s));
+      const fb = choreAt(b, dawn(s));
       assert.equal(
         fa.talk === null,
         fb.talk === null,
-        `на t=${t} говорит один из пары, а второй нет`,
+        `на ${s}-й секунде говорит один из пары, а второй нет`,
       );
       if (fa.talk === null || fb.talk === null) continue;
       together++;
@@ -193,8 +210,105 @@ describe('Рутина жильцов', () => {
     const chores = choresOf(site(), folk([{}, {}, { answer: 'ходим' }]), () => true);
     assert.deepEqual(chores.map((c) => (c === null ? 'без тропы' : c.partner)), [1, 0, null]);
     const lone = chores[2] as Chore;
-    for (let t = 0; t < lone.cycle; t += 0.5) {
-      assert.equal(choreAt(lone, t).talk, null, 'одиночка заговорил сам с собой');
+    for (let s = 0; s < lone.circuit; s += 0.5) {
+      assert.equal(choreAt(lone, dawn(s)).talk, null, 'одиночка заговорил сам с собой');
+    }
+  });
+});
+
+describe('Сон жильцов (§24)', () => {
+  test('круги укладываются в смену: последний кончается к темноте', () => {
+    // Это и есть всё расписание: своих суток у рутины нет, она берёт их
+    // у неба. Разойдись числа — жилец ложился бы при свете.
+    for (const answer of ['строим', 'ходим'] as const) {
+      const c = choresOf(site(), folk([{ answer }]), () => true)[0] as Chore;
+      assert.ok(c.laps >= 1, 'на смену не пришлось ни одного круга');
+      assert.ok(
+        Math.abs(c.circuit * c.laps - AWAKE_SEC) < 1e-6,
+        `${answer}: круги дают ${c.circuit * c.laps} с против ${AWAKE_SEC} бодрствования`,
+      );
+      // К первой секунде темноты жилец обязан быть дома — оттуда и уходит спать.
+      const home = c.path[0]!;
+      const at = choreAt(c, dawn(AWAKE_SEC));
+      assert.ok(Math.hypot(at.x - home.x, at.z - home.z) < 1e-6, `${answer}: темнота застала не дома`);
+    }
+  });
+
+  test('ночью с крышей спит в палатке, а не стоит у неё', () => {
+    const s = site();
+    const c = choresOf(s, folk([{}]), () => true)[0] as Chore;
+    const tent = s.tents[0]!;
+    let hidden = 0;
+    for (let n = 0; n < SLEEP_SEC; n += 1) {
+      const at = choreAt(c, dawn(AWAKE_SEC + n));
+      if (!at.hidden) continue;
+      hidden++;
+      // Скрытый обязан лежать у своей палатки, а не где попало: по этой
+      // точке рендер прячет тело, и уехавшая точка — уехавший жилец.
+      assert.ok(Math.hypot(at.x - tent.x, at.z - tent.z) <= Math.SQRT2 + 1e-9, 'спит не у своей палатки');
+      assert.equal(at.walking, false, 'спящий идёт');
+      assert.equal(at.carrying, false, 'спит с бревном в руках');
+    }
+    // Большую часть ночи он именно спит, а не ходит туда-обратно.
+    assert.ok(hidden > SLEEP_SEC * 0.6, `из ${SLEEP_SEC} с ночи скрыт всего ${hidden}`);
+  });
+
+  test('к палатке идут ногами, и туда, и обратно', () => {
+    const c = choresOf(site(), folk([{}]), () => true)[0] as Chore;
+    const home = c.path[0]!;
+    // Первая секунда ночи — ещё дома, последняя — снова дома: между ними
+    // дорога в оба конца, а не подмена места.
+    const first = choreAt(c, dawn(AWAKE_SEC));
+    const last = choreAt(c, dawn(SHIFT_SEC - 0.01));
+    assert.ok(Math.hypot(first.x - home.x, first.z - home.z) < 0.2, 'ночь застала не дома');
+    assert.ok(Math.hypot(last.x - home.x, last.z - home.z) < 0.2, 'рассвет застал не дома');
+    let walked = 0;
+    let prev = first;
+    for (let n = 0.5; n < SLEEP_SEC; n += 0.5) {
+      const at = choreAt(c, dawn(AWAKE_SEC + n));
+      if (!at.hidden && !prev.hidden) {
+        const step = Math.hypot(at.x - prev.x, at.z - prev.z);
+        assert.ok(step < 1, `ночью жилец прыгнул на ${step.toFixed(2)} клетки`);
+        walked += step;
+      }
+      prev = at;
+    }
+    assert.ok(walked > 1, 'до палатки и обратно жилец не сделал ни шага');
+  });
+
+  test('без палатки ночь проводят у огня, а не пропадают', () => {
+    // Пропавший без крыши читался бы спящим под крышей, которой нет,
+    // и отменял бы задание §16.1 ровно там, где оно должно быть видно.
+    const s = { ...site(), tents: [] as { x: number; z: number }[] };
+    const c = choresOf(s, folk([{}]), () => true)[0] as Chore;
+    const home = c.path[0]!;
+    for (let n = 0; n < SLEEP_SEC; n += 5) {
+      const at = choreAt(c, dawn(AWAKE_SEC + n));
+      assert.equal(at.hidden, false, 'жилец без палатки пропал из кадра');
+      assert.ok(Math.hypot(at.x - home.x, at.z - home.z) < 1e-6, 'ночует не там, где стоял');
+    }
+  });
+
+  test('днём никто не спит, ночью никто не работает', () => {
+    const c = choresOf(site(), folk([{}]), () => true)[0] as Chore;
+    for (let s = 0; s < AWAKE_SEC; s += 3) {
+      assert.equal(choreAt(c, dawn(s)).hidden, false, `спит средь бела дня, ${s} с`);
+    }
+    for (let n = 0; n < SLEEP_SEC; n += 3) {
+      assert.equal(choreAt(c, dawn(AWAKE_SEC + n)).working, false, `рубит ночью, ${n} с`);
+    }
+  });
+
+  test('лагерь просыпается разом: личной фазы больше нет', () => {
+    // Решение, а не упущение: один момент в смене, когда видно, что лагерь
+    // проснулся, дороже размазанных выходов. Разъезжаются они всё равно
+    // сразу — тропы разной длины.
+    const chores = choresOf(site(), folk([{ answer: 'строим' }, { answer: 'ходим' }]), () => true);
+    for (const c of chores) {
+      if (c === null) continue;
+      const home = c.path[0]!;
+      const up = choreAt(c, dawn(0.01));
+      assert.ok(Math.hypot(up.x - home.x, up.z - home.z) < 0.3, 'на рассвете жилец не дома');
     }
   });
 });
