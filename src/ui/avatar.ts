@@ -126,13 +126,17 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
   const rng = mulberry32(seed * 7 + look.length * 13 + 1);
   const skin = SKIN[Math.floor(rng() * SKIN.length)]!;
   const cloth = CLOTH[Math.floor(rng() * CLOTH.length)]!;
-  const hair = HAIR[Math.floor(rng() * HAIR.length)]!;
+  const hairYoung = HAIR[Math.floor(rng() * HAIR.length)]!;
   // Приметы человека. Жребий бросается всем и всегда в одном порядке:
   // так сид даёт то же лицо независимо от того, кому какая примета досталась.
   const browKind = Math.floor(rng() * 3);
   const beardKind = Math.floor(rng() * 3);
   const mouthKind = Math.floor(rng() * 3);
   const extra = Math.floor(rng() * 3);
+  // Седина: примерно каждый седьмой прожил дольше остальных — волосы, брови
+  // и борода выцветают в соль разом. Жребий бросается последним, чтобы старик
+  // не сдвигал приметы соседей по порядку розыгрыша.
+  const hair = rng() < 0.15 ? C['соль-тень'] : hairYoung;
 
   const body =
     `<circle cx="22" cy="22" r="22" fill="${BACK[look]}"/>` +
