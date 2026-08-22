@@ -179,6 +179,31 @@ export function drawEventGlyph(
  * Вынесено наружу тем же правилом, что `drawEventGlyph`: артбук `world.html`
  * рисует узлы этим же кодом, а копия разошлась бы молча.
  */
+/**
+ * Обод колеса призов в долях радиуса: восемь зубцов, четыре точки на зубец.
+ * Считается один раз и с округлением до четырёх знаков — тогда след значка
+ * масштабируется радиусом бит-в-бит при любом r, что и требует правило.
+ */
+const WHEEL_POINTS: readonly (readonly [number, number])[] = (() => {
+  const teeth = 8;
+  const inner = 0.74;
+  const t = 0.34; // полширины зубца в долях шага
+  const round4 = (v: number): number => Math.round(v * 1e4) / 1e4;
+  const out: [number, number][] = [];
+  for (let i = 0; i < teeth; i++) {
+    const a0 = (i / teeth) * Math.PI * 2 - Math.PI / 2;
+    const half = Math.PI / teeth;
+    const push = (a: number, rad: number): void => {
+      out.push([round4(Math.cos(a) * rad), round4(Math.sin(a) * rad)]);
+    };
+    push(a0 - half * t, 1);
+    push(a0 + half * t, 1);
+    push(a0 + half * t, inner);
+    push(a0 + half * 2 - half * t, inner);
+  }
+  return out;
+})();
+
 export const NODE_ICON: Record<
   NodeKind,
   (ctx: CanvasRenderingContext2D, x: number, y: number, r: number) => void
@@ -223,23 +248,14 @@ export const NODE_ICON: Record<
   },
   // Колесо призов — колесо с зубцами-ручками: круг вылазки не спутать,
   // у того контур гладкий, а здесь восемь выступов по ободу.
+  // Точки предвычислены в долях радиуса (WHEEL_POINTS): правило «значок
+  // масштабируется радиусом» сверяет след до шестого знака, и сырое
+  // cos/sin на месте расходилось с делением пополам последним знаком.
   'призы': (ctx, x, y, r) => {
-    const teeth = 8;
-    const inner = r * 0.74;
-    for (let i = 0; i < teeth; i++) {
-      const a0 = (i / teeth) * Math.PI * 2 - Math.PI / 2;
-      const half = (Math.PI * 2) / teeth / 2;
-      const t = 0.34; // полширины зубца в долях шага
-      const p = (a: number, rad: number): [number, number] => [
-        x + Math.cos(a) * rad,
-        y + Math.sin(a) * rad,
-      ];
-      if (i === 0) ctx.moveTo(...p(a0 - half * t, r));
-      else ctx.lineTo(...p(a0 - half * t, r));
-      ctx.lineTo(...p(a0 + half * t, r));
-      ctx.lineTo(...p(a0 + half * t, inner));
-      ctx.lineTo(...p(a0 + half * 2 - half * t, inner));
-    }
+    WHEEL_POINTS.forEach(([ux, uy], i) => {
+      if (i === 0) ctx.moveTo(x + ux * r, y + uy * r);
+      else ctx.lineTo(x + ux * r, y + uy * r);
+    });
     ctx.closePath();
   },
   // Тропа — вьющаяся лента с двумя коленами: силуэт самой локации, спина
