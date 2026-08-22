@@ -29,6 +29,7 @@ import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../si
 import { avatarSvg } from './avatar';
 import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
+import type { Roster } from '../sim/heroes';
 import { WorldMap } from './worldMap';
 
 /**
@@ -53,6 +54,8 @@ export interface CampCallbacks {
   onSpeedup(): void;
   /** §4 — идут в место на карте, а не в «ярус»: ярус у места один из трёх чисел. */
   onRaid(node: number): void;
+  /** §25 — отправить отряд в место без игрока. */
+  onSortie(node: number): void;
   /** §14 — ковка и улучшение это одно действие: слот один, предмет один. */
   onCraft(slot: GearSlot): void;
   /** §20.4 — перестановка: карточка вооружает режим, дальше тап по клетке. */
@@ -115,6 +118,9 @@ export class CampHud {
   private readonly gearRows = new Map<GearSlot, Row>();
   /** Карта региона (§4). Живёт в том же листе, где раньше был список ярусов. */
   private readonly map: WorldMap;
+  /** Отряд, отданный лагерю снаружи (§25): карте он нужен, чтобы знать,
+   *  есть ли кого отправить. */
+  private roster: Roster | null = null;
   private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
   private readonly banner: HTMLElement;
   private readonly task: HTMLElement;
@@ -299,7 +305,10 @@ export class CampHud {
 
     const tiers = document.createElement('div');
     tiers.className = 'sec tiers';
-    this.map = new WorldMap({ onRaid: (node) => this.cb.onRaid(node) });
+    this.map = new WorldMap({
+      onRaid: (node) => this.cb.onRaid(node),
+      onSortie: (node) => this.cb.onSortie(node),
+    });
     tiers.append(this.map.root);
     this.sections.set('tiers', tiers);
     this.sheet.appendChild(tiers);
@@ -573,7 +582,15 @@ export class CampHud {
   }
 
   private syncTiers(camp: CampState, now: number): void {
-    this.map.sync(camp, now);
+    this.map.sync(camp, now, this.roster ?? { heroes: [], active: 0 });
+  }
+
+  /**
+   * §25 — карте нужен отряд: отправлять некого решает ростер, а лагерь про
+   * героев не знает (см. `setRanged` — тот же случай и та же причина).
+   */
+  setRoster(roster: Roster): void {
+    this.roster = roster;
   }
 
   private syncShop(camp: CampState): void {

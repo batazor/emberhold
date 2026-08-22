@@ -103,6 +103,7 @@ import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import { KIND, dayAt, lootMul, nodeSeed, regionAt, shiftAt, worldAt } from './sim/world';
+import type { WorldNode } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import {
   campNav,
@@ -175,6 +176,14 @@ import { mulberry32 } from './core/rng';
 import { DraftScreen } from './ui/draftScreen';
 import { StartScreen } from './ui/startScreen';
 import { chronicle } from './sim/chronicle';
+import {
+  SORTIE_REASON,
+  freeHero,
+  reportOf,
+  sortieBlock,
+  sortieDue,
+  ticketOf,
+} from './sim/sortie';
 import { installBench } from './features/bench';
 import { FanControl, installFan } from './features/fan';
 import type { FanPerson } from './features/fan';
@@ -456,6 +465,7 @@ const campHud = new CampHud(app, {
     // то есть до того, как игрок сделает обещанное.
     enterNode(node);
   },
+  onSortie: (node) => sendSortie(node),
   onCraft: (slot) => forge(slot),
   // §20.4 — карточка вооружает перестановку, дальше игрок бьёт по клетке.
   onMove: (id) => {
@@ -1722,6 +1732,104 @@ const mateClasses = (r: RaidState): HeroClassId[] =>
   r.party.slice(1).map((f) => f.loadout.cls);
 
 /**
+ * Место дня — или отказ, если регион пересобрался, пока панель была открыта.
+ * Строка одна на обоих звавших: ручной вход и отправка (§25) упираются
+ * в одну и ту же причину, а две её формулировки разошлись бы молча (§23.3).
+ */
+function placeAt(day: number, node: number): WorldNode | null {
+  const place = regionAt(day).nodes[node];
+  if (place === undefined) {
+    campHud.notify('Регион пересобрался — выберите место заново');
+    return null;
+  }
+  return place;
+}
+
+/**
+ * §25 — отряд уходит в место без игрока. Билет собирается здесь, потому что
+ * только здесь известны обе стороны: лагерь (`camp`) и отряд (`roster`).
+ * Сам поход не считается ни секунды: он чистая функция от билета и будет
+ * пересчитан на возвращении.
+ */
+function sendSortie(node: number): void {
+  const now = clock.now();
+  const day = dayAt(now);
+  const place = placeAt(day, node);
+  if (place === null) return;
+  const block = sortieBlock(camp.sortie ?? null, roster, place.tier);
+  const hero = freeHero(roster);
+  if (block !== 'ok' || hero === null) {
+    campHud.notify(block === 'ok' ? SORTIE_REASON.hero : SORTIE_REASON[block]);
+    return;
+  }
+  const state = worldAt(now, camp.visits)[node];
+  camp.sortie = ticketOf(
+    node,
+    place.tier,
+    nodeSeed(day, node),
+    hero,
+    {
+      // Лагерь и место замораживаются на выходе (§25): достроенный за время
+      // пути Склад не имеет права менять поход, который уже идёт.
+      kitchen: camp.levels.kitchen,
+      storage: camp.levels.storage,
+      loot: lootMul(state?.rich ?? 0),
+      event: state?.event ?? null,
+      gear: { ...camp.gear },
+      offhand: camp.offhand,
+      arrows: camp.arrows,
+    },
+    now,
+  );
+  hero.status = 'raid';
+  hero.busyUntil = camp.sortie.endsAt;
+  // Заход тратит богатство места — чужой заход и свой, ручной и нет (§4).
+  camp.visits.push({ node, shift: shiftAt(now) });
+  campHud.close();
+  campHud.notify('Отряд ушёл');
+  persist();
+}
+
+/**
+ * §25 — отряд вернулся. Зовётся тиком лагеря, поэтому досчитывается и после
+ * закрытой вкладки: тем же способом, что и стройка (`completeIfDue`).
+ */
+function collectSortie(now: number): boolean {
+  const ticket = camp.sortie;
+  if (!sortieDue(ticket, now) || ticket == null) return false;
+  camp.sortie = null;
+  const hero = roster.heroes.find((h) => h.id === ticket.hero) ?? null;
+  if (hero === null) return true;
+  const report = reportOf(ticket, hero);
+  addResources(camp.resources, report.carried);
+  // §14.3 — выстреленное уходит из лагеря, донесённое возвращается.
+  camp.arrows = Math.max(0, camp.arrows - report.arrowsSpent);
+  hero.status = 'ready';
+  hero.busyUntil = null;
+  // Раны и опыт считает лагерь той же функцией, что и после ручной вылазки:
+  // второй способ вернуть героя разошёлся бы с первым молча.
+  applyRaidOutcome(
+    hero,
+    report.hpLeft,
+    report.total,
+    ticket.tier,
+    !report.failed,
+    now,
+    camp.levels.infirmary,
+  );
+  track({
+    t: 'sortie',
+    at: now,
+    tier: ticket.tier,
+    failed: report.failed,
+    carried: report.total,
+    seconds: ticket.endsAt - ticket.startedAt,
+  });
+  campHud.notify(report.text);
+  return true;
+}
+
+/**
  * Вылазка в место на карте (§4). Ярус, ставка и богатство названы до входа
  * карточкой карты — сюда приходит уже принятое решение.
  */
@@ -1730,17 +1838,13 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // панели: панель могла провисеть полчаса, а смена мира — сорок минут.
   const now = clock.now();
   const day = dayAt(now);
-  const place = regionAt(day).nodes[node];
+  const place = placeAt(day, node);
   leaveTitle();
   inGlade = false;
   inGladeCamp = false;
   chop = null;
   campPrompt.setVisible(false);
-  // Регион пересобрался, пока панель была открыта, — идти некуда.
-  if (place === undefined) {
-    campHud.notify('Регион пересобрался — выберите место заново');
-    return false;
-  }
+  if (place === null) return false;
   // Замок (§6.1.6) — не вылазка: там нечего добывать и не с кем драться,
   // и заход в него не тратит ни богатство места, ни героя.
   if (place.kind === 'замок') return toCastle(node, nodeSeed(day, node));
@@ -3540,12 +3644,17 @@ function stepCampSystems(dt: number, now: number): void {
       campHud.notify(`${BUILDINGS[finished].name} готов`);
       persist();
     }
+    // §25 — отряд возвращается тем же тиком, что и стройка: слот освобождается
+    // одинаково, и досчитывается он после закрытой вкладки так же.
+    if (collectSortie(now)) persist();
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
     // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
     // лагерь про героев не знает, и сказать ему может только тот, кто знает
     // обоих.
     campHud.setRanged(HERO_CLASSES[activeHero(roster).cls].ranged);
+    // §25 — карте нужен отряд: есть ли кого отправить, знает ростер.
+    campHud.setRoster(roster);
     // Ведущий отмечен на лице, а карточка держит того, кого выбрали.
     heroFan.picked = controlled >= 0 ? roster.heroes.length + controlled : roster.active;
     if (shownHero >= roster.heroes.length) shownHero = roster.active;

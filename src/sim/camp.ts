@@ -1,4 +1,5 @@
 import type { ConsumableId } from './consumables';
+import type { Sortie } from './sortie';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
 import { modelKitchenFood, TIER_KITCHEN_GATE as GATE } from './balance';
@@ -267,6 +268,13 @@ export interface CampState {
    * сохранения, сделанные до стройки стен, обязаны открываться.
    */
   walls?: CampWalls;
+  /**
+   * Отряд, ушедший без игрока (§25). Один билет на лагерь — тот же слот,
+   * что у стройки (§20.1): два похода разом превратили бы лагерь в очередь
+   * заданий. Поле необязательное, версия сейва ради него не поднята —
+   * сохранения, сделанные до отправок, обязаны открываться.
+   */
+  sortie?: Sortie | null;
   /**
    * Валуны на площадке (§13.4). Разбитые из списка не выпадают, а помечаются
    * — сохранение пишет остаток, и разобранный лагерь после перезагрузки

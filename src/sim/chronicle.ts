@@ -35,7 +35,7 @@ import { TIER_NAME } from './config';
 import { DAY_SEC } from './world';
 
 /** Что за день пересказано. Ключ шаблона и ключ строки в `CHRON_TEXT` — один. */
-export type ChronId = 'bottom' | 'fail' | 'full' | 'deep' | 'built' | 'home';
+export type ChronId = 'bottom' | 'fail' | 'full' | 'deep' | 'built' | 'home' | 'sortie';
 
 /**
  * Слова хроники. Канал «хроника» в переписи голоса (`voice.rules.ts`):
@@ -56,6 +56,10 @@ export const CHRON_TEXT: Record<ChronId, string> = {
   // «дошли домой» точнее и по смыслу — день без провала это день,
   // в который дошли все.
   home: 'Вылазки дошли домой',
+  // §25 — день, в который в локацию ходил только отряд. Стоит ниже всех
+  // строк о ручных заходах намеренно: поход без игрока не вправе
+  // пересказывать день, в который игрок играл сам.
+  sortie: 'Отряд ходил сам',
 };
 
 /** Строка хроники: день, шаблон, слова и число к ним. */
@@ -86,6 +90,7 @@ interface Day {
   readonly raids: Of<'raid_end'>[];
   readonly starts: Of<'raid_start'>[];
   readonly builds: Of<'build_done'>[];
+  readonly sorties: Of<'sortie'>[];
 }
 
 const dayOf = (at: number): number => Math.floor(at / DAY_SEC);
@@ -98,7 +103,7 @@ function daysOf(events: readonly TelemetryEvent[]): Day[] {
   const at = (day: number): Day => {
     const found = box.get(day);
     if (found !== undefined) return found;
-    const fresh: Day = { day, raids: [], starts: [], builds: [] };
+    const fresh: Day = { day, raids: [], starts: [], builds: [], sorties: [] };
     box.set(day, fresh);
     return fresh;
   };
@@ -106,6 +111,7 @@ function daysOf(events: readonly TelemetryEvent[]): Day[] {
     if (e.t === 'raid_end') at(dayOf(e.at)).raids.push(e);
     else if (e.t === 'raid_start') at(dayOf(e.at)).starts.push(e);
     else if (e.t === 'build_done') at(dayOf(e.at)).builds.push(e);
+    else if (e.t === 'sortie') at(dayOf(e.at)).sorties.push(e);
   }
   return [...box.values()].sort((a, b) => a.day - b.day);
 }
@@ -162,6 +168,13 @@ const TEMPLATES: readonly { readonly id: ChronId; readonly of: (d: Day) => strin
     id: 'home',
     of: (d) =>
       d.raids.length === 0 ? null : `унесено ${sum(d.raids.map((r) => r.carried))}`,
+  },
+  {
+    // Ниже `home`: день, в который игрок ходил сам, пересказывается его
+    // заходом, даже если отряд в тот же день сходил без него.
+    id: 'sortie',
+    of: (d) =>
+      d.sorties.length === 0 ? null : `принесено ${sum(d.sorties.map((s) => s.carried))}`,
   },
 ];
 

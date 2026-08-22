@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { campArea, createCamp, startUpgrade } from './camp';
 import { cycleTower, putStairs, raiseWall, toggleGate } from './campWalls';
-import { createRoster } from './heroes';
+import { createRoster, syncRoster } from './heroes';
+import { emptyGear } from './gear';
+import { ticketOf } from './sortie';
 import { load, save, wipe } from './save';
 
 /** Поддельный localStorage: тесты сейва живут без браузера. */
@@ -202,6 +204,46 @@ describe('Сохранение', () => {
     const second = load().camp.residents[0];
     assert.ok(first !== undefined && typeof first.seed === 'number', 'жилец без лица');
     assert.equal(first.seed, second?.seed, 'лицо поменялось между загрузками');
+    wipe();
+  });
+});
+
+describe('Сохранение: отряд в пути (§25)', () => {
+  test('ушедший без игрока остаётся занят, остальные возвращаются готовыми', () => {
+    fakeStore();
+    const camp = createCamp();
+    const roster = createRoster();
+    while (syncRoster(roster, 9) !== null) { /* добираем всех, кого пускает Жильё */ }
+    const away = roster.heroes[0]!;
+    const other = roster.heroes[1] ?? null;
+    camp.sortie = ticketOf(3, 1, 77, away, {
+      kitchen: 1, storage: 1, loot: 1, event: null,
+      gear: emptyGear(), offhand: 'torch', arrows: 0,
+    }, 1000);
+    away.status = 'raid';
+    away.busyUntil = camp.sortie.endsAt;
+    // Второй «в вылазке» — тот, кого игрок вёл руками: его вылазка
+    // перезапуск не переживает, и он обязан вернуться готовым.
+    if (other !== null) {
+      other.status = 'raid';
+      other.busyUntil = 999999;
+    }
+    save(camp, roster, 1000);
+    const loaded = load();
+    const back = loaded.roster.heroes[0]!;
+    assert.equal(back.status, 'raid', 'отряд в пути отдали игроку');
+    assert.equal(back.busyUntil, camp.sortie.endsAt, 'срок возвращения потерян');
+    assert.notEqual(loaded.camp.sortie, null, 'билет не пережил перезагрузку');
+    if (other !== null) {
+      assert.equal(loaded.roster.heroes[1]!.status, 'ready', 'ручная вылазка пережила перезапуск');
+    }
+    wipe();
+  });
+
+  test('лагерь без отправки открывается без билета', () => {
+    fakeStore();
+    save(createCamp(), createRoster(), 1000);
+    assert.equal(load().camp.sortie ?? null, null);
     wipe();
   });
 });

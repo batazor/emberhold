@@ -20,6 +20,9 @@ import type { PolicyName } from './bot';
 import { kitchenFood, storageCapacity } from './camp';
 import { CHRON_LIMIT, CHRON_ORDER, CHRON_TEXT, chronicle } from './chronicle';
 import type { ChronId } from './chronicle';
+import { emptyGear } from './gear';
+import { createHero } from './heroes';
+import { reportOf, ticketOf } from './sortie';
 import type { TelemetryEvent } from './telemetry';
 import type { Tier } from './types';
 import { DAY_SEC } from './world';
@@ -94,6 +97,34 @@ const builtDay = (day: number): TelemetryEvent[] => [
   { t: 'build_done', at: at(day), building: 'storage', level: 2 },
 ];
 
+/**
+ * Сутки, в которые ходил только отряд (§25). Событие берётся из настоящего
+ * похода, а не пишется руками: строка хроники обязана называть то же число,
+ * которое лагерь положил на склад.
+ */
+function sortieDay(day: number): TelemetryEvent[] {
+  const hero = createHero('knight', 0);
+  const ticket = ticketOf(
+    3,
+    1,
+    4242,
+    hero,
+    { kitchen: 2, storage: 2, loot: 1, event: null, gear: emptyGear(), offhand: 'torch', arrows: 0 },
+    at(day),
+  );
+  const report = reportOf(ticket, hero);
+  return [
+    {
+      t: 'sortie',
+      at: ticket.endsAt,
+      tier: ticket.tier,
+      failed: report.failed,
+      carried: report.total,
+      seconds: ticket.endsAt - ticket.startedAt,
+    },
+  ];
+}
+
 const RUNS = 120;
 const RUN_EVENTS = played(RUNS);
 
@@ -138,7 +169,8 @@ describe('Хроника', () => {
   });
 
   test('мёртвых шаблонов нет: каждый выпадает на прогоне бота', () => {
-    const seen = new Set<ChronId>(chronicle([...RUN_EVENTS, ...builtDay(999)], 1000).map((e) => e.id));
+    const events = [...RUN_EVENTS, ...builtDay(999), ...sortieDay(1000)];
+    const seen = new Set<ChronId>(chronicle(events, 1000).map((e) => e.id));
     const dead = CHRON_ORDER.filter((id) => !seen.has(id));
     assert.deepEqual(
       dead,
