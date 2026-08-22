@@ -363,6 +363,11 @@ const debugParams = new URLSearchParams(location.search);
 let grassPerTile = Number(debugParams.get('grass') ?? 24);
 if (!Number.isFinite(grassPerTile)) grassPerTile = 24;
 grassPerTile = Math.max(0, Math.min(64, Math.round(grassPerTile)));
+/**
+ * Отладка `?пух`: на поляне сеется трава заставки (FluffyGrass) вместо
+ * клеточной травы вылазки — примерка, как пролог выглядит с лугом титула.
+ */
+const debugFluffy = debugParams.has('пух');
 const seedParam = Number(debugParams.get('seed'));
 const debugSeed = Number.isFinite(seedParam) && debugParams.has('seed') ? seedParam | 0 : null;
 
@@ -2592,7 +2597,7 @@ function toGlade(): void {
     // их рубят, а по краю рубят сколько угодно.
     logging: true,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, null, camp.gear.weapon, [], debugFluffy);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -2714,7 +2719,7 @@ function toGladeCamp(): void {
   });
   controlled = -1;
   parkedHero = null;
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, null, camp.gear.weapon);
+  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, null, camp.gear.weapon, [], debugFluffy);
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;

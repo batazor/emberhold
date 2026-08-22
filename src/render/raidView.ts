@@ -60,6 +60,7 @@ import type { Gust } from './cursorWind';
 import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
+import { FluffyGrass } from './fluffyGrass';
 import { PALETTE } from './palette';
 
 /**
@@ -328,6 +329,10 @@ export class RaidView {
   private site: THREE.Mesh | null = null;
   private ghost: THREE.Mesh | null = null;
   private grass: Grass | null = null;
+  /** Трава заставки вместо клеточной — отладочный кадр `?пух`. */
+  private meadow: FluffyGrass | null = null;
+  /** Клетки, выкошенные постройкой или рубкой, — запрет пересева луга. */
+  private readonly mowed = new Set<number>();
   /** Где какое дерево стоит (§13.3): клетка → экземпляр в своём меше.
    *  Заполняется только лесной локацией — камень не рубят. */
   private readonly trees = new Map<number, { mesh: THREE.InstancedMesh; at: number; turn: number }>();
@@ -406,6 +411,8 @@ export class RaidView {
     private readonly weapon = 0,
     /** §11.7 — классы остальных бойцов отряда, в порядке цепочки. */
     private readonly mateClasses: readonly HeroClassId[] = [],
+    /** Отладка `?пух`: трава заставки (FluffyGrass) вместо клеточной. */
+    private readonly fluffy = false,
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
@@ -475,8 +482,59 @@ export class RaidView {
   }
 
   private buildGrass(perTile: number): void {
+    if (this.fluffy) {
+      this.buildMeadow();
+      return;
+    }
     this.grass = new Grass(this.loc, perTile, undefined, this.bareCells());
     this.group.add(this.grass.mesh);
+  }
+
+  /**
+   * Отладочный кадр `?пух`: тот же луг, что на заставке и в лагере.
+   * Сэмплеру нужна поверхность — плоскость по полю, запечённая лежащей
+   * прямо в геометрии (сэмплер читает локальные координаты и матрицу меша
+   * не применяет); в сцену она не добавляется, земля уже нарисована кубами.
+   */
+  private buildMeadow(): void {
+    const { size } = this.loc;
+    const geo = this.track(
+      new THREE.PlaneGeometry(size, size)
+        .rotateX(-Math.PI / 2)
+        .translate((size - 1) / 2, 0, (size - 1) / 2),
+    );
+    const terrain = new THREE.Mesh(geo, this.track(new THREE.MeshLambertMaterial()));
+    const bare = this.bareCells();
+    // Плотность — как у лагеря (~3 кустика на клетку): кустик впятеро
+    // крупнее травинки вылазки, и полная плотность травы тут не нужна.
+    this.meadow = new FluffyGrass(terrain, {
+      fieldSize: size,
+      count: size * size * 4,
+      scale: 4,
+      // Прижат к земле: луг титульной высоты прятал герою ноги, а поляна —
+      // кадр игровой, герой и добыча обязаны читаться.
+      height: 0.15,
+      // Порыв от курсора втрое слабее титульного — по росту прижатого луга.
+      gust: 1 / 3,
+      // И пятно порыва втрое уже: полный радиус на игровом поле — полполя.
+      gustRadius: 1 / 3,
+      // Фоновая волна тоже втрое спокойнее титульной.
+      wind: 1 / 3,
+      reject: (x, z) => {
+        const cell = idx(size, Math.round(x), Math.round(z));
+        return bare.has(cell) || this.mowed.has(cell);
+      },
+    });
+    this.group.add(this.meadow.group);
+  }
+
+  /** Клетка выкошена: у клеточной травы — точечно, лугу — пересев. */
+  private clearGrassCell(x: number, z: number): void {
+    this.grass?.clearCell(x, z);
+    if (this.meadow !== null) {
+      this.mowed.add(idx(this.loc.size, x, z));
+      this.meadow.replant();
+    }
   }
 
   /**
@@ -555,7 +613,7 @@ export class RaidView {
   }
 
   get grassBlades(): number {
-    return this.grass?.blades ?? 0;
+    return this.meadow?.blades ?? this.grass?.blades ?? 0;
   }
 
   /**
@@ -1386,7 +1444,7 @@ export class RaidView {
       this.group.add(this.fire.group);
     }
     for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
-      this.grass?.clearCell(x + dx, z + dz);
+      this.clearGrassCell(x + dx, z + dz);
     }
   }
 
@@ -1417,7 +1475,7 @@ export class RaidView {
       // и меш обязан стоять там же, а не на пол клетки наискось.
       mesh.position.set(t.x, 0, t.z);
       this.group.add(mesh);
-      this.grass?.clearCell(t.x, t.z);
+      this.clearGrassCell(t.x, t.z);
       return mesh;
     });
   }
@@ -1544,7 +1602,15 @@ export class RaidView {
         ? new THREE.Mesh(gem, gemMat)
         : new THREE.Mesh(this.track(resourceGeometry(name, CONTAINER_HEIGHT)), baked);
       mesh.castShadow = true;
-      mesh.position.set(c.x, 0.45, c.z);
+      // Бревно лежит на земле, как лежало бы срубленное: парящая и крутящаяся
+      // добыча читается игровой пиктограммой, а дерево — часть леса.
+      // Поворот — детерминированный по id, чтобы брёвна не легли по линейке.
+      if (c.kind === 'wood') {
+        mesh.position.set(c.x, 0, c.z);
+        mesh.rotation.y = tileNoise(c.id, c.id * 7 + 3) * Math.PI * 2;
+      } else {
+        mesh.position.set(c.x, 0.45, c.z);
+      }
       this.group.add(mesh);
       this.containerMeshes.set(c.id, mesh);
     }
@@ -2130,6 +2196,8 @@ export class RaidView {
         mesh.visible = false;
         continue;
       }
+      // Бревно лежит (см. buildContainers) — вертится только прочая добыча.
+      if (c.kind === 'wood') continue;
       mesh.rotation.y += dt * 1.6;
       mesh.position.y = 0.45 + Math.sin(time / 500 + c.id) * 0.08;
     }
@@ -2162,6 +2230,13 @@ export class RaidView {
    * не видно в круге света (§11.4), незачем.
    */
   private syncGrass(hx: number, hz: number, time: number): void {
+    if (this.meadow !== null) {
+      // Луг заставки не расступается под ногами — у него только волна
+      // и порыв от курсора, как на титуле.
+      this.meadow.update(time / 1000);
+      this.meadow.setGust(this.gust);
+      return;
+    }
     if (this.grass === null) return;
     const slots = this.pushers;
     slots.length = 0;
@@ -2185,13 +2260,16 @@ export class RaidView {
   /** Ветер от наклона устройства (render/tiltWind.ts). */
   setTilt(x: number, z: number, strength: number): void {
     this.grass?.setTilt(x, z, strength);
+    this.meadow?.setTilt(x, z, strength);
   }
 
   dispose(): void {
     this.hexGrid.dispose();
     this.grass?.dispose();
+    this.meadow?.dispose();
     this.fire.dispose();
     this.grass = null;
+    this.meadow = null;
     this.group.removeFromParent();
     this.group.traverse((o) => {
       if (o instanceof THREE.InstancedMesh) o.dispose();

@@ -62,6 +62,21 @@ export interface FluffyGrassOptions {
   /** Масштаб кустика. В оригинале модель увеличена в пять раз. */
   readonly scale: number;
   /**
+   * Прижатость кустика: множитель только к высоте, поверх `scale`.
+   * Нужна вылазке — луг титульной высоты прятал бы героя по пояс;
+   * без довода кустик растёт как в оригинале.
+   */
+  readonly height?: number;
+  /**
+   * Множитель силы порыва от курсора. Прижатому лугу полный толчок
+   * (`GUST_PUSH`) не по росту: волна размахом с куст читается штормом.
+   */
+  readonly gust?: number;
+  /** Множитель размаха фоновой волны ветра — по той же причине, что `gust`. */
+  readonly wind?: number;
+  /** Множитель радиуса порыва от курсора (`GUST_RADIUS`). */
+  readonly gustRadius?: number;
+  /**
    * Где траве не расти. В оригинале этого нет — там остров и трава по
    * всему острову; у лагеря же есть площадка, и вырастать сквозь Жильё
    * трава не должна.
@@ -88,6 +103,11 @@ export class FluffyGrass {
     uGustDir: { value: new THREE.Vector2(1, 0) },
     // Наклон устройства: куда и насколько лежит поле (render/tiltWind.ts).
     uTilt: { value: new THREE.Vector2() },
+    // Прижатость поля: шейдер дотягивает верхушки шумом в мировых единицах,
+    // и без этого множителя геометрический `height` ни на что не влиял.
+    uHeight: { value: 1 },
+    // Размах фоновой волны ветра: 1 — как на заставке.
+    uWind: { value: 1 },
   };
 
   private readonly material: THREE.MeshLambertMaterial;
@@ -101,6 +121,8 @@ export class FluffyGrass {
     private readonly options: FluffyGrassOptions,
   ) {
     this.uniforms.uTerrainSize.value = options.fieldSize;
+    this.uniforms.uHeight.value = options.height ?? 1;
+    this.uniforms.uWind.value = options.wind ?? 1;
 
     this.material = new THREE.MeshLambertMaterial({
       side: THREE.DoubleSide,
@@ -135,7 +157,7 @@ export class FluffyGrass {
   /** Кустики раскиданы по поверхности земли — как в оригинале, сэмплером. */
   private plant(geo: THREE.BufferGeometry): void {
     const { count, scale } = this.options;
-    geo.scale(scale, scale, scale);
+    geo.scale(scale, scale * (this.options.height ?? 1), scale);
     this.geometry = geo;
 
     const mesh = new THREE.InstancedMesh(geo, this.material, count);
@@ -216,7 +238,7 @@ export class FluffyGrass {
       this.uniforms.uGust.value.set(0, 0, 0, 0);
       return;
     }
-    this.uniforms.uGust.value.set(gust.x, gust.z, gust.strength * GUST_PUSH, gust.age);
+    this.uniforms.uGust.value.set(gust.x, gust.z, gust.strength * GUST_PUSH * (this.options.gust ?? 1), gust.age);
     this.uniforms.uGustDir.value.set(gust.dirX, gust.dirZ);
   }
 
@@ -254,6 +276,8 @@ export class FluffyGrass {
       uniform vec4 uGust;
       uniform vec2 uGustDir;
       uniform vec2 uTilt;
+      uniform float uHeight;
+      uniform float uWind;
 
       varying vec3 vColor;
       varying vec2 vGlobalUV;
@@ -276,7 +300,7 @@ export class FluffyGrass {
         // Направление волны у оригинала было записано числом. Наклон его
         // уводит: поле обязано качаться туда же, куда легло.
         vec2 uWindDirection = normalize(vec2(1.0, 1.0) + uTilt * 0.8);
-        float uWindAmp = 0.1;
+        float uWindAmp = 0.1 * uWind;
         float uWindFreq = 50.;
         float uSpeed = 1.0;
         float uNoiseFactor = 5.50;
@@ -302,7 +326,7 @@ export class FluffyGrass {
         if (uGust.z > 0.0) {
           vec2 gToBush = modelPosition.xz - uGust.xy;
           float gDist = length(gToBush);
-          float gFall = exp(-gDist * gDist / (${GUST_RADIUS.toFixed(3)} * ${GUST_RADIUS.toFixed(3)}));
+          float gFall = exp(-gDist * gDist / (${(GUST_RADIUS * (this.options.gustRadius ?? 1)).toFixed(3)} * ${(GUST_RADIUS * (this.options.gustRadius ?? 1)).toFixed(3)}));
           vec2 gFlow = uGustDir + (gToBush / (gDist + 1e-4)) * 0.5;
           // Волна: толчок расходится от курсора и отыгрывает назад. Косинус
           // уходит в минус — куст качается обратно, как после настоящего
@@ -314,7 +338,7 @@ export class FluffyGrass {
         // Наклон устройства: ровный крен всего поля, поверх волны.
         modelPosition.xz += uTilt * ${TILT_PUSH.toFixed(3)} * (1. - uv.y);
 
-        modelPosition.y += exp(texture2D(uNoiseTexture, vGlobalUV * uNoiseScale).r) * 0.5 * (1. - uv.y);
+        modelPosition.y += exp(texture2D(uNoiseTexture, vGlobalUV * uNoiseScale).r) * 0.5 * uHeight * (1. - uv.y);
 
         vec4 viewPosition = viewMatrix * modelPosition;
         gl_Position = projectionMatrix * viewPosition;
