@@ -116,12 +116,48 @@ export async function cloudPush(raw: string, watermark: number): Promise<void> {
   }
 }
 
-/** «Новая игра» стирает и облачную строку — иначе сейв воскреснет при входе. */
+/**
+ * Метки мира (§4): куда игрок ходил. Живут отдельной таблицей, а не в блобе,
+ * потому что у них другой читатель — карту с чужими лагерями рисуют по строкам
+ * всех игроков, а сейв-блоб открывается только хозяину. Список маленький
+ * (окно богатства — часы, не годы), поэтому честная замена целиком: стереть
+ * своё и записать живое.
+ */
+export async function cloudVisits(visits: readonly { node: number; shift: number }[]): Promise<void> {
+  const uid = await userId();
+  if (uid === null) return;
+  try {
+    await client.from('world_visits').delete().eq('user_id', uid);
+    if (visits.length > 0) {
+      await client.from('world_visits').insert(visits.map((v) => ({ user_id: uid, node: v.node, shift: v.shift })));
+    }
+  } catch {
+    /* см. шапку файла */
+  }
+}
+
+/** Чужие метки — все, кроме своих: по ним карта отметит лагеря соседей. */
+export async function cloudNeighbours(): Promise<{ user: string; node: number; shift: number }[]> {
+  const uid = await userId();
+  if (uid === null) return [];
+  try {
+    const { data } = await client.from('world_visits').select('user_id, node, shift').neq('user_id', uid);
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((r) => typeof r.node === 'number' && typeof r.shift === 'number')
+      .map((r) => ({ user: String(r.user_id), node: r.node, shift: r.shift }));
+  } catch {
+    return [];
+  }
+}
+
+/** «Новая игра» стирает и облачные следы — иначе сейв воскреснет при входе. */
 export async function cloudWipe(): Promise<void> {
   const uid = await userId();
   if (uid === null) return;
   try {
     await client.from('saves').delete().eq('user_id', uid);
+    await client.from('world_visits').delete().eq('user_id', uid);
   } catch {
     /* см. шапку файла */
   }

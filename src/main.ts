@@ -115,13 +115,14 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
-import { cloudOnSignIn, cloudPull, cloudPush, cloudUser, cloudWipe } from './core/cloud';
+import { cloudOnSignIn, cloudPull, cloudPush, cloudUser, cloudVisits, cloudWipe } from './core/cloud';
 import { AuthCard } from './ui/authCard';
 import {
   KIND,
   SHIFT_SEC,
   WAKE_AT,
   dayAt,
+  liveVisits,
   lootMul,
   nightAt,
   nodeSeed,
@@ -1752,6 +1753,9 @@ function persist(): void {
 let cloudReady = false;
 let cloudTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Что из меток уже в облаке: гонять список без изменений — пустая сеть. */
+let sentVisits = '';
+
 /** Отложка на несколько секунд: persist() зовётся на каждом событии,
  *  а облаку хватает последнего состояния, не каждого. */
 function pushCloud(): void {
@@ -1760,6 +1764,13 @@ function pushCloud(): void {
     cloudTimer = null;
     const raw = rawSave();
     if (raw !== null) void cloudPush(raw, clock.watermark);
+    // Метки мира (§4) — отдельной таблицей: их читают все, блоб — только хозяин.
+    const live = liveVisits(camp.visits, clock.watermark).map((v) => ({ node: v.node, shift: v.shift }));
+    const key = JSON.stringify(live);
+    if (key !== sentVisits) {
+      sentVisits = key;
+      void cloudVisits(live);
+    }
   }, 3000);
 }
 
