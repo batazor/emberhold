@@ -1,6 +1,8 @@
 import { ENEMY_STATS } from '../sim/enemies';
 import { alive, current } from '../sim/battle';
 import type { BattleState, BattleUnit } from '../sim/battle';
+import type { HeroLoadout } from '../sim/heroes';
+import { avatarSvg } from './avatar';
 
 /**
  * Панель боя (§11.3). Появляется вместе с полем и показывает ровно то,
@@ -80,7 +82,11 @@ export class BattleHud {
    * применит ход: кнопка, предлагающая невозможное, хуже отсутствующей —
    * игрок жмёт, ничего не происходит, и он винит себя.
    */
-  sync(state: BattleState, canAttack: boolean): void {
+  sync(
+    state: BattleState,
+    canAttack: boolean,
+    party: ReadonlyMap<number, HeroLoadout> = new Map(),
+  ): void {
     const unit = current(state);
     if (unit === undefined) return;
 
@@ -98,11 +104,18 @@ export class BattleHud {
 
     // Очередь — порядком, а не числами: игрок читает, кто следующий,
     // а не считает инициативу.
+    //
+    // Свои стоят лицами (§11.8): «Герой» на троих читался как один и тот же
+    // человек, ходящий трижды. Лицо — то же, что в веере и на карточке:
+    // класс и сид приезжают из снаряжения бойца, а не рисуются заново.
     this.order.innerHTML = queue
       .map((u) => {
         const now = u.id === unit.id ? ' now' : '';
         const side = u.side === 'hero' ? ' me' : '';
-        return `<span class="turn-chip${now}${side}">${nameOf(u)}</span>`;
+        const who = u.side === 'hero' ? party.get(u.id) : undefined;
+        const face =
+          who === undefined ? '' : `<span class="face">${avatarSvg(who.cls, who.seed)}</span>`;
+        return `<span class="turn-chip${now}${side}">${face}${nameOf(u)}</span>`;
       })
       .join('');
 

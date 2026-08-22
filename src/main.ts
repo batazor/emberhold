@@ -167,7 +167,7 @@ import { CampPrompt } from './ui/campPrompt';
 import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
 import { BattleHud } from './ui/battleHud';
-import { commandBattle, inBattle } from './sim/raid';
+import { commandBattle, inBattle, partyByUnit } from './sim/raid';
 import { current, moves, targets, unitAt } from './sim/battle';
 import { worldToHex, hexKey, hexToWorld } from './sim/hex';
 import { mulberry32 } from './core/rng';
@@ -3402,7 +3402,7 @@ startLoop({
         const canHit = unit !== undefined && unit.side === "hero"
           && targets(raid.battle, raid.loc.size, raid.loc.blocked, unit).length > 0;
         battleHud.setVisible(true);
-        battleHud.sync(raid.battle, canHit);
+        battleHud.sync(raid.battle, canHit, partyByUnit(raid));
       } else {
         battleHud.setVisible(false);
       }

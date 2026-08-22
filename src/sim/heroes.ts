@@ -558,12 +558,20 @@ export interface HeroLoadout {
    * их нельзя ни в бою, ни на экране.
    */
   readonly ranged: boolean;
+  /**
+   * §11.8 — сид лица. Лицо привязано к человеку, а не к панели: в бою тот же
+   * герой обязан стоять с тем же лицом, что в веере, а веер берёт сид
+   * из `hero.id`. Снаряжение — единственное, что от героя доходит до боя,
+   * поэтому сид едет здесь.
+   */
+  readonly seed: number;
 }
 
 export function loadout(hero: HeroState): HeroLoadout {
   const def = HERO_CLASSES[hero.cls];
   return {
     cls: hero.cls,
+    seed: hero.id,
     level: hero.level,
     hp: def.hp,
     knowledge: stats(hero).knowledge,
@@ -583,6 +591,7 @@ export function loadout(hero: HeroState): HeroLoadout {
  *  у безымянного героя этапов 1–4, чтобы старые прогоны остались сравнимы. */
 export const DEFAULT_LOADOUT: HeroLoadout = {
   cls: 'rogue',
+  seed: 0,
   level: 1,
   hp: 0,
   knowledge: 5,

@@ -145,6 +145,81 @@ export function drawEventGlyph(
   ctx.restore();
 }
 
+/**
+ * Значок вида места — канал «форма» из шести (§4.2). Прежде замок был голым
+ * квадратом, и на карте он читался флагом клана-переростком: обе фигуры —
+ * прямые углы одного цвета фона. Зубцы по верху оставляют силуэт квадратом —
+ * канал не поменялся, — но называют вид места без легенды.
+ *
+ * Рисуется в долях радиуса и только путём: заливку, кольцо и толщину кладёт
+ * `draw()`, потому что цвет и толщина — свои каналы и сюда не входят.
+ * Вынесено наружу тем же правилом, что `drawEventGlyph`: артбук `world.html`
+ * рисует узлы этим же кодом, а копия разошлась бы молча.
+ */
+export const NODE_ICON: Record<
+  NodeKind,
+  (ctx: CanvasRenderingContext2D, x: number, y: number, r: number) => void
+> = {
+  // Вылазка — круг: единственная форма под шкалу богатства и крест
+  // выработанной, ей значок не нужен — значок у неё кольцо.
+  'вылазка': (ctx, x, y, r) => {
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+  },
+  // Замок — стена с зубцами. Три зубца, а не пять: на радиусе в пять
+  // пикселей узкий зубец слипается в бахрому и силуэт возвращается
+  // к голому квадрату.
+  'замок': (ctx, x, y, r) => {
+    ctx.moveTo(x - r, y + r);
+    ctx.lineTo(x - r, y - r);
+    ctx.lineTo(x - r * 0.56, y - r);
+    ctx.lineTo(x - r * 0.56, y - r * 0.5);
+    ctx.lineTo(x - r * 0.2, y - r * 0.5);
+    ctx.lineTo(x - r * 0.2, y - r);
+    ctx.lineTo(x + r * 0.2, y - r);
+    ctx.lineTo(x + r * 0.2, y - r * 0.5);
+    ctx.lineTo(x + r * 0.56, y - r * 0.5);
+    ctx.lineTo(x + r * 0.56, y - r);
+    ctx.lineTo(x + r, y - r);
+    ctx.lineTo(x + r, y + r);
+    ctx.closePath();
+  },
+  // Кладбище — крест: силуэт могилы, а не символ веры — тот же крест,
+  // которым нарисованы надгробия самой локации.
+  'кладбище': (ctx, x, y, r) => {
+    ctx.moveTo(x - r * 0.42, y - r);
+    ctx.lineTo(x + r * 0.42, y - r);
+    ctx.lineTo(x + r * 0.42, y - r * 0.3);
+    ctx.lineTo(x + r, y - r * 0.3);
+    ctx.lineTo(x + r, y + r * 0.12);
+    ctx.lineTo(x + r * 0.42, y + r * 0.12);
+    ctx.lineTo(x + r * 0.42, y + r);
+    ctx.lineTo(x - r * 0.42, y + r);
+    ctx.lineTo(x - r * 0.42, y + r * 0.12);
+    ctx.lineTo(x - r, y + r * 0.12);
+    ctx.lineTo(x - r, y - r * 0.3);
+    ctx.lineTo(x - r * 0.42, y - r * 0.3);
+    ctx.closePath();
+  },
+};
+
+/**
+ * Палатка лагеря — вместо сплошной точки в золотом кольце. Точка говорила
+ * «здесь что-то есть», палатка говорит «здесь живут»: тот же силуэт, что
+ * у палатки на сцене лагеря. В узлы не входит — в лагерь не ходят,
+ * и каналов узла у него нет.
+ */
+export function drawCampTent(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+): void {
+  ctx.moveTo(x, y - r * 0.58);
+  ctx.lineTo(x + r * 0.62, y + r * 0.42);
+  ctx.lineTo(x - r * 0.62, y + r * 0.42);
+  ctx.closePath();
+}
+
 export interface WorldMapCallbacks {
   /** Игрок выбрал место и решил идти. */
   onRaid(node: number): void;
@@ -340,7 +415,7 @@ export class WorldMap {
     ctx.strokeStyle = '#c8a24a';
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(camp.x * w, camp.y * h, r * 0.42, 0, Math.PI * 2);
+    drawCampTent(ctx, camp.x * w, camp.y * h, r);
     ctx.fillStyle = '#c8a24a';
     ctx.fill();
 
@@ -371,25 +446,11 @@ export class WorldMap {
         ctx.stroke();
       }
 
-      // Замок — квадрат, кладбище — крест, вылазка — круг. Форма, а не цвет:
-      // цвет на карте уже занят богатством, и второй смысл в него не влезает.
+      // Замок — стена с зубцами, кладбище — крест, вылазка — круг. Форма,
+      // а не цвет: цвет на карте уже занят богатством, и второй смысл в него
+      // не влезает. Сами значки — в `NODE_ICON` наверху.
       ctx.beginPath();
-      if (node.kind === 'замок') ctx.rect(x - r, y - r, r * 2, r * 2);
-      else if (node.kind === 'кладбище') {
-        ctx.moveTo(x - r * 0.42, y - r);
-        ctx.lineTo(x + r * 0.42, y - r);
-        ctx.lineTo(x + r * 0.42, y - r * 0.3);
-        ctx.lineTo(x + r, y - r * 0.3);
-        ctx.lineTo(x + r, y + r * 0.12);
-        ctx.lineTo(x + r * 0.42, y + r * 0.12);
-        ctx.lineTo(x + r * 0.42, y + r);
-        ctx.lineTo(x - r * 0.42, y + r);
-        ctx.lineTo(x - r * 0.42, y + r * 0.12);
-        ctx.lineTo(x - r, y + r * 0.12);
-        ctx.lineTo(x - r, y - r * 0.3);
-        ctx.lineTo(x - r * 0.42, y - r * 0.3);
-        ctx.closePath();
-      } else ctx.arc(x, y, r, 0, Math.PI * 2);
+      NODE_ICON[node.kind](ctx, x, y, r);
       ctx.fillStyle = 'rgba(11, 10, 9, 0.85)';
       ctx.fill();
       // Толщина кольца — ярус: цена места видна раньше подписи. У замка

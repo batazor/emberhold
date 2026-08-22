@@ -818,6 +818,15 @@ const unitOf = (f: Fighter): number => -1 - f.id;
  *  «ведущий», и спрашивать колчан у ведущего стало ошибкой. */
 const fighterOf = (state: RaidState, unit: BattleUnit): Fighter | undefined =>
   state.party.find((f) => unitOf(f) === unit.id);
+
+/**
+ * Кто стоит за каждым своим бойцом на поле — для панели боя (§11.3).
+ * Панель рисует очередь лицами, а лицо выводится из класса и сида (§11.8);
+ * пересчитывать `unitOf` у себя панель не должна: формула отрицательных
+ * идентификаторов — деталь этого файла, и копия её разошлась бы молча.
+ */
+export const partyByUnit = (state: RaidState): ReadonlyMap<number, HeroLoadout> =>
+  new Map(state.party.map((f) => [unitOf(f), f.loadout]));
 const HERO_UNIT = -1;
 
 /**

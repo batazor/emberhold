@@ -435,6 +435,21 @@
       за край наполовину. Сдвиг меньше радиуса — глиф остаётся при своём узле, —
       но целым: <b>обрезанный глиф читается как другой глиф</b>.</p>
 
+    <div class="cards" id="kinds"></div>
+
+    <p><b>Значок вида — канал «форма», и рисует его тоже код игры</b>
+      (<code>NODE_ICON</code> из <code>src/ui/worldMap.ts</code>). Замок перестал
+      быть голым квадратом: на карте он читался флагом клана-переростком — обе
+      фигуры прямоугольные и одного цвета фона. Зубцы по верху оставляют силуэт
+      квадратом, канал не поменялся, но вид места назван без легенды. Вылазке
+      значок не нужен — её значок и есть кольцо: круг остаётся единственной
+      формой, на которой читаются шкала богатства и крест выработанной. Лагерь —
+      палатка в золотом кольце: точка говорила «здесь что-то есть», палатка
+      говорит «здесь живут». Границы значка меряются, а не смотрятся:
+      <code>worldMap.rules.ts</code> прослушивает путь подставным контекстом
+      и не пускает рисунок дальше 1,02 радиуса — глиф стоит на 1,3r, флаг
+      от 0,95r, и значок, дошедший туда, читался бы как они.</p>
+
     <div class="hd"><div class="eyebrow">Фон</div><h2>Земля, которая не несёт ни одного канала</h2></div>
     <p>Карта рисовалась по чёрному, и регион читался как список кружков, разложенный
       по прямоугольнику. Земля под точками это чинит — и этим её работа кончается.
@@ -1075,7 +1090,7 @@
  */
 const box = document.getElementById('events');
 try {
-  const { drawEventGlyph } = await import('/src/ui/worldMap.ts');
+  const { drawEventGlyph, NODE_ICON, drawCampTent } = await import('/src/ui/worldMap.ts');
   const { drawMapTerrain } = await import('/src/ui/mapTerrain.ts');
   const { EVENTS, EVENT_ORDER } = await import('/src/sim/events.ts');
   // Модель страницы рисуется раньше этого модуля, поэтому глиф отдаётся ей
@@ -1109,11 +1124,59 @@ try {
     card.append(cv, name, line);
     box.append(card);
   }
+
+  // Значки видов (канал «форма») — тем же импортом и по той же причине:
+  // копия разошлась бы с игрой молча.
+  const kindsBox = document.getElementById('kinds');
+  const SHOW = [
+    { name: 'Вылазка', line: 'круг: кольцо несёт богатство цветом и ярус толщиной',
+      draw: (ctx, x, y, r) => NODE_ICON['вылазка'](ctx, x, y, r), ring: '#7fb069', width: 1 + 2 * 0.9 },
+    { name: 'Замок', line: 'стена с зубцами: прогулка, кольцо тонкое всегда',
+      draw: (ctx, x, y, r) => NODE_ICON['замок'](ctx, x, y, r), ring: '#c8a24a', width: 1.4 },
+    { name: 'Кладбище', line: 'крест могилы: прогулка, привидения названы до входа',
+      draw: (ctx, x, y, r) => NODE_ICON['кладбище'](ctx, x, y, r), ring: '#9fb6d8', width: 1.4 },
+  ];
+  for (const spec of SHOW) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const cv = document.createElement('canvas');
+    cv.width = 96 * dpr; cv.height = 96 * dpr;
+    const c = cv.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.beginPath(); spec.draw(c, 48, 44, 14);
+    c.fillStyle = 'rgba(11,10,9,0.85)'; c.fill();
+    c.strokeStyle = spec.ring; c.lineWidth = spec.width; c.stroke();
+    const name = document.createElement('b'); name.textContent = spec.name;
+    const line = document.createElement('p'); line.textContent = spec.line;
+    card.append(cv, name, line);
+    kindsBox.append(card);
+  }
+  // Лагерь — не узел, но на карте стоит: палатка в золотом кольце.
+  {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const cv = document.createElement('canvas');
+    cv.width = 96 * dpr; cv.height = 96 * dpr;
+    const c = cv.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.beginPath(); c.arc(48, 44, 14, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(200,162,74,0.22)'; c.fill();
+    c.strokeStyle = '#c8a24a'; c.lineWidth = 1; c.stroke();
+    c.beginPath(); drawCampTent(c, 48, 44, 14);
+    c.fillStyle = '#c8a24a'; c.fill();
+    const name = document.createElement('b'); name.textContent = 'Лагерь';
+    const line = document.createElement('p');
+    line.textContent = 'палатка в золотом кольце: сюда не ходят — здесь живут';
+    card.append(cv, name, line);
+    kindsBox.append(card);
+  }
 } catch (e) {
-  box.innerHTML =
-    '<p class="flag">Глифы рисуются кодом игры и требуют дев-сервера' +
-    ' (<code>npm run dev</code>). Копии их здесь нет намеренно: она разошлась бы' +
+  const note =
+    '<p class="flag">Рисуется кодом игры и требует дев-сервера' +
+    ' (<code>npm run dev</code>). Копии здесь нет намеренно: она разошлась бы' +
     ' с игрой молча. — ' + e.message + '</p>';
+  box.innerHTML = note;
+  document.getElementById('kinds').innerHTML = note;
 }
 </script>
 
