@@ -15,7 +15,7 @@
  * подставленное имя тапом и не печатает ни буквы. Форма от этого не
  * возникает — возникает согласие.
  */
-import { GUEST_FROM_TEXT, GUEST_SEEK_TEXT } from '../sim/castleGuest';
+import { GUEST_FROM_TEXT, GUEST_SEEK_TEXT, GUEST_TERM_TEXT, termLine } from '../sim/castleGuest';
 import type { CastleGuest, GuestMeet } from '../sim/castleGuest';
 import { MAX_NAME, SELF_ANSWERS, SELF_HINT, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
@@ -167,9 +167,22 @@ export class MeetPanel {
       return;
     }
 
-    this.line.textContent = GUEST_SEEK_TEXT[guest.seek];
+    // Цену гость называет в ответ на приглашение (`GuestStep`): кнопка
+    // «Позвать» открывает уговор, а не заключает его.
+    if (state.step === 'дело') {
+      this.line.textContent = GUEST_SEEK_TEXT[guest.seek];
+      this.act('Позвать в лагерь', () => this.cb.onAdvance());
+      return;
+    }
+
+    this.line.textContent = GUEST_TERM_TEXT[guest.term];
+    // Цена отдельной строкой, как дар знакомства: перечень с числами
+    // в кавычках прямой речи читался бы репликой.
+    const cost = termLine(guest.term);
+    this.goods.textContent = cost;
+    this.goods.style.display = cost === '' ? 'none' : 'block';
     this.act(
-      'Позвать в лагерь',
+      'По рукам',
       () => this.cb.onInvite(),
       'Палатку и костёр заберёт с собой, место в лагере выберет сам',
     );
