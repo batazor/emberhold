@@ -1602,15 +1602,13 @@ export class RaidView {
         ? new THREE.Mesh(gem, gemMat)
         : new THREE.Mesh(this.track(resourceGeometry(name, CONTAINER_HEIGHT)), baked);
       mesh.castShadow = true;
-      // Бревно лежит на земле, как лежало бы срубленное: парящая и крутящаяся
-      // добыча читается игровой пиктограммой, а дерево — часть леса.
-      // Поворот — детерминированный по id, чтобы брёвна не легли по линейке.
-      if (c.kind === 'wood') {
-        mesh.position.set(c.x, 0, c.z);
-        mesh.rotation.y = tileNoise(c.id, c.id * 7 + 3) * Math.PI * 2;
-      } else {
-        mesh.position.set(c.x, 0.45, c.z);
-      }
+      // Добыча лежит на земле, как лежала бы брошенная: парящая и крутящаяся
+      // читается игровой пиктограммой, а обломки, бревно и слитки — часть
+      // места. Поворот — детерминированный по id, чтобы кучки не легли
+      // по линейке. Кристалл — центрированный октаэдр без основания:
+      // приподнят и чуть утоплен остриём в землю, стоит, а не парит.
+      mesh.position.set(c.x, name === null ? 0.2 : 0, c.z);
+      mesh.rotation.y = tileNoise(c.id, c.id * 7 + 3) * Math.PI * 2;
       this.group.add(mesh);
       this.containerMeshes.set(c.id, mesh);
     }
@@ -2192,14 +2190,9 @@ export class RaidView {
     for (const c of this.loc.containers) {
       const mesh = this.containerMeshes.get(c.id);
       if (mesh === undefined) continue;
-      if (c.opened) {
-        mesh.visible = false;
-        continue;
-      }
-      // Бревно лежит (см. buildContainers) — вертится только прочая добыча.
-      if (c.kind === 'wood') continue;
-      mesh.rotation.y += dt * 1.6;
-      mesh.position.y = 0.45 + Math.sin(time / 500 + c.id) * 0.08;
+      // Вся добыча лежит неподвижно (см. buildContainers): циклу осталось
+      // только прятать вскрытое.
+      mesh.visible = !c.opened;
     }
 
     this.syncTrees(dt);
