@@ -86,6 +86,9 @@ export class BattleHud {
     state: BattleState,
     canAttack: boolean,
     party: ReadonlyMap<number, HeroLoadout> = new Map(),
+    /** Показ дочитывает прошлые ходы: кнопки молчат, чтобы игрок не ходил
+     *  в бой, которого ещё не увидел. */
+    busy = false,
   ): void {
     const unit = current(state);
     if (unit === undefined) return;
@@ -93,12 +96,12 @@ export class BattleHud {
     const queue = state.order
       .map((i) => state.units[i]!)
       .filter((u) => u.hp > 0);
-    const key = `${state.round}|${unit.id}|${canAttack}|${queue.map((u) => `${u.id}:${u.hp}`).join(',')}`;
+    const key = `${state.round}|${unit.id}|${canAttack}|${busy}|${queue.map((u) => `${u.id}:${u.hp}`).join(',')}`;
     if (key === this.key) return;
     this.key = key;
 
-    const mine = unit.side === 'hero';
-    this.turn.textContent = mine ? 'Ваш ход' : `Ходит ${nameOf(unit)}`;
+    const mine = unit.side === 'hero' && !busy;
+    this.turn.textContent = busy ? 'Бой идёт…' : mine ? 'Ваш ход' : `Ходит ${nameOf(unit)}`;
     this.turn.className = mine ? 'good' : 'dim';
     this.q('b-round').textContent = `раунд ${state.round} · противников ${alive(state, 'enemy').length}`;
 
