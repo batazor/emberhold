@@ -48,6 +48,9 @@ import { drawMapTerrain } from './mapTerrain';
 const WALK_COLOR: Partial<Record<NodeKind, string>> = {
   'замок': '#c8a24a',
   'кладбище': '#9fb6d8',
+  // Мшистый, а не зелёный богатства (`RICH_COLOR[3]`): кольцо прогулки
+  // не имеет права читаться как «полная жила».
+  'тропа': '#86a35c',
 };
 
 /**
@@ -215,6 +218,20 @@ export const NODE_ICON: Record<
     ctx.lineTo(x - r, y + r * 0.12);
     ctx.lineTo(x - r, y - r * 0.3);
     ctx.lineTo(x - r * 0.42, y - r * 0.3);
+    ctx.closePath();
+  },
+  // Тропа — вьющаяся лента с двумя коленами: силуэт самой локации, спина
+  // которой виляет ровно так же. Лента, а не линия: пути значков заливаются,
+  // и у линии не было бы нутра.
+  'тропа': (ctx, x, y, r) => {
+    ctx.moveTo(x - r * 0.8, y + r);
+    ctx.lineTo(x + r * 0.1, y + r * 0.25);
+    ctx.lineTo(x - r * 0.3, y - r * 0.35);
+    ctx.lineTo(x + r * 0.35, y - r);
+    ctx.lineTo(x + r * 0.85, y - r);
+    ctx.lineTo(x + r * 0.2, y - r * 0.35);
+    ctx.lineTo(x + r * 0.6, y + r * 0.25);
+    ctx.lineTo(x - r * 0.3, y + r);
     ctx.closePath();
   },
 };
@@ -582,6 +599,10 @@ export class WorldMap {
       this.paintGraveCard(node);
       return;
     }
+    if (node.kind === 'тропа') {
+      this.paintTrailCard(node);
+      return;
+    }
     const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0, event: null };
     // §11.6 — «объявляются до входа». Объявлять надо итог: карточка, которая
     // пишет «ставка 0%» и «×0,6», пока буря делает 25% и ×0,9, — это и есть
@@ -709,6 +730,22 @@ export class WorldMap {
       '<div class="row line"><span>Кто здесь</span><b class="good">торговец</b></div>' +
       '<div class="row line"><span>Меняет на</span><b>железо</b></div>';
     this.note.textContent = 'Прогулка: добычи и противников нет. Торговец во дворе, за воротами.';
+    this.walkButton(node);
+  }
+
+  /**
+   * Тропа (§6.1.17). Карточка отличается от двух других прогулок словом
+   * «пройти»: у замка и кладбища смысл захода — рассмотреть участок, у тропы —
+   * длина. «Никого» — честное сегодняшнее состояние, а не обещание навсегда:
+   * когда на тропе поселятся засады, строка обязана поменяться вместе с ними.
+   */
+  private paintTrailCard(node: WorldNode): void {
+    this.card.innerHTML =
+      `<div class="row t"><b>${node.name}</b><i>прогулка</i></div>` +
+      '<div class="row line"><span>Что там</span><b>тропа через лес</b></div>' +
+      '<div class="row line"><span>Добыча</span><b>нет</b></div>' +
+      '<div class="row line"><span>Кто здесь</span><b class="good">никого</b></div>';
+    this.note.textContent = 'Прогулка: длинная тропа, глухой лес по обе стороны. Добычи и противников нет.';
     this.walkButton(node);
   }
 

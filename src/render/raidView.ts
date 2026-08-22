@@ -35,6 +35,7 @@ import {
 } from '../sim/garrison';
 import type { DwellerLook } from '../sim/garrison';
 import type { GraveSite } from '../sim/graveSite';
+import type { TrailSite } from '../sim/trailSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
 import { Rigged } from './rigged';
@@ -88,7 +89,7 @@ const GLADE_TREES = WOODS;
  * Чем застроены непроходимые клетки. Копи и поляна отличаются ровно этим
  * и точкой выхода: правила ходьбы, камера и трава у них общие.
  */
-export type RaidFlavor = 'mine' | 'glade' | 'castle' | 'grave';
+export type RaidFlavor = 'mine' | 'glade' | 'castle' | 'grave' | 'trail';
 
 /**
  * Деревья кладбища — хвоя и осенняя хвоя набора (§6.1.7). Список свой,
@@ -398,6 +399,8 @@ export class RaidView {
     private readonly keep: CastleSite | null = null,
     /** Участок кладбища (§6.1.7): то же самое для вкуса «кладбище». */
     private readonly grave: GraveSite | null = null,
+    /** Тропа (§6.1.17): без неё вкусу «тропа» нечем отличить грунт от травы. */
+    private readonly trail: TrailSite | null = null,
     /** §14 — уровень оружия: он выбирает клинок в руке (§6.1.8). */
     private readonly weapon = 0,
     /** §11.7 — классы остальных бойцов отряда, в порядке цепочки. */
@@ -434,6 +437,11 @@ export class RaidView {
 
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
+    // Грунт тропы (§6.1.17): вытоптанные клетки рыжее и светлее земли.
+    // Тропа читается цветом и голой землёй — подписи у неё нет.
+    const dirt = this.trail === null
+      ? null
+      : new Set(this.trail.path.map((c) => idx(size, c.x, c.z)));
     let i = 0;
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
@@ -445,7 +453,8 @@ export class RaidView {
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
         // Земля темнеет с ярусом — глубина читается без цифр (§6.1).
-        color.setHSL(PALETTE.groundHue - tier * 0.022, 0.24 - tier * 0.04, 0.34 - tier * 0.05 + v * 0.05);
+        if (dirt !== null && dirt.has(i)) color.setHSL(0.08, 0.31, 0.37 + v * 0.05);
+        else color.setHSL(PALETTE.groundHue - tier * 0.022, 0.24 - tier * 0.04, 0.34 - tier * 0.05 + v * 0.05);
         mesh.setColorAt(i, color);
         i++;
       }
@@ -487,6 +496,12 @@ export class RaidView {
    * снаружи — у замков с вырезанными углами план не совпадает со следом.
    */
   private bareCells(): ReadonlySet<number> {
+    // Грунт тропы — те же клетки, что тонирует земля: вытоптано — значит
+    // и не заросло. Трава на обочине остаётся — ею тропа и отличается
+    // от дна оврага.
+    if (this.trail !== null) {
+      return new Set(this.trail.path.map((c) => idx(this.loc.size, c.x, c.z)));
+    }
     const keep = this.keep;
     if (keep !== null) {
       const out = new Set<number>();
@@ -553,7 +568,9 @@ export class RaidView {
     const { size, blocked } = this.loc;
     // У кладбища лес свой — из набора кладбища, и ставит его buildGraveyard.
     if (this.flavor === 'grave') return;
-    const tree = this.flavor === 'glade' || this.flavor === 'castle';
+    // Тропа стоит в том же лесу, что поляна и лагерь: она рядом с ними
+    // на поверхности, и другая порода говорила бы «другое место» зря.
+    const tree = this.flavor === 'glade' || this.flavor === 'castle' || this.flavor === 'trail';
     const models: readonly Tree[] = tree
       ? GLADE_TREES
       : RAID_ROCKS.map((model) => ({ set: 'forest', model }) as const);
