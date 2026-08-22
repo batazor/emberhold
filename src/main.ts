@@ -115,7 +115,7 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
-import { cloudPull, cloudPush, cloudUser, cloudWipe } from './core/cloud';
+import { cloudOnSignIn, cloudPull, cloudPush, cloudUser, cloudWipe } from './core/cloud';
 import { AuthCard } from './ui/authCard';
 import {
   KIND,
@@ -1697,13 +1697,14 @@ let hasSession = false;
 void cloudUser().then((email) => {
   hasSession = email !== null;
 });
-const authCard = new AuthCard(app, {
-  onDone: () => {
-    hasSession = true;
-    void syncCloud().then((adopted) => {
-      if (!adopted) enterGame();
-    });
-  },
+const authCard = new AuthCard(app);
+// Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
+// о сессии через хранилище — карточка снимается, «Играть» снова играет.
+cloudOnSignIn(() => {
+  if (hasSession) return;
+  hasSession = true;
+  authCard.hide();
+  void syncCloud();
 });
 
 const statsPanel = new StatsPanel(app);

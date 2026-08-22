@@ -35,30 +35,39 @@ export async function cloudUser(): Promise<string | null> {
   }
 }
 
-/** Вход. Отвечает null при успехе, иначе — текст для строки под формой. */
-export async function cloudSignIn(email: string, password: string): Promise<string | null> {
+/**
+ * Вход без пароля: на почту уходит ссылка, ссылка возвращает в игру уже
+ * с сессией — её подхватывает сам клиент при загрузке страницы. Пароля
+ * у аккаунта нет и не появится, пока не понадобится.
+ *
+ * `create` разводит две карточки: регистрация заводит аккаунт по новой
+ * почте, вход по незнакомой — отказывает, а не заводит молча второй лагерь
+ * из-за опечатки. Ответ null — «письмо отправлено», текст — что показать.
+ */
+export async function cloudLink(email: string, create: boolean): Promise<string | null> {
   try {
-    const { error } = await client.auth.signInWithPassword({ email, password });
+    const { error } = await client.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: location.origin, shouldCreateUser: create },
+    });
     if (error === null) return null;
     // Тексты Supabase — английские и разные; игроку важен один факт.
-    return 'Не вышло: проверьте почту и пароль';
+    return create
+      ? 'Не вышло: почта не принята или письма слишком часто'
+      : 'Аккаунта с этой почтой нет — регистрация рядом';
   } catch {
     return 'Не вышло: нет сети';
   }
 }
 
-/**
- * Регистрация. Отвечает null, когда сессия открыта сразу; текстом — и отказ,
- * и «подтвердите почту»: карточке в обоих случаях нужна строка, а не код.
- */
-export async function cloudSignUp(email: string, password: string): Promise<string | null> {
+/** Сессия появилась после загрузки — по ссылке из письма в соседней вкладке. */
+export function cloudOnSignIn(cb: () => void): void {
   try {
-    const { data, error } = await client.auth.signUp({ email, password });
-    if (error !== null) return 'Не вышло: другая почта или пароль подлиннее';
-    if (data.session === null) return 'Письмо отправлено — подтвердите почту и войдите';
-    return null;
+    client.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') cb();
+    });
   } catch {
-    return 'Не вышло: нет сети';
+    /* см. шапку файла */
   }
 }
 
