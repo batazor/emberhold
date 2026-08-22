@@ -734,7 +734,7 @@ const heroFan = new FanControl({
       shownResident = index - roster.heroes.length;
       heroCard.setVisible(false);
       residentCard.sync(camp, shownResident);
-      residentCard.setVisible(true);
+      residentCard.showMenu();
       // На поляне лицо не только открывает карточку — оно передаёт ведение:
       // тап по земле теперь ведёт этого жильца, тап по дереву — рубка.
       controlResident(shownResident);
@@ -2635,17 +2635,18 @@ function campTap(clientX: number, clientY: number): void {
     shownResident = resident;
     heroCard.setVisible(false);
     residentCard.sync(camp, resident);
-    residentCard.setVisible(true);
+    residentCard.showMenu();
     return;
   }
 
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
   // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
-  // Карточка героя уступает место любому исходу тапа: листу здания —
-  // иначе она висела бы поверх него, — и просто земле: экран возвращается
+  // Карточки людей уступают место любому исходу тапа: листу здания —
+  // иначе они висели бы поверх него, — и просто земле: экран возвращается
   // игроку целиком.
   heroCard.setVisible(false);
+  residentCard.setVisible(false);
   if (picked !== null) {
     campHud.openBuilding(picked);
     return;
@@ -2840,7 +2841,7 @@ canvas.addEventListener('pointerdown', (e) => {
       shownResident = near;
       heroCard.setVisible(false);
       residentCard.sync(camp, near);
-      residentCard.setVisible(true);
+      residentCard.showMenu();
       controlResident(near);
       return;
     }
@@ -2858,10 +2859,11 @@ canvas.addEventListener('pointerdown', (e) => {
         picked = id;
       }
     }
-    // Карточка героя уступает место любому исходу тапа: листу здания —
-    // иначе она висела бы поверх него, — и просто земле: экран возвращается
+    // Карточки людей уступают место любому исходу тапа: листу здания —
+    // иначе они висели бы поверх него, — и просто земле: экран возвращается
     // игроку целиком.
     heroCard.setVisible(false);
+    residentCard.setVisible(false);
     if (picked !== null) {
       campHud.openBuilding(picked);
       return;

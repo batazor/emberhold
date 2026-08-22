@@ -1,5 +1,6 @@
-import { RESIDENT_ORDER, RESIDENT_ORDERS, hasRoof, residentState } from '../sim/residents';
+import { RESIDENT_ORDER, RESIDENT_ORDERS, RESIDENT_WORK, hasRoof, residentState } from '../sim/residents';
 import type { ResidentOrder } from '../sim/residents';
+import { RESOURCE_NAME } from '../sim/resources';
 import type { CampState } from '../sim/camp';
 import { avatarSvg } from './avatar';
 
@@ -18,6 +19,14 @@ import { avatarSvg } from './avatar';
  * за работу не берётся (`workDone`), но приказ принять может — займётся,
  * как только крыша появится. Запирать расписание за палаткой значило бы
  * прятать само расписание.
+ *
+ * **Два состояния, как у героя.** Тап по жильцу открывает меню — шапку
+ * с приказами и командой «О персонаже», — а разбор раскрывается этой
+ * командой. В разборе — механика занятия: что жилец приносит и чем это
+ * держится. Ответ со знакомства сюда не пишется: приказ переписывает
+ * `answer` (`assignWork`), и «что он сказал о себе» после первой же смены
+ * занятия было бы враньём. Закрытие возвращает меню: чужому жильцу
+ * не показывают разбор предыдущего.
  */
 export interface ResidentCardCallbacks {
   onOrder(index: number, order: ResidentOrder): void;
@@ -29,6 +38,10 @@ export class ResidentCard {
   private readonly name: HTMLElement;
   private readonly status: HTMLElement;
   private readonly acts: HTMLElement;
+  private readonly aboutRow: HTMLElement;
+  private readonly meta: HTMLElement;
+  /** Меню или разбор: разбор открывается только командой «О персонаже». */
+  private mode: 'menu' | 'full' = 'menu';
   private shown = 0;
   /** Чьё лицо нарисовано: карточка обновляется чаще, чем меняется жилец. */
   private faceKey = '';
@@ -42,17 +55,39 @@ export class ResidentCard {
     this.root.innerHTML = `
       <div class="r-id"><span class="face" id="rc-face"></span>
         <span><b id="rc-name"></b><span id="rc-status" class="dim"></span></span></div>
-      <div class="r-acts" id="rc-acts"></div>`;
+      <div class="r-acts" id="rc-acts"></div>
+      <div class="r-acts" id="rc-about-row"><button id="rc-about">О персонаже</button></div>
+      <div class="r-meta" id="rc-meta"></div>`;
     this.face = this.root.querySelector('#rc-face')!;
     this.name = this.root.querySelector('#rc-name')!;
     this.status = this.root.querySelector('#rc-status')!;
     this.acts = this.root.querySelector('#rc-acts')!;
+    this.aboutRow = this.root.querySelector('#rc-about-row')!;
+    this.meta = this.root.querySelector('#rc-meta')!;
+    this.root.querySelector('#rc-about')!.addEventListener('click', () => {
+      this.mode = 'full';
+      this.applyMode();
+    });
+    this.applyMode();
     parent.appendChild(this.root);
     this.setVisible(false);
   }
 
+  /** Открыть меню приказов на жильце: шапка и кнопки, без разбора. */
+  showMenu(): void {
+    this.mode = 'menu';
+    this.applyMode();
+    this.root.style.display = 'flex';
+  }
+
   setVisible(visible: boolean): void {
     this.root.style.display = visible ? 'flex' : 'none';
+    // Спрятанная карточка сворачивается: следующий тап по лицу открывает
+    // меню, а не разбор того, кого смотрели в прошлый раз.
+    if (!visible && this.mode !== 'menu') {
+      this.mode = 'menu';
+      this.applyMode();
+    }
   }
 
   get visible(): boolean {
@@ -62,6 +97,14 @@ export class ResidentCard {
   /** Отступ снизу: карточка стоит над нижней строкой лагеря, как и веер. */
   setBottom(px: number): void {
     this.root.style.bottom = `${px}px`;
+  }
+
+  /** Разбор виден только в полном режиме, приказы и «О персонаже» — в меню. */
+  private applyMode(): void {
+    const full = this.mode === 'full';
+    this.acts.style.display = full ? 'none' : 'flex';
+    this.aboutRow.style.display = full ? 'none' : 'flex';
+    this.meta.style.display = full ? '' : 'none';
   }
 
   sync(camp: CampState, index: number): void {
@@ -82,6 +125,13 @@ export class ResidentCard {
     // что мешает, а не перечень свойств.
     this.status.textContent = roofed ? residentState(r) : 'без крыши';
     this.status.className = roofed ? 'good' : 'dim';
+
+    // Разбор — механика занятия (`RESIDENT_WORK`), а не выдуманная
+    // биография: больше о жильце игра ничего не записывает. Занятие
+    // отдых не стирает, поэтому строка честна и для отдыхающего.
+    const carry = RESOURCE_NAME[RESIDENT_WORK[r.answer]].toLowerCase();
+    this.meta.textContent =
+      `Занятие: носит ${carry} — прибавка в кладовую, пока есть крыша`;
 
     this.acts.replaceChildren(
       ...RESIDENT_ORDERS.map((order) => {
