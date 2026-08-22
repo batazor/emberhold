@@ -27,7 +27,16 @@ import {
   sortieBlock,
   sortieSeconds,
 } from '../sim/sortie';
-import { CLANS, RICH_MAX, SHIFT_SEC, dayAt, lootMul, regionAt, worldAt } from '../sim/world';
+import {
+  CLANS,
+  RICH_MAX,
+  SHIFT_SEC,
+  clanState,
+  dayAt,
+  lootMul,
+  regionAt,
+  worldAt,
+} from '../sim/world';
 import { KIND } from '../sim/world';
 import type { NodeKind, NodeState, Region, WorldNode } from '../sim/world';
 import { drawMapTerrain } from './mapTerrain';
@@ -602,9 +611,12 @@ export class WorldMap {
       // до входа — награда обязана читаться там же.
       `<div class="row line"><span>Падает</span><b>${lootLine(node.tier)}</b></div>` +
       `<div class="row line"><span>Кто здесь</span>` +
-      (clan === null
+      // §4 — кланы «растут», и до этой строки рост считался, но не показывался
+      // нигде. Уровень — та самая таблица развития, свёрнутая до одного
+      // числа: имя рабочее (§0.1), а «ур.» читается без легенды.
+      (clan === null || state.clan === null
         ? '<b class="good">никого</b>'
-        : `<b style="color:${clan.color}">${clan.name}</b>`) +
+        : `<b style="color:${clan.color}">${clan.name} · ур. ${clanState(state.clan, this.now).level}</b>`) +
       '</div>' +
       // §11.6 — событие названо до входа, как ставка и богатство. Строка
       // появляется только тогда, когда есть что сказать: пустое «Событие: —»

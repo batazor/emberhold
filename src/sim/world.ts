@@ -42,7 +42,10 @@ export const SEED = 20260820;
  */
 export const WORLD_EPOCH = 1787184000;
 
-/** Смена: клан переезжает раз в 40 минут (быстрее сессии, медленнее суток). */
+/** Смена: шаг мировых часов — 40 минут (быстрее сессии, медленнее суток).
+ *  Богатство считается сменами; кланы переезжают реже — стоянками
+ *  (`CLAN_STAY`), иначе флаг телепортируется через карту чаще, чем игрок
+ *  успевает его увидеть. */
 export const SHIFT_SEC = 40 * 60;
 export const DAY_SEC = 24 * 60 * 60;
 /** Ровно 36 смен в сутках — день начинается на границе смены, а не поперёк. */
@@ -440,23 +443,92 @@ export interface ClanState {
 }
 
 /**
+ * Стоянка: клан держит точку три смены подряд — два часа. Число не выбрано,
+ * а совпадает с `RICH_MAX` намеренно: за стоянку клан вырабатывает жилу
+ * ровно до дна, и крест на карте после его отъезда — это дописанная фраза
+ * «клан здесь работал», а не случайность. Прежде клан переезжал каждую
+ * смену, и `npm run clans` называл это телепортом: средний прыжок —
+ * полэкрана, 42% прыжков — дальше половины карты, оседлость 1,04 смены.
+ */
+export const CLAN_STAY = 3;
+
+/**
+ * Ярусный характер клана: где он работает, решает сид, а не день. Без него
+ * все четыре флага вели себя одинаково — `npm run clans` показывал одну
+ * и ту же гистограмму ярусов у всех кланов, и фракции, которые §4 велит
+ * отличать, отличались только цветом. Соль своя, а не общий сид клана:
+ * характер темпа (`pace`) живёт в `clanState`, и сцеплять два розыгрыша
+ * порядком бросков — значит сломать один, поменяв другой.
+ */
+export const clanTier = (id: number): Tier =>
+  Math.floor(mulberry32(hash(SEED, id, 5))() * 4) as Tier;
+
+/** Расселение стоянки последнего спрошенного блока: `worldAt` спрашивает
+ *  кланы девять смен подряд, и считать колоду заново на каждую незачем. */
+let cachedSpots: { day: number; block: number; spots: readonly number[] } | null = null;
+
+/**
+ * Расселение всех кланов одной стоянки — одним расчётом, а не по клану.
+ * Это и есть ответ на две дыры, которые мерил `npm run clans`: врозь кланы
+ * садились вдвоём на одну точку (6,6% смен — второй флаг молча не рисовался)
+ * и в 17,7% смен занимали прогулочную, где флага нет вовсе. Общая колода
+ * вылазок раздаётся по одной, и обе дыры закрыты по построению.
+ *
+ * Очередь идёт по кругу от номера стоянки: ничья за ярус не достаётся
+ * всегда одному и тому же клану.
+ */
+function clanSpots(day: number, block: number): readonly number[] {
+  if (cachedSpots !== null && cachedSpots.day === day && cachedSpots.block === block) {
+    return cachedSpots.spots;
+  }
+  const deck = regionAt(day).nodes.filter((n) => KIND[n.kind].raidable);
+  const rng = mulberry32(hash(SEED, day, block, 7));
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const swap = deck[i]!;
+    deck[i] = deck[j]!;
+    deck[j] = swap;
+  }
+  const spots = new Array<number>(CLANS.length).fill(-1);
+  for (let o = 0; o < CLANS.length; o++) {
+    const k = (o + block) % CLANS.length;
+    const want = clanTier(k);
+    let best = -1;
+    let bestGap = Infinity;
+    for (let i = 0; i < deck.length; i++) {
+      const gap = Math.abs(deck[i]!.tier - want);
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = i;
+      }
+    }
+    if (best < 0) continue;
+    spots[k] = deck[best]!.id;
+    deck.splice(best, 1);
+  }
+  cachedSpots = { day, block, spots };
+  return spots;
+}
+
+/**
  * Состояние клана в момент наблюдения. Ни таймера, ни записи: характер
  * клана — из сида, уровень — из прошедших часов, занятая точка — из номера
- * смены.
+ * стоянки.
  */
 export function clanState(id: number, t: number): ClanState {
   const rng = mulberry32(hash(SEED, id));
   const pace = 0.7 + rng() * 0.6; // характер: медленный / жадный
   const age = Math.max(0, t - WORLD_EPOCH);
   const level = 1 + Math.floor(Math.log2(1 + (age / (90 * 60)) * pace));
-  const region = regionAt(dayAt(t));
-  if (region.nodes.length === 0) return { level, nodes: [] };
+  const day = dayAt(t);
+  if (regionAt(day).nodes.length === 0) return { level, nodes: [] };
   // Артбук предлагал «одну-две локации», и замер это отменил: вторая
   // локация у каждого клана занимает почти половину региона, и условие
   // «три богатых локации всегда доступны» рушится от одной сессии
   // (`world.rules.ts`). Клан держит одну.
-  const rr = mulberry32(hash(SEED, id, shiftAt(t)));
-  return { level, nodes: [Math.floor(rr() * region.nodes.length)] };
+  const block = Math.floor((shiftAt(t) - dayStartShift(day)) / CLAN_STAY);
+  const node = clanSpots(day, block)[id] ?? -1;
+  return { level, nodes: node < 0 ? [] : [node] };
 }
 
 export interface NodeState {

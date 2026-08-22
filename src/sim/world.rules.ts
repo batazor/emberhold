@@ -19,7 +19,9 @@ import {
   SHIFTS_PER_DAY,
   SHIFT_SEC,
   WORLD_EPOCH,
+  CLAN_STAY,
   clanState,
+  clanTier,
   dayAt,
   dayStartShift,
   liveVisits,
@@ -165,6 +167,53 @@ describe('Мир: карта локаций', () => {
           clanState(k, WORLD_EPOCH + DAY_SEC).level,
         'мир растёт без игрока',
       );
+    }
+  });
+
+  /**
+   * Три дыры, которые называл `npm run clans` до расселения одной колодой:
+   * клан на прогулочной точке невидим (флага там нет), второй клан на той же
+   * точке невидим тоже (рисуется первый), а переезд каждую смену — телепорт,
+   * который игрок не успевает прочитать. Все три закрыты по построению,
+   * и правило стережёт построение.
+   */
+  test('§4 — кланы занимают вылазки, не толпятся и держат стоянку', () => {
+    for (let day = DAY0; day < DAY0 + 30; day++) {
+      const region = regionAt(day);
+      for (let s = 0; s < SHIFTS_PER_DAY; s++) {
+        const t = (dayStartShift(day) + s) * SHIFT_SEC;
+        const taken = new Set<number>();
+        for (let k = 0; k < CLANS.length; k++) {
+          const node = clanState(k, t).nodes[0];
+          assert.notEqual(node, undefined, `день ${day}: клану ${k} не досталось точки`);
+          const spot = region.nodes[node!]!;
+          assert.ok(KIND[spot.kind].raidable, `день ${day}: клан ${k} на прогулке (${spot.kind})`);
+          assert.ok(!taken.has(node!), `день ${day}, смена ${s}: двое на «${spot.name}»`);
+          taken.add(node!);
+          // Внутри стоянки точка одна: смена внутри того же блока CLAN_STAY
+          // обязана отвечать тем же местом, иначе оседлость — случайность.
+          const blockStart = (dayStartShift(day) + s - (s % CLAN_STAY)) * SHIFT_SEC;
+          assert.equal(node, clanState(k, blockStart).nodes[0], 'точка уплыла внутри стоянки');
+        }
+      }
+    }
+  });
+
+  test('§4 — фракции различимы: клан работает ярус своего характера', () => {
+    // До характера все четыре гистограммы ярусов совпадали, и фракции,
+    // которые §4 велит отличать, отличались только цветом флага.
+    for (let k = 0; k < CLANS.length; k++) {
+      const want = clanTier(k);
+      const hist = [0, 0, 0, 0];
+      for (let day = DAY0; day < DAY0 + 30; day++) {
+        const region = regionAt(day);
+        for (let s = 0; s < SHIFTS_PER_DAY; s += CLAN_STAY) {
+          const t = (dayStartShift(day) + s) * SHIFT_SEC;
+          hist[region.nodes[clanState(k, t).nodes[0]!]!.tier]++;
+        }
+      }
+      const top = hist.indexOf(Math.max(...hist));
+      assert.equal(top, want, `${CLANS[k]!.name}: характер ярус ${want}, а живёт на ${top}`);
     }
   });
 
