@@ -2198,6 +2198,8 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
     // §4 — истощение множит добычу, а не запирает вход: плохая сделка
     // оставляет решение игроку, запрет отправляет его ждать вне игры.
     lootMul: mul,
+    // §22.6б — первые заходы на ярус встречают тела уровнем ниже.
+    visit: camp.tierRaids[tier],
     // §11.6 — что здесь сегодня. Складывается с богатством: выработанная
     // локация под бурей остаётся выработанной.
     event,
@@ -4612,7 +4614,11 @@ startLoop({
         // §13.6 — потолок кладовой: не поместившееся пропадает, и об этом
         // говорится. Молчаливая потеря добычи хуже самой потери.
         if (stash(camp, result.carried) > 0) campHud.notify(STORE_FULL);
-        if (counts) camp.raids += 1;
+        if (counts) {
+          camp.raids += 1;
+          // §22.6б — ярус взрослеет заходами: смягчение входа кончается.
+          camp.tierRaids[result.tier] += 1;
+        }
         finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);
         for (const id of result.fired) {
           track({ t: 'consumable', at: now, id, phase: 'fire' });
