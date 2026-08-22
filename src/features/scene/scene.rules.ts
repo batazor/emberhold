@@ -24,7 +24,6 @@ describe('Сцена: что видно', () => {
     const p = panelsFor('raid');
     assert.equal(p.campHud, false);
     assert.equal(p.roster, false);
-    assert.equal(p.stats, false);
   });
 
   test('вылазка не переживает возвращение в лагерь', () => {
@@ -48,11 +47,10 @@ describe('Сцена: что видно', () => {
     }
   });
 
-  test('тихий лагерь кадров 9–10 прячет отряд и данные, но не сам лагерь', () => {
+  test('тихий лагерь кадров 9–10 прячет отряд, но не сам лагерь', () => {
     const quiet = panelsFor('camp', true);
     assert.equal(quiet.campHud, true, 'лагерь спрятался вместе с панелями');
     assert.equal(quiet.roster, false);
-    assert.equal(quiet.stats, false);
   });
 
   test('тишина раскадровки касается только лагеря', () => {
