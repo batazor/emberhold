@@ -22,7 +22,6 @@ import { CASTLE_CELL, type Piece, type Spot } from '../sim/castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
 import { roadPieces } from '../sim/roads';
 import { PALETTE } from './palette';
-import { CampProps } from './campProps';
 
 /**
  * Сцена лагеря по camp.html: герой стоит у Жилья, стройка видна по площадке.
@@ -143,17 +142,12 @@ export class CampView {
   /** Один материал на все модели артбука: цвет приходит вершинами (§6.1). */
   private readonly blocking = this.track(blockingMaterial());
 
-  /** Толкаемый реквизит у костра (`campProps.ts`): дрова и камни с весом. */
-  private readonly props: CampProps;
-
   constructor(private camp: CampState) {
     this.moveToOrigin();
     this.buildGround();
     this.buildMeadow();
     this.buildHero();
     this.group.add(this.fire.group);
-    this.props = new CampProps(camp);
-    this.group.add(this.props.group);
     this.rebuildBuildings();
     this.buildStones();
   }
@@ -449,9 +443,6 @@ export class CampView {
    * что обычно меняется.
    */
   rebuildBuildings(): void {
-    // Реквизит следит за раскладкой сам: у него своя подпись — ему всё
-    // равно, что стало с жильцами, но не всё равно, куда переехала кухня.
-    this.props.rebuild(this.camp);
     const signature = BUILDING_ORDER.map((id) => {
       const p = this.camp.layout[id];
       return `${id}${this.camp.levels[id]}@${p.x},${p.z}`;
@@ -714,10 +705,6 @@ export class CampView {
     }
     // Жильцы стоят, но кадр у них обязан стареть: дыхание покоя — тоже клип.
     for (const man of this.folk) man.update(dt);
-
-    // Реквизит толкается тем, кто ходит: физике отдаётся тот же герой,
-    // которого ведёт симуляция, — а не копия со своими правилами.
-    this.props.update(dt, this.heroAt);
 
     this.syncSite(now);
     this.syncFire(now, day);
@@ -1037,14 +1024,8 @@ export class CampView {
     this.group.position.set(o.x, 0, o.z);
   }
 
-  /** Ручка отладочной сцены (`?тест`): подбросить реквизит, не ходя к нему. */
-  kickProps(): void {
-    this.props.kick();
-  }
-
   dispose(): void {
     this.group.removeFromParent();
-    this.props.dispose();
     // Скелеты освобождаются поимённо: у рига свои буферы, и общий обход
     // `disposables` про них не знает.
     this.heroRig?.dispose();
