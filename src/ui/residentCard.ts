@@ -1,8 +1,10 @@
 import { RESIDENT_ORDER, RESIDENT_ORDERS, RESIDENT_WORK, hasRoof, residentState } from '../sim/residents';
 import type { ResidentOrder } from '../sim/residents';
 import { RESOURCE_NAME } from '../sim/resources';
+import type { Offhand } from '../sim/gear';
 import type { CampState } from '../sim/camp';
 import { avatarSvg } from './avatar';
+import { GearSection } from './gearSection';
 
 /**
  * Карточка выбранного жильца — сестра карточки героя (`heroCard.ts`) и то,
@@ -27,9 +29,15 @@ import { avatarSvg } from './avatar';
  * `answer` (`assignWork`), и «что он сказал о себе» после первой же смены
  * занятия было бы враньём. Закрытие возвращает меню: чужому жильцу
  * не показывают разбор предыдущего.
+ *
+ * **Снаряжение — то же, что у героя** (`gearSection.ts`): механика едина,
+ * комплект один на лагерь, и жилец отличается только тем, что в мир
+ * не ходит. Смотреть слоты и перекладывать левую руку он вправе так же.
  */
 export interface ResidentCardCallbacks {
   onOrder(index: number, order: ResidentOrder): void;
+  /** §14.2 — тот же выбор, что в карточке героя и «Припасах»: рука одна. */
+  onOffhand(hand: Offhand): void;
 }
 
 export class ResidentCard {
@@ -40,6 +48,7 @@ export class ResidentCard {
   private readonly acts: HTMLElement;
   private readonly aboutRow: HTMLElement;
   private readonly meta: HTMLElement;
+  private readonly gear: GearSection;
   /** Меню или разбор: разбор открывается только командой «О персонаже». */
   private mode: 'menu' | 'full' = 'menu';
   private shown = 0;
@@ -64,6 +73,9 @@ export class ResidentCard {
     this.acts = this.root.querySelector('#rc-acts')!;
     this.aboutRow = this.root.querySelector('#rc-about-row')!;
     this.meta = this.root.querySelector('#rc-meta')!;
+    // Секция общая с карточкой героя (`gearSection.ts`): механика едина.
+    this.gear = new GearSection((hand) => this.cb.onOffhand(hand));
+    this.root.appendChild(this.gear.el);
     this.root.querySelector('#rc-about')!.addEventListener('click', () => {
       this.mode = 'full';
       this.applyMode();
@@ -105,6 +117,7 @@ export class ResidentCard {
     this.acts.style.display = full ? 'none' : 'flex';
     this.aboutRow.style.display = full ? 'none' : 'flex';
     this.meta.style.display = full ? '' : 'none';
+    this.gear.el.style.display = full ? '' : 'none';
   }
 
   sync(camp: CampState, index: number): void {
@@ -132,6 +145,11 @@ export class ResidentCard {
     const carry = RESOURCE_NAME[RESIDENT_WORK[r.answer]].toLowerCase();
     this.meta.textContent =
       `Занятие: носит ${carry} — прибавка в кладовую, пока есть крыша`;
+
+    // Карточка жильца лагерь и так держит в руках — снаряжение берётся
+    // из него напрямую, в отличие от карточки героя, куда оно приходит
+    // параметрами.
+    this.gear.sync(camp.gear, camp.offhand);
 
     this.acts.replaceChildren(
       ...RESIDENT_ORDERS.map((order) => {

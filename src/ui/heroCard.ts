@@ -11,9 +11,9 @@ import {
   xpToNext,
 } from '../sim/heroes';
 import type { HeroState, Roster } from '../sim/heroes';
-import { GEAR, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine } from '../sim/gear';
 import type { GearState, Offhand } from '../sim/gear';
 import { avatarSvg } from './avatar';
+import { GearSection } from './gearSection';
 
 /**
  * Карточка выбранного героя (§11.8) — то, что осталось от списка отряда,
@@ -60,11 +60,9 @@ export class HeroCard {
   private readonly xp: HTMLElement;
   private readonly bar: HTMLElement;
   private readonly skill: HTMLElement;
-  private readonly gear: HTMLElement;
+  private readonly gear: GearSection;
   private readonly train: HTMLButtonElement;
   private readonly acts: HTMLElement;
-  /** Что нарисовано в снаряжении: слоты и рука меняются реже, чем идёт тик. */
-  private gearKey = '';
   /** Меню или полный разбор: полный открывается только командой «О персонаже». */
   private mode: 'menu' | 'full' = 'menu';
   private shown = 0;
@@ -86,7 +84,6 @@ export class HeroCard {
       <div class="r-meta" id="hc-meta"></div>
       <div class="bar" id="hc-bar"><i id="hc-xp"></i></div>
       <div class="r-skill" id="hc-skill"></div>
-      <div class="r-gear" id="hc-gear"></div>
       <button id="hc-train"></button>`;
     const pick = <T extends HTMLElement>(id: string): T => this.root.querySelector<T>(`#${id}`)!;
     this.face = pick('hc-face');
@@ -96,9 +93,11 @@ export class HeroCard {
     this.xp = pick('hc-xp');
     this.bar = pick('hc-bar');
     this.skill = pick('hc-skill');
-    this.gear = pick('hc-gear');
     this.acts = pick('hc-acts');
     this.train = pick<HTMLButtonElement>('hc-train');
+    // Секция общая с карточкой жильца (`gearSection.ts`): механика едина.
+    this.gear = new GearSection((hand) => this.cb.onOffhand(hand));
+    this.root.insertBefore(this.gear.el, this.train);
     this.train.addEventListener('click', () => this.cb.onTrain(this.shown));
     pick<HTMLButtonElement>('hc-about').addEventListener('click', () => {
       this.mode = 'full';
@@ -130,7 +129,7 @@ export class HeroCard {
   private applyMode(): void {
     const full = this.mode === 'full';
     this.acts.style.display = full ? 'none' : 'flex';
-    for (const el of [this.meta, this.bar, this.skill, this.gear, this.train]) {
+    for (const el of [this.meta, this.bar, this.skill, this.gear.el, this.train]) {
       el.style.display = full ? '' : 'none';
     }
   }
@@ -190,7 +189,7 @@ export class HeroCard {
     const skill = SKILLS[def.skill];
     this.skill.textContent = `${skill.name} — ${skill.effect} · ${def.strong}, ${def.weak}`;
 
-    this.syncGear(gear, offhand);
+    this.gear.sync(gear, offhand);
 
     const tb = trainBlock(roster, hero, yardLevel);
     this.train.disabled = tb !== 'ok';
@@ -200,53 +199,6 @@ export class HeroCard {
         : tb === 'ok'
           ? `Тренировать · ${formatDuration(trainPerLevel(yardLevel))} · до ур. ${trainCap(roster)}`
           : TRAIN_REASON[tb];
-  }
-
-  /**
-   * Слоты снаряжения в разборе (§14). Уровни куются в Мастерской, и карточка
-   * их не трогает — задаётся здесь только то, что в игре вообще задаётся:
-   * левая рука, фонарь против щита (§14.2). Тот же `setOffhand`, что
-   * в «Припасах», — выбор один, входов к нему два.
-   *
-   * DOM пересобирается по ключу, а не тиком: карточка красится каждый кадр,
-   * а слоты и рука меняются ковкой и кнопкой.
-   */
-  private syncGear(gear: GearState | null, offhand: Offhand): void {
-    if (gear === null) {
-      if (this.gearKey !== '') {
-        this.gearKey = '';
-        this.gear.replaceChildren();
-      }
-      return;
-    }
-    const key = `${GEAR_ORDER.map((slot) => gear[slot]).join(',')}:${offhand}`;
-    if (key === this.gearKey) return;
-    this.gearKey = key;
-    const rows: HTMLElement[] = [];
-    for (const slot of GEAR_ORDER) {
-      // Кованая левая рука — выбор, а не строка: уровень один на слот,
-      // предмета в нём два (§14.2).
-      if (slot === 'torch' && gear.torch > 0) {
-        const row = document.createElement('div');
-        row.className = 'r-acts';
-        for (const hand of OFFHAND_ORDER) {
-          const b = document.createElement('button');
-          const def = OFFHAND[hand];
-          b.textContent = def.name;
-          b.title = gearItemLine(def, gear.torch);
-          b.disabled = offhand === hand;
-          b.addEventListener('click', () => this.cb.onOffhand(hand));
-          row.appendChild(b);
-        }
-        rows.push(row);
-        continue;
-      }
-      const line = document.createElement('div');
-      line.className = 'r-meta';
-      line.textContent = `${GEAR[slot].name} · ${gearLine(slot, gear[slot])}`;
-      rows.push(line);
-    }
-    this.gear.replaceChildren(...rows);
   }
 
   private statusLine(hero: HeroState, now: number): string {
