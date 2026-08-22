@@ -4,6 +4,7 @@ import { RESOURCE_NAME } from '../sim/resources';
 import type { Offhand } from '../sim/gear';
 import type { CampState } from '../sim/camp';
 import { avatarSvg } from './avatar';
+import { revealCard } from './cardReveal';
 import { GearSection } from './gearSection';
 
 /**
@@ -89,7 +90,11 @@ export class ResidentCard {
   showMenu(): void {
     this.mode = 'menu';
     this.applyMode();
+    // Растворение — только на появление из скрытого состояния: при
+    // перелистывании жильцов уже видимая карточка не мерцает заново.
+    const wasHidden = this.root.style.display === 'none';
     this.root.style.display = 'flex';
+    if (wasHidden) revealCard(this.root);
   }
 
   setVisible(visible: boolean): void {

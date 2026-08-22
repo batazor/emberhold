@@ -12,6 +12,7 @@
  */
 import { AXIS_NAME, DRAFT } from '../sim/draft';
 import type { DraftCardId } from '../sim/draft';
+import { revealCard } from './cardReveal';
 
 export interface DraftCallbacks {
   onChoose(id: DraftCardId): void;
@@ -68,6 +69,12 @@ export class DraftScreen {
       this.cards.appendChild(button);
     }
     this.root.style.display = 'flex';
+    // Карты раздачи проявляются растворением, чуть вразнобой — как
+    // выкладывают на стол по одной. Кликать можно, не дожидаясь конца.
+    let i = 0;
+    for (const button of this.cards.children) {
+      if (button instanceof HTMLElement) revealCard(button, i++ * 140);
+    }
   }
 
   hide(): void {

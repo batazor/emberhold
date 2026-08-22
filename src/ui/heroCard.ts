@@ -13,6 +13,7 @@ import {
 import type { HeroState, Roster } from '../sim/heroes';
 import type { GearState, Offhand } from '../sim/gear';
 import { avatarSvg } from './avatar';
+import { revealCard } from './cardReveal';
 import { GearSection } from './gearSection';
 
 /**
@@ -112,7 +113,11 @@ export class HeroCard {
   showMenu(): void {
     this.mode = 'menu';
     this.applyMode();
+    // Растворение — только на появление из скрытого состояния: при
+    // перелистывании героев уже видимая карточка не мерцает заново.
+    const wasHidden = this.root.style.display === 'none';
     this.root.style.display = 'flex';
+    if (wasHidden) revealCard(this.root);
   }
 
   setVisible(visible: boolean): void {
