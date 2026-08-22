@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { cpSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
@@ -20,6 +20,19 @@ const pages = Object.fromEntries(
 );
 
 export default defineConfig({
+  plugins: [
+    {
+      // Артбуки читают каталоги и .gltf из assets/ на живом сайте так же,
+      // как на dev-сервере. В public/ папку не переносим: её адрес зашит
+      // в rules-проверки и в сами страницы, а Vite копирует public целиком —
+      // это тот же cp, только с переездом. Игре копия не нужна: геометрия
+      // запечена в *.data.ts ещё генератором.
+      name: 'copy-assets-for-artbooks',
+      closeBundle() {
+        cpSync('assets', 'dist/assets', { recursive: true });
+      },
+    },
+  ],
   base: './',
   server: { host: true, ...(port ? { port } : {}) },
   preview: { host: true, ...(port ? { port } : {}) },
