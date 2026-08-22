@@ -122,6 +122,13 @@ interface SaveV1 {
    * бы только новым сейвам.
    */
   chests?: { x: number; z: number }[];
+  /**
+   * Костры гостей и сиды приглашённых (`castleGuest.ts`). Поля необязательные
+   * по той же причине, что жильцы и палатки: сейв прежних этапов обязан
+   * открываться. Отсутствие читается «гостей не звали».
+   */
+  fires?: { x: number; z: number }[];
+  guests?: number[];
 }
 
 export interface LoadResult {
@@ -173,6 +180,9 @@ export function save(
     })),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
     chests: camp.chests.map((c) => ({ x: c.x, z: c.z })),
+    // exactOptionalPropertyTypes: у лагеря без гостей этих ключей нет вовсе.
+    ...(camp.fires !== undefined ? { fires: camp.fires.map((f) => ({ x: f.x, z: f.z })) } : {}),
+    ...(camp.guests !== undefined ? { guests: [...camp.guests] } : {}),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -367,6 +377,14 @@ export function load(): LoadResult {
       // к Жилью, как у пролога; места нет — сундук подождёт перестановки:
       // прибавка считается от списка, и пустой список честнее фантомного.
       adoptChest(camp, { x: -1, z: -1 });
+    }
+    if (Array.isArray(data.fires)) {
+      camp.fires = data.fires
+        .filter((f) => f != null && typeof f.x === 'number' && typeof f.z === 'number')
+        .map((f) => ({ x: Math.floor(f.x), z: Math.floor(f.z) }));
+    }
+    if (Array.isArray(data.guests)) {
+      camp.guests = data.guests.filter((g): g is number => typeof g === 'number');
     }
 
     for (const slot of GEAR_ORDER) {

@@ -138,6 +138,8 @@ export class CampView {
   private site: THREE.Mesh | null = null;
   /** Свет костра. Один на лагерь: горит тот огонь, что стоит у кухни. */
   private readonly fire = new Fire();
+  /** Костры гостей (`sim/castleGuest.ts`): меш и огонь каждому. */
+  private readonly guestFires: { g: THREE.Group; fire: Fire }[] = [];
   private area = 6;
   private builtLevels = '';
   /** Валуны лагеря (§13.4): по мешу на камень — их единицы, и каждый дрожит
@@ -470,9 +472,12 @@ export class CampView {
     // поставленная и не нарисованная палатка — это оплаченное и невидимое.
     // Занятие и отдых входят в подпись: приказ меняет предмет в руке,
     // и жилец с топором после «носить камень» был бы жильцом с чужим делом.
+    // Костры гостей — в подписи по той же причине, что палатки: принесённый
+    // и не нарисованный костёр читался бы пропажей.
     const withTents =
       `${signature}|т${this.camp.tents.map((t) => `${t.x},${t.z}`).join(';')}` +
       `|с${this.camp.chests.map((c) => `${c.x},${c.z}`).join(';')}` +
+      `|о${(this.camp.fires ?? []).map((f) => `${f.x},${f.z}`).join(';')}` +
       `|ж${this.camp.residents.map((r) => `${r.look}:${r.rest ? 'отдых' : r.answer}`).join(';')}`;
     const area = campArea(this.camp.levels.hq);
     if (withTents === this.builtLevels && area === this.area) return;
@@ -485,6 +490,12 @@ export class CampView {
     this.tents.length = 0;
     for (const m of this.chestMeshes) m.removeFromParent();
     this.chestMeshes.length = 0;
+    for (const f of this.guestFires) {
+      f.g.removeFromParent();
+      f.fire.group.removeFromParent();
+      f.fire.dispose();
+    }
+    this.guestFires.length = 0;
     for (const rig of this.folk) {
       rig.root.removeFromParent();
       rig.dispose();
@@ -532,6 +543,20 @@ export class CampView {
       mesh.position.set(c.x, 0, c.z);
       this.group.add(mesh);
       this.chestMeshes.push(mesh);
+    }
+
+    // Костры гостей (`sim/castleGuest.ts`). Модель — Кухня первого уровня:
+    // она и есть костёр; меньше он тем же числом, что палатка, — след 1×1.
+    // Огонь у каждого свой и горит всегда: погасший костёр — макет костра.
+    for (const f of this.camp.fires ?? []) {
+      const g = this.makeBuilding('kitchen', 1);
+      g.scale.setScalar(TENT_LOOK);
+      g.position.set(f.x, 0, f.z);
+      this.group.add(g);
+      const fire = new Fire();
+      fire.set('kitchen', 1, f.x, f.z, BUILDING_SCALE * TENT_LOOK);
+      this.group.add(fire.group);
+      this.guestFires.push({ g, fire });
     }
 
     /*
@@ -760,6 +785,7 @@ export class CampView {
     const pos = this.camp.layout.kitchen;
     this.fire.set('kitchen', this.camp.levels.kitchen, pos.x + 0.5, pos.z + 0.5, BUILDING_SCALE);
     this.fire.update(now, day);
+    for (const f of this.guestFires) f.fire.update(now, day);
     // Фонари живут тем же днём, что костёр: гаснут к утру, горят к ночи.
     if (this.lampGlow !== null) setLampsNight(1 - day, this.lampGlow, this.lampLights);
   }
@@ -1078,6 +1104,7 @@ export class CampView {
     this.folk.length = 0;
     this.meadow?.dispose();
     this.fire.dispose();
+    for (const f of this.guestFires) f.fire.dispose();
     this.meadow = null;
     this.groundMesh.dispose();
     // Геометрия леса общая на страницу (кэш forest.ts) — освобождаются только

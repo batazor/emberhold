@@ -15,6 +15,8 @@
  * подставленное имя тапом и не печатает ни буквы. Форма от этого не
  * возникает — возникает согласие.
  */
+import { GUEST_FROM_TEXT, GUEST_SEEK_TEXT } from '../sim/castleGuest';
+import type { CastleGuest, GuestMeet } from '../sim/castleGuest';
 import { MAX_NAME, SELF_ANSWERS, SELF_HINT, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
 import { avatarSvg } from './avatar';
@@ -131,6 +133,46 @@ export class MeetPanel {
     this.goods.textContent = gift === null ? '' : giftLine(gift);
     this.goods.style.display = gift === null ? 'none' : 'block';
     this.act('Позвать с собой', () => this.cb.onInvite());
+  }
+
+  /**
+   * Разговор с гостем у стен замка (`sim/castleGuest.ts`). Панель та же —
+   * разговор случается там, где игрок стоит, и по той же причине без кнопки
+   * «закрыть»: отойти можно в любой момент. Кадра три, тапов столько же;
+   * поля с именем нет — гость не спрашивает, как звать: он у чужих стен,
+   * и зовут здесь его.
+   */
+  showGuest(guest: CastleGuest, state: GuestMeet): void {
+    this.root.style.display = state.step === 'кончено' ? 'none' : 'flex';
+    if (state.step === 'кончено') return;
+
+    this.buttons.replaceChildren();
+    this.field.style.display = 'none';
+    this.goods.style.display = 'none';
+    const face = `${guest.who.look}/${guest.who.seed}`;
+    if (this.face.dataset['who'] !== face) {
+      this.face.dataset['who'] = face;
+      this.face.innerHTML = avatarSvg(guest.who.look, guest.who.seed);
+    }
+
+    if (state.step === 'кто') {
+      this.line.textContent = `— Я ${guest.who.name}. Сижу у огня, жду попутчиков.`;
+      this.act('Спросить, откуда', () => this.cb.onAdvance());
+      return;
+    }
+
+    if (state.step === 'откуда') {
+      this.line.textContent = GUEST_FROM_TEXT[guest.origin];
+      this.act('Спросить, что ищет', () => this.cb.onAdvance());
+      return;
+    }
+
+    this.line.textContent = GUEST_SEEK_TEXT[guest.seek];
+    this.act(
+      'Позвать в лагерь',
+      () => this.cb.onInvite(),
+      'Палатку и костёр заберёт с собой, место в лагере выберет сам',
+    );
   }
 
   /** Фокус в поле — отдельным вызовом: телефон открывает клавиатуру только
