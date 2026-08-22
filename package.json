@@ -33,7 +33,6 @@
     "fan": "tsx scripts/fan.ts"
   },
   "dependencies": {
-"@dimforge/rapier3d-compat": "^0.20.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
