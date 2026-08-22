@@ -492,6 +492,8 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .r-skill { font-size: 11px; color: var(--dim); }
 .r-acts { display: flex; gap: 6px; }
 .r-acts button { flex: 1; font-size: 12px; }
+/* Слоты снаряжения в разборе героя (§14): строки слотов и ряд левой руки. */
+.r-gear { display: flex; flex-direction: column; gap: 3px; }
 .camp-slot { display: contents; }
 
 /* ---------- расходники (§21) ---------- */
