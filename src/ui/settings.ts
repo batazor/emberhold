@@ -70,7 +70,6 @@ export class SettingsMenu {
           ).join('')}
         </div>
         <p class="sp-note">Амбиент глушится отдельно: пульс провианта идёт по шине боя и останется слышен.</p>
-        <p class="sp-note">Значки интерфейса — SunGraphica, CC BY 4.0.</p>
         <div class="acts"></div>
       </div>`;
     parent.appendChild(this.overlay);
