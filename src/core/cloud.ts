@@ -5,9 +5,9 @@ import { createClient } from '@supabase/supabase-js';
  * он возит непрозрачный blob и отметку часов. Так граница сейва остаётся
  * в `sim/save.ts`, а сеть — здесь, и слои не переплетаются.
  *
- * Игрок — анонимная сессия Supabase: браузер получает свой userId при
- * первом входе и держит его в хранилище. Аккаунтов в v0 нет, привязка
- * почты — отдельная механика, когда понадобится.
+ * Игрок — аккаунт Supabase (почта и пароль): вход в меню настроек, сессия
+ * живёт в хранилище и переживает перезапуск. Сам модуль в аккаунт не входит:
+ * нет сессии — нет облака, и это ответ, а не ошибка.
  *
  * Каждая функция глотает сбои и отвечает «не вышло»: облако — копия,
  * а не источник, и игра обязана работать без сети ровно как работала
@@ -25,17 +25,40 @@ export interface CloudSave {
   readonly watermark: number;
 }
 
-/**
- * Сессия — существующая или свежая анонимная. Анонимный вход может быть
- * выключен в проекте: тогда облака нет, и это ответ, а не ошибка.
- */
+/** Почта вошедшего — или null, если сессии нет. */
+export async function cloudUser(): Promise<string | null> {
+  try {
+    const { data } = await client.auth.getSession();
+    return data.session?.user.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Вход. Отвечает null при успехе, иначе — текст для строки под формой. */
+export async function cloudSignIn(email: string, password: string): Promise<string | null> {
+  try {
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (error === null) return null;
+    // Тексты Supabase — английские и разные; игроку важен один факт.
+    return 'Не вышло: проверьте почту и пароль';
+  } catch {
+    return 'Не вышло: нет сети';
+  }
+}
+
+export async function cloudSignOut(): Promise<void> {
+  try {
+    await client.auth.signOut();
+  } catch {
+    /* см. шапку файла */
+  }
+}
+
 async function userId(): Promise<string | null> {
   try {
-    const existing = await client.auth.getSession();
-    const have = existing.data.session?.user.id;
-    if (have !== undefined) return have;
-    const fresh = await client.auth.signInAnonymously();
-    return fresh.data.session?.user.id ?? null;
+    const { data } = await client.auth.getSession();
+    return data.session?.user.id ?? null;
   } catch {
     return null;
   }

@@ -1675,6 +1675,10 @@ new SettingsMenu(app, {
       location.reload(),
     );
   },
+  onCloudSignIn: () => void syncCloud(),
+  onCloudSignOut: () => {
+    cloudReady = false;
+  },
 });
 
 const statsPanel = new StatsPanel(app);
@@ -1744,7 +1748,8 @@ document.addEventListener('visibilitychange', () => {
   if (raw !== null) void cloudPush(raw, clock.watermark);
 });
 
-void (async () => {
+/** Сверка с облаком — на входе, если сессия есть, и после входа из меню. */
+async function syncCloud(): Promise<void> {
   if (debugScene) return; // тестовые кадры границу сохранения не пересекают
   const remote = await cloudPull();
   if (remote !== null && remote.watermark > clock.watermark && adoptRaw(remote.raw)) {
@@ -1753,7 +1758,8 @@ void (async () => {
   }
   cloudReady = true;
   pushCloud();
-})();
+}
+void syncCloud();
 
 /**
  * Показ кадра — единственное место, где онбординг что-то показывает или

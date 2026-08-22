@@ -609,6 +609,14 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .set-row input { width: 100%; accent-color: var(--gold); }
 .set-row b { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 #settings .sp-note { margin: 10px 0 0; }
+/* Облако (§6): форма в столбик, поля тем же 16px, что у знакомства, —
+   меньший размер зумит телефон на фокусе, и кадр уезжает из-под окна. */
+#settings .cloud { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+#settings .cloud input { font: inherit; font-size: 16px; padding: 9px 12px; width: 100%; }
+#settings .cloud button { width: 100%; padding: 11px; }
+#settings .cloud .sp-note { margin: 0 0 2px; }
+#settings .cloud .cloud-note { margin: 0; font-size: 12px; text-align: center; min-height: 0; }
+#settings .cloud .cloud-note:empty { display: none; }
 #settings .acts { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
 #settings .acts button { width: 100%; padding: 11px; }
 #settings .acts p { margin: 2px 0 4px; font-size: 12px; text-align: center; }
