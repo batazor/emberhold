@@ -151,7 +151,7 @@ import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import { askOf, makeDeal, worthOf } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
-import { loadTelemetry, track } from './sim/telemetry';
+import { events, loadTelemetry, track } from './sim/telemetry';
 import type { Cell, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { CursorWind } from './render/cursorWind';
@@ -174,6 +174,7 @@ import { worldToHex, hexKey, hexToWorld } from './sim/hex';
 import { mulberry32 } from './core/rng';
 import { DraftScreen } from './ui/draftScreen';
 import { StartScreen } from './ui/startScreen';
+import { chronicle } from './sim/chronicle';
 import { installBench } from './features/bench';
 import { FanControl, installFan } from './features/fan';
 import type { FanPerson } from './features/fan';
@@ -1556,6 +1557,9 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   // Карточка жильца не переживает смену сцены: её открывает тап по лицу.
   residentCard.setVisible(false);
   statsPanel.setVisible(panels.stats);
+  // §24 — хроника пересобирается на каждом показе заставки: к этому моменту
+  // телеметрия уже пополнилась тем, чем кончилась прошлая сессия.
+  if (panels.startScreen) startScreen.setChronicle(chronicle(events()));
   startScreen.setVisible(panels.startScreen);
   campPrompt.setVisible(panels.campPrompt);
   if (!panels.returnScreen) returnScreen.hide();
