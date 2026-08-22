@@ -29,7 +29,7 @@ export interface OnboardingHooks {
    * тогда: сравнивать состояние каждый тик значило бы драться с игроком
    * за видимость элементов.
    */
-  readonly show: (step: OnbStep, restore?: boolean) => void;
+  readonly show: (step: OnbStep) => void;
   /** Кадр 3: экран коротко дёргается. Рана обязана быть замечена телом. */
   readonly shake: () => void;
   /** Кадр сменился: это идёт в телеметрию и в сохранение. */
@@ -85,9 +85,11 @@ export function createDirector(from: OnbStep, hooks: OnboardingHooks): Director 
     set,
 
     apply(): void {
-      // Восстановление кадра, а не переход: интерфейс возвращает видимость,
-      // но одноразовые жесты кадра (открыть карточку) не повторяет.
-      hooks.show(step, true);
+      // Восстановление кадра. Флага «не переход» здесь больше нет: повторные
+      // показы гасятся сравнением кадра у самих панелей, а карточка
+      // Мастерской обязана открываться и на загрузке — тихий кадр прячет
+      // нижнюю строку, и без карточки сейв просыпался бы без действия.
+      hooks.show(step);
     },
 
     enterRaid(state: RaidState): void {
@@ -97,7 +99,7 @@ export function createDirector(from: OnbStep, hooks: OnboardingHooks): Director 
         startWounds = state.hero.hp;
         stepAt = hooks.now();
       }
-      hooks.show(step, true);
+      hooks.show(step);
     },
 
     drive(state: RaidState): void {

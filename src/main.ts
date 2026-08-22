@@ -1808,10 +1808,10 @@ void syncCloud();
  * прячет. Полосы включаются здесь, а не в цикле: сравнивать состояние
  * каждый тик значило бы драться с игроком за видимость элементов.
  */
-function showOnb(step: OnbStep, restore = false): void {
+function showOnb(step: OnbStep): void {
   hud.setReveal(reveal(step));
   setHint(ONB_HINT[step] ?? '');
-  campHud.setOnboarding(step, restore);
+  campHud.setOnboarding(step);
   // Второй акт пролога: кольцо ведёт за деревом, а с полной сумкой —
   // обратно к палатке. Оно и есть весь интерфейс улучшения.
   if (step === 'upgrade' && raid !== null) {
