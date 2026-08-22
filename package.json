@@ -29,6 +29,7 @@
     "play": "tsx scripts/play.ts",
     "tents": "tsx scripts/tents.ts",
     "shift": "tsx scripts/shift.ts",
+    "clans": "tsx scripts/clans.ts",
     "fan": "tsx scripts/fan.ts"
   },
   "dependencies": {
