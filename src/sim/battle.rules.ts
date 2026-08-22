@@ -7,8 +7,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  DODGE_FLOOR_SHARE,
+  DODGE_MAX,
   GUARD_SHARE,
   advance,
+  dodgeOf,
+  rollPercent,
   alive,
   apply,
   battleOver,
@@ -31,15 +35,21 @@ const open = (): Uint8Array => new Uint8Array(N * N);
 const nameOf = (u: BattleUnit): string => (u.side === 'hero' ? 'Герой' : ENEMY_STATS[u.kind!].name);
 const flat = () => 4;
 
-/** Герой и один скелет рядом, посреди чистого поля. */
-function duo(kind: 'minion' | 'warrior' | 'mage' = 'minion'): BattleState {
+/** Герой и один скелет рядом, посреди чистого поля.
+ *  Ловкость героя нулевая, а уворот противника гасится на месте: старые
+ *  инварианты проверяют удар, блок и очередь, и случайный промах в них —
+ *  шум, а не предмет. Уворот проверяется своими тестами, со своим сидом. */
+function duo(kind: 'minion' | 'warrior' | 'mage' = 'minion', agility = 0, seed = 0): BattleState {
   const c = hexToWorld({ q: 8, r: 8 });
   const e = hexToWorld({ q: 9, r: 8 });
-  return createBattle(
+  const state = createBattle(
     N, open(),
-    [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3 }],
+    [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility }],
     [{ id: 0, kind, x: e.x, z: e.z, hp: ENEMY_STATS[kind].hp }],
+    seed,
   );
+  if (agility === 0) for (const u of state.units) u.dodge = 0;
+  return state;
 }
 
 describe('Пошаговый бой', () => {
@@ -79,7 +89,7 @@ describe('Пошаговый бой', () => {
     const c = hexToWorld({ q: 5, r: 5 });
     const state = createBattle(
       N, open(),
-      [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3 }],
+      [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0 }],
       [
         { id: 0, kind: 'minion', x: c.x, z: c.z, hp: 4 },
         { id: 1, kind: 'minion', x: c.x + 0.01, z: c.z, hp: 4 },
@@ -230,6 +240,93 @@ describe('Пошаговый бой: конечность', () => {
         turns += 1;
       }
       assert.ok(battleOver(state) !== null, `${kind}: бой не сошёлся за 500 ходов`);
+    }
+  });
+});
+
+describe('Пошаговый бой: уворот', () => {
+  /** Противник бьёт героя раз за разом; ход и здоровье сбрасываются,
+   *  чтобы мерить только броски, а не исход боя. */
+  function volley(state: BattleState, hits: number): { dodges: number; floorHeld: boolean } {
+    const hero = state.units.find((u) => u.side === 'hero')!;
+    const foe = state.units.find((u) => u.side === 'enemy')!;
+    while (current(state)!.id !== foe.id) advance(state);
+    let dodges = 0;
+    let floorHeld = true;
+    for (let i = 0; i < hits; i++) {
+      const before = hero.hp;
+      assert.equal(
+        apply(state, N, open(), { kind: 'attack', target: hero.id }, flat, nameOf),
+        true,
+        'удар не прошёл по правилам — стенд сломан, а не уворот',
+      );
+      if (hero.hp === before) dodges += 1;
+      if (hero.dodge < hero.dodgeBase * DODGE_FLOOR_SHARE - 1e-9) floorHeld = false;
+      hero.hp = 20;
+      foe.acted = false;
+    }
+    return { dodges, floorHeld };
+  }
+
+  test('§11.3 — база уворота из Ловкости: монотонна и упирается в потолок', () => {
+    // Потолок держит неуязвимость невозможной по построению: рост с уровнем
+    // не должен доводить до бойца, по которому не попадают вовсе.
+    assert.equal(dodgeOf(0), 0, 'нулевая Ловкость дала уворот');
+    let prev = 0;
+    for (let a = 1; a <= 40; a++) {
+      const now = dodgeOf(a);
+      assert.ok(now >= prev, `Ловкость ${a} увернула хуже, чем ${a - 1}`);
+      prev = now;
+    }
+    assert.ok(dodgeOf(1000) <= DODGE_MAX, 'потолок уворота не держит');
+    assert.ok(DODGE_MAX < 100, 'потолок в сотню — неуязвимость');
+  });
+
+  test('§11.3 — бросок детерминирован: тот же сид даёт ту же серию', () => {
+    // На этом стоит воспроизводимость замеров и разбора бага по сейву:
+    // случайность видит игрок, но не прибор.
+    for (let n = 0; n < 50; n++) {
+      const r = rollPercent(7, n);
+      assert.equal(r, rollPercent(7, n), 'бросок не воспроизводится');
+      assert.ok(r >= 0 && r < 100, 'бросок вышел за проценты');
+    }
+    const a = volley(duo('minion', 15, 7), 40);
+    const b = volley(duo('minion', 15, 7), 40);
+    assert.equal(a.dodges, b.dodges, 'два одинаковых боя разошлись');
+  });
+
+  test('§11.3 — нулевая Ловкость не уворачивается никогда', () => {
+    // Иначе уворот стал бы свойством всех, а не характеристикой: герой
+    // без Ловкости обязан получать каждый удар, как до её появления.
+    const { dodges } = volley(duo('minion', 0, 3), 60);
+    assert.equal(dodges, 0, 'боец без уворота ушёл от удара');
+  });
+
+  test('§11.3 — уворот работает, но не падает ниже трети базы', () => {
+    // Плавающий уворот: промахи его сжигают, и серия атак пробивает
+    // увёртливого. Пол в треть базы держит обратное — увёртливый не
+    // вытаптывается в столб, по которому попадают всегда.
+    const { dodges, floorHeld } = volley(duo('minion', 15, 11), 60);
+    assert.ok(dodges > 0, 'Ловкость 15 не увернула ни разу за 60 ударов');
+    assert.ok(dodges < 60, 'уворот стал неуязвимостью');
+    assert.ok(floorHeld, 'уворот упал ниже трети базы');
+  });
+
+  test('§11.3 — держащий блок не уворачивается: блок и уворот не складываются', () => {
+    // Сложенные, они дали бы позу, в которой можно стоять вечно; врозь
+    // это два разных решения с разной ценой.
+    const state = duo('minion', 15, 5);
+    const hero = state.units.find((u) => u.side === 'hero')!;
+    const foe = state.units.find((u) => u.side === 'enemy')!;
+    hero.guarding = true;
+    while (current(state)!.id !== foe.id) advance(state);
+    for (let i = 0; i < 30; i++) {
+      const before = hero.hp;
+      apply(state, N, open(), { kind: 'attack', target: hero.id }, flat, nameOf);
+      assert.ok(hero.hp < before, 'удар по блоку прошёл в пустоту');
+      hero.hp = 20;
+      hero.guarding = true;
+      foe.acted = false;
     }
   });
 });
