@@ -9,9 +9,11 @@ import {
   guardParts,
   heroGeometry,
   heroParts,
+  residentLoad,
 } from './models';
 import { toolGeometry } from './tools';
 import type { ToolModelName } from './tools';
+import type { SelfAnswer } from '../sim/settler';
 import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
@@ -897,6 +899,19 @@ export class RaidView {
   /** Сменить инструмент в руке жильца на месте — приказ карточки (§6.1.14). */
   setResidentTool(i: number, tool: ToolModelName | null): void {
     this.residents[i]?.setHeld('handslot.r', tool === null ? null : toolGeometry(tool));
+  }
+
+  /**
+   * Дать жильцу ношу или забрать её (§6.1.15). Вторая рука, а не первая:
+   * в первой инструмент, и подмена его бревном стирала бы занятие ровно
+   * тогда, когда оно наконец видно.
+   *
+   * Зовётся не каждый кадр, а на смене состояния: геометрия общая и лежит
+   * в кэше набора, но пересобирать меш шестьдесят раз в секунду ради
+   * предмета, который меняется дважды за минуту, незачем.
+   */
+  setResidentLoad(i: number, answer: SelfAnswer | null): void {
+    this.residents[i]?.setHeld('handslot.l', answer === null ? null : residentLoad(answer));
   }
 
   /**
