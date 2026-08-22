@@ -696,7 +696,9 @@ button[disabled] { opacity: 0.4; cursor: default; }
   position: absolute; transform: translate(-50%, -100%);
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
-.workbars .bar { width: 56px; height: 6px; }
+/* Высота — вместе с рамкой корыта (3px сверху и снизу при border-box):
+   в 6px заливке оставалось 0, и полоса стояла пустой при любом прогрессе. */
+.workbars .bar { width: 56px; height: 12px; }
 /* Заливка зелёная и бежит: короткую работу (8 с добычи) неподвижная полоса
    догнать не успевает, а бегущая штриховка говорит «идёт» с первого кадра.
    Штрихи — светлая заливка словаря поверх зелёного, не свой цвет. */
