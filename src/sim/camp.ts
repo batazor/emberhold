@@ -55,6 +55,55 @@ export const kitchenFood = (level: number): number => modelKitchenFood(level);
  *  подобрано так, чтобы пример «12 из 19» из §11.2 приходился на Склад ур. 2. */
 export const storageCapacity = (level: number): number => 11 + 4 * level;
 
+/* ---------- кладовая (§13.6) ---------- */
+
+/**
+ * База кладовой. Шестой уровень зданий стоит ~160 разом: базы не хватает
+ * намеренно — глубокая стройка требует сундуков. Черновое до перемера (§22.6).
+ */
+export const STORE_BASE = 60;
+
+/** Прибавка к вместимости кладовой за каждый сундук (`chests.ts`). */
+export const CHEST_BONUS = 30;
+
+/** Вместимость кладовой: база плюс сундуки. Общий счёт, как у рюкзака. */
+export const storeCapacity = (camp: CampState): number =>
+  STORE_BASE + camp.chests.length * CHEST_BONUS;
+
+/** Занято в кладовой. */
+export const storeUsed = (camp: CampState): number =>
+  camp.resources.stone + camp.resources.wood + camp.resources.iron + camp.resources.crystal;
+
+/** Свободно. Ноль и у переполненного старого сейва: перебор не отнимается. */
+export const storeFree = (camp: CampState): number =>
+  Math.max(0, storeCapacity(camp) - storeUsed(camp));
+
+/**
+ * Зачислить в кладовую сколько влезет. Единственный вход для притока извне:
+ * добычи, работы жильцов, подарков и обмена. Возвращает, сколько
+ * не поместилось, — ноль значит «влезло всё», и событие о потере не нужно.
+ *
+ * Возвраты своих денег — снос стены, отмена расходника — идут мимо потолка
+ * намеренно: это не приток, а возврат того, что уже вмещалось.
+ *
+ * Порядок кинов — от дорогого к дешёвому: если место кончается на середине
+ * зачисления, пропадать должен камень, а не кристалл, — иначе потолок
+ * наказывает сильнее всего за самое трудное.
+ */
+export function stash(camp: CampState, from: Partial<Resources>): number {
+  let free = storeFree(camp);
+  let lost = 0;
+  for (const kind of ['crystal', 'iron', 'wood', 'stone'] as (keyof Resources)[]) {
+    const amount = from[kind] ?? 0;
+    if (amount <= 0) continue;
+    const taken = Math.min(amount, free);
+    camp.resources[kind] += taken;
+    free -= taken;
+    lost += amount - taken;
+  }
+  return lost;
+}
+
 /** §20.4 — площадь растёт с Жильём: 6×6 на ур. 1 … 10×10 на ур. 5. */
 export const campArea = (hqLevel: number): number => Math.min(10, 5 + hqLevel);
 

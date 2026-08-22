@@ -38,7 +38,7 @@
  * Размер при этом не произвол: палатка на одного и обязана быть меньше
  * Кухни. 2×2 было взято у зданий по невнимательности, а не по доводу.
  */
-import { BUILDING_ORDER, campArea, clearanceOf } from './camp';
+import { BUILDING_ORDER, campArea, clearanceOf, stash } from './camp';
 import type { CampState } from './camp';
 import type { DwellerLook } from './garrison';
 import type { SelfAnswer } from './settler';
@@ -386,11 +386,17 @@ export function workDone(camp: CampState, awaySec: number): { kind: ResourceKind
   return [...sum].map(([kind, n]) => ({ kind, n }));
 }
 
-/** Положить наработанное в кошелёк. Возвращает то, что вправду прибавилось. */
+/**
+ * Положить наработанное в кошелёк. Возвращает то, что вправду прибавилось:
+ * кладовая конечна (§13.6, `stash`), и наработанное сверх места пропадает —
+ * жилец складывает в закрома, а не мимо них, и строка «принёс N» обязана
+ * называть вошедшее, а не заработанное.
+ */
 export function collectWork(camp: CampState, awaySec: number): { kind: ResourceKind; n: number }[] {
   const done = workDone(camp, awaySec);
-  for (const { kind, n } of done) camp.resources[kind] += n;
-  return done;
+  return done
+    .map(({ kind, n }) => ({ kind, n: n - stash(camp, { [kind]: n }) }))
+    .filter(({ n }) => n > 0);
 }
 
 /**

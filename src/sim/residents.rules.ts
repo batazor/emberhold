@@ -362,6 +362,10 @@ describe('Жильцы и палатки', () => {
     buildTent(camp);
     admit(camp, { name: 'Ходок', look: 'торговец', seed: 2, answer: 'ходим', rest: false });
     buildTent(camp);
+    // Богатый лагерь этого файла стоит выше потолка кладовой (§13.6),
+    // а здесь меряется делёж по видам — место обязано быть.
+    camp.resources.wood = 10;
+    camp.resources.stone = 0;
     const wood = camp.resources.wood;
     const stone = camp.resources.stone;
     collectWork(camp, WORK_SECONDS * WORK_CAP);

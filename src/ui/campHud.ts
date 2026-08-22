@@ -18,7 +18,8 @@ import {
   CHEST_COST,
   CHEST_REASON,
   chestBlock,
-  chestBonus as chestBonusOf,
+  storeCapacity,
+  storeUsed,
 } from '../sim/chests';
 import { GEAR, GEAR_COST, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine, gearMods } from '../sim/gear';
 import type { GearSlot, Offhand } from '../sim/gear';
@@ -105,8 +106,9 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'cryst
  * до входа как и прежде — её называет карточка места на самой карте.
  */
 
-/** Что открыто в листе. null — лист закрыт, на экране только лагерь. */
-type SheetKind = BuildingId | 'tiers' | 'shop' | null;
+/** Что открыто в листе. null — лист закрыт, на экране только лагерь.
+ *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене. */
+type SheetKind = BuildingId | 'tiers' | 'shop' | 'store' | null;
 
 const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
@@ -134,7 +136,13 @@ export class CampHud {
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
   private readonly rows = new Map<BuildingId, Row>();
   private readonly gearRows = new Map<GearSlot, Row>();
-  /** Карточка сундука (`sim/chests.ts`) в листе Склада. */
+  /** Лист кладовой (§13.6): полоса занятости, запас, карточка сундука. */
+  private storeLevel!: HTMLElement;
+  private storeBarWrap!: HTMLElement;
+  private storeBar!: HTMLElement;
+  private storeList!: HTMLElement;
+  /** Счёт кладовой в полосе ресурсов: «занято/вместимость». */
+  private storeMeter!: HTMLElement;
   private chestCount!: HTMLElement;
   private chestEffect!: HTMLElement;
   private chestStatus!: HTMLElement;
@@ -211,6 +219,18 @@ export class CampHud {
       res.appendChild(item);
       this.resValues.set(kind, value);
     }
+    // Счёт кладовой (§13.6) — пятым в полосе: конечность видна там же,
+    // где сами числа, а не только в листе. Тап открывает кладовую —
+    // тот же лист, что тап по сундуку в сцене.
+    const meter = document.createElement('span');
+    meter.className = 'res-item';
+    const meterLabel = document.createElement('span');
+    meterLabel.className = 'lbl';
+    meterLabel.textContent = 'кладовая';
+    this.storeMeter = document.createElement('b');
+    meter.append(meterLabel, this.storeMeter);
+    meter.addEventListener('click', () => this.openStore());
+    res.appendChild(meter);
 
     this.banner = document.createElement('div');
     this.banner.className = 'chip hint';
@@ -269,9 +289,29 @@ export class CampHud {
     for (const slot of GEAR_ORDER) this.gearSection.appendChild(this.makeGearRow(slot));
     this.sections.get('forge')?.appendChild(this.gearSection);
 
-    // Сундуки (`sim/chests.ts`) — в карточке Склада: оба про одну величину,
-    // вместимость рюкзака, и отдельная вкладка разорвала бы эту связь —
-    // тот же довод, каким сток снаряжения живёт в Мастерской.
+    // Кладовая (§13.6) — свой лист: открывается тапом по сундуку в сцене,
+    // сундук и есть её лицо. Полоса занятости, запас по видам и карточка
+    // постройки нового сундука.
+    const store = document.createElement('div');
+    store.className = 'sec';
+    const storeBox = document.createElement('div');
+    storeBox.className = 'b';
+    this.storeLevel = document.createElement('span');
+    this.storeLevel.className = 'dim';
+    const storeTop = document.createElement('div');
+    storeTop.className = 'row b-top';
+    storeTop.append(this.storeLevel);
+    this.storeBarWrap = document.createElement('div');
+    this.storeBarWrap.className = 'bar';
+    this.storeBar = document.createElement('i');
+    this.storeBarWrap.appendChild(this.storeBar);
+    this.storeList = document.createElement('div');
+    this.storeList.className = 'b-eff';
+    storeBox.append(storeTop, this.storeBarWrap, this.storeList);
+    store.appendChild(storeBox);
+    this.sections.set('store', store);
+    this.sheet.appendChild(store);
+
     const chest = document.createElement('div');
     chest.className = 'card b';
     const chestTop = document.createElement('div');
@@ -298,7 +338,7 @@ export class CampHud {
     });
     chestBottom.append(this.chestStatus, this.chestButton);
     chest.append(chestTop, this.chestEffect, chestBottom);
-    this.sections.get('storage')?.appendChild(chest);
+    store.appendChild(chest);
 
     // §20.4 — перестановка бесплатна и мгновенна, поэтому это кнопка
     // в карточке, а не отдельный режим редактирования лагеря.
@@ -532,6 +572,11 @@ export class CampHud {
     this.openSheet(id);
   }
 
+  /** Тап по сундуку в сцене (§13.6): сундук — лицо кладовой. */
+  openStore(): void {
+    this.openSheet('store');
+  }
+
   close(): void {
     this.openSheet(null);
   }
@@ -546,6 +591,7 @@ export class CampHud {
     // Заголовок называет ту же кнопку, что открыла лист: «В вылазку» здесь
     // называло кнопку, которой больше нет.
     if (kind === 'shop') return 'Припасы';
+    if (kind === 'store') return 'Кладовая';
     return BUILDINGS[kind].name;
   }
 
@@ -576,6 +622,7 @@ export class CampHud {
       const el = this.resValues.get(kind);
       if (el !== undefined) el.textContent = String(camp.resources[kind]);
     }
+    this.storeMeter.textContent = `${storeUsed(camp)}/${storeCapacity(camp)}`;
 
     this.line.tick(dt);
 
@@ -633,6 +680,7 @@ export class CampHud {
     const { camp, now } = this.last;
     if (this.open === 'tiers') this.syncTiers(camp, now);
     else if (this.open === 'shop') this.syncShop(camp);
+    else if (this.open === 'store') this.syncStore(camp);
     else if (isBuilding(this.open)) {
       this.syncBuilding(camp, this.open, now);
       if (this.open === 'forge') this.syncGear(camp);
@@ -718,9 +766,6 @@ export class CampHud {
   private syncBuilding(camp: CampState, id: BuildingId, now: number): void {
     const row = this.rows.get(id);
     if (row === undefined) return;
-    // Карточка сундука живёт в листе Склада и красится вместе с ним —
-    // в том числе пока Склад строится: стройка занимает слот, а не сундуки.
-    if (id === 'storage') this.syncChest(camp);
     const level = camp.levels[id];
     const c = camp.construction;
 
@@ -754,12 +799,21 @@ export class CampHud {
         : UPGRADE_REASON[block];
   }
 
-  /** Карточка сундука (`sim/chests.ts`): счёт, суммарная прибавка и цена. */
-  private syncChest(camp: CampState): void {
+  /** Лист кладовой (§13.6): занятость, запас по видам, карточка сундука. */
+  private syncStore(camp: CampState): void {
+    const used = storeUsed(camp);
+    const cap = storeCapacity(camp);
+    this.storeLevel.textContent = `Занято ${used} из ${cap}`;
+    this.storeBar.style.width = `${Math.min(100, (used / Math.max(1, cap)) * 100).toFixed(1)}%`;
+    // Переполненный старый сейв — полоса тревоги: приток стоит, пока не потратят.
+    this.storeBar.className = used >= cap ? 'warn' : '';
+    this.storeList.textContent = RESOURCE_ORDER
+      .map((kind) => `${RESOURCE_NAME[kind]} ${camp.resources[kind]}`)
+      .join(' · ');
+
     const block = chestBlock(camp);
     this.chestCount.textContent = `×${camp.chests.length}`;
-    this.chestEffect.textContent =
-      `Рюкзак +${CHEST_BONUS} за каждый · сейчас +${chestBonusOf(camp)}`;
+    this.chestEffect.textContent = `Кладовая +${CHEST_BONUS} за каждый`;
     this.chestButton.disabled = block !== 'ok';
     this.chestStatus.textContent =
       block === 'ok' || block === 'resources'

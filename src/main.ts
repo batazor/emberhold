@@ -70,7 +70,10 @@ import {
   siteBlock,
   chestSiteNear,
 } from './sim/prologue';
-import { CHEST_BONUS, CHEST_REASON, adoptChest, buildChest, chestBlock, chestBonus } from './sim/chests';
+import { CHEST_BONUS, CHEST_REASON, adoptChest, buildChest, chestBlock, stash } from './sim/chests';
+
+/** Одна строка на все потери у потолка кладовой (§13.6): канал события. */
+const STORE_FULL = 'Кладовая полна — часть добычи пропала';
 import {
   aimChop,
   chopBlock,
@@ -101,7 +104,7 @@ import { commandMove, createRaid, raidResult, stepRaid, useSkill } from './sim/r
 import type { RaidState } from './sim/raid';
 import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
-import { RESOURCE_NAME, addResources, emptyResources } from './sim/resources';
+import { RESOURCE_NAME, emptyResources } from './sim/resources';
 import { load, save, wipe } from './sim/save';
 import {
   KIND,
@@ -162,7 +165,7 @@ import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite'
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
-import { askOf, makeDeal, worthOf } from './sim/trade';
+import { askOf, dealBlock, makeDeal, worthOf } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
 import { events, loadTelemetry, track } from './sim/telemetry';
@@ -1002,9 +1005,9 @@ function meetCallbacks(): MeetPanelCallbacks {
       // не подтверждено.
       const gift = giftOf(meet);
       if (gift !== null) {
-        for (const kind of ['wood', 'stone', 'iron', 'crystal'] as const) {
-          camp.resources[kind] += gift.resources[kind];
-        }
+        // Через кладовую (`stash`): дар — приток извне, и потолок §13.6
+        // для него не исключение. Крохи в переполненный лагерь не влезают.
+        stash(camp, gift.resources);
         persist();
       }
       // Он остаётся в лагере независимо от того, есть ли крыша: запирать
@@ -1552,6 +1555,11 @@ const tradePanel = new TradePanel(app, {
     if (!makeDeal(camp, give, take)) {
       // Отказ обязан быть слышен так же, как виден (§18.3).
       play('deny');
+      // Потолок кладовой (§13.6) — единственный отказ прилавка, которого
+      // не видно по кошельку: про него говорится словами.
+      if (dealBlock(camp, give, take) === 'full' && raid !== null) {
+        raid.events.push('Кладовая полна — обмену нет места');
+      }
       return false;
     }
     play('build');
@@ -1987,7 +1995,7 @@ function collectSortie(now: number): boolean {
   const hero = roster.heroes.find((h) => h.id === ticket.hero) ?? null;
   if (hero === null) return true;
   const report = reportOf(ticket, hero);
-  addResources(camp.resources, report.carried);
+  if (stash(camp, report.carried) > 0) campHud.notify(STORE_FULL);
   // §14.3 — выстреленное уходит из лагеря, донесённое возвращается.
   camp.arrows = Math.max(0, camp.arrows - report.arrowsSpent);
   hero.status = 'ready';
@@ -2075,8 +2083,6 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
     event,
     kitchenLevel: camp.levels.kitchen,
     storageLevel: camp.levels.storage,
-    // Сундуки лагеря (`chests.ts`): плоская прибавка к рюкзаку.
-    chestBonus: chestBonus(camp),
     loadout: loadout(hero),
     followers: followersOf(hero),
     // §14 — снаряжение складывается поверх класса: класс отвечает «кем идём»,
@@ -2391,8 +2397,7 @@ function tryPlace(cell: Cell): void {
     if (spot !== null) {
       gladeChest = spot;
       raidView?.setChests([spot]);
-      raid.capacity += CHEST_BONUS;
-      raid.events.push(`Сундук у палатки: +${CHEST_BONUS} к рюкзаку`);
+      raid.events.push(`Сундук у палатки: кладовая +${CHEST_BONUS}`);
     }
   }
   // Палатка встаёт из принесённого: бруски уходят из сумки на глазах,
@@ -2483,7 +2488,7 @@ function stepChopping(dt: number): void {
     // В лагере рюкзака нет (§13.5): дерево идёт прямо в кладовую, просека
     // пишется в снимок поляны — срубленное обязано пережить перезагрузку.
     if (inGladeCamp) {
-      addResources(camp.resources, raid.bag);
+      if (stash(camp, raid.bag) > 0) campHud.notify(STORE_FULL);
       raid.bag = emptyResources();
       raid.bagTotal = 0;
       camp.glade = packGlade(raid.loc);
@@ -2572,8 +2577,9 @@ function stepGladeCamp(dt: number): void {
     play('levelup');
     upgraded = true;
     // Остаток герой сдаёт в лагерь: пролог кончился, дальше дерево живёт
-    // в кладовой, а не в рюкзаке.
-    addResources(camp.resources, raid.bag);
+    // в кладовой, а не в рюкзаке. Через `stash`: в свежую кладовую горстка
+    // пролога влезает всегда, но второго входа мимо потолка не бывает.
+    stash(camp, raid.bag);
     raid.bag = emptyResources();
     raid.bagTotal = 0;
     endGlade();
@@ -3034,6 +3040,15 @@ function campTap(clientX: number, clientY: number): void {
     return;
   }
 
+  // Тап по сундуку — лист кладовой (§13.6): сундук ловится ровно своей
+  // клеткой и спрашивается раньше здания по правилу валуна и жильца —
+  // иначе сундук у Склада был бы нетапаемым.
+  if (camp.chests.some((c) => c.x === cell.x && c.z === cell.z)) {
+    campView.highlight(null);
+    campHud.openStore();
+    return;
+  }
+
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
   // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
@@ -3303,6 +3318,14 @@ canvas.addEventListener('pointerdown', (e) => {
       residentCard.sync(camp, near);
       residentCard.showMenu();
       controlResident(near);
+      return;
+    }
+    // Тап по сундуку — лист кладовой (§13.6): сундук ловится ровно своей
+    // клеткой и спрашивается раньше зданий — их запас в клетку накрыл бы его.
+    if (camp.chests.some((c) => o.x + c.x === cell.x && o.z + c.z === cell.z)) {
+      heroCard.setVisible(false);
+      residentCard.setVisible(false);
+      campHud.openStore();
       return;
     }
     // Запас в клетку вокруг следа 2×2 — как у площадки: в здание надо
@@ -4284,7 +4307,9 @@ startLoop({
         // Провалившийся не возвращает ничего: он и добычу теряет по §11.2,
         // и колчан у него отняли там же.
         if (result.status === 'evacuated') camp.arrows += result.arrowsLeft;
-        addResources(camp.resources, result.carried);
+        // §13.6 — потолок кладовой: не поместившееся пропадает, и об этом
+        // говорится. Молчаливая потеря добычи хуже самой потери.
+        if (stash(camp, result.carried) > 0) campHud.notify(STORE_FULL);
         if (counts) camp.raids += 1;
         finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);
         for (const id of result.fired) {

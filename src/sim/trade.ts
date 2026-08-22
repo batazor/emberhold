@@ -38,6 +38,7 @@
 import { canAfford, spend } from './resources';
 import type { ResourceKind, Resources } from './resources';
 import type { CampState } from './camp';
+import { storeCapacity, storeUsed } from './camp';
 
 export type OfferId = 'iron-stone' | 'iron-wood';
 
@@ -151,8 +152,14 @@ export const askOf = (take: Partial<Resources>, deals: number): number =>
 /**
  * Почему сделка не состоится. 'cheap' — предложено меньше, чем просит
  * торговец: сделка всегда ровно или в его пользу, недоплаты не бывает.
+ * 'full' — взятому нет места в кладовой (§13.6): обмен не режется потолком,
+ * а отказывает целиком — терять купленное хуже, чем не купить.
  */
-export type DealBlock = 'ok' | 'empty' | 'resources' | 'cheap';
+export type DealBlock = 'ok' | 'empty' | 'resources' | 'cheap' | 'full';
+
+/** Кучка одним числом — для сверки с местом кладовой. */
+const countOf = (part: Partial<Resources>): number =>
+  Object.values(part).reduce((sum, n) => sum + (n ?? 0), 0);
 
 export function dealBlock(
   camp: CampState,
@@ -162,6 +169,8 @@ export function dealBlock(
   if (worthOf(take) <= 0) return 'empty';
   if (!canAfford(camp.resources, give)) return 'resources';
   if (worthOf(give) < askOf(take, camp.trades ?? 0)) return 'cheap';
+  // Отданное освобождает место в тот же миг: сверяется итог сделки.
+  if (storeUsed(camp) - countOf(give) + countOf(take) > storeCapacity(camp)) return 'full';
   return 'ok';
 }
 
@@ -185,10 +194,16 @@ export function makeDeal(
 }
 
 /** Почему обменять нельзя. Причина, а не булево, — как везде (§20.3). */
-export type TradeBlock = 'ok' | 'resources';
+export type TradeBlock = 'ok' | 'resources' | 'full';
 
 export function tradeBlock(camp: CampState, id: OfferId): TradeBlock {
-  return canAfford(camp.resources, offerOf(id, camp.trades ?? 0).give) ? 'ok' : 'resources';
+  const offer = offerOf(id, camp.trades ?? 0);
+  if (!canAfford(camp.resources, offer.give)) return 'resources';
+  // То же правило, что у свободной сделки: взятому нужно место (§13.6).
+  if (storeUsed(camp) - countOf(offer.give) + countOf(offer.take) > storeCapacity(camp)) {
+    return 'full';
+  }
+  return 'ok';
 }
 
 /**

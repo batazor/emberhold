@@ -10,11 +10,15 @@ import { createCamp } from './camp';
 import {
   CHEST_BONUS,
   CHEST_COST,
+  STORE_BASE,
   adoptChest,
   buildChest,
   chestBlock,
-  chestBonus,
   chestFits,
+  stash,
+  storeCapacity,
+  storeFree,
+  storeUsed,
 } from './chests';
 import { BUILD_COST } from './camp';
 import { buildTent, tentFits } from './residents';
@@ -49,22 +53,34 @@ describe('сундуки-хранилища', () => {
     assert.ok(wood < (BUILD_COST[2]?.wood ?? Infinity));
   });
 
-  test('каждый сундук даёт +30, и прибавка доезжает до вылазки', () => {
+  test('каждый сундук — +30 к кладовой, рюкзак он не трогает', () => {
     const camp = createCamp();
     camp.resources.wood = 10;
+    assert.equal(storeCapacity(camp), STORE_BASE);
     buildChest(camp, { x: 0, z: 0 });
     buildChest(camp, { x: 5, z: 0 });
-    assert.equal(chestBonus(camp), CHEST_BONUS * 2);
+    assert.equal(storeCapacity(camp), STORE_BASE + CHEST_BONUS * 2);
+  });
 
-    const bare = createRaid({ seed: 7, tier: 0, kitchenLevel: 1, storageLevel: 1 });
-    const rich = createRaid({
-      seed: 7,
-      tier: 0,
-      kitchenLevel: 1,
-      storageLevel: 1,
-      chestBonus: chestBonus(camp),
-    });
-    assert.equal(rich.capacity, bare.capacity + CHEST_BONUS * 2);
+  test('потолок стоит на притоке: лишнее не входит, дорогое входит первым', () => {
+    const camp = createCamp();
+    camp.resources.stone = storeCapacity(camp) - 3;
+    // Свободно три клетки, несут пять: кристалл и железо входят целиком,
+    // дерево режется, и `stash` называет ровно то, что пропало.
+    const lost = stash(camp, { crystal: 1, iron: 1, wood: 3 });
+    assert.equal(lost, 2);
+    assert.equal(camp.resources.crystal, 1);
+    assert.equal(camp.resources.iron, 1);
+    assert.equal(camp.resources.wood, 1);
+    assert.equal(storeFree(camp), 0);
+  });
+
+  test('переполненный сейв ничего не теряет: перебор доживает до траты', () => {
+    const camp = createCamp();
+    camp.resources.stone = storeCapacity(camp) + 40;
+    const was = storeUsed(camp);
+    assert.equal(stash(camp, { wood: 5 }), 5); // нового не входит…
+    assert.equal(storeUsed(camp), was); // …но и старое не отнимается
   });
 
   test('сундук и палатка не встают друг на друга', () => {

@@ -19,16 +19,18 @@ import {
   craftGear,
   createCamp,
   startUpgrade,
+  stash,
+  storeFree,
   suggestGear,
   suggestUpgrade,
   tierBlock,
   upgradeBlock,
 } from './camp';
+import { buildChest, chestBlock } from './chests';
 import type { BuildingId, CampState } from './camp';
 import { CONSUMABLES, buyConsumable, cheapestAffordable } from './consumables';
 import { GEAR } from './gear';
 import type { GearSlot } from './gear';
-import { addResources } from './resources';
 import type { Resources } from './resources';
 import { events, setEvents, summarize, track } from './telemetry';
 import type { Summary } from './telemetry';
@@ -173,7 +175,11 @@ export function playSession(seed: number): SessionResult {
       kills: raid.kills,
     });
     for (const id of raid.fired) track({ t: 'consumable', at: now, id, phase: 'fire' });
-    addResources(camp.resources, raid.carried);
+    // Кладовая конечна (§13.6): бот складывает добычу тем же входом, что
+    // игрок, и с тем же поведением у потолка — сначала строит сундук,
+    // когда место кончается, как построил бы игрок за два дерева.
+    if (storeFree(camp) < raid.carriedTotal && chestBlock(camp) === 'ok') buildChest(camp);
+    stash(camp, raid.carried);
     camp.raids += 1;
 
     // Экран возврата: что он предложил и что игрок выбрал. Предложений два

@@ -9,10 +9,13 @@ import {
   createCamp,
   kitchenFood,
   startUpgrade,
+  stash,
   storageCapacity,
+  storeFree,
   tierBlock,
   upgradeBlock,
 } from './camp';
+import { buildChest, chestBlock } from './chests';
 import type { BuildingId, CampState } from './camp';
 import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
 import { HAUL_CAPACITY, TRAIL_BACK_DISCOUNT } from './heroes';
@@ -36,7 +39,7 @@ import {
 } from './raid';
 import type { RaidOptions } from './raid';
 import type { RaidResult, RaidState } from './raid';
-import { addResources, totalOf } from './resources';
+import { totalOf } from './resources';
 import type { Cell, Tier } from './types';
 
 /**
@@ -456,7 +459,10 @@ export function playProgression(
       policy,
       rng,
     );
-    addResources(camp.resources, r.carried);
+    // Кладовая конечна (§13.6): тот же вход и то же правило «полно — строй
+    // сундук», что у сессии и у игрока, иначе замер меряет другую игру.
+    if (storeFree(camp) < r.carriedTotal && chestBlock(camp) === 'ok') buildChest(camp);
+    stash(camp, r.carried);
     detours.push(r.detour);
     if (r.status === 'failed') fails++;
     now += Math.max(60, r.durationSec);

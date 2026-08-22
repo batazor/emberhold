@@ -116,13 +116,6 @@ export interface RaidOptions {
    *  и сумка там — то, с чем герой вышел, а не уровень здания. */
   readonly capacity?: number;
   /**
-   * Плоская прибавка к рюкзаку от сундуков лагеря (`chests.ts`). Слагаемое
-   * после классового множителя — как снаряжение и карты: сундук общий
-   * на лагерь, а не свой у каждого класса. По умолчанию ноль: замеры, бот
-   * и золотой мастер считают вылазку так, как её калибровали.
-   */
-  readonly chestBonus?: number;
-  /**
    * Цена вскрытия контейнера вместо `FOOD_COST.container`. Ноль — пролог:
    * там провиант это шаги, и только шаги (`prologue.ts`). В вылазке подбор
    * остаётся сделкой, и ни бот, ни калибровка §20.3 эту опцию не задают.
@@ -271,10 +264,7 @@ export function createRaid(opts: RaidOptions): RaidState {
       1,
       (opts.capacity ??
         Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity) +
-        draft.bag +
-        // Сундуки лагеря (`chests.ts`): прибавка общая, поэтому после доли
-        // класса — тем же правилом, что снаряжение и карта сборов.
-        (opts.chestBonus ?? 0),
+        draft.bag,
     ),
     path: [],
     status: 'running',
