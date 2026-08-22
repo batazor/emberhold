@@ -742,10 +742,11 @@ const heroFan = new FanControl({
     }
     const hero = roster.heroes[index];
     if (hero === undefined) return;
-    // Карточка открывается на любом, даже на том, кем сейчас не пойти.
+    // Меню открывается на любом, даже на том, кем сейчас не пойти; полный
+    // разбор за ним — по команде «О персонаже».
     shownHero = index;
     residentCard.setVisible(false);
-    heroCard.setVisible(true);
+    heroCard.showMenu();
     controlHero();
     const block = raidBlock(hero);
     if (block !== 'ok') {
@@ -1283,8 +1284,12 @@ function dialogHud(on: boolean): void {
   const quiet = quietFrame();
   campHud.setVisible(!on);
   heroFan.setVisible(!on && !quiet);
-  heroCard.setVisible(!on && !quiet);
-  if (on) residentCard.setVisible(false);
+  // Карточки диалог только закрывает: их открывает тап по лицу, и после
+  // разговора они сами не возвращаются.
+  if (on) {
+    heroCard.setVisible(false);
+    residentCard.setVisible(false);
+  }
 }
 
 /**
@@ -1644,9 +1649,10 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   const panels = panelsFor(scene, quietFrame());
   hud.setVisible(panels.hud);
   campHud.setVisible(panels.campHud);
-  heroCard.setVisible(panels.roster);
   heroFan.setVisible(panels.roster);
-  // Карточка жильца не переживает смену сцены: её открывает тап по лицу.
+  // Карточки героя и жильца не переживают смену сцены: их открывает тап
+  // по лицу, а не сцена.
+  heroCard.setVisible(false);
   residentCard.setVisible(false);
   statsPanel.setVisible(panels.stats);
   startScreen.setVisible(panels.startScreen);
@@ -2636,6 +2642,10 @@ function campTap(clientX: number, clientY: number): void {
   // Лагерь: сцена первая. Тап по зданию открывает его карточку, тап мимо —
   // ведёт героя и закрывает лист, то есть возвращает игроку весь экран.
   campView.highlight(picked);
+  // Карточка героя уступает место любому исходу тапа: листу здания —
+  // иначе она висела бы поверх него, — и просто земле: экран возвращается
+  // игроку целиком.
+  heroCard.setVisible(false);
   if (picked !== null) {
     campHud.openBuilding(picked);
     return;
@@ -2848,6 +2858,10 @@ canvas.addEventListener('pointerdown', (e) => {
         picked = id;
       }
     }
+    // Карточка героя уступает место любому исходу тапа: листу здания —
+    // иначе она висела бы поверх него, — и просто земле: экран возвращается
+    // игроку целиком.
+    heroCard.setVisible(false);
     if (picked !== null) {
       campHud.openBuilding(picked);
       return;
