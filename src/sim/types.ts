@@ -1,7 +1,7 @@
 import type { GearMods } from './gear';
 import type { HeroLoadout } from './heroes';
 import type { ConsumableId } from './consumables';
-import type { BattleState } from './battle';
+import type { BattlePlay, BattleState } from './battle';
 import type { ResourceKind, Resources } from './resources';
 import type { Stone } from './stones';
 
@@ -372,6 +372,14 @@ export interface RaidState {
    * целиком, а не «замедляется» — иначе получилось бы два хода часов.
    */
   battle: BattleState | null;
+  /**
+   * Протокол показа боя (`sim/battle.ts`): что случилось, в порядке ходов.
+   * Пишет его `apply`, проигрывает рендер в своём темпе — и вычитывает
+   * прочитанное. Лежит на вылазке, а не на поле: смертельный удар закрывает
+   * бой тем же тиком, и протокол обязан пережить поле, иначе падение
+   * последнего противника никто не увидит.
+   */
+  plays: BattlePlay[];
   /** Раунд, за который провиант уже списан: раунд стоит еды, но один раз. */
   paidRound: number;
   /** §11.3 — снаряды в полёте. Пустой массив у локации без стрелков. */

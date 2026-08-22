@@ -42,6 +42,7 @@ import { Rigged } from './rigged';
 import { RIG_CLIPS } from './rig.data';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
+import type { BattlePlay } from '../sim/battle';
 import { followSpots } from '../sim/raid';
 import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
@@ -222,6 +223,44 @@ const FALL_RATE = 0.8 / 0.68;
  *  ударом. Не клип: она ложится поверх того, что герой делает сейчас. */
 const FLASH_SECONDS = 0.15;
 
+/**
+ * Темп показа боя (§11.3). Симуляция решает все ходы противников за один тик —
+ * и это правильно: пошаговость не должна заставлять ждать решения. Но смотреть
+ * мгновенный бой нечего, поэтому рендер проигрывает протокол (`BattlePlay`)
+ * в своём темпе, ход за ходом. Числа — про читаемость, а не про механику:
+ * ни одно из них не влияет на то, чем бой кончится.
+ */
+/** Секунд на гекс шага. Быстрее ходьбы мира: шаг в бою — перестановка фигуры,
+ *  а не прогулка, и три гекса не должны стоить трёх секунд ожидания. */
+const PLAY_HEX_SECONDS = 0.17;
+/** Замах до попадания и отход после. В сумме меньше секунды на удар:
+ *  раунд с тремя противниками обязан укладываться в пару секунд. */
+const PLAY_IMPACT_SECONDS = 0.32;
+const PLAY_RECOVER_SECONDS = 0.34;
+/** Стойка блока: короткая пауза, чтобы жест был виден, — саму позу боец
+ *  держит дальше сам (клип «блок» держит последний кадр). */
+const PLAY_GUARD_SECONDS = 0.45;
+/** Когда стрела сходит с тетивы и сколько летит на гекс. */
+const PLAY_RELEASE_SECONDS = 0.24;
+const PLAY_FLIGHT_PER_HEX = 0.06;
+/** Выпад атакующего к цели (в клетках) и отдача цели от удара. */
+const PLAY_LUNGE = 0.26;
+const PLAY_BUMP = 0.16;
+const PLAY_BUMP_SECONDS = 0.18;
+
+/** Активный ход показа: что играется и сколько уже. */
+interface PlayNow {
+  readonly play: BattlePlay;
+  t: number;
+  /** Полная длительность; для удара внутри неё лежит момент попадания. */
+  readonly dur: number;
+  readonly impact: number;
+  /** Попадание уже показано: реакция цели играется один раз. */
+  landed: boolean;
+  /** Мировые точки пути шага. */
+  readonly points: readonly { x: number; z: number }[] | null;
+}
+
 /** Сколько ствол дрожит после замаха (§13.3). Короче клипа удара: дрожь —
  *  ответ на удар, а не отдельное событие. */
 const SHAKE_SECONDS = 0.32;
@@ -312,6 +351,36 @@ export class RaidView {
    * не меняется, тап остаётся тапом.
    */
   private hoverHex: Hex | null = null;
+  /**
+   * §11.3 — показ боя. Очередь протокола (`RaidState.plays`) и текущий ход:
+   * пока они не пусты, положение и клипы бойцов ведёт показ, а не симуляция —
+   * та уже всё решила и ушла вперёд.
+   */
+  private readonly battlePlays: BattlePlay[] = [];
+  private playNow: PlayNow | null = null;
+  /** Где каждый боец стоит по показу. Симуляция уже переставила фигуры,
+   *  а тела остаются здесь, пока очередь до них не дойдёт. */
+  private readonly restHex = new Map<number, Hex>();
+  /** Стойкость по показу: полоска тикает ударом на экране, а не тиком сима. */
+  private readonly shownHp = new Map<number, number>();
+  /** Кто на экране уже упал: падение играется в момент удара, один раз. */
+  private readonly shownDead = new Set<number>();
+  /** Куда бойцу смотреть по показу; нет записи — правило кадра (на героя). */
+  private readonly battleFacing = new Map<number, number>();
+  /** Отдача от удара: затухающий сдвиг тела цели. */
+  private readonly bumps = new Map<number, { dx: number; dz: number; left: number }>();
+  /** Позиции бойцов на этот кадр — считает показ, читают циклы тел. */
+  private readonly battlePosNow = new Map<number, { x: number; z: number }>();
+  /** Шёл ли бой на прошлом кадре — чтобы поймать завязку и развязку. */
+  private battleWas = false;
+  /** Ведущий на поле — его номер нужен и после закрытия поля, пока показ
+   *  доигрывает последний удар. */
+  private heroUnitId: number | null = null;
+  /** Стрела в полёте. Лениво: в вылазке без стрелков её нет. */
+  private arrowMesh: THREE.Mesh | null = null;
+  /** Рана ведущего дошла до экрана — main дёргает тряску кадра отсюда,
+   *  а не тиком симуляции: тряска раньше удара читалась бы как сбой. */
+  onHeroHit: (() => void) | null = null;
   /**
    * Пеньки просеки (§13.3). Один InstancedMesh на всю локацию, заведённый
    * заранее и пустой: срубить можно каждое внутреннее дерево, но не сразу,
@@ -1932,14 +2001,16 @@ export class RaidView {
         continue;
       }
       mate.visible = true;
-      const unit = state.battle?.units.find((u) => u.id === -1 - f.id);
-      const at = unit === undefined ? null : hexToWorld(unit.hex);
-      const x = at === null ? lerp(f.prevX, f.x, alpha) : lerp(mate.position.x, at.x, Math.min(1, dt * 9));
-      const z = at === null ? lerp(f.prevZ, f.z, alpha) : lerp(mate.position.z, at.z, Math.min(1, dt * 9));
+      // §11.3 — в бою положение ведёт показ: тело идёт по протоколу,
+      // а не к решённому симуляцией гексу.
+      const shown = this.battlePosNow.get(-1 - f.id);
+      const x = shown === undefined ? lerp(f.prevX, f.x, alpha) : lerp(mate.position.x, shown.x, Math.min(1, dt * 12));
+      const z = shown === undefined ? lerp(f.prevZ, f.z, alpha) : lerp(mate.position.z, shown.z, Math.min(1, dt * 12));
       mate.position.set(x, 0, z);
 
       // Разворот тот же, что у ведущего (§17.2): за кадр, а не мгновенно.
-      let turn = f.facing - mate.rotation.y;
+      const face = shown === undefined ? f.facing : this.battleFacing.get(-1 - f.id) ?? f.facing;
+      let turn = face - mate.rotation.y;
       while (turn > Math.PI) turn -= Math.PI * 2;
       while (turn < -Math.PI) turn += Math.PI * 2;
       mate.rotation.y += turn * Math.min(1, dt * 8);
@@ -1947,9 +2018,12 @@ export class RaidView {
       const rig = this.mateRigs[i];
       if (rig !== undefined) {
         rig.update(dt);
-        const walking = Math.hypot(f.x - f.prevX, f.z - f.prevZ) > 1e-4;
-        if (walking) rig.play('ходьба', rateFor(HERO_SPEED, rig.root.scale.y));
-        else rig.play('покой');
+        // В бою клипами распоряжается показ; вне боя — ходьба как раньше.
+        if (shown === undefined) {
+          const walking = Math.hypot(f.x - f.prevX, f.z - f.prevZ) > 1e-4;
+          if (walking) rig.play('ходьба', rateFor(HERO_SPEED, rig.root.scale.y));
+          else rig.play('покой');
+        }
       }
     }
 
@@ -1979,6 +2053,309 @@ export class RaidView {
   }
 
   /**
+   * §11.3 — идёт ли показ боя: очередь протокола ещё не дочитана. Пока идёт,
+   * панель боя молчит и тапы по полю не принимаются — игрок не должен ходить
+   * в бой, которого ещё не увидел.
+   */
+  battleBusy(): boolean {
+    return this.playNow !== null || this.battlePlays.length > 0;
+  }
+
+  /** Кого сейчас показывают: камера ведёт ходящего на экране, а не того,
+   *  до кого симуляция уже досчитала очередь. Вне показа — null. */
+  battleFocus(): { x: number; z: number } | null {
+    const now = this.playNow;
+    if (now === null) return null;
+    return this.battlePosNow.get(now.play.unit) ?? null;
+  }
+
+  /** Тело бойца на поле по его номеру. Отрицательные — свои (§11.7). */
+  private battleRigOf(
+    state: RaidState,
+    id: number,
+  ): { rig: Rigged | Drifting | null; enemy?: EnemyView } | null {
+    if (id >= 0) {
+      const view = this.enemyViews.get(id);
+      return view === undefined ? null : { rig: view.rig, enemy: view };
+    }
+    const f = state.party.find((p) => -1 - p.id === id);
+    if (f === undefined) return null;
+    if (f === state.hero) return { rig: this.heroRig };
+    const rig = this.mateRigs[state.party.indexOf(f) - 1];
+    return { rig: rig ?? null };
+  }
+
+  /** Начать ход показа: клип, разворот и длительность — по виду хода. */
+  private beginPlay(state: RaidState, play: BattlePlay): PlayNow {
+    const rig = this.battleRigOf(state, play.unit)?.rig ?? null;
+    const scale = rig === null ? 1 : rig.root.scale.y;
+
+    if (play.kind === 'move') {
+      const points = play.path.map((h) => hexToWorld(h));
+      const dur = Math.max(PLAY_HEX_SECONDS, (points.length - 1) * PLAY_HEX_SECONDS);
+      // Темп клипа — под темп показа, а не под скорость мира: фигура идёт
+      // гекс за PLAY_HEX_SECONDS, и ноги обязаны успевать за ней.
+      rig?.play('ходьба', rateFor(1 / PLAY_HEX_SECONDS, scale));
+      return { play, t: 0, dur, impact: 0, landed: true, points };
+    }
+
+    if (play.kind === 'strike') {
+      const steps = Math.hypot(
+        hexToWorld(play.at).x - hexToWorld(play.from).x,
+        hexToWorld(play.at).z - hexToWorld(play.from).z,
+      );
+      const impact = play.ranged
+        ? PLAY_RELEASE_SECONDS + Math.max(0.08, steps * PLAY_FLIGHT_PER_HEX)
+        : PLAY_IMPACT_SECONDS;
+      // Разворот к цели — до замаха: удар в спину без поворота читается
+      // как сбой, а не как приём.
+      const from = hexToWorld(play.from);
+      const to = hexToWorld(play.at);
+      this.battleFacing.set(play.unit, Math.atan2(to.x - from.x, to.z - from.z));
+      if (rig !== null) {
+        // Замах растягивается так, чтобы попадание клипа совпало с моментом
+        // попадания показа, — тот же приём, что у телеграфа (§17.3).
+        rig.play(play.ranged ? 'выстрел' : 'удар', play.ranged ? 1 : STRIKE / PLAY_IMPACT_SECONDS);
+        rig.replay();
+      }
+      return { play, t: 0, dur: impact + PLAY_RECOVER_SECONDS, impact, landed: false, points: null };
+    }
+
+    // Блок: короткая пауза на жест, позу дальше держит сам клип (`hold`).
+    if (rig !== null) {
+      rig.play('блок');
+      rig.replay();
+    }
+    return { play, t: 0, dur: PLAY_GUARD_SECONDS, impact: 0, landed: true, points: null };
+  }
+
+  /** Попадание дошло до экрана: реакция цели, вспышка, полоска, падение. */
+  private landStrike(state: RaidState, play: BattlePlay & { kind: 'strike' }): void {
+    this.shownHp.set(play.target, play.hpAfter);
+    const body = this.battleRigOf(state, play.target);
+    if (body === null) return;
+
+    if (body.enemy !== undefined) {
+      body.enemy.flash = FLASH_SECONDS;
+      body.enemy.hp = play.hpAfter;
+    } else {
+      this.heroFlash = FLASH_SECONDS;
+      // Рана своего отдаёт в кадр: тряску дёргает показ, а не тик симуляции.
+      this.onHeroHit?.();
+    }
+
+    const rig = body.rig;
+    if (play.killed) {
+      this.shownDead.add(play.target);
+      if (rig !== null && rig.state !== 'падение') rig.play('падение', FALL_RATE);
+      if (body.enemy !== undefined) body.enemy.lifeRoot.visible = false;
+      return;
+    }
+    if (play.blocked) {
+      // Держит: поза блока уже стоит, жест повторяется — удар принят щитом.
+      if (rig !== null && rig.state === 'блок') rig.replay();
+    } else if (rig !== null) {
+      if (rig.state === 'урон') rig.replay();
+      else rig.play('урон');
+    }
+    // Отдача: цель сдвигается от удара и возвращается на место.
+    const from = hexToWorld(play.from);
+    const at = hexToWorld(play.at);
+    const d = Math.hypot(at.x - from.x, at.z - from.z) || 1;
+    this.bumps.set(play.target, {
+      dx: (at.x - from.x) / d,
+      dz: (at.z - from.z) / d,
+      left: PLAY_BUMP_SECONDS,
+    });
+  }
+
+  /** Ход показа кончился: фигура доходит до места, следующий — из очереди. */
+  private finishPlay(now: PlayNow): void {
+    if (now.play.kind === 'move') {
+      const last = now.play.path[now.play.path.length - 1];
+      if (last !== undefined) this.restHex.set(now.play.unit, last);
+    }
+  }
+
+  /** Стоящий в бою: покой или держимый блок. Ходящих ведёт `beginPlay`. */
+  private battleIdle(rig: Rigged | Drifting, guarding: boolean): void {
+    const st = rig.state;
+    if (st === 'падение') return;
+    if (guarding) {
+      if (st !== 'блок') rig.play('блок');
+      return;
+    }
+    if (st !== 'покой' && (st === 'ходьба' || st === 'блок' || rig.finished)) rig.play('покой');
+  }
+
+  /** Стрела (или снаряд мага) в полёте — от выпуска до попадания. */
+  private syncArrow(): void {
+    const now = this.playNow;
+    const flying =
+      now !== null
+      && now.play.kind === 'strike'
+      && now.play.ranged
+      && !now.landed
+      && now.t >= PLAY_RELEASE_SECONDS;
+    if (!flying) {
+      if (this.arrowMesh !== null) this.arrowMesh.visible = false;
+      return;
+    }
+    const play = now.play as BattlePlay & { kind: 'strike' };
+    if (this.arrowMesh === null) {
+      const geo = new THREE.BoxGeometry(0.05, 0.05, 0.5);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xe8dfc0, fog: false });
+      this.arrowMesh = new THREE.Mesh(geo, mat);
+      this.disposables.push(geo, mat);
+      this.group.add(this.arrowMesh);
+    }
+    const from = hexToWorld(play.from);
+    const to = hexToWorld(play.at);
+    const f = Math.min(1, (now.t - PLAY_RELEASE_SECONDS) / Math.max(1e-3, now.impact - PLAY_RELEASE_SECONDS));
+    this.arrowMesh.visible = true;
+    this.arrowMesh.position.set(lerp(from.x, to.x, f), 0.95, lerp(from.z, to.z, f));
+    this.arrowMesh.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+    // Стрела своя — светлая, снаряд противника — цвета замаха: красное
+    // в игре значит «удар» (§17.3), и летящее в героя оно значит то же.
+    (this.arrowMesh.material as THREE.MeshBasicMaterial).color.setHex(
+      play.unit >= 0 ? PALETTE.telegraph : 0xe8dfc0,
+    );
+  }
+
+  /**
+   * Показ боя (§11.3). Вычитывает протокол (`RaidState.plays`) и проигрывает
+   * его ход за ходом: разворот, шаг по гексам, замах, попадание, падение.
+   * Симуляция уже всё решила — здесь решается только, когда это увидят.
+   *
+   * Протокол переживает поле: смертельный удар закрывает бой тем же тиком,
+   * и его падение доигрывается уже при `battle === null`.
+   */
+  private stepBattlePlays(state: RaidState, dt: number): void {
+    const battle = state.battle;
+    if (state.plays.length > 0) this.battlePlays.push(...state.plays.splice(0));
+
+    const active = battle !== null || this.battleBusy();
+    if (!active) {
+      if (this.battleWas) {
+        // Развязка дочитана: мир снова источник правды о положении.
+        this.restHex.clear();
+        this.shownHp.clear();
+        this.shownDead.clear();
+        this.battleFacing.clear();
+        this.bumps.clear();
+        this.battlePosNow.clear();
+        this.heroUnitId = null;
+        if (this.arrowMesh !== null) this.arrowMesh.visible = false;
+        this.battleWas = false;
+      }
+      return;
+    }
+
+    if (!this.battleWas && battle !== null) {
+      // Завязка: фигуры встают там, где их застал контакт. Стойки берутся
+      // из протокола, если ходы успели решиться тем же тиком, что открыл бой.
+      this.restHex.clear();
+      this.shownHp.clear();
+      this.shownDead.clear();
+      this.battleFacing.clear();
+      for (const u of battle.units) {
+        this.restHex.set(u.id, u.hex);
+        this.shownHp.set(u.id, u.hp);
+        if (u.side === 'hero' && this.heroUnitId === null) this.heroUnitId = u.id;
+        if (u.hp <= 0) this.shownDead.add(u.id);
+      }
+      const seen = new Set<number>();
+      for (const p of this.battlePlays) {
+        if (seen.has(p.unit)) continue;
+        seen.add(p.unit);
+        if (p.kind === 'move' && p.path[0] !== undefined) this.restHex.set(p.unit, p.path[0]);
+        else if (p.kind === 'strike') this.restHex.set(p.unit, p.from);
+      }
+      this.battleWas = true;
+    }
+
+    // Очередной ход — как только прошлый дочитан.
+    if (this.playNow === null && this.battlePlays.length > 0) {
+      this.playNow = this.beginPlay(state, this.battlePlays.shift()!);
+    }
+    const now = this.playNow;
+    if (now !== null) {
+      now.t += dt;
+      if (now.play.kind === 'strike' && !now.landed && now.t >= now.impact) {
+        now.landed = true;
+        this.landStrike(state, now.play);
+      }
+      if (now.t >= now.dur) {
+        this.finishPlay(now);
+        this.playNow = null;
+      }
+    }
+
+    for (const [id, b] of this.bumps) {
+      b.left -= dt;
+      if (b.left <= 0) this.bumps.delete(id);
+    }
+
+    // Позиции по показу: стойка, шаг по пути, выпад атакующего, отдача цели.
+    this.battlePosNow.clear();
+    for (const [id, hex] of this.restHex) {
+      const p = hexToWorld(hex);
+      let x = p.x;
+      let z = p.z;
+      const cur = this.playNow;
+      if (cur !== null && cur.play.unit === id) {
+        if (cur.play.kind === 'move' && cur.points !== null && cur.points.length > 1) {
+          const s = Math.min(1, cur.t / cur.dur) * (cur.points.length - 1);
+          const i = Math.min(cur.points.length - 2, Math.floor(s));
+          const f = s - i;
+          const a = cur.points[i]!;
+          const b = cur.points[i + 1]!;
+          x = lerp(a.x, b.x, f);
+          z = lerp(a.z, b.z, f);
+          this.battleFacing.set(id, Math.atan2(b.x - a.x, b.z - a.z));
+        } else if (cur.play.kind === 'strike' && !cur.play.ranged) {
+          // Выпад: к цели до попадания, назад после. Позиция, а не клип, —
+          // клип удара про руки, выпад про то, кого именно бьют.
+          const from = hexToWorld(cur.play.from);
+          const to = hexToWorld(cur.play.at);
+          const d = Math.hypot(to.x - from.x, to.z - from.z) || 1;
+          const phase = cur.t < cur.impact
+            ? cur.t / cur.impact
+            : Math.max(0, 1 - (cur.t - cur.impact) / Math.max(1e-3, cur.dur - cur.impact));
+          x += ((to.x - from.x) / d) * PLAY_LUNGE * phase;
+          z += ((to.z - from.z) / d) * PLAY_LUNGE * phase;
+        }
+      }
+      const bump = this.bumps.get(id);
+      if (bump !== undefined) {
+        const k = (bump.left / PLAY_BUMP_SECONDS) * PLAY_BUMP;
+        x += bump.dx * k;
+        z += bump.dz * k;
+      }
+      this.battlePosNow.set(id, { x, z });
+    }
+
+    this.syncArrow();
+
+    // Клипы стоящих: у кого нет активного хода — покой или держимый блок.
+    if (battle !== null) {
+      for (const u of battle.units) {
+        if (this.shownDead.has(u.id)) continue;
+        if (this.playNow !== null && this.playNow.play.unit === u.id) continue;
+        const rig = this.battleRigOf(state, u.id)?.rig;
+        if (rig != null) this.battleIdle(rig, u.guarding);
+      }
+    } else {
+      for (const id of this.restHex.keys()) {
+        if (this.shownDead.has(id)) continue;
+        if (this.playNow !== null && this.playNow.play.unit === id) continue;
+        const rig = this.battleRigOf(state, id)?.rig;
+        if (rig != null) this.battleIdle(rig, false);
+      }
+    }
+  }
+
+  /**
    * §11.3 — что показывает сетка. Роли считает поле боя теми же правилами,
    * которыми потом применит ход: рендер не вправе показать досягаемость,
    * отличную от настоящей, — иначе подсветка врёт, а игрок винит себя.
@@ -1992,6 +2369,15 @@ export class RaidView {
     const unit = current(battle);
     if (unit === undefined) {
       this.hexGrid.hide();
+      return;
+    }
+    // Пока показ дочитывает чужие ходы, сетка отмечает того, кто ходит
+    // на экране: подсвечивать возможности героя раньше, чем он увидел бой,
+    // значит звать его ходить вслепую.
+    if (this.battleBusy()) {
+      const acting = this.playNow?.play.unit;
+      const at = acting === undefined ? undefined : this.restHex.get(acting);
+      this.hexGrid.show({ move: [], stand: at === undefined ? [] : [at], target: [], hover: [] });
       return;
     }
     // Сетка показывается только на ходу героя. На чужом ходу она молчит:
@@ -2055,24 +2441,25 @@ export class RaidView {
       (this.hintRing.material as THREE.MeshBasicMaterial).opacity = 0.55 + (pulse - 1) * 1.6;
     }
     const { hero } = state;
-    // §11.3 — в бою положение живёт на поле, а не в мире: мир обновится
-    // только на выходе. Поэтому бойцы едут к центрам своих гексов, а не
-    // интерполируются между тиками, которых больше нет.
-    const battle = state.battle;
-    const heroUnit = battle?.units.find((u) => u.side === 'hero');
-    const heroTarget = heroUnit === undefined ? null : hexToWorld(heroUnit.hex);
-    const hx = heroTarget === null
+    // §11.3 — в бою положение живёт у показа, а не в мире: симуляция уже
+    // решила ходы, и тела идут по протоколу (`stepBattlePlays`), ход за ходом.
+    this.stepBattlePlays(state, dt);
+    const heroShown = this.heroUnitId === null ? undefined : this.battlePosNow.get(this.heroUnitId);
+    const hx = heroShown === undefined
       ? lerp(hero.prevX, hero.x, alpha)
-      : lerp(this.hero.position.x, heroTarget.x, Math.min(1, dt * 9));
-    const hz = heroTarget === null
+      : lerp(this.hero.position.x, heroShown.x, Math.min(1, dt * 12));
+    const hz = heroShown === undefined
       ? lerp(hero.prevZ, hero.z, alpha)
-      : lerp(this.hero.position.z, heroTarget.z, Math.min(1, dt * 9));
+      : lerp(this.hero.position.z, heroShown.z, Math.min(1, dt * 12));
     if (!this.heroParked) this.hero.position.set(hx, 0, hz);
 
     this.syncGrid(state);
     this.syncParty(state, alpha, dt);
 
-    let turn = hero.facing - this.hero.rotation.y;
+    const heroFace = this.heroUnitId === null
+      ? hero.facing
+      : this.battleFacing.get(this.heroUnitId) ?? hero.facing;
+    let turn = heroFace - this.hero.rotation.y;
     while (turn > Math.PI) turn -= Math.PI * 2;
     while (turn < -Math.PI) turn += Math.PI * 2;
     // §17.2: разворот не мгновенный, 120–150 мс — иначе читается как рывок.
@@ -2086,6 +2473,17 @@ export class RaidView {
       this.heroRig?.play('покой');
     } else if (this.heroRig === null) {
       this.hero.children[0]!.position.y = 0.6 + (heroWalking ? Math.sin(time / 90) * 0.04 : 0);
+    } else if (this.battleWas) {
+      // §11.3 — в бою клипы героя ведёт показ (`stepBattlePlays`): замах,
+      // урон и падение приходят протоколом в момент показа, а не тиком
+      // симуляции, которая уже решила весь раунд. Здесь остаются вспышка
+      // и книга прошлого кадра — чтобы выход из боя не сыграл рану заново.
+      this.heroRig.update(dt);
+      this.heroWas = { wounds: state.hero.hp, cooldown: state.hero.cooldown };
+      if (this.heroFlash > 0) {
+        this.heroFlash = Math.max(0, this.heroFlash - dt);
+        this.heroRig.setMaterial(this.heroFlash > 0 ? this.hurtFlash : this.blocking);
+      }
     } else {
       this.heroRig.update(dt);
 
@@ -2180,17 +2578,19 @@ export class RaidView {
         continue;
       }
 
-      const unit = battle?.units.find((u) => u.id === e.id);
-      const spot = unit === undefined ? null : hexToWorld(unit.hex);
-      const ex = spot === null
-        ? lerp(e.prevX, e.x, alpha)
-        : lerp(view.rig.root.position.x, spot.x, Math.min(1, dt * 9));
-      const ez = spot === null
-        ? lerp(e.prevZ, e.z, alpha)
-        : lerp(view.rig.root.position.z, spot.z, Math.min(1, dt * 9));
-      const walking = spot === null
-        ? e.x !== e.prevX || e.z !== e.prevZ
-        : Math.hypot(spot.x - ex, spot.z - ez) > 0.02;
+      // §11.3 — в бою положение ведёт показ (`stepBattlePlays`): тело идёт
+      // по протоколу, а не к гексу, который симуляция уже решила.
+      const shown = this.battlePosNow.get(e.id);
+      const inShow = shown !== undefined;
+      const ex = inShow
+        ? lerp(view.rig.root.position.x, shown.x, Math.min(1, dt * 12))
+        : lerp(e.prevX, e.x, alpha);
+      const ez = inShow
+        ? lerp(view.rig.root.position.z, shown.z, Math.min(1, dt * 12))
+        : lerp(e.prevZ, e.z, alpha);
+      const walking = inShow
+        ? Math.hypot(shown.x - ex, shown.z - ez) > 0.02
+        : e.x !== e.prevX || e.z !== e.prevZ;
       view.rig.root.position.set(ex, 0, ez);
       // Порядок важен: вспышка попадания перебивает телеграф. Замах длится
       // четверть секунды и дольше, вспышка — 150 мс, и если телеграф выиграет,
@@ -2200,11 +2600,14 @@ export class RaidView {
         view.flash > 0 ? this.hurtFlash : e.telegraph > 0 ? view.hot : view.base,
       );
 
-      // Спящий смотрит, куда стоял; проснувшийся — на героя. Разворот тот же,
+      // Спящий смотрит, куда стоял; проснувшийся — на героя; в показе боя —
+      // куда велит протокол: на цель удара или по ходу шага. Разворот тот же,
       // что у героя (§17.2): за кадр, а не мгновенно.
-      const look = walking
-        ? Math.atan2(e.x - e.prevX, e.z - e.prevZ)
-        : e.awake ? Math.atan2(hx - ex, hz - ez) : view.facing;
+      const look = inShow
+        ? this.battleFacing.get(e.id) ?? Math.atan2(hx - ex, hz - ez)
+        : walking
+          ? Math.atan2(e.x - e.prevX, e.z - e.prevZ)
+          : e.awake ? Math.atan2(hx - ex, hz - ez) : view.facing;
       let spin = look - view.facing;
       while (spin > Math.PI) spin -= Math.PI * 2;
       while (spin < -Math.PI) spin += Math.PI * 2;
@@ -2213,27 +2616,34 @@ export class RaidView {
 
       // Состояния §17.1. Одиночный клип доигрывает до конца: удар, прерванный
       // шагом на середине замаха, читается как рывок, а не как удар.
+      // В показе боя клипами распоряжается протокол (`stepBattlePlays`):
+      // замах, урон и падение играются в момент показа, а стойкость на экране
+      // тикает ударом, который игрок видит, — не тиком, который уже прошёл.
       if (view.busy && view.rig.finished) view.busy = false;
-      if (e.hp < view.hp) {
-        view.rig.play('урон');
-        view.busy = true;
-        // §17.1 — клип урона показывает, что попали; вспышка показывает,
-        // что попали именно сейчас. У мага пять ран, и без неё «попал»
-        // от «не достал» на пяти сантиметрах экрана не отличить.
-        view.flash = FLASH_SECONDS;
-      } else if (e.telegraph > 0 && view.rig.state !== 'удар') {
-        view.rig.play('удар', ATTACK_RATE[e.kind]);
-        view.busy = true;
-      } else if (!view.busy) {
-        if (walking) view.rig.play('ходьба', walkRate(e.kind, view.rig.root.scale.y));
-        else view.rig.play('покой');
+      if (inShow) {
+        view.hp = this.shownHp.get(e.id) ?? e.hp;
+      } else {
+        if (e.hp < view.hp) {
+          view.rig.play('урон');
+          view.busy = true;
+          // §17.1 — клип урона показывает, что попали; вспышка показывает,
+          // что попали именно сейчас. У мага пять ран, и без неё «попал»
+          // от «не достал» на пяти сантиметрах экрана не отличить.
+          view.flash = FLASH_SECONDS;
+        } else if (e.telegraph > 0 && view.rig.state !== 'удар') {
+          view.rig.play('удар', ATTACK_RATE[e.kind]);
+          view.busy = true;
+        } else if (!view.busy) {
+          if (walking) view.rig.play('ходьба', walkRate(e.kind, view.rig.root.scale.y));
+          else view.rig.play('покой');
+        }
+        view.hp = e.hp;
       }
-      view.hp = e.hp;
 
       // Полоска показывается, когда есть что показывать: спящий и целый
       // противник её не носит, иначе локация превращается в приборную панель.
-      const share = e.hp / ENEMY_STATS[e.kind].hp;
-      view.lifeRoot.visible = e.awake || share < 1;
+      const share = (inShow ? this.shownHp.get(e.id) ?? e.hp : e.hp) / ENEMY_STATS[e.kind].hp;
+      view.lifeRoot.visible = (e.awake || share < 1) && !this.shownDead.has(e.id);
       view.lifeRoot.position.y = ENEMY_HEIGHT[e.kind] / view.rig.root.scale.y + 0.4;
       view.life.scale.x = (view.life.userData.width as number) * share;
       (view.life.material as THREE.SpriteMaterial).color.setHex(

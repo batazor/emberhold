@@ -317,6 +317,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     arrowsSpent: 0,
     dryFights: 0,
     battle: null,
+    plays: [],
     paidRound: 0,
     projectiles: [],
     nextProjectileId: 0,
@@ -1093,6 +1094,7 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
     battle, state.loc.size, state.loc.blocked, action,
     (from, to) => damageBetween(state, from, to),
     (u) => (u.side === 'hero' ? 'Герой' : ENEMY_STATS[u.kind!].name),
+    state.plays,
   );
   if (!ok) return false;
 
