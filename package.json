@@ -13,6 +13,7 @@
     "verify": "tsx scripts/baseline.ts",
     "baseline": "tsx scripts/baseline.ts --write",
     "measure": "tsx scripts/measure.ts",
+    "survive": "tsx scripts/survive.ts",
     "combat": "tsx scripts/combat.ts",
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
