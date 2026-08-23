@@ -225,7 +225,8 @@ import type { CastleGuest, GuestMeet } from './sim/castleGuest';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
-import { askOf, dealBlock, makeDeal, worthOf } from './sim/trade';
+import { DEAL_REASON, askOf, dealBlock, makeDeal, marketKey, pruneBought, stockOf, worthOf } from './sim/trade';
+import type { Stock } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
 import { events, loadTelemetry, setTelemetrySink, track } from './sim/telemetry';
@@ -294,7 +295,7 @@ import {
   tentSpot,
 } from './sim/residents';
 import { payUpkeep, workingAfter } from './sim/upkeep';
-import { PICK_REASON, bushAt, pickKey, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
+import { PICK_REASON, bushAt, localsTook, pickKey, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
 import type { Bush } from './sim/berries';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
@@ -2015,24 +2016,46 @@ const campPrompt = new CampPrompt(hud.promptSlot, {
  */
 let tradeLeft = false;
 
+/**
+ * Прилавок торговца (§13.5). Ничего не хранит: пища на нём — ровно та, что
+ * местные сняли с кустов этой площадки за сутки (§13.8), минус уже
+ * выкупленное. `null` — торговца рядом нет.
+ */
+function traderStock(): Stock | null {
+  if (castleNow === null) return null;
+  const supply = localsTook(
+    castleNow.loc.seed, castleNow.bushes, castleNow.gate, clock.now(),
+  );
+  return stockOf(supply, camp.bought ?? {}, castleNow.loc.seed, clock.now());
+}
+
 const tradePanel = new TradePanel(app, {
   onDeal: (give, take) => {
-    if (!makeDeal(camp, give, take)) {
+    const stock = traderStock();
+    const block = dealBlock(camp, give, take, stock);
+    if (!makeDeal(camp, give, take, stock)) {
       // Отказ обязан быть слышен так же, как виден (§18.3).
       play('deny');
-      // Потолок кладовой (§13.6) — единственный отказ прилавка, которого
-      // не видно по кошельку: про него говорится словами.
-      if (dealBlock(camp, give, take) === 'full' && raid !== null) {
-        raid.events.push('Кладовая полна — обмену нет места');
-      }
+      // Слова у отказа свои (`DEAL_REASON`, §23.3). Молчали прежде все,
+      // кроме потолка кладовой; пустой прилавок молчать не может тем более —
+      // по кошельку его не видно.
+      if (block !== 'ok' && raid !== null) raid.events.push(DEAL_REASON[block]);
       return false;
     }
     play('build');
+    // Унесённое с прилавка пишется в самоистекающий список: сам запас
+    // не хранится, хранится только рука игрока — как у кустов (§13.8).
+    if (castleNow !== null && (take.food ?? 0) > 0) {
+      const log = pruneBought(camp.bought ?? {}, clock.now());
+      const key = marketKey(castleNow.loc.seed, clock.now());
+      log[key] = (log[key] ?? 0) + (take.food ?? 0);
+      camp.bought = log;
+    }
     // Сделка свободная: телеметрии важны обе оценки — по ним видно,
     // сколько переплачивают сверх спроса торговца.
     track({ t: 'trade', at: clock.now(), offer: 'deal', worth: worthOf(give), ask: askOf(take, (camp.trades ?? 0) - 1) });
     if (raid !== null) raid.events.push(TradePanel.gained(give, take));
-    tradePanel.sync(camp);
+    tradePanel.sync(camp, traderStock());
     persist();
     return true;
   },
@@ -4986,6 +5009,23 @@ if (debugCastle !== null) {
       }));
     },
     watch: (t: number) => raidView?.setWatch(t),
+    /**
+     * Прилавок торговца (§13.5). Глазом его видно только у самого прилавка,
+     * а вопрос «сколько сегодня принесли местные» задаётся раньше, чем герой
+     * дойдёт. Ручка отвечает на него сразу — и принимает время, потому что
+     * запас суточный: `counter(86400)` показывает завтрашний.
+     */
+    counter: (shift = 0) => {
+      if (castleNow === null) return null;
+      const at = clock.now() + shift;
+      const supply = localsTook(castleNow.loc.seed, castleNow.bushes, castleNow.gate, at);
+      return {
+        brought: supply,
+        bought: (camp.bought ?? {})[marketKey(castleNow.loc.seed, at)] ?? 0,
+        left: stockOf(supply, camp.bought ?? {}, castleNow.loc.seed, at),
+        bushes: castleNow.bushes.length,
+      };
+    },
     // Гость у стен (`castleGuest.ts`): кто, откуда, что ищет и где сидит.
     // Ждать замка с гостем — лотерея, а тут видно и «гостя сегодня нет».
     guest: () =>
@@ -5448,7 +5488,7 @@ startLoop({
         if (!near) tradeLeft = false;
         const show = near && !tradeLeft;
         if (show !== tradePanel.visible) tradePanel.setVisible(show);
-        if (show) tradePanel.sync(camp);
+        if (show) tradePanel.sync(camp, traderStock());
         // Гость у стен: разговор тем же жестом подхода, что лавка выше.
         syncGuestMeet();
       }

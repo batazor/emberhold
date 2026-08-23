@@ -29,6 +29,7 @@ import { mulberry32, randInt } from '../core/rng';
 import { SWING_SECONDS, inReach, startWork, stepWork } from './work';
 import type { Work, WorkBlock, Worker } from './work';
 import type { Resources } from './resources';
+import { DAY_SEC } from './world';
 
 /**
  * Пищи с одного куста. Вдвое меньше, чем камня с валуна (3–5), и это
@@ -250,6 +251,38 @@ export function takenByLocals(
   const share = Math.max(0.05, Math.min(0.85, 1 - near / 12));
   const roll = mulberry32((seed * 374761393) ^ (bush.id * 668265263) ^ (epochOf(now) * 2246822519))();
   return roll < share;
+}
+
+/**
+ * §13.5 — **сколько пищи местные унесли у этого места за сутки.**
+ *
+ * Та же тройка «сид, узел, окно», что у `takenByLocals`, просуммированная
+ * по всем окнам суток: ягода, которую местные сняли с куста, никуда из мира
+ * не делась — она легла на прилавок торговца, и купить её можно за камень.
+ * Это единственный запас лавки (§13.5), и он не хранится нигде: тот же сид
+ * и тот же день дают то же число.
+ *
+ * Сутки, а не окно созревания, — потому что ягода не лежит дольше дня,
+ * а день игра уже считает (подарок за вход, §29). Замер: за окно местные
+ * снимают 0,25 пищи, и прилавок при таком горизонте пуст в пяти случаях
+ * из шести; за сутки — три пищи, и пуст он каждый пятый день.
+ */
+export function localsTook(
+  seed: number,
+  bushes: readonly Bush[],
+  hub: { x: number; z: number },
+  now: number,
+): number {
+  const day = Math.floor(now / DAY_SEC);
+  let food = 0;
+  for (let e = 0; e < DAY_SEC / RIPEN_SECONDS; e++) {
+    const at = day * DAY_SEC + e * RIPEN_SECONDS;
+    for (const bush of bushes) {
+      if (!wildRipe(seed, bush, at)) continue;
+      if (takenByLocals(seed, bush, hub, at)) food += berryYield(bush);
+    }
+  }
+  return food;
 }
 
 /* ---------- рука игрока: список, который сам себя стирает ---------- */
