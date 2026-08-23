@@ -42,7 +42,7 @@ import {
 import { neighboursOpen } from '../sim/clan';
 import { campLevel, campPower, clanPower, standings, yourPlace } from '../sim/standing';
 import { KIND } from '../sim/world';
-import type { NodeKind, NodeState, Region, WorldNode } from '../sim/world';
+import type { NodeKind, NodeState, Region, Visit, WorldNode } from '../sim/world';
 import { drawMapTerrain } from './mapTerrain';
 
 /**
@@ -374,6 +374,13 @@ export class WorldMap {
   /** Регион сегодняшнего дня: завтра здесь будут другие точки (§4). */
   private region: Region = regionAt(0);
   private world: NodeState[] = [];
+  /**
+   * Метки живых соседей (§30.6). Приходят снаружи и в сохранение не едут:
+   * это чужие дельты, а сейв хранит только свои (§4). Пустой список —
+   * честный ответ и при отсутствии сети, и при отсутствии соседей: карта
+   * в обоих случаях показывает мир без них, ровно как показывала до облака.
+   */
+  private others: readonly Visit[] = [];
   private camp: CampState | null = null;
   private roster: Roster | null = null;
   private now = 0;
@@ -438,7 +445,7 @@ export class WorldMap {
     this.camp = camp;
     this.now = now;
     this.region = regionAt(dayAt(now));
-    this.world = worldAt(now, camp.visits);
+    this.world = worldAt(now, camp.visits, this.others);
     this.focus = this.defaultFocus();
     // Карта открывается на месте, а не на лагере: лагерь — то, откуда игрок
     // только что пришёл, и рассказывать ему про себя незачем.
@@ -453,7 +460,7 @@ export class WorldMap {
     // незачем, а вот срок восстановления в карточке идёт вживую.
     if (Math.floor(now / SHIFT_SEC) !== Math.floor(this.now / SHIFT_SEC)) {
       this.region = regionAt(dayAt(now));
-      this.world = worldAt(now, camp.visits);
+      this.world = worldAt(now, camp.visits, this.others);
       if (this.focus >= this.region.nodes.length) this.focus = this.defaultFocus();
     }
     this.now = now;
@@ -680,6 +687,22 @@ export class WorldMap {
   }
 
   /**
+   * Отдать карте чужие метки (§30.6). Зовётся снаружи, потому что читает их
+   * сеть, а панели про сеть не знают — как и симуляция: `worldAt` берёт их
+   * входом и остаётся чистой функцией.
+   *
+   * Мир пересчитывается сразу: метки приходят ответом сервера, то есть
+   * в произвольный момент, а не на границе смены, и ждать следующей значило
+   * бы показывать заведомо старое богатство.
+   */
+  setNeighbours(visits: readonly Visit[]): void {
+    this.others = visits;
+    if (this.camp === null) return;
+    this.world = worldAt(this.now, this.camp.visits, visits);
+    this.paint();
+  }
+
+  /**
    * Открыть карту целиком или запереть на одном месте (§16.2). Зовётся
    * снаружи: про кадры раскадровки карта не знает и знать не должна.
    *
@@ -724,7 +747,8 @@ export class WorldMap {
       this.paintPrizeCard(node);
       return;
     }
-    const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0, event: null };
+    const state = this.world[node.id] ??
+      { rich: RICH_MAX, clan: null, others: 0, restShifts: 0, event: null };
     // §11.6 — «объявляются до входа». Объявлять надо итог: карточка, которая
     // пишет «ставка 0%» и «×0,6», пока буря делает 25% и ×0,9, — это и есть
     // сюрприз после входа, которого раздел прямо не хочет.
@@ -752,6 +776,18 @@ export class WorldMap {
       // второго, и узнать это можно было только сходив. Ставку игрок читает
       // до входа — награда обязана читаться там же.
       `<div class="row line"><span>Падает</span><b>${lootLine(node.tier)}</b></div>` +
+      // §30.6 — кто ещё сюда ходил. Строка появляется только тогда, когда
+      // соседи были: «заходов 0» — это не сведение, а шум, и стоять
+      // на карточке ему незачем. Имён нет: решение здесь одно — идти или
+      // не идти, — и чужая почта его не меняет.
+      //
+      // Подпись слева, число справа и без склонения: «1 заход» против
+      // «2 захода» против «5 заходов» — три формы ради одной цифры,
+      // и падеж здесь взялся бы ниоткуда ровно так же, как у имён (§0.1).
+      (state.others > 0
+        ? `<div class="row line"><span>Заходы соседей</span>` +
+          `<b class="bad">${state.others}</b></div>`
+        : '') +
       `<div class="row line"><span>Кто здесь</span>` +
       // §4 — кланы «растут», и до этой строки рост считался, но не показывался
       // нигде. Уровень — та самая таблица развития, свёрнутая до одного

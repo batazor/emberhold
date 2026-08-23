@@ -135,6 +135,7 @@ import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import type { ResourceKind } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
+  cloudNeighbours,
   cloudOnSignIn,
   cloudPull,
   cloudPush,
@@ -160,7 +161,7 @@ import {
   shiftAt,
   worldAt,
 } from './sim/world';
-import type { WorldNode } from './sim/world';
+import type { Visit, WorldNode } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import {
   campNav,
@@ -2120,6 +2121,42 @@ function pushCloud(): void {
   }, 3000);
 }
 
+/**
+ * Метки живых соседей (§30.6). Держатся в памяти и **не едут в сохранение**:
+ * это чужие дельты, а сейв хранит только свои (§4). Пустой список — честный
+ * ответ и без сети, и без соседей: мир тогда показывается ровно таким, каким
+ * показывался до облака.
+ */
+let neighbours: Visit[] = [];
+/** Когда спрашивали в последний раз. Ноль — не спрашивали ни разу. */
+let neighboursAt = 0;
+
+/**
+ * Спросить сервер о чужих заходах. Обновляется **сменами, а не секундами**:
+ * богатство локации считается сменами (`world.ts`), и данные, которые
+ * меняются реже, чем шкала, спрашивать чаще шкалы незачем. Возвращение
+ * в лагерь спрашивает вне очереди — но не чаще минуты: сцена меняется
+ * тапом, а сеть от этого зависеть не должна.
+ *
+ * Ответ фильтруется тем же `liveVisits`, что и свои метки: заходы прошлых
+ * суток относятся к другому региону, а чужая строка, которую не подмёл крон
+ * (§28), обязана отваливаться на чтении, а не портить сегодняшнюю карту.
+ */
+function refreshNeighbours(now: number, force = false): void {
+  if (debugScene || !cloudReady) return;
+  const fresh = now - neighboursAt;
+  if (!force ? fresh < SHIFT_SEC : fresh < 60) return;
+  neighboursAt = now;
+  void cloudNeighbours().then((rows) => {
+    neighbours = liveVisits(
+      rows.map((r) => ({ node: r.node, shift: r.shift })),
+      clock.now(),
+    );
+    campHud.setNeighbours(neighbours);
+    returnScreen.setNeighbours(neighbours);
+  });
+}
+
 // Свёрнутая вкладка — последний шанс дожать отложенное: таймеры там не идут.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
@@ -2152,6 +2189,9 @@ async function syncCloud(): Promise<boolean> {
   }
   cloudReady = true;
   pushCloud();
+  // Первый вопрос про соседей — сразу за сверкой: до неё сессии могло
+  // не быть вовсе, и спрашивать было не от чьего имени.
+  refreshNeighbours(clock.now(), true);
   return false;
 }
 void syncCloud();
@@ -2380,6 +2420,9 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   heroCard.setVisible(false);
   residentCard.setVisible(false);
   closeCharacter();
+  // §30.6 — вернулись в лагерь: чужие заходы могли случиться, пока игрок
+  // был в вылазке, и карта откроется уже с ними.
+  if (scene === 'camp') refreshNeighbours(clock.now(), true);
   // §30 — почта в углу видна во всех сценах, как шестерня рядом: она про
   // связь с соседями, а не про то, где сейчас герой. Открытый ящик со сценой
   // всё же уходит — окно поверх вылазки было бы окном поверх боя.
@@ -2491,7 +2534,7 @@ function sendSortie(node: number): void {
     campHud.notify(block === 'ok' ? SORTIE_REASON.hero : SORTIE_REASON[block]);
     return;
   }
-  const state = worldAt(now, camp.visits)[node];
+  const state = worldAt(now, camp.visits, neighbours)[node];
   camp.sortie = ticketOf(
     node,
     place.tier,
@@ -2682,7 +2725,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   hero.status = 'raid';
   raidHero = hero;
 
-  const state = worldAt(now, camp.visits)[node];
+  const state = worldAt(now, camp.visits, neighbours)[node];
   const rich = state?.rich ?? 0;
   const mul = lootMul(rich);
   // §11.6 — событие объявлено картой до входа, и здесь оно уже принятое
@@ -4526,6 +4569,23 @@ if (debugCamp !== null) {
       persist();
       return done.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`);
     },
+    /**
+     * Чужие метки из ниоткуда (§30.6). Заводить второй аккаунт, чтобы
+     * посмотреть, как выработанная соседями точка выглядит на карте, —
+     * не проверка, а лотерея: сосед должен ещё и сходить в ту же точку
+     * в то же окно. Ручка кладёт ровно то, что положил бы ответ сервера.
+     *
+     * Без номера точки — самая щадящая из сегодняшних (`safestNode`): та же,
+     * куда игру пускает первая вылазка, и она есть в любой день.
+     */
+    сосед: (node?: number, заходов = 1) => {
+      const at = shiftAt(clock.now());
+      const spot = node ?? safestNode(clock.now());
+      for (let i = 0; i < заходов; i++) neighbours.push({ node: spot, shift: at - i });
+      campHud.setNeighbours(neighbours);
+      returnScreen.setNeighbours(neighbours);
+      return worldAt(clock.now(), camp.visits, neighbours)[spot];
+    },
     // Гость из ниоткуда: проверять палатки, каждый раз проходя знакомство,
     // — не проверка. Имя раздаётся по счёту, потому что повтор не принимается.
     гость: (answer: 'строим' | 'ходим' = 'строим') => {
@@ -4962,6 +5022,7 @@ function stepCampSystems(dt: number, now: number): void {
     if (collectSortie(now)) persist();
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
+    refreshNeighbours(now);
     // §30 — почта зажигается тем же порогом, что и вся остальная связь
     // с соседями: до второго жильца ящику неоткуда взяться.
     mailButton.setShown(neighboursOpen(camp));

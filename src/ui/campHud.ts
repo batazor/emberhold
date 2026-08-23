@@ -31,6 +31,7 @@ import {
 import type { ConsumableId } from '../sim/consumables';
 import { ONB_HINT } from '../sim/onboarding';
 import { dayAt, firstRaidNode } from '../sim/world';
+import type { Visit } from '../sim/world';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
@@ -785,6 +786,15 @@ export class CampHud {
    */
   setRoster(roster: Roster): void {
     this.roster = roster;
+  }
+
+  /**
+   * §30.6 — карте нужны чужие метки: читает их сеть, а панель про сеть
+   * не знает. Тот же случай и та же причина, что у ростера строкой выше;
+   * лагерь их только передаёт, потому что карта живёт в его листе.
+   */
+  setNeighbours(visits: readonly Visit[]): void {
+    this.map.setNeighbours(visits);
   }
 
   private syncShop(camp: CampState): void {

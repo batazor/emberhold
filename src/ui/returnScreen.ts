@@ -17,6 +17,7 @@ import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
 import { KIND, dayAt, regionAt, worldAt } from '../sim/world';
+import type { Visit } from '../sim/world';
 
 /**
  * Экран возврата (мокап 04). Самый важный экран для удержания: здесь игрок
@@ -51,8 +52,13 @@ export interface ReturnCallbacks {
  * карте нет и не будет (`world.html`, кадр 05) — но кнопка «ещё вылазка»
  * решения не отменяет: она его предлагает, а карта рядом открыта.
  */
-function nextPlace(camp: CampState, node: number, now: number): number {
-  const world = worldAt(now, camp.visits);
+function nextPlace(
+  camp: CampState,
+  node: number,
+  now: number,
+  others: readonly Visit[],
+): number {
+  const world = worldAt(now, camp.visits, others);
   if ((world[node]?.rich ?? 0) >= 2) return node;
   // Только вылазки: богатство считается и у прогулочных мест — их просто
   // никто не тратит, поэтому у них всегда полные три, и без фильтра кнопка
@@ -63,6 +69,12 @@ function nextPlace(camp: CampState, node: number, now: number): number {
 }
 
 export class ReturnScreen {
+  /**
+   * Чужие метки (§30.6). Нужны экрану ради одной кнопки: «ещё вылазка»
+   * предлагает место по остатку богатства, и предложить выработанное
+   * соседями значило бы позвать туда, откуда игрок только что ушёл ни с чем.
+   */
+  private others: readonly Visit[] = [];
   private readonly root: HTMLElement;
   private readonly title: HTMLElement;
   private readonly subtitle: HTMLElement;
@@ -194,6 +206,11 @@ export class ReturnScreen {
     );
   }
 
+  /** Отдать экрану чужие метки: читает их сеть, а панели про неё не знают. */
+  setNeighbours(visits: readonly Visit[]): void {
+    this.others = visits;
+  }
+
   show(
     result: RaidResult,
     camp: CampState,
@@ -209,7 +226,7 @@ export class ReturnScreen {
     this.skipped = false;
     this.picked = 0;
     this.at = now;
-    this.raidNode = nextPlace(camp, node, now);
+    this.raidNode = nextPlace(camp, node, now, this.others);
     this.suggestion = suggestUpgrade(camp);
     // Три ветки одной главной кнопки, и они не бывают главными одновременно.
     // Порядок — постройка, расходник, ковка. Постройка меняет вылазку
