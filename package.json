@@ -33,7 +33,8 @@
     "clans": "tsx scripts/clans.ts",
     "fan": "tsx scripts/fan.ts",
     "levels": "tsx scripts/levels.ts",
-    "stop": "tsx scripts/stop.ts"
+    "stop": "tsx scripts/stop.ts",
+    "edge": "tsx scripts/edge.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
