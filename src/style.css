@@ -53,6 +53,9 @@
   --raze-line: #b0574a;
   /* Плашка под портретом: темнее сцены, светлее листа. */
   --portrait: rgba(30, 28, 24, 0.9);
+  --event-art-bg: #11100d;
+  --event-art-fade-top: rgba(11, 10, 9, 0.02);
+  --event-art-fade-bottom: rgba(11, 10, 9, 0.88);
   /* Рамка опасного действия: тот же красный, только вполсилы. */
   --bad-line: rgba(212, 84, 58, 0.5);
 
@@ -456,6 +459,19 @@ button:active { filter: brightness(1.25); }
   border: 1px solid var(--line); border-radius: 8px;
 }
 .map-card { padding: 8px 10px; }
+.map-card .event-art {
+  min-height: 112px; overflow: hidden;
+  padding: 9px 10px; box-sizing: border-box; display: flex; flex-direction: column;
+  justify-content: flex-end; gap: 2px; color: var(--ink); background-color: var(--event-art-bg);
+  background-position: center 42%; background-size: cover; position: relative; isolation: isolate;
+}
+.map-card .event-art::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, var(--event-art-fade-top) 22%, var(--event-art-fade-bottom) 100%);
+}
+.map-card .event-art span { font-size: 10px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.12em; }
+.map-card .event-art b { font-family: Georgia, serif; font-size: 18px; font-weight: 400; }
+.map-card .event-art i { font-style: normal; color: var(--paper); font-size: 11px; line-height: 1.25; }
 .map-card .t b { font-size: 14px; }
 .map-card .t i { font-style: normal; font-size: 11px; color: var(--dim); }
 .map-card .line { font-size: 12px; color: var(--dim); }
