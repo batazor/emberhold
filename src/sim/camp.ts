@@ -416,6 +416,24 @@ export interface CampState {
    * человека, который уже живёт в лагере. Поле необязательное.
    */
   guests?: number[];
+  /** Побеждённые хозяева и забранные награды замков минотавра, по сиду места. */
+  minotaurVictories?: number[];
+  minotaurClaims?: number[];
+  /** Репутация и номер следующей ротации заказов — общие для всех замков. */
+  minotaurReputation?: number;
+  minotaurQuestCycle?: number;
+  /** Редкий предмет каждого вскрытого золотого сундука: сид → реликт. */
+  minotaurRelics?: Record<string, 'golden-horn' | 'golem-heart' | 'labyrinth-signet'>;
+  /** Взятые у минотавра заказы. Ключ — сид замка. */
+  minotaurQuests?: Record<string, {
+    id?: string;
+    title?: string;
+    kind: 'stone' | 'wood' | 'iron';
+    amount: number;
+    reward: number;
+    reputation?: number;
+    completed: boolean;
+  }>;
   /**
    * §14.2 — что в левой руке. Поле лагеря, а не шестой слот GearState:
    * уровень предмета куётся, а рука перекладывается — бесплатно, мгновенно

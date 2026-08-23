@@ -166,7 +166,7 @@ export function playSession(seed: number): SessionResult {
       POLICIES.balanced,
       rng,
     );
-    addXp(hero, raidXp(raid.carriedTotal, tier, raid.status === 'evacuated'));
+    addXp(hero, raidXp(raid.carriedTotal, tier, raid.status === 'evacuated', raid.combatXp));
     autoSpend(hero);
     tierRaids[tier] += 1;
     // §21 — купленное ушло в вылазку и не возвращается: сгорает независимо

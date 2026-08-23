@@ -97,11 +97,19 @@ export interface CharacterSubject {
   readonly level: number | null;
   /** Доля до следующего уровня, 0…1. Отрицательная — полосы нет. */
   readonly xp: number;
+  readonly xpText: string | null;
   readonly stats: readonly StatRow[];
   /** Нераспределённые очки: при них у строк вырастает «+». */
   readonly points: number;
   /** Умение героя или занятие жильца — одна строка про то, чем он полезен. */
   readonly note: string;
+  readonly skill: {
+    readonly name: string;
+    readonly level: number;
+    readonly max: number;
+    readonly points: number;
+    readonly effect: string;
+  } | null;
   /** Кнопка Плаца. `null` — тренировать некого (жилец). */
   readonly train: { readonly text: string; readonly disabled: boolean } | null;
   readonly gear: GearState | null;
@@ -114,6 +122,7 @@ export interface CharacterSubject {
 
 export interface CharacterPageCallbacks {
   onSpend(key: SpendableStat): void;
+  onSkill(): void;
   onTrain(): void;
   onOffhand(hand: Offhand): void;
   onPick(key: string): void;
@@ -136,8 +145,10 @@ export class CharacterPage {
   private readonly level: HTMLElement;
   private readonly bar: HTMLElement;
   private readonly xp: HTMLElement;
+  private readonly xpText: HTMLElement;
   private readonly statsEl: HTMLElement;
   private readonly note: HTMLElement;
+  private readonly skill: HTMLElement;
   private readonly train: HTMLButtonElement;
   private readonly wornEl: HTMLElement;
   private readonly bagEl: HTMLElement;
@@ -150,6 +161,7 @@ export class CharacterPage {
   private packKey = '';
   private faceKey = '';
   private tabsKey = '';
+  private skillKey = '';
   /** Что нарисовано в сводке: она считается формулой, а не тиком. */
   private raidKey = '';
   private shown: CharacterSubject | null = null;
@@ -175,7 +187,7 @@ export class CharacterPage {
           <span class="ch-level" id="ch-level"></span>
           <button id="ch-close" class="ghost">Закрыть</button>
         </div>
-        <div class="bar" id="ch-bar"><i id="ch-xp"></i></div>
+        <div class="ch-xp-row"><div class="bar" id="ch-bar"><i id="ch-xp"></i></div><span id="ch-xp-text"></span></div>
         <div class="ch-body">
           <div class="ch-doll">
             <div class="ch-slots" id="ch-worn"></div>
@@ -191,6 +203,7 @@ export class CharacterPage {
             <div class="ch-raid" id="ch-raid"></div>
             <h3>Характеристики</h3>
             <div class="ch-stats" id="ch-stats"></div>
+            <div class="ch-skill card" id="ch-skill"></div>
             <div class="r-skill" id="ch-note"></div>
             <button id="ch-train"></button>
             <h3>Кованое · §14</h3>
@@ -206,8 +219,10 @@ export class CharacterPage {
     this.level = pick('ch-level');
     this.bar = pick('ch-bar');
     this.xp = pick('ch-xp');
+    this.xpText = pick('ch-xp-text');
     this.statsEl = pick('ch-stats');
     this.note = pick('ch-note');
+    this.skill = pick('ch-skill');
     this.train = pick<HTMLButtonElement>('ch-train');
     this.wornEl = pick('ch-worn');
     this.bagEl = pick('ch-bag');
@@ -223,6 +238,9 @@ export class CharacterPage {
     pick<HTMLButtonElement>('ch-close').addEventListener('click', () => this.cb.onClose());
     pick<HTMLButtonElement>('ch-turn').addEventListener('click', () => this.figure.reset());
     this.train.addEventListener('click', () => this.cb.onTrain());
+    this.skill.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('[data-skill]') !== null) this.cb.onSkill();
+    });
     this.statsEl.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-stat]');
       if (b !== null) this.cb.onSpend(b.dataset['stat'] as SpendableStat);
@@ -277,6 +295,8 @@ export class CharacterPage {
     this.level.textContent = s.level === null ? s.kind : `${s.kind} · ур. ${s.level}`;
     this.bar.style.display = s.xp < 0 ? 'none' : '';
     this.xp.style.width = `${Math.min(100, Math.max(0, s.xp * 100)).toFixed(1)}%`;
+    this.xpText.textContent = s.xpText ?? '';
+    this.xpText.style.display = s.xpText === null ? 'none' : '';
 
     if (s.stats.length === 0) {
       // Честная пустота вместо выдуманных чисел: у жильца характеристик нет,
@@ -295,6 +315,19 @@ export class CharacterPage {
           .join('') + (s.points > 0 ? `<span class="ch-stat"><b>очков: ${s.points}</b></span>` : '');
     }
     this.note.textContent = s.note;
+    const skillKey = s.skill === null
+      ? 'none'
+      : `${s.skill.name}|${s.skill.level}|${s.skill.max}|${s.skill.points}|${s.skill.effect}`;
+    if (skillKey !== this.skillKey) {
+      this.skillKey = skillKey;
+      this.skill.innerHTML = s.skill === null
+        ? ''
+        : `<span><b>${s.skill.name} · ур. ${s.skill.level}/${s.skill.max}</b><small>${s.skill.effect}</small></span>`
+          + (s.skill.points > 0 && s.skill.level < s.skill.max
+            ? `<button data-skill>Улучшить · ${s.skill.points}</button>`
+            : `<i>${s.skill.level >= s.skill.max ? 'максимум' : 'очков навыка: 0'}</i>`);
+      this.skill.style.display = s.skill === null ? 'none' : '';
+    }
     this.train.style.display = s.train === null ? 'none' : '';
     if (s.train !== null) {
       this.train.textContent = s.train.text;

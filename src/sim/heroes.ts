@@ -1,4 +1,5 @@
 import { HERO_HP } from './balance';
+import type { EnemyKind } from './types';
 
 /**
  * Этап 5 (§8): герои. Реализует §3, §11.7 и §11.8 и раскадровку `heroes.html`.
@@ -76,6 +77,32 @@ export const TRAIL_BACK_DISCOUNT = 0.25;
 export const HAUL_CAPACITY = 4;
 /** Во сколько раз «Схрон» увеличивает находку, пока действует. */
 export const CACHE_LOOT = 2;
+
+/** У классового умения пять осмысленных ступеней. Первый уровень уже есть
+ * у героя: очки, полученные дальше, усиливают его, а не открывают кнопку. */
+export const MAX_SKILL_LEVEL = 5;
+export const SKILL_POINTS_PER_LEVEL = 1;
+
+const skillLevel = (level: number): number =>
+  Math.max(1, Math.min(MAX_SKILL_LEVEL, Math.floor(level)));
+
+/** Значения первого уровня совпадают с прежними — старые герои не слабеют. */
+export const trailDiscount = (level: number): number => 0.2 + skillLevel(level) * 0.05;
+export const haulCapacity = (level: number): number => 2 + skillLevel(level) * 2;
+export const cacheLoot = (level: number): number => 1.75 + skillLevel(level) * 0.25;
+export const skillSeconds = (id: SkillId, level: number): number => {
+  const lvl = skillLevel(level);
+  if (id === 'haul') return 0;
+  return (id === 'trail' ? 25 : 15) + lvl * 5;
+};
+
+/** Единственный текст эффекта для экрана героя, HUD и журнала вылазки. */
+export function skillEffect(id: SkillId, level: number): string {
+  const lvl = skillLevel(level);
+  if (id === 'trail') return `путь назад −${Math.round(trailDiscount(lvl) * 100)}% на ${skillSeconds(id, lvl)} с`;
+  if (id === 'haul') return `+${haulCapacity(lvl)} вместимости до конца вылазки`;
+  return `находки ×${cacheLoot(lvl).toFixed(2).replace(/\.00$/, '')} на ${skillSeconds(id, lvl)} с`;
+}
 
 /**
  * §11.7 — умение раз за вылазку. **Все три платят добычей или дорогой**, и это
@@ -235,6 +262,9 @@ export interface HeroState {
   spent: Stats;
   /** Нераспределённые очки характеристик. */
   statPoints: number;
+  /** Уровень врождённого классового умения и очки на его улучшение. */
+  skillLevel: number;
+  skillPoints: number;
   /** Сколько ран получено и ещё не залечено. */
   wounds: number;
   status: HeroStatus;
@@ -275,6 +305,8 @@ export function createHero(cls: HeroClassId, id: number): HeroState {
     xp: 0,
     spent: zeroStats(),
     statPoints: 0,
+    skillLevel: 1,
+    skillPoints: 0,
     wounds: 0,
     status: 'ready',
     busyUntil: null,
@@ -310,10 +342,26 @@ export const xpToNext = (level: number): number => 100 * (level + 1);
 
 export const MAX_HERO_LEVEL = 20;
 
-/** Опыт за вылазку. Тоже placeholder: привязан к вынесенному, чтобы уровень
- *  рос от удачных заходов, а не от времени в локации. */
-export function raidXp(carried: number, tier: number, evacuated: boolean): number {
-  return Math.round(carried * 8 + tier * 10 + (evacuated ? 20 : 0));
+/** Опыт за итог вылазки. Главная награда приходит за побеждённых врагов;
+ * добыча и успешный выход оставляют небольшой бонус за завершение захода. */
+export function raidXp(carried: number, _tier: number, evacuated: boolean, combatXp = 0): number {
+  return Math.round(Math.max(0, combatXp) + carried * 2 + (evacuated ? 10 : 0));
+}
+
+/** Опыт за конкретного противника. Уровень врага усиливает награду на 25%. */
+const ENEMY_XP: Readonly<Record<EnemyKind, number>> = {
+  fox: 18,
+  minion: 28,
+  warrior: 50,
+  mage: 55,
+  ghost: 17,
+  guard: 33,
+  minotaur: 165,
+  'stone-golem': 66,
+};
+
+export function enemyXp(kind: EnemyKind, level: number): number {
+  return Math.round(ENEMY_XP[kind] * (1 + 0.25 * Math.max(0, Math.floor(level) - 1)));
 }
 
 /**
@@ -334,6 +382,7 @@ export function addXp(hero: HeroState, xp: number): number {
   }
   if (hero.level >= MAX_HERO_LEVEL) hero.xp = 0;
   hero.statPoints += gained * STAT_POINTS_PER_LEVEL;
+  hero.skillPoints += gained * SKILL_POINTS_PER_LEVEL;
   return gained;
 }
 
@@ -361,6 +410,14 @@ export function spendStat(hero: HeroState, key: SpendableStat): boolean {
   if (hero.statPoints <= 0) return false;
   hero.statPoints -= 1;
   hero.spent = { ...hero.spent, [key]: hero.spent[key] + 1 };
+  return true;
+}
+
+/** Усилить классовое умение. На максимуме очко остаётся у героя. */
+export function spendSkill(hero: HeroState): boolean {
+  if (hero.skillPoints <= 0 || hero.skillLevel >= MAX_SKILL_LEVEL) return false;
+  hero.skillPoints -= 1;
+  hero.skillLevel += 1;
   return true;
 }
 
@@ -517,6 +574,7 @@ export function refreshHeroes(roster: Roster, now: number): HeroTick[] {
       // Плац — второй источник уровней, и очки он выдаёт те же: уровень
       // один, откуда бы ни пришёл.
       hero.statPoints += STAT_POINTS_PER_LEVEL;
+      hero.skillPoints += SKILL_POINTS_PER_LEVEL;
       hero.xp = 0;
       hero.status = 'ready';
       hero.busyUntil = null;
@@ -535,6 +593,8 @@ export interface RaidOutcome {
   readonly levels: number;
   /** Сколько секунд герой будет лечиться. 0 — вернулся целым. */
   readonly healSec: number;
+  /** Весь опыт за бой, добычу и успешный выход. */
+  readonly xp: number;
 }
 
 /**
@@ -580,16 +640,19 @@ export function applyRaidOutcome(
   evacuated: boolean,
   now: number,
   infirmaryLevel = 0,
+  combatXp = 0,
 ): RaidOutcome {
   hero.wounds = woundsFrom(hero.cls, hpLeft);
   hero.status = 'ready';
   hero.busyUntil = null;
-  const levels = addXp(hero, raidXp(carried, tier, evacuated));
+  const xp = raidXp(carried, tier, evacuated, combatXp);
+  const levels = addXp(hero, xp);
   const healing = startHealing(hero, now, infirmaryLevel);
   return {
     wounds: hero.wounds,
     levels,
     healSec: healing ? healSeconds(hero.wounds, infirmaryLevel) : 0,
+    xp,
   };
 }
 
@@ -643,6 +706,7 @@ export interface HeroLoadout {
   readonly bagMul: number;
   readonly speedMul: number;
   readonly skill: SkillId;
+  readonly skillLevel: number;
   /** §11.3 — сколько очков стойкости снимает удар. Растёт с уровнем. */
   readonly attack: number;
   /** §11.3 — делит пробой: сколько ран стоит удар по герою. */
@@ -675,6 +739,7 @@ export function loadout(hero: HeroState): HeroLoadout {
     bagMul: def.bagMul,
     speedMul: def.speedMul,
     skill: def.skill,
+    skillLevel: hero.skillLevel,
     // §11.3 — обе характеристики теперь входят в бой, а не только
     // показываются. Берутся с уровнем: рост героя обязан быть виден в бою,
     // иначе тренировка не чувствуется (§11.8).
@@ -696,6 +761,7 @@ export const DEFAULT_LOADOUT: HeroLoadout = {
   bagMul: 1,
   speedMul: 1,
   skill: 'cache',
+  skillLevel: 1,
   // Эталонные значения, а не значения класса: этим героем ходят золотой
   // мастер и вся калибровка §20.3, и от него же считается весь бестиарий
   // (§22.6): рядовой стоит четверти его здоровья, воин — половины.

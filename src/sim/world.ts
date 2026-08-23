@@ -153,7 +153,7 @@ const GRID_Y = 5;
  * есть. Тропа (§6.1.17) — прогулка длинная: ход через лес в разы длиннее
  * своей ширины, и смысл захода — пройти, а не рассмотреть.
  */
-export type NodeKind = 'вылазка' | 'замок' | 'кладбище' | 'тропа' | 'призы';
+export type NodeKind = 'вылазка' | 'замок' | 'замок минотавра' | 'кладбище' | 'тропа' | 'призы';
 
 /**
  * Свойства вида узла — одной таблицей, а не россыпью проверок `kind === …`.
@@ -190,6 +190,7 @@ const STROLL: readonly {
   readonly max: number;
 }[] = [
   { kind: 'замок', label: 'Замок', min: 1, max: 3 },
+  { kind: 'замок минотавра', label: 'Замок минотавра', min: 1, max: 1 },
   { kind: 'кладбище', label: 'Кладбище', min: 1, max: 3 },
   // Реже прогулок-участков: тропе пока нечем занять второй заход, а две
   // тропы в дне обещали бы сеть дорог, которой на карте нет.
@@ -202,6 +203,7 @@ const STROLL: readonly {
 export const KIND: Record<NodeKind, KindTraits> = {
   'вылазка': { walk: false, events: true, gated: true, raidable: true },
   'замок': { walk: true, events: false, gated: false, raidable: false },
+  'замок минотавра': { walk: true, events: false, gated: false, raidable: false },
   'кладбище': { walk: true, events: false, gated: false, raidable: false },
   'тропа': { walk: true, events: false, gated: false, raidable: false },
   // Колесо призов: не вылазка и не прогулка по участку — аттракцион.

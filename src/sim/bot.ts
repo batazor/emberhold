@@ -19,7 +19,7 @@ import { buildChest, chestBlock } from './chests';
 import type { BuildingId, CampState } from './camp';
 import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
 import { shouldContinue } from './balance';
-import { HAUL_CAPACITY, TRAIL_BACK_DISCOUNT } from './heroes';
+import { haulCapacity, trailDiscount } from './heroes';
 import { ENEMY_STATS } from './enemies';
 import { alive, current, moves, targets } from './battle';
 import type { BattleAction } from './battle';
@@ -245,7 +245,7 @@ function maybeUseSkill(
     // позже этого порога, поднимает потолок тому, кто уже развернулся.
     // Первая версия сторожила `room <= HAUL_CAPACITY` и давала ровно ноль.
     const stopAt = state.capacity * policy.bagStop;
-    const tight = state.bagTotal >= stopAt - HAUL_CAPACITY;
+    const tight = state.bagTotal >= stopAt - haulCapacity(state.loadout.skillLevel);
     const more = state.loc.containers.some((c) => !c.opened && (toHere[idx(size, c.x, c.z)] ?? -1) >= 0);
     if (tight && more) useSkill(state);
     return;
@@ -290,7 +290,7 @@ function maybeUseSkill(
  */
 const rawBack = (state: RaidState, cell: number): number => state.loc.backSteps[cell] ?? 0;
 const discounted = (state: RaidState, cell: number): number =>
-  Math.ceil(rawBack(state, cell) * (1 - TRAIL_BACK_DISCOUNT));
+  Math.ceil(rawBack(state, cell) * (1 - trailDiscount(state.loadout.skillLevel)));
 
 /** Один забег: бот ставит цель, симуляция её отрабатывает, бот решает заново. */
 export function playRaid(

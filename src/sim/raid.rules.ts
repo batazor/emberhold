@@ -8,7 +8,7 @@ import { START_FOOD } from './balance';
 import { TICK } from '../core/loop';
 import { createCamp, kitchenFood, storageCapacity } from './camp';
 import { bowQuiver, emptyGear } from './gear';
-import { createHero, loadout } from './heroes';
+import { createHero, enemyXp, loadout } from './heroes';
 import { POLICIES, botBattlePlan } from './bot';
 import {
   atRisk,
@@ -220,6 +220,12 @@ describe('Вылазка', () => {
         enemy.hp <= 0 || raid.hero.hp <= 0,
         'бой кончился, но никто не пал — значит мерили не бой',
       );
+      assert.equal(
+        raid.combatXp,
+        enemy.hp <= 0 ? enemyXp(enemy.kind, enemy.level) : 0,
+        'опыт начисляется один раз за павшего врага',
+      );
+      assert.equal(raidResult(raid).combatXp, raid.combatXp, 'награда доезжает до итога');
     });
 
     test('неведомый бой стоит на месте, а не идёт сам', () => {

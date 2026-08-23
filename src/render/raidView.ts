@@ -190,6 +190,8 @@ const ATTACK_RATE: Record<EnemyKind, number> = {
   ghost: 1,
   guard: STRIKE / ENEMY_STATS.guard.telegraph,
   fox: 1,
+  minotaur: STRIKE / ENEMY_STATS.minotaur.telegraph,
+  'stone-golem': 1,
 };
 
 /**
@@ -272,6 +274,16 @@ interface PlayNow {
   landed: boolean;
   /** Мировые точки пути шага. */
   readonly points: readonly { x: number; z: number }[] | null;
+  /** Сколько точек тяжёлого пути уже подняли пыль. */
+  dustAt: number;
+}
+
+interface BattleFx {
+  readonly mesh: THREE.Mesh;
+  readonly velocity: THREE.Vector3;
+  life: number;
+  readonly total: number;
+  readonly dust: boolean;
 }
 
 /** Сколько ствол дрожит после замаха (§13.3). Короче клипа удара: дрожь —
@@ -394,6 +406,12 @@ export class RaidView {
   /** Рана ведущего дошла до экрана — main дёргает тряску кадра отсюда,
    *  а не тиком симуляции: тряска раньше удара читалась бы как сбой. */
   onHeroHit: (() => void) | null = null;
+  /** Тяжёлый удар или обвал голема дошёл до кадра. */
+  onHeavyImpact: (() => void) | null = null;
+  private readonly battleFx: BattleFx[] = [];
+  private dustGeometry: THREE.CircleGeometry | null = null;
+  private shardGeometry: THREE.TetrahedronGeometry | null = null;
+  private shardMaterial: THREE.MeshLambertMaterial | null = null;
   /**
    * Пеньки просеки (§13.3). Один InstancedMesh на всю локацию, заведённый
    * заранее и пустой: срубить можно каждое внутреннее дерево, но не сразу,
@@ -2040,7 +2058,9 @@ export class RaidView {
     const rig = e.kind === 'fox'
       ? new FoxRig(this.blocking)
       : e.kind === 'ghost'
-      ? new Drifting(enemyGeometry('ghost'), this.blocking, ENEMY_HEIGHT.ghost)
+        ? new Drifting(enemyGeometry('ghost'), this.blocking, ENEMY_HEIGHT.ghost, 'ghost')
+      : e.kind === 'minotaur' || e.kind === 'stone-golem'
+        ? new Drifting(enemyGeometry(e.kind), this.blocking, ENEMY_HEIGHT[e.kind], e.kind)
       // Стражник — рыцарь дозора (§6.1.6): засада поднимает гарнизон,
       // а не третью породу людей.
       : e.kind === 'guard'
@@ -2299,7 +2319,7 @@ export class RaidView {
       // Темп клипа — под темп показа, а не под скорость мира: фигура идёт
       // гекс за PLAY_HEX_SECONDS, и ноги обязаны успевать за ней.
       rig?.play('ходьба', rateFor(1 / PLAY_HEX_SECONDS, scale));
-      return { play, t: 0, dur, impact: 0, landed: true, points };
+      return { play, t: 0, dur, impact: 0, landed: true, points, dustAt: 0 };
     }
 
     if (play.kind === 'strike') {
@@ -2309,7 +2329,7 @@ export class RaidView {
       );
       const impact = play.ranged
         ? PLAY_RELEASE_SECONDS + Math.max(0.08, steps * PLAY_FLIGHT_PER_HEX)
-        : PLAY_IMPACT_SECONDS;
+        : PLAY_IMPACT_SECONDS * (play.technique === 'minotaur-charge' ? 1.18 : 1);
       // Разворот к цели — до замаха: удар в спину без поворота читается
       // как сбой, а не как приём.
       const from = hexToWorld(play.from);
@@ -2321,7 +2341,7 @@ export class RaidView {
         rig.play(play.ranged ? 'выстрел' : 'удар', play.ranged ? 1 : STRIKE / PLAY_IMPACT_SECONDS);
         rig.replay();
       }
-      return { play, t: 0, dur: impact + PLAY_RECOVER_SECONDS, impact, landed: false, points: null };
+      return { play, t: 0, dur: impact + PLAY_RECOVER_SECONDS, impact, landed: false, points: null, dustAt: 0 };
     }
 
     // Блок: короткая пауза на жест, позу дальше держит сам клип (`hold`).
@@ -2329,7 +2349,72 @@ export class RaidView {
       rig.play('блок');
       rig.replay();
     }
-    return { play, t: 0, dur: PLAY_GUARD_SECONDS, impact: 0, landed: true, points: null };
+    return { play, t: 0, dur: PLAY_GUARD_SECONDS, impact: 0, landed: true, points: null, dustAt: 0 };
+  }
+
+  private spawnDust(x: number, z: number): void {
+    this.dustGeometry ??= this.track(new THREE.CircleGeometry(0.18, 10));
+    for (let i = 0; i < 3; i++) {
+      const material = this.track(new THREE.MeshBasicMaterial({
+        color: 0x8d7657, transparent: true, opacity: 0.34, depthWrite: false,
+      }));
+      const mesh = new THREE.Mesh(this.dustGeometry, material);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(x + (i - 1) * 0.12, 0.055 + i * 0.004, z + (i % 2 ? 0.08 : -0.05));
+      mesh.scale.setScalar(0.55 + i * 0.16);
+      this.group.add(mesh);
+      this.battleFx.push({ mesh, velocity: new THREE.Vector3((i - 1) * 0.08, 0.04, (i % 2 ? 1 : -1) * 0.06), life: 0.46, total: 0.46, dust: true });
+    }
+  }
+
+  private spawnGolemShards(x: number, z: number): void {
+    this.shardGeometry ??= this.track(new THREE.TetrahedronGeometry(0.12, 0));
+    this.shardMaterial ??= this.track(new THREE.MeshLambertMaterial({ color: 0x77736a, flatShading: true }));
+    for (let i = 0; i < 11; i++) {
+      const angle = (i / 11) * Math.PI * 2;
+      const speed = 0.8 + (i % 4) * 0.22;
+      const mesh = new THREE.Mesh(this.shardGeometry, this.shardMaterial);
+      mesh.position.set(x, 0.45 + (i % 3) * 0.12, z);
+      mesh.scale.setScalar(0.65 + (i % 3) * 0.22);
+      this.group.add(mesh);
+      this.battleFx.push({
+        mesh,
+        velocity: new THREE.Vector3(Math.sin(angle) * speed, 1.2 + (i % 4) * 0.18, Math.cos(angle) * speed),
+        life: 0.82,
+        total: 0.82,
+        dust: false,
+      });
+    }
+    this.spawnDust(x, z);
+  }
+
+  private syncBattleFx(dt: number): void {
+    for (let i = this.battleFx.length - 1; i >= 0; i--) {
+      const fx = this.battleFx[i]!;
+      fx.life -= dt;
+      if (fx.life <= 0) {
+        fx.mesh.removeFromParent();
+        this.battleFx.splice(i, 1);
+        continue;
+      }
+      fx.mesh.position.addScaledVector(fx.velocity, dt);
+      if (fx.dust) {
+        const share = 1 - fx.life / fx.total;
+        fx.mesh.scale.multiplyScalar(1 + dt * 1.8);
+        (fx.mesh.material as THREE.MeshBasicMaterial).opacity = 0.34 * (1 - share);
+      } else {
+        fx.velocity.y -= 3.4 * dt;
+        fx.mesh.rotation.x += dt * 8;
+        fx.mesh.rotation.z += dt * 6;
+        if (fx.mesh.position.y < 0.06) {
+          fx.mesh.position.y = 0.06;
+          fx.velocity.y *= -0.28;
+          fx.velocity.x *= 0.65;
+          fx.velocity.z *= 0.65;
+        }
+        fx.mesh.scale.setScalar(Math.max(0.05, fx.life / fx.total));
+      }
+    }
   }
 
   /** Попадание дошло до экрана: реакция цели, вспышка, полоска, падение. */
@@ -2337,6 +2422,12 @@ export class RaidView {
     this.shownHp.set(play.target, play.hpAfter);
     const body = this.battleRigOf(state, play.target);
     if (body === null) return;
+    const attackerKind = play.unit >= 0
+      ? this.loc.enemies.find((enemy) => enemy.id === play.unit)?.kind
+      : null;
+    const targetKind = play.target >= 0
+      ? this.loc.enemies.find((enemy) => enemy.id === play.target)?.kind
+      : null;
 
     if (play.dodged) {
       // Уворот (§11.3): удар прошёл мимо — ни вспышки, ни раны, ни отдачи
@@ -2360,6 +2451,11 @@ export class RaidView {
       return;
     }
 
+    if (attackerKind === 'stone-golem' || play.technique === 'minotaur-charge') {
+      this.onHeavyImpact?.();
+      this.spawnDust(hexToWorld(play.at).x, hexToWorld(play.at).z);
+    }
+
     if (body.enemy !== undefined) {
       body.enemy.flash = FLASH_SECONDS;
       body.enemy.hp = play.hpAfter;
@@ -2374,6 +2470,11 @@ export class RaidView {
       this.shownDead.add(play.target);
       if (rig !== null && rig.state !== 'падение') rig.play('падение', FALL_RATE);
       if (body.enemy !== undefined) body.enemy.lifeRoot.visible = false;
+      if (targetKind === 'stone-golem') {
+        const at = hexToWorld(play.at);
+        this.spawnGolemShards(at.x, at.z);
+        this.onHeavyImpact?.();
+      }
       return;
     }
     if (play.blocked) {
@@ -2506,6 +2607,19 @@ export class RaidView {
     const now = this.playNow;
     if (now !== null) {
       now.t += dt;
+      if (now.play.kind === 'move' && now.points !== null) {
+        const kind = now.play.unit >= 0
+          ? this.loc.enemies.find((enemy) => enemy.id === now.play.unit)?.kind
+          : null;
+        if (kind === 'stone-golem' || kind === 'minotaur') {
+          const reached = Math.min(now.points.length - 1, Math.floor(now.t / PLAY_HEX_SECONDS));
+          while (now.dustAt < reached) {
+            now.dustAt += 1;
+            const point = now.points[now.dustAt];
+            if (point !== undefined) this.spawnDust(point.x, point.z);
+          }
+        }
+      }
       if (now.play.kind === 'strike' && !now.landed && now.t >= now.impact) {
         now.landed = true;
         this.landStrike(state, now.play);
@@ -2547,8 +2661,9 @@ export class RaidView {
           const phase = cur.t < cur.impact
             ? cur.t / cur.impact
             : Math.max(0, 1 - (cur.t - cur.impact) / Math.max(1e-3, cur.dur - cur.impact));
-          x += ((to.x - from.x) / d) * PLAY_LUNGE * phase;
-          z += ((to.z - from.z) / d) * PLAY_LUNGE * phase;
+          const lunge = PLAY_LUNGE * (cur.play.technique === 'minotaur-charge' ? 1.8 : 1);
+          x += ((to.x - from.x) / d) * lunge * phase;
+          z += ((to.z - from.z) / d) * lunge * phase;
         }
       }
       const bump = this.bumps.get(id);
@@ -2889,6 +3004,7 @@ export class RaidView {
     }
 
     this.syncTrees(dt);
+    this.syncBattleFx(dt);
     this.syncStones(dt);
     this.syncGarrison(dt);
     this.syncSettler(dt);

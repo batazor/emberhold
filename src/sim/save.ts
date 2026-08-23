@@ -10,7 +10,15 @@ import { RESIDENT_JOBS, RESIDENT_SCHEDULE_ORDER } from './residents';
 import type { ResidentJob, ResidentScheduleId } from './residents';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
-import { CLASS_ORDER, HERO_CLASSES, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
+import {
+  CLASS_ORDER,
+  HERO_CLASSES,
+  LEGACY_CLASS,
+  MAX_HERO_LEVEL,
+  MAX_SKILL_LEVEL,
+  createRoster,
+  syncRoster,
+} from './heroes';
 import type { HeroState, Roster, Stats } from './heroes';
 import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
 import { ONB_ORDER, RENAMED_STEPS, restartStep } from './onboarding';
@@ -106,6 +114,9 @@ interface SaveV1 {
       spent?: Partial<Record<string, number>>;
       /** Нераспределённые очки характеристик. */
       sp?: number;
+      /** Уровень классового умения и нераспределённые очки навыка. */
+      sl?: number;
+      skp?: number;
       wounds: number;
       status: string;
       busyUntil: number | null;
@@ -194,6 +205,12 @@ interface SaveV1 {
   /** §13.5 — выкупленное с прилавка. Самоистекающий список на сутки. */
   bought?: Record<string, number>;
   guests?: number[];
+  minotaurVictories?: number[];
+  minotaurClaims?: number[];
+  minotaurReputation?: number;
+  minotaurQuestCycle?: number;
+  minotaurRelics?: CampState['minotaurRelics'];
+  minotaurQuests?: CampState['minotaurQuests'];
 }
 
 export interface LoadResult {
@@ -289,6 +306,12 @@ export function save(
         }
       : {}),
     ...(camp.guests !== undefined ? { guests: [...camp.guests] } : {}),
+    ...(camp.minotaurVictories !== undefined ? { minotaurVictories: [...camp.minotaurVictories] } : {}),
+    ...(camp.minotaurClaims !== undefined ? { minotaurClaims: [...camp.minotaurClaims] } : {}),
+    ...(camp.minotaurReputation !== undefined ? { minotaurReputation: camp.minotaurReputation } : {}),
+    ...(camp.minotaurQuestCycle !== undefined ? { minotaurQuestCycle: camp.minotaurQuestCycle } : {}),
+    ...(camp.minotaurRelics !== undefined ? { minotaurRelics: { ...camp.minotaurRelics } } : {}),
+    ...(camp.minotaurQuests !== undefined ? { minotaurQuests: camp.minotaurQuests } : {}),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -298,6 +321,8 @@ export function save(
         xp: h.xp,
         spent: { ...h.spent },
         sp: h.statPoints,
+        sl: h.skillLevel,
+        skp: h.skillPoints,
         wounds: h.wounds,
         status: h.status,
         busyUntil: h.busyUntil,
@@ -635,6 +660,51 @@ export function load(): LoadResult {
     if (Array.isArray(data.guests)) {
       camp.guests = data.guests.filter((g): g is number => typeof g === 'number');
     }
+    const seeds = (value: unknown): number[] | undefined => Array.isArray(value)
+      ? [...new Set(value.filter((n): n is number =>
+          typeof n === 'number' && Number.isInteger(n) && n >= 0).map((n) => n >>> 0))].slice(0, 128)
+      : undefined;
+    const victories = seeds(data.minotaurVictories);
+    const claims = seeds(data.minotaurClaims);
+    if (victories !== undefined) camp.minotaurVictories = victories;
+    if (claims !== undefined) camp.minotaurClaims = claims;
+    if (typeof data.minotaurReputation === 'number' && data.minotaurReputation >= 0) {
+      camp.minotaurReputation = Math.floor(data.minotaurReputation);
+    }
+    if (typeof data.minotaurQuestCycle === 'number' && data.minotaurQuestCycle >= 0) {
+      camp.minotaurQuestCycle = Math.floor(data.minotaurQuestCycle);
+    }
+    if (data.minotaurRelics != null && typeof data.minotaurRelics === 'object') {
+      const relics: NonNullable<CampState['minotaurRelics']> = {};
+      for (const [key, id] of Object.entries(data.minotaurRelics).slice(0, 128)) {
+        if (id === 'golden-horn' || id === 'golem-heart' || id === 'labyrinth-signet') relics[key] = id;
+      }
+      camp.minotaurRelics = relics;
+    }
+    if (data.minotaurQuests != null && typeof data.minotaurQuests === 'object') {
+      const quests: NonNullable<CampState['minotaurQuests']> = {};
+      for (const [key, raw] of Object.entries(data.minotaurQuests).slice(0, 128)) {
+        if (raw == null || typeof raw !== 'object') continue;
+        const q = raw as Record<string, unknown>;
+        if (
+          (q.kind !== 'stone' && q.kind !== 'wood' && q.kind !== 'iron') ||
+          typeof q.amount !== 'number' || !Number.isFinite(q.amount) || q.amount <= 0 ||
+          typeof q.reward !== 'number' || !Number.isFinite(q.reward) || q.reward <= 0
+        ) continue;
+        quests[key] = {
+          ...(typeof q.id === 'string' ? { id: q.id.slice(0, 40) } : {}),
+          ...(typeof q.title === 'string' ? { title: q.title.slice(0, 80) } : {}),
+          kind: q.kind,
+          amount: Math.floor(q.amount),
+          reward: Math.floor(q.reward),
+          ...(typeof q.reputation === 'number' && q.reputation > 0
+            ? { reputation: Math.floor(q.reputation) }
+            : {}),
+          completed: q.completed === true,
+        };
+      }
+      camp.minotaurQuests = quests;
+    }
 
     for (const slot of GEAR_ORDER) {
       const level = data.gear?.[slot];
@@ -745,6 +815,14 @@ function readRoster(roster: Roster, saved: SaveV1['heroes'], sortie: CampState['
       xp: typeof h.xp === 'number' && h.xp >= 0 ? Math.floor(h.xp) : 0,
       spent,
       statPoints: typeof h.sp === 'number' && h.sp >= 0 ? Math.floor(h.sp) : 0,
+      skillLevel:
+        typeof h.sl === 'number'
+          ? Math.max(1, Math.min(MAX_SKILL_LEVEL, Math.floor(h.sl)))
+          : 1,
+      // До появления прокачки умения каждый уже взятый уровень героя
+      // ретроактивно даёт очко: старый сейв не теряет заработанный прогресс.
+      skillPoints:
+        typeof h.skp === 'number' && h.skp >= 0 ? Math.floor(h.skp) : Math.max(0, level - 1),
       wounds: typeof h.wounds === 'number' && h.wounds >= 0 ? Math.floor(h.wounds) : 0,
       status: status === 'raid' && !away ? 'ready' : status,
       busyUntil:

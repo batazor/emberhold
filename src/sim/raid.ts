@@ -16,7 +16,16 @@ import {
   visionRadius,
 } from './config';
 import { ENEMY_STATS, enemyStats } from './enemies';
-import { CACHE_LOOT, DEFAULT_LOADOUT, HAUL_CAPACITY, SKILLS, TRAIL_BACK_DISCOUNT } from './heroes';
+import {
+  DEFAULT_LOADOUT,
+  SKILLS,
+  cacheLoot,
+  enemyXp,
+  haulCapacity,
+  skillEffect,
+  skillSeconds,
+  trailDiscount,
+} from './heroes';
 import type { HeroLoadout } from './heroes';
 import { NO_MODS, gearMods } from './gear';
 import type { GearState, Offhand } from './gear';
@@ -307,6 +316,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     joined: 0,
     kills: 0,
     foxesCaught: 0,
+    combatXp: 0,
     evacOpen: opts.evacOpen ?? true,
     // §14.3 — колчан наполняется на выходе, из лагерного запаса и не выше
     // вместимости. У ближника вместимость нулевая, и «ноль стрел у Лучника»
@@ -344,7 +354,7 @@ export function backCost(state: RaidState, cell: number): number {
   const raw = d === undefined || d < 0 ? 0 : d;
   // Карта работает всю вылазку, умение — тридцать секунд; сокращают они одну
   // и ту же дорогу и потому перемножаются.
-  const skill = skillActive(state, 'trail') ? 1 - TRAIL_BACK_DISCOUNT : 1;
+  const skill = skillActive(state, 'trail') ? 1 - trailDiscount(state.loadout.skillLevel) : 1;
   return Math.ceil(raw * state.backMul * skill);
 }
 
@@ -449,11 +459,11 @@ export function useSkill(state: RaidState): boolean {
   if (state.status !== 'running' || state.skillUsed) return false;
   const def = SKILLS[state.loadout.skill];
   state.skillUsed = true;
-  state.skillLeft = def.seconds;
+  state.skillLeft = skillSeconds(def.id, state.loadout.skillLevel);
   // Заплечье действует не срок, а до конца вылазки: потолок рюкзака поднят
   // один раз и остаётся поднятым. Поэтому у него `seconds: 0`.
-  if (state.loadout.skill === 'haul') state.capacity += HAUL_CAPACITY;
-  state.events.push(`${def.name}: ${def.effect}`);
+  if (state.loadout.skill === 'haul') state.capacity += haulCapacity(state.loadout.skillLevel);
+  state.events.push(`${def.name}: ${skillEffect(def.id, state.loadout.skillLevel)}`);
   return true;
 }
 
@@ -530,14 +540,21 @@ function arriveAt(state: RaidState, cell: Cell): void {
     (c) => !c.opened && c.x === cell.x && c.z === cell.z,
   );
   if (container !== undefined) {
-    if (state.bagTotal >= state.capacity) {
+    const locks = container.lockedBy === undefined
+      ? []
+      : Array.isArray(container.lockedBy) ? container.lockedBy : [container.lockedBy];
+    if (locks.length > 0 && state.loc.enemies.some((e) => locks.includes(e.kind) && e.hp > 0)) {
+      state.events.push('Золотой сундук остаётся заперт, пока хозяин жив');
+    } else if (state.bagTotal >= state.capacity) {
       state.events.push('Рюкзак полон — контейнер не вскрыт');
     } else {
       container.opened = true;
       spend(state, state.containerFood);
       // §11.7 «Схрон» — находка щедрее, пока умение держится. Множитель
       // ложится на содержимое, а не на взятое: упереться в рюкзак он не мешает.
-      const inside = skillActive(state, 'cache') ? container.amount * CACHE_LOOT : container.amount;
+      const inside = skillActive(state, 'cache')
+        ? container.amount * cacheLoot(state.loadout.skillLevel)
+        : container.amount;
       const taken = Math.min(inside, state.capacity - state.bagTotal);
       state.bag[container.kind] += taken;
       state.bagTotal += taken;
@@ -699,6 +716,7 @@ function stepContact(state: RaidState, dt: number, vision: number): void {
 
     // Игрок видит дальше, чем его видят: только так «проход через комнату»
     // остаётся платным решением, а не внезапной свалкой (§15).
+    if (enemy.peaceful === true) continue;
     if (!enemy.awake && dist <= vision * ENEMY_WAKE_SHARE && state.elapsed >= state.smokeUntil) {
       enemy.awake = true;
     }
@@ -1027,7 +1045,10 @@ function closeBattle(state: RaidState): void {
     enemy.prevZ = enemy.z;
     enemy.x = world.x;
     enemy.z = world.z;
-    if (u.hp <= 0 && enemy.hp > 0) state.kills += 1;
+    if (u.hp <= 0 && enemy.hp > 0) {
+      state.kills += 1;
+      state.combatXp += enemyXp(enemy.kind, enemy.level);
+    }
     enemy.hp = u.hp;
     if (u.hp <= 0) {
       enemy.awake = false;
@@ -1275,6 +1296,8 @@ export interface RaidResult {
   readonly damageTaken: number;
   readonly fights: number;
   readonly kills: number;
+  /** Опыт, заработанный именно победами в боях. */
+  readonly combatXp: number;
   /** Кто нанёс последний удар. null — вылазка кончилась не боем. */
   readonly lastHitBy: EnemyKind | null;
   /** §11.7 — сколько бойцов вернулось на ногах. Провал — это ноль, а не
@@ -1348,6 +1371,7 @@ export function raidResult(state: RaidState): RaidResult {
     damageTaken: state.damageTaken,
     fights: state.fights,
     kills: state.kills,
+    combatXp: state.combatXp,
     lastHitBy: raidCause(state) === 'combat' ? state.lastHitBy : null,
     standing: standing(state).length,
     joined: state.joined,

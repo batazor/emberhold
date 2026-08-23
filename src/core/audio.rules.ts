@@ -50,6 +50,7 @@ describe('Звук: библиотека (§18.3)', () => {
     const expected = [
       'step', 'swing', 'hit', 'wound', 'kill', 'chest', 'pick', 'tick',
       'evac', 'fail', 'build', 'levelup', 'gift', 'tap', 'deny',
+      'heavyStep', 'stoneHit', 'roar', 'golemBreak',
     ];
     assert.deepEqual(Object.keys(SFX).sort(), [...expected].sort());
   });

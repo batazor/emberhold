@@ -68,6 +68,27 @@ describe('Сохранение', () => {
     assert.equal(camp.resources.wood, 7, 'остальные ресурсы не задеты');
   });
 
+  test('репутация, ротация и реликты минотавра переживают перезапуск', () => {
+    fakeStore();
+    const camp = createCamp();
+    camp.minotaurReputation = 7;
+    camp.minotaurQuestCycle = 4;
+    camp.minotaurRelics = { '42': 'golem-heart' };
+    camp.minotaurQuests = {
+      '42': {
+        id: 'golem-clamps', title: 'Железо для оков голема',
+        kind: 'iron', amount: 5, reward: 26, reputation: 2, completed: false,
+      },
+    };
+    save(camp, createRoster(), 0);
+    const back = load().camp;
+    assert.equal(back.minotaurReputation, 7);
+    assert.equal(back.minotaurQuestCycle, 4);
+    assert.equal(back.minotaurRelics?.['42'], 'golem-heart');
+    assert.equal(back.minotaurQuests?.['42']?.id, 'golem-clamps');
+    assert.equal(back.minotaurQuests?.['42']?.reputation, 2);
+  });
+
   test('герой, записанный Солеваром, открывается Бандитом с опытом', () => {
     const store = fakeStore();
     store.set(
@@ -85,6 +106,8 @@ describe('Сохранение', () => {
     assert.equal(hero?.cls, 'rogue', 'класс переехал через оба переименования');
     assert.equal(hero?.level, 5, 'уровень уцелел');
     assert.equal(hero?.xp, 120, 'опыт уцелел');
+    assert.equal(hero?.skillLevel, 1, 'новое умение начинается с первой ступени');
+    assert.equal(hero?.skillPoints, 4, 'старые уровни ретроактивно дали очки умения');
   });
 
   test('§11.7 — три старых класса открываются тремя разными новыми', () => {

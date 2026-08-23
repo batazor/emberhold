@@ -61,6 +61,7 @@ import { drawMapTerrain } from './mapTerrain';
  */
 const WALK_COLOR: Partial<Record<NodeKind, string>> = {
   'замок': '#c8a24a',
+  'замок минотавра': '#d46a3a',
   'кладбище': '#9fb6d8',
   // Мшистый, а не зелёный богатства (`RICH_COLOR[3]`): кольцо прогулки
   // не имеет права читаться как «полная жила».
@@ -248,6 +249,18 @@ export const NODE_ICON: Record<
     ctx.lineTo(x + r * 0.56, y - r * 0.5);
     ctx.lineTo(x + r * 0.56, y - r);
     ctx.lineTo(x + r, y - r);
+    ctx.lineTo(x + r, y + r);
+    ctx.closePath();
+  },
+  // Рога над зубчатой стеной отличают владение минотавра ещё до карточки.
+  'замок минотавра': (ctx, x, y, r) => {
+    ctx.moveTo(x - r, y + r);
+    ctx.lineTo(x - r, y - r * 0.45);
+    ctx.lineTo(x - r * 0.65, y - r);
+    ctx.lineTo(x - r * 0.25, y - r * 0.45);
+    ctx.lineTo(x + r * 0.25, y - r * 0.45);
+    ctx.lineTo(x + r * 0.65, y - r);
+    ctx.lineTo(x + r, y - r * 0.45);
     ctx.lineTo(x + r, y + r);
     ctx.closePath();
   },
@@ -791,6 +804,10 @@ export class WorldMap {
       this.paintKeepCard(node);
       return;
     }
+    if (node.kind === 'замок минотавра') {
+      this.paintMinotaurKeepCard(node);
+      return;
+    }
     if (node.kind === 'кладбище') {
       this.paintGraveCard(node);
       return;
@@ -1041,6 +1058,16 @@ export class WorldMap {
       '<div class="row line"><span>Кто здесь</span><b class="good">торговец</b></div>' +
       '<div class="row line"><span>Меняет на</span><b>железо</b></div>';
     this.note.textContent = 'Прогулка: добычи и противников нет. Торговец во дворе, за воротами.';
+    this.walkButton(node);
+  }
+
+  private paintMinotaurKeepCard(node: WorldNode): void {
+    this.card.innerHTML =
+      `<div class="row t"><b>${node.name}</b><i>испытание</i></div>` +
+      '<div class="row line"><span>Что там</span><b>замок и золотой сундук</b></div>' +
+      '<div class="row line"><span>Охрана</span><b class="bad">минотавр и два голема</b></div>' +
+      '<div class="row line"><span>Выбор</span><b>бой, обмен или заказ</b></div>';
+    this.note.textContent = 'Поговорите с хозяином. За сундук придётся сразиться; торговля и заказ безопаснее, но награда меньше.';
     this.walkButton(node);
   }
 

@@ -91,6 +91,40 @@ describe('Звук вылазки (§18.3)', () => {
     assert.deepEqual(heard, ['hit']);
   });
 
+  test('минотавр начинает схватку рёвом', () => {
+    const raid = raidWithEnemies();
+    const beast = raid.loc.enemies[0]!;
+    (beast as { kind: typeof beast.kind }).kind = 'minotaur';
+    const { ear, heard } = listen(raid);
+    raid.fights += 1;
+    ear.hear(raid);
+    assert.deepEqual(heard, ['roar']);
+  });
+
+  test('голем звучит камнем при ранении и разрушением при смерти', () => {
+    const raid = raidWithEnemies();
+    const golem = raid.loc.enemies[0]!;
+    (golem as { kind: typeof golem.kind }).kind = 'stone-golem';
+    golem.hp = 3;
+    const { ear, heard } = listen(raid);
+    golem.hp = 2;
+    ear.hear(raid);
+    golem.hp = 0;
+    ear.hear(raid);
+    assert.deepEqual(heard, ['stoneHit', 'golemBreak']);
+  });
+
+  test('перемещение тяжёлого существа озвучивается один раз на ход показа', () => {
+    const raid = raidWithEnemies();
+    const golem = raid.loc.enemies[0]!;
+    (golem as { kind: typeof golem.kind }).kind = 'stone-golem';
+    const { ear, heard } = listen(raid);
+    raid.plays.push({ kind: 'move', unit: golem.id, path: [{ q: 1, r: 1 }, { q: 2, r: 1 }] });
+    ear.hear(raid);
+    ear.hear(raid);
+    assert.deepEqual(heard, ['heavyStep']);
+  });
+
   test('мёртвый не звучит второй раз при следующем попадании', () => {
     const raid = raidWithEnemies();
     const dead = raid.loc.enemies[0]!;

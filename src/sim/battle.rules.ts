@@ -10,6 +10,8 @@ import {
   DODGE_FLOOR_SHARE,
   DODGE_MAX,
   GUARD_SHARE,
+  MINOTAUR_CHARGE_BONUS,
+  STONE_ARMOR,
   advance,
   dodgeOf,
   rollPercent,
@@ -25,7 +27,7 @@ import {
   reachInHexes,
   targets,
 } from './battle';
-import type { BattleState, BattleUnit } from './battle';
+import type { BattlePlay, BattleState, BattleUnit } from './battle';
 import { ROUND_SECONDS } from './battle';
 import { ENEMY_STATS } from './enemies';
 import { hexDistance, hexKey, hexToWorld } from './hex';
@@ -139,6 +141,38 @@ describe('Пошаговый бой', () => {
     assert.ok(guarded < plain, 'блок не уменьшил урон');
     assert.ok(guarded >= 1, 'блок обнулил урон — это уже неуязвимость');
     assert.equal(guarded, Math.max(1, Math.round(plain * GUARD_SHARE)));
+  });
+
+  test('минотавр после перемещения бьёт тараном', () => {
+    const state = duo('minion');
+    const enemy = state.units.find((u) => u.side === 'enemy')!;
+    const hero = state.units.find((u) => u.side === 'hero')!;
+    (enemy as { kind: BattleUnit['kind'] }).kind = 'minotaur';
+    enemy.dodge = 0;
+    hero.dodge = 0;
+    while (current(state)!.id !== enemy.id) advance(state);
+    enemy.moved = true;
+    const before = hero.hp;
+    const plays: BattlePlay[] = [];
+    assert.equal(apply(state, N, open(), { kind: 'attack', target: hero.id }, flat, nameOf, plays), true);
+    assert.equal(before - hero.hp, flat() + MINOTAUR_CHARGE_BONUS);
+    const play = plays.at(-1);
+    assert.equal(play?.kind, 'strike');
+    assert.equal(play?.kind === 'strike' ? play.technique : null, 'minotaur-charge');
+  });
+
+  test('каменная броня голема гасит часть каждого удара', () => {
+    const state = duo('minion');
+    const enemy = state.units.find((u) => u.side === 'enemy')!;
+    const hero = state.units.find((u) => u.side === 'hero')!;
+    (enemy as { kind: BattleUnit['kind'] }).kind = 'stone-golem';
+    while (current(state)!.id !== hero.id) advance(state);
+    const before = enemy.hp;
+    const plays: BattlePlay[] = [];
+    assert.equal(apply(state, N, open(), { kind: 'attack', target: enemy.id }, flat, nameOf, plays), true);
+    assert.equal(before - enemy.hp, Math.max(1, flat() - STONE_ARMOR));
+    const play = plays.at(-1);
+    assert.equal(play?.kind === 'strike' ? play.technique : null, 'stone-armor');
   });
 
   test('ход переходит по кругу, мёртвые пропускаются, раунд растёт', () => {

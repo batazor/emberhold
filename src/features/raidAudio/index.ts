@@ -9,7 +9,9 @@
  */
 import { play, setFoodShare } from '../../core/audio';
 import type { SfxName } from '../../core/audio';
+import type { BattlePlay } from '../../sim/battle';
 import type { RaidState, RaidStatus } from '../../sim/raid';
+import type { EnemyKind } from '../../sim/types';
 
 /**
  * Куда уходит звук. Параметр, а не прямой вызов: с подставным приёмником
@@ -23,16 +25,14 @@ export interface Sink {
 
 const AUDIO: Sink = { play, setFoodShare };
 
-/** Стойкость всех живых: попадание слышно по её убыли, а не по событию —
- *  событий бой не рассылает, и звук читает состояние сам (§18.3). */
-const enemyHpOf = (state: RaidState): number =>
-  state.loc.enemies.reduce((sum, e) => sum + Math.max(0, e.hp), 0);
+interface EnemyHeard { readonly hp: number; readonly kind: EnemyKind }
 
-/** Живых противников. Смерть слышна по убыли их числа, а не по наличию
- *  мёртвого: мёртвый остаётся мёртвым, и проверка «есть труп» звучала бы
- *  на каждом следующем попадании. */
-const aliveOf = (state: RaidState): number =>
-  state.loc.enemies.reduce((n, e) => n + (e.hp > 0 ? 1 : 0), 0);
+const enemiesOf = (state: RaidState): Map<number, EnemyHeard> => new Map(
+  state.loc.enemies.map((e) => [e.id, { hp: e.hp, kind: e.kind }]),
+);
+
+const kindOf = (state: RaidState, unit: number): EnemyKind | null =>
+  state.loc.enemies.find((e) => e.id === unit)?.kind ?? null;
 
 /** Сколько десятых запаса уже потрачено: тик расхода звучит на каждой. */
 const foodTicksOf = (state: RaidState): number =>
@@ -47,24 +47,27 @@ export interface RaidEar {
 }
 
 export function createRaidEar(sink: Sink = AUDIO): RaidEar {
+  let voicedPlays = new WeakSet<object>();
   /** Что уже прозвучало. */
   const heard = {
     steps: 0,
     wounds: 0,
     bag: 0,
-    enemyHp: 0,
-    alive: 0,
+    enemies: new Map<number, EnemyHeard>(),
+    fights: 0,
     ticks: 0,
     cooldown: 0,
     status: 'running' as RaidStatus,
   };
 
   const reset = (state: RaidState): void => {
+    voicedPlays = new WeakSet<object>();
+    for (const play of state.plays) voicedPlays.add(play);
     heard.steps = state.steps;
     heard.wounds = state.hero.hp;
     heard.bag = state.bagTotal;
-    heard.enemyHp = enemyHpOf(state);
-    heard.alive = aliveOf(state);
+    heard.enemies = enemiesOf(state);
+    heard.fights = state.fights;
     heard.ticks = foodTicksOf(state);
     heard.cooldown = state.hero.cooldown;
     heard.status = state.status;
@@ -74,14 +77,35 @@ export function createRaidEar(sink: Sink = AUDIO): RaidEar {
     reset,
     hear(state: RaidState): void {
       if (state.steps > heard.steps) sink.play('step');
+      // Очередь показа ещё не забрана рендером: по ней слышны тяжёлые шаги
+      // и собственный каменный удар голема, хотя логика боя остаётся беззвучной.
+      for (const play of state.plays as readonly BattlePlay[]) {
+        if (voicedPlays.has(play)) continue;
+        voicedPlays.add(play);
+        const kind = kindOf(state, play.unit);
+        if (play.kind === 'move' && (kind === 'stone-golem' || kind === 'minotaur')) {
+          sink.play('heavyStep');
+        }
+        if (play.kind === 'strike' && kind === 'stone-golem' && !play.dodged) {
+          sink.play('stoneHit');
+        }
+      }
+      if (
+        state.fights > heard.fights
+        && state.loc.enemies.some((e) => e.kind === 'minotaur' && e.hp > 0)
+      ) sink.play('roar');
       // Замах слышен до результата (§18.3): откат прыгает вверх в момент удара.
       if (state.hero.cooldown > heard.cooldown + 0.01) sink.play('swing');
-      const enemyHp = enemyHpOf(state);
-      const alive = aliveOf(state);
-      // Попадание — только по живому: последний удар звучит смертью, а не оба
-      // разом. §18.3 — попадание не громче ранения, и подавно не поверх смерти.
-      if (enemyHp < heard.enemyHp && alive === heard.alive) sink.play('hit');
-      if (alive < heard.alive) sink.play('kill');
+      const enemies = enemiesOf(state);
+      for (const [id, before] of heard.enemies) {
+        const after = enemies.get(id);
+        if (after === undefined || after.hp >= before.hp) continue;
+        if (after.hp <= 0 && before.hp > 0) {
+          sink.play(before.kind === 'stone-golem' ? 'golemBreak' : 'kill');
+        } else {
+          sink.play(before.kind === 'stone-golem' ? 'stoneHit' : 'hit');
+        }
+      }
       if (state.hero.hp < heard.wounds) sink.play('wound');
       if (state.bagTotal > heard.bag) sink.play('chest');
       const ticks = foodTicksOf(state);
