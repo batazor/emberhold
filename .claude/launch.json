@@ -9,7 +9,7 @@
         "dev"
       ],
       "port": 52118,
-      "autoPort": false
+      "autoPort": true
     },
     {
       "name": "site",

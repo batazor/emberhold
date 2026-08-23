@@ -223,7 +223,8 @@ import { generateTrailSite, type TrailSite } from './sim/trailSite';
 import { askOf, dealBlock, makeDeal, worthOf } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
-import { events, loadTelemetry, track } from './sim/telemetry';
+import { events, loadTelemetry, setTelemetrySink, track } from './sim/telemetry';
+import { analyticsIdentify, startAnalytics } from './core/analytics';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { gearIcon } from './render/gearIcon';
@@ -330,6 +331,10 @@ let camp: CampState = loaded.camp;
 const roster: Roster = loaded.roster;
 
 loadTelemetry();
+// §9 — те же события уходят наружу. Сток ставится до первого `track`, иначе
+// `session_start` — единственное событие, которое случается ровно один раз
+// за сессию, — уедет в буфер и никуда больше.
+setTelemetrySink(startAnalytics());
 // §9 — время до возвращения в игру после установки таймера. Меряется только
 // там, где таймер реально шёл: иначе это просто «как часто заходят».
 const startedAt = clock.now();
@@ -2051,6 +2056,9 @@ new SettingsMenu(app, {
 let hasSession = false;
 void cloudUser().then((email) => {
   hasSession = email !== null;
+  // §9 — с этого мига события пишутся на человека, а не на устройство:
+  // иначе один игрок с телефона и с ноутбука считается двумя.
+  if (email !== null) analyticsIdentify(email);
 });
 const authCard = new AuthCard(app);
 // Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
@@ -2059,6 +2067,9 @@ cloudOnSignIn(() => {
   if (hasSession) return;
   hasSession = true;
   authCard.hide();
+  void cloudUser().then((email) => {
+    if (email !== null) analyticsIdentify(email);
+  });
   void syncCloud();
 });
 

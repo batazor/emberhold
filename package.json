@@ -40,11 +40,13 @@
     "fan": "tsx scripts/fan.ts",
     "levels": "tsx scripts/levels.ts",
     "stop": "tsx scripts/stop.ts",
+    "ltv": "tsx scripts/ltv.ts",
     "edge": "tsx scripts/edge.ts",
     "edge:deploy": "npm run edge && npx supabase functions deploy sortie wheel --project-ref ynprsyzjdaheivhfcuel --use-api"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
+    "posthog-js": "^1.418.10",
     "three": "^0.185.1"
   },
   "devDependencies": {
