@@ -499,6 +499,8 @@ export class RaidView {
     private readonly mateClasses: readonly HeroClassId[] = [],
     /** Отладка `?пух`: трава заставки (FluffyGrass) вместо клеточной. */
     private readonly fluffy = false,
+    /** §13.8 — полон ли куст места: формула живёт снаружи (см. `buildBushes`). */
+    private readonly ripeBush: ((bush: Bush) => boolean) | undefined = undefined,
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
@@ -508,7 +510,10 @@ export class RaidView {
     if (this.grave !== null) this.buildGraveyard(this.grave);
     // §13.8 — дички у края места: и у замка, и на кладбище рисуются одним
     // кодом, потому что и там и там это один и тот же куст из одного набора.
-    this.buildBushes([...(this.keep?.bushes ?? []), ...(this.grave?.bushes ?? [])]);
+    this.buildBushes(
+      [...(this.keep?.bushes ?? []), ...(this.grave?.bushes ?? [])],
+      this.ripeBush,
+    );
     if (flavor !== 'glade') this.buildEvac(this.loc.evac);
     // §6.1.17 — у дороги два конца, и дальний тоже выход: над ним тот же луч.
     if (this.trail !== null) this.buildEvac(this.trail.exit);
@@ -1146,7 +1151,13 @@ export class RaidView {
    * Обобранный куст остаётся стоять без ягод: пустая ветка и есть «приходи
    * позже», сказанное кадром.
    */
-  private buildBushes(bushes: readonly Bush[]): void {
+  /**
+   * §13.8 — полон ли куст. Сцена сама этого не считает: полнота узла места
+   * выводится формулой от сида и часов (`berries.ts`), а знает её тот, кто
+   * держит мир, — поэтому ответ приходит функцией снаружи. Без неё все кусты
+   * рисуются полными, и это честное поведение отладочных кадров.
+   */
+  private buildBushes(bushes: readonly Bush[], ripeOf?: (bush: Bush) => boolean): void {
     if (bushes.length === 0) return;
     const mat = this.track(forestMaterial());
     const berryMat = this.track(new THREE.MeshLambertMaterial({ color: 0xb1233a }));
@@ -1160,7 +1171,7 @@ export class RaidView {
       mesh.receiveShadow = true;
       mesh.rotation.y = n * 6.28;
       node.add(mesh);
-      if (bush.pickedAt === undefined) {
+      if (ripeOf === undefined ? bush.pickedAt === undefined : ripeOf(bush)) {
         const berries = new THREE.InstancedMesh(berryGeo, berryMat, 5);
         const m = new THREE.Matrix4();
         for (let i = 0; i < 5; i++) {

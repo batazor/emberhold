@@ -8,7 +8,7 @@ import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear } fro
 import type { GearSlot, GearState, Offhand } from './gear';
 import { healPerWound, trainPerLevel } from './heroes';
 import { BUSHES, scatterBushes } from './berries';
-import type { Bush } from './berries';
+import type { Bush, PickLog } from './berries';
 import type { Tier } from './types';
 import type { Visit } from './world';
 import { emptyWalls, type CampWalls } from './campWalls';
@@ -469,6 +469,13 @@ export interface CampState {
    * а помнит время: он созревает снова.
    */
   bushes?: Bush[];
+  /**
+   * §13.8 — что игрок обобрал в местах мира. Самоистекающий список:
+   * запись живёт ровно созревание и вычищается при загрузке, поэтому
+   * от прогулок сохранение не растёт. Узлы мест при этом не хранятся
+   * вовсе — их считает формула от сида и часов.
+   */
+  picks?: PickLog;
   /**
    * Свой клан (§30): имя, под которым лагерь стоит в таблице. Поле
    * необязательное, версия сейва ради него не поднята — сохранение,

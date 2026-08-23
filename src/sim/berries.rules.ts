@@ -6,6 +6,11 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
+  prunePicks,
+  pickKey,
+  takenByLocals,
+  wildRipe,
+  worldRipe,
   BERRY_FOOD_AVG,
   BERRY_FOOD_MAX,
   BERRY_FOOD_MIN,
@@ -153,4 +158,57 @@ test('§13.8 — куст не встаёт на занятую клетку', (
       'куст вырос на могиле',
     );
   }
+});
+
+
+test('§13.8 — узел места считается формулой: сид и часы дают то же самое', () => {
+  const bush = { id: 2, x: 5, z: 5 };
+  const hub = { x: 0, z: 0 };
+  const now = 5 * RIPEN_SECONDS + 17;
+  for (let i = 0; i < 5; i++) {
+    assert.equal(wildRipe(77, bush, now), wildRipe(77, bush, now), 'формула нестабильна');
+    assert.equal(takenByLocals(77, bush, hub, now), takenByLocals(77, bush, hub, now));
+  }
+  // Другой сид — другое место: иначе все замки мира обираются одинаково.
+  const a = [0, 1, 2, 3, 4, 5].map((id) => wildRipe(1, { id, x: 3, z: 3 }, now));
+  const b = [0, 1, 2, 3, 4, 5].map((id) => wildRipe(2, { id, x: 3, z: 3 }, now));
+  assert.notDeepEqual(a, b, 'сид на картину не влияет');
+});
+
+test('§13.8 — место не мигает целиком: окно поспевает не всем сразу', () => {
+  const bushes = Array.from({ length: 12 }, (_, id) => ({ id, x: id, z: 3 }));
+  const now = 3 * RIPEN_SECONDS;
+  const ripeNow = bushes.filter((b) => wildRipe(5, b, now)).length;
+  assert.ok(ripeNow > 0 && ripeNow < bushes.length, `поспело ${ripeNow} из ${bushes.length} — место мигает`);
+});
+
+test('§13.8 — местные обирают ближние чаще дальних', () => {
+  const hub = { x: 0, z: 0 };
+  const near = Array.from({ length: 40 }, (_, id) => ({ id, x: 1, z: 1 }));
+  const far = Array.from({ length: 40 }, (_, id) => ({ id, x: 11, z: 11 }));
+  const share = (bs: typeof near): number =>
+    bs.filter((b) => takenByLocals(9, b, hub, RIPEN_SECONDS)).length / bs.length;
+  assert.ok(share(near) > share(far), 'у ворот обирают не чаще, чем на отшибе');
+});
+
+test('§13.8 — обобранное игроком не возвращается раньше срока', () => {
+  const bush = { id: 1, x: 4, z: 4 };
+  const hub = { x: 9, z: 9 };
+  // Берём момент, когда куст точно полон, и «обираем» его.
+  let now = 0;
+  while (!worldRipe(3, 'замок', bush, hub, {}, now) && now < RIPEN_SECONDS * 40) now += RIPEN_SECONDS;
+  const log = { [pickKey('замок', bush.id)]: now };
+  assert.equal(worldRipe(3, 'замок', bush, hub, log, now), false, 'ягоды вернулись мгновенно');
+  assert.equal(
+    worldRipe(3, 'замок', bush, hub, log, now + RIPEN_SECONDS - 1),
+    false,
+    'ягоды вернулись раньше срока',
+  );
+});
+
+test('§13.8 — список тронутого сам себя стирает: сейв не растёт от прогулок', () => {
+  const log = { 'замок:1': 0, 'замок:2': RIPEN_SECONDS * 5, 'кладбище:0': RIPEN_SECONDS * 5 + 10 };
+  const kept = prunePicks(log, RIPEN_SECONDS * 5 + 20);
+  assert.equal(Object.keys(kept).length, 2, 'старая запись пережила своё созревание');
+  assert.equal(Object.keys(prunePicks(kept, RIPEN_SECONDS * 100)).length, 0, 'список не пустеет вовсе');
 });

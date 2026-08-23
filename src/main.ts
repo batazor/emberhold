@@ -291,7 +291,7 @@ import {
   tentSpot,
 } from './sim/residents';
 import { payUpkeep, workingAfter } from './sim/upkeep';
-import { PICK_REASON, bushAt, ripe, startPick, stepPickInto } from './sim/berries';
+import { PICK_REASON, bushAt, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
 import type { Bush } from './sim/berries';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
@@ -3040,7 +3040,13 @@ function toGraveyard(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, null, camp.gear.weapon, mateClasses(raid));
+  // §13.8 — полнота кустов места считается формулой от сида и часов;
+  // сцена её не знает и получает готовый ответ.
+  raidView = new RaidView(
+    raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, null,
+    camp.gear.weapon, mateClasses(raid), false,
+    (bush) => worldRipe(site.loc.seed, 'кладбище', bush, site.gate, camp.picks ?? {}, clock.now()),
+  );
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -3081,7 +3087,11 @@ function toCastle(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null, camp.gear.weapon, mateClasses(raid));
+  raidView = new RaidView(
+    raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null,
+    camp.gear.weapon, mateClasses(raid), false,
+    (bush) => worldRipe(site.loc.seed, 'замок', bush, site.gate, camp.picks ?? {}, clock.now()),
+  );
   // Гость у стен (`sim/castleGuest.ts`): выводится из сида площадки, а живёт
   // ли ещё здесь — решает лагерь. Позванный не сидит у стен второй раз,
   // и тёзка живущего не садится вовсе: `admit` различает людей именем,

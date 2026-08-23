@@ -3,6 +3,8 @@ import { BUILDING_ORDER, campArea, campStones, createCamp } from './camp';
 import { adoptChest } from './chests';
 import { DWELLER_LOOKS } from './garrison';
 import type { DwellerLook } from './garrison';
+import { prunePicks } from './berries';
+import type { PickLog } from './berries';
 import { RESIDENT_JOBS } from './residents';
 import type { ResidentJob } from './residents';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
@@ -163,6 +165,7 @@ interface SaveV1 {
    */
   fires?: { x: number; z: number }[];
   bushes?: { x: number; z: number; pickedAt?: number }[];
+  picks?: Record<string, number>;
   guests?: number[];
 }
 
@@ -226,6 +229,9 @@ export function save(
     // §13.8 — кусты: клетка и время сбора. Обобранный обязан пережить
     // перезагрузку так же, как разбитый валун, иначе ягоды становятся
     // бесконечными на любой кнопке «обновить».
+    ...(camp.picks !== undefined && Object.keys(camp.picks).length > 0
+      ? { picks: camp.picks }
+      : {}),
     ...(camp.bushes !== undefined
       ? {
           bushes: camp.bushes.map((b) => ({
@@ -489,6 +495,18 @@ export function load(): LoadResult {
       // к Жилью, как у пролога; места нет — сундук подождёт перестановки:
       // прибавка считается от списка, и пустой список честнее фантомного.
       adoptChest(camp, { x: -1, z: -1 });
+    }
+    // §13.8 — тронутое игроком в местах мира. Чистится здесь же: список
+    // самоистекающий, и держать в памяти созревшее незачем.
+    if (data.picks != null && typeof data.picks === 'object') {
+      const raw = data.picks as Record<string, unknown>;
+      const log: PickLog = {};
+      for (const [key, at] of Object.entries(raw)) {
+        if (typeof at === 'number' && Number.isFinite(at)) log[key] = at;
+      }
+      // Чистится по отметке сейва: своих часов у загрузки нет, а водяной
+      // знак — то самое время, когда игрок последний раз был здесь.
+      camp.picks = prunePicks(log, typeof data.watermark === 'number' ? data.watermark : 0);
     }
     if (Array.isArray(data.bushes)) {
       camp.bushes = data.bushes
