@@ -2,7 +2,7 @@ import type { ConsumableId } from './consumables';
 import type { Sortie } from './sortie';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
-import { modelKitchenFood, TIER_KITCHEN_GATE as GATE } from './balance';
+import { deriveBuildCost, modelKitchenFood, roundSeries, TIER_KITCHEN_GATE as GATE } from './balance';
 import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear } from './gear';
 import type { GearSlot, GearState, Offhand } from './gear';
 import { healPerWound, trainPerLevel } from './heroes';
@@ -47,13 +47,37 @@ export interface BuildingDef {
 /**
  * Кривая Кухни выведена моделью (§22), а не назначена: ярус k открывается
  * Кухней k+1, и запас на этом уровне обязан совпасть с модельным для яруса.
- * Отсюда 49 / 76 / 103 / 130 — прямая с шагом 27.
+ * Отсюда 22 / 49 / 76 / 103 / 130 — прямая с шагом 27.
+ *
+ * **Слой округления (§20.3.3) сюда не кладётся, и это измерено.** Провиант —
+ * первое число, которое игрок читает всю вылазку, и округлить его хотелось
+ * сильнее прочих. Не вышло дважды: шаг 25 давал 50 на ярусе 0 при полном
+ * обходе ровно в 50 — правило §12.2 завалило сборку, локацию стало можно
+ * зачистить. Шаг 5 вниз давал 45 и стоил ярусу **четверти добычи** (4,7 → 3,5
+ * по `npm run measure`): окно между «дойти до дна» и «обойти всё» на этом
+ * ярусе уже пяти единиц, потому что щедрость там намеренно предельная.
+ *
+ * Вывод общий: округляется то, у чего есть запас. У Кухни его нет.
  */
 export const kitchenFood = (level: number): number => modelKitchenFood(level);
 
-/** Вместимость Склада. §11.5 отменила формулы построек, число не назначено;
- *  подобрано так, чтобы пример «12 из 19» из §11.2 приходился на Склад ур. 2. */
-export const storageCapacity = (level: number): number => 11 + 4 * level;
+/**
+ * Вместимость Склада. Модель — прямая `11 + 4·ур`, поверх неё слой
+ * округления (§20.3.3): 10 / 15 / 20 / 25 / 30 / 35 / 40.
+ *
+ * Здесь округление и понадобилось первым: 23 и 27 округляются оба в 25,
+ * и без проверки «больше предыдущего» Склад ур. 3 и ур. 4 стали бы
+ * неотличимы. Рюкзак — второе число, которое игрок читает всю вылазку,
+ * и запаса у него, в отличие от провианта, хватает: гарантии §22.4
+ * вместимость не сторожат, её сторожит связь λ.
+ */
+const STORAGE_CAPACITY = roundSeries(
+  Array.from({ length: MAX_LEVEL + 1 }, (_, level) => 11 + 4 * level),
+  5,
+);
+
+export const storageCapacity = (level: number): number =>
+  STORAGE_CAPACITY[Math.max(0, Math.min(MAX_LEVEL, level))] ?? 11 + 4 * level;
 
 /* ---------- кладовая (§13.6) ---------- */
 
@@ -242,11 +266,21 @@ export const BUILD_COST: Record<number, Partial<Resources>> = {
    * не научился, а платить пролог его уже научил.
    */
   1: { stone: 2 },
-  2: { stone: 7, wood: 4 },
-  3: { stone: 8, wood: 4, iron: 3 },
-  4: { stone: 14, wood: 5, iron: 15 },
-  5: { stone: 23, wood: 9, iron: 24, crystal: 7 },
-  6: { stone: 48, iron: 70, crystal: 40 },
+  /*
+   * Уровни 2–6 больше не выписаны руками. Шесть строк по четыре ресурса —
+   * это N ручек и N² связей между ними: правка одной строки молча расходилась
+   * с соседними, и лестница «во сколько вылазок обходится уровень» на деле
+   * шла 2,3 / 1,5 / 2,1 / 3,2 / 8,0 при заявленных в §20.3 1 / 2 / 3 / 5 / 7.
+   *
+   * Теперь цена выводится (§20.3): базовая прогрессия — число вылазок,
+   * остальное берётся у игры. См. `deriveBuildCost`.
+   */
+  ...Object.fromEntries(
+    Array.from({ length: MAX_LEVEL - 1 }, (_, i) => i + 2).map((level) => [
+      level,
+      deriveBuildCost(level),
+    ]),
+  ),
 };
 
 /**
