@@ -21,6 +21,8 @@ import {
   WORLD_EPOCH,
   CLAN_CAMPS,
   CLAN_STAY,
+  LIVE_SHOWN,
+  liveCampSpots,
   clanGrowth,
   clanState,
   clanTier,
@@ -527,5 +529,65 @@ describe('Чужие заходы (§30.6)', () => {
 
   test('без соседей мир такой же, каким был до облака', () => {
     assert.deepEqual(worldAt(spot.t, [], []), worldAt(spot.t, []));
+  });
+});
+
+describe('Кромка живых лагерей (§30.7)', () => {
+  const IDS = Array.from({ length: 200 }, (_, i) => `сосед-${i}-${i * 7919}`);
+  const spotsOf = (ids: readonly string[]): Map<string, { x: number; y: number }> =>
+    new Map(liveCampSpots(ids).map((s) => [s.id, { x: s.x, y: s.y }]));
+
+  test('место лагеря не зависит от того, кто рядом сильнее', () => {
+    const six = IDS.slice(0, LIVE_SHOWN);
+    const one = spotsOf(six);
+    // Тот же состав в другом порядке — те же места: раскладка идёт по имени,
+    // а не по силе, и от чужого роста лагерь не переезжает.
+    const two = spotsOf([...six].reverse());
+    for (const id of six) assert.deepEqual(one.get(id), two.get(id), id);
+  });
+
+  test('кромка лежит ниже региона и не наступает на точки дня', () => {
+    for (const spot of liveCampSpots(IDS)) {
+      assert.ok(spot.y > 0.85, `${spot.id}: лагерь заехал в регион (y ${spot.y})`);
+      assert.ok(spot.y < 1 && spot.x > 0 && spot.x < 1, `${spot.id}: лагерь ушёл за карту`);
+    }
+    // Точки дня раздаются по сетке и ниже 0,85 не спускаются — проверяем это
+    // самой раздачей, а не памятью о числе.
+    for (let day = DAY0; day < DAY0 + 60; day++) {
+      for (const node of regionAt(day).nodes) {
+        assert.ok(node.y < 0.85, `день ${day}: точка «${node.name}» въехала в кромку`);
+      }
+    }
+  });
+
+  test('на кромку помещается не больше, чем помещается', () => {
+    assert.equal(liveCampSpots(IDS).length, LIVE_SHOWN);
+    assert.equal(liveCampSpots([]).length, 0);
+  });
+
+  test('середина кромки оставлена своему лагерю', () => {
+    for (const spot of liveCampSpots(IDS)) {
+      assert.ok(Math.abs(spot.x - 0.5) > 0.09, `${spot.id} сел на свой лагерь`);
+    }
+  });
+
+  /**
+   * Тот самый замер, ради которого раскладка перестала считаться из одного
+   * имени: место по хешу сажало двоих вплотную — худший зазор из двухсот имён
+   * выходил 0,004 ширины при пороге выбора 0,09, то есть тап попадал не в тот
+   * лагерь. Слоты это чинят по построению, и правило это сторожит.
+   */
+  test('соседи на кромке различимы пальцем', () => {
+    const PICK = 0.09; // порог выбора на карте — доля ширины
+    let worst = 1;
+    for (let i = 0; i + LIVE_SHOWN <= IDS.length; i += LIVE_SHOWN) {
+      const spots = liveCampSpots(IDS.slice(i, i + LIVE_SHOWN));
+      for (let a = 0; a < spots.length; a++) {
+        for (let b = a + 1; b < spots.length; b++) {
+          worst = Math.min(worst, Math.abs(spots[a]!.x - spots[b]!.x));
+        }
+      }
+    }
+    assert.ok(worst >= PICK, `худший зазор на кромке ${worst.toFixed(3)} при пороге ${PICK}`);
   });
 });

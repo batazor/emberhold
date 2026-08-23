@@ -136,6 +136,8 @@ import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import type { ResourceKind } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
+  cloudCamp,
+  cloudCamps,
   cloudNeighbours,
   cloudOnSignIn,
   cloudPull,
@@ -163,6 +165,8 @@ import {
   worldAt,
 } from './sim/world';
 import type { Visit, WorldNode } from './sim/world';
+import { campLevel, campPower } from './sim/standing';
+import type { LiveCamp } from './sim/standing';
 import { BuildPanel } from './ui/buildPanel';
 import {
   campNav,
@@ -2123,6 +2127,7 @@ function pushCloud(): void {
       sentVisits = key;
       void cloudVisits(live);
     }
+    pushCamp();
   }, 3000);
 }
 
@@ -2133,8 +2138,12 @@ function pushCloud(): void {
  * показывался до облака.
  */
 let neighbours: Visit[] = [];
+/** Лагеря живых соседей (§30.7) — та же память и тот же срок жизни. */
+let liveCamps: LiveCamp[] = [];
 /** Когда спрашивали в последний раз. Ноль — не спрашивали ни разу. */
 let neighboursAt = 0;
+/** Что уже отдано в общую таблицу: гонять строку без изменений — пустая сеть. */
+let sentCamp = '';
 
 /**
  * Спросить сервер о чужих заходах. Обновляется **сменами, а не секундами**:
@@ -2160,6 +2169,35 @@ function refreshNeighbours(now: number, force = false): void {
     campHud.setNeighbours(neighbours);
     returnScreen.setNeighbours(neighbours);
   });
+  // Лагеря — тем же вопросом и тем же сроком: обе половины соседского слоя
+  // отвечают на один вопрос «кто ещё есть», и спрашивать их врозь значило бы
+  // показать заходы соседа раньше, чем самого соседа.
+  void cloudCamps().then((rows) => {
+    liveCamps = rows;
+    campHud.setCamps(liveCamps);
+    statsPanel.setCamps(liveCamps);
+  });
+}
+
+/**
+ * Отдать свою строку в общую таблицу (§30.7). Считается на месте тем же
+ * правилом, каким читается чужая: таблица, в которой своё число считается
+ * иначе, чем чужое, ничего не сравнивает.
+ *
+ * Отправляется вместе с сейвом и только при изменении: сила меняется
+ * постройкой и ковкой, то есть редко, а строка без изменений — пустая сеть.
+ */
+function pushCamp(): void {
+  const row = {
+    clan: camp.clan?.name ?? null,
+    power: campPower(camp),
+    level: campLevel(camp),
+    folk: 1 + camp.residents.length,
+  };
+  const key = JSON.stringify(row);
+  if (key === sentCamp) return;
+  sentCamp = key;
+  void cloudCamp(row);
 }
 
 // Свёрнутая вкладка — последний шанс дожать отложенное: таймеры там не идут.
@@ -4573,6 +4611,23 @@ if (debugCamp !== null) {
       campHud.sync(camp, clock.now(), 0);
       persist();
       return done.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`);
+    },
+    /**
+     * Чужие лагеря из ниоткуда (§30.7). Завести шесть аккаунтов, чтобы
+     * посмотреть, как кромка выглядит с соседями, — не проверка. Ручка
+     * кладёт ровно то, что положил бы ответ сервера.
+     */
+    соседи: (сколько = 3) => {
+      liveCamps = Array.from({ length: сколько }, (_, i) => ({
+        id: `гость-${i}`,
+        clan: i % 2 === 0 ? `Артель ${i + 1}` : null,
+        power: 30 + i * 45,
+        level: 2 + (i % 4),
+        folk: 1 + (i % 5),
+      }));
+      campHud.setCamps(liveCamps);
+      statsPanel.setCamps(liveCamps);
+      return liveCamps.length;
     },
     /**
      * Чужие метки из ниоткуда (§30.6). Заводить второй аккаунт, чтобы
