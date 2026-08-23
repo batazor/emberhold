@@ -7,6 +7,7 @@ import {
   enemyGeometry,
   enemyParts,
   dwellerParts,
+  guardHeight,
   guardParts,
   heroGeometry,
   heroParts,
@@ -65,6 +66,7 @@ import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
 import { PALETTE } from './palette';
+import type { Bubble } from './bubbles';
 
 /**
  * Вид вылазки: строит меши из состояния и синхронизирует их каждый кадр.
@@ -447,6 +449,9 @@ export class RaidView {
    */
   private garrison: Garrison | null = null;
   private readonly squad: { rig: Rigged; facing: number }[] = [];
+  /** Ручные фонари дозора: ночью горят у тех же тел, днём спрятаны. */
+  private readonly guardLampLights: THREE.PointLight[] = [];
+  private readonly guardLampGlows: THREE.Mesh[] = [];
   /**
    * Поселенец у прогалины: сидит, пока его не позвали. Отдельным полем,
    * а не в `dwellerViews`, потому что живёт он не от времени, как жильцы
@@ -1400,10 +1405,20 @@ export class RaidView {
 
   private buildGarrison(site: CastleSite): void {
     this.garrison = garrisonOf(site);
+    const lampGeo = this.track(new THREE.SphereGeometry(0.07, 8, 6));
+    const lampMat = this.track(new THREE.MeshBasicMaterial({ color: PALETTE.torch }));
     for (let i = 0; i < SQUAD; i++) {
       const rig = new Rigged(guardParts('дозор'), this.blocking);
+      const glow = new THREE.Mesh(lampGeo, lampMat);
+      glow.position.set(0.28, guardHeight() * 0.58, 0.24);
+      glow.visible = false;
+      const light = new THREE.PointLight(PALETTE.torch, 0, 4.2, 1.4);
+      light.position.copy(glow.position);
+      rig.root.add(glow, light);
       this.group.add(rig.root);
       this.squad.push({ rig, facing: 0 });
+      this.guardLampGlows.push(glow);
+      this.guardLampLights.push(light);
     }
     // Стрелку выходить некуда — не заводим и тела: замок без единой
     // проходимой клетки верха возможен только вместе с новым набором,
@@ -1421,6 +1436,29 @@ export class RaidView {
       const rig = new Rigged(dwellerParts(walk.look), this.blocking);
       this.group.add(rig.root);
       this.dwellerViews.push({ rig, facing: 0 });
+    }
+  }
+
+  /** Реплики постовых на текущем кадре: слова стоят над тем, кто их говорит. */
+  garrisonBubbles(): Bubble[] {
+    if (this.garrison === null) return [];
+    return patrolAt(this.garrison, this.watch)
+      .filter((man) => man.talk !== null)
+      .map((man) => ({
+        x: man.x,
+        y: guardHeight() + 0.38,
+        z: man.z,
+        text: man.talk!,
+      }));
+  }
+
+  private syncGuardLamps(night: number): void {
+    const k = Math.max(0, Math.min(1, night));
+    for (let i = 0; i < this.guardLampLights.length; i++) {
+      const on = k > 0.08;
+      this.guardLampLights[i]!.intensity = on ? 4.8 * k : 0;
+      this.guardLampGlows[i]!.visible = on;
+      this.guardLampGlows[i]!.scale.setScalar(0.8 + k * 0.35);
     }
   }
 
@@ -1444,6 +1482,7 @@ export class RaidView {
       // Рыцарь то идёт, то стоит: клип берётся у симуляции, а не назначается
       // раз навсегда. Стоящий с клипом ходьбы шаркал бы на месте.
       if (man.walking) view.rig.play('ходьба', rateFor(PATROL_SPEED, view.rig.root.scale.y));
+      else if (man.talk !== null) view.rig.play('разговор', 1);
       else view.rig.play('покой', 1);
     }
 
@@ -2611,7 +2650,9 @@ export class RaidView {
     this.fire.update(time, day);
     for (const f of this.fires) f.fire.update(time, day);
     // Фонари замка живут тем же днём: гаснут к полудню, горят к ночи.
-    if (this.lampGlow !== null) setLampsNight(1 - day, this.lampGlow, this.lampLights);
+    const night = 1 - day;
+    if (this.lampGlow !== null) setLampsNight(night, this.lampGlow, this.lampLights);
+    this.syncGuardLamps(night);
     if (this.hintRing.visible) {
       const pulse = 1 + Math.sin(time / 260) * 0.16;
       this.hintRing.scale.setScalar(pulse);
@@ -2918,6 +2959,8 @@ export class RaidView {
     this.dwellerViews.length = 0;
     for (const view of this.squad) view.rig.dispose();
     this.squad.length = 0;
+    this.guardLampLights.length = 0;
+    this.guardLampGlows.length = 0;
     this.archer?.rig.dispose();
     this.archer = null;
     this.heroRig?.dispose();

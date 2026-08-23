@@ -28,16 +28,17 @@ import {
   DWELLER_STAND,
   CRAFT_LOOKS,
   CRAFT_REST,
+  GARRISON_TEXT,
+  PATROL_GROUPS,
+  PATROL_PAIR,
   PATROL_SPEED,
   SQUAD,
   archerAt,
   dwellersAt,
   garrisonOf,
   patrolAt,
-  PATROL_SPREAD_MAX,
+  type Patrolman,
   PATROL_STEP_MAX,
-  PATROL_WALK,
-  PATROL_STAND,
 } from './garrison';
 import { BODY } from './crowd';
 import { idx } from './grid';
@@ -50,11 +51,11 @@ const guards = sites.map((site) => ({ site, g: garrisonOf(site) }));
 const HOUR = 3600;
 const TICK = 0.25;
 
-describe('Гарнизон: отряд обходит периметр', () => {
+describe('Гарнизон: смены у ворот и на обходе', () => {
   test('каждая точка тропы — свободная клетка локации', () => {
     for (const { site, g } of guards) {
       const { loc } = site;
-      for (let t = 0; t < g.length / PATROL_SPEED; t += TICK) {
+      for (let t = 0; t < g.shift * PATROL_GROUPS; t += TICK) {
         for (const man of patrolAt(g, t)) {
           const x = Math.round(man.x);
           const z = Math.round(man.z);
@@ -89,37 +90,34 @@ describe('Гарнизон: отряд обходит периметр', () => {
     }
   });
 
-  /**
-   * Прежде здесь стояло «соседи на своём интервале»: колонна шла жёстко,
-   * и проверялось, что промежуток между соседями не уходит дальше половины
-   * от `SQUAD_STEP`. Такой отряд читался не караулом, а деталью механизма,
-   * и правило вместе с ним заменено на два числа: колонна **не рассыпается**
-   * и при этом **не идёт одной ногой**.
-   */
-  test('колонна не рассыпается: разброс держится в своих клетках', () => {
+  test('службу делят две смены по двое: пост и обход', () => {
     for (const { site, g } of guards) {
-      for (let t = 0; t < 300; t += TICK) {
+      for (let t = 0; t < g.shift * PATROL_GROUPS; t += 0.77) {
         const men = patrolAt(g, t);
         assert.equal(men.length, SQUAD);
-        for (let i = 0; i < men.length; i++) {
-          for (let j = i + 1; j < men.length; j++) {
-            const gap = Math.hypot(men[i]!.x - men[j]!.x, men[i]!.z - men[j]!.z);
-            assert.ok(
-              gap <= PATROL_SPREAD_MAX,
-              `сид ${site.loc.seed}: отряд растянулся на ${gap.toFixed(2)} при потолке ${PATROL_SPREAD_MAX}`,
-            );
-          }
+        for (let group = 0; group < PATROL_GROUPS; group++) {
+          assert.equal(
+            men.filter((m) => m.group === group).length,
+            PATROL_PAIR,
+            `сид ${site.loc.seed}: смена ${group} не из двух`,
+          );
         }
+        const patrol = men.filter((m) => m.duty === 'patrol');
+        const post = men.filter((m) => m.duty === 'post');
+        assert.equal(patrol.length, PATROL_PAIR, `сид ${site.loc.seed}: в обходе ${patrol.length}`);
+        assert.equal(post.length, PATROL_PAIR, `сид ${site.loc.seed}: на посту ${post.length}`);
+        assert.equal(new Set(patrol.map((m) => m.group)).size, 1, `сид ${site.loc.seed}: обход смешал смены`);
+        assert.equal(new Set(post.map((m) => m.group)).size, 1, `сид ${site.loc.seed}: пост смешал смены`);
+        assert.notEqual(patrol[0]!.group, post[0]!.group, `сид ${site.loc.seed}: одна смена заняла всё`);
       }
     }
   });
 
   test('каждый рыцарь и идёт, и стоит', () => {
-    const cycle = PATROL_WALK + PATROL_STAND;
     for (const { site, g } of guards) {
       const walked = new Array(SQUAD).fill(0);
       const stood = new Array(SQUAD).fill(0);
-      for (let t = 0; t < cycle * 2; t += TICK) {
+      for (let t = 0; t < g.shift * PATROL_GROUPS * 2; t += TICK) {
         patrolAt(g, t).forEach((man, i) => {
           if (man.walking) walked[i]++;
           else stood[i]++;
@@ -132,70 +130,77 @@ describe('Гарнизон: отряд обходит периметр', () => {
     }
   });
 
-  /**
-   * Обгон — не украшение, а то, ради чего у каждого своя фаза. Стоящего
-   * обходит тот, кто сзади: стоянка стоит 3,9 клетки пути против интервала
-   * в 1,3. Проверяется по `along` — сколько рыцарь прошёл ногами: у обогнавшего
-   * число становится больше, чем у обойдённого.
-   *
-   * Требуется не «на каждом сиде», а «на большинстве»: фазы случайны, и сид,
-   * на котором четверо разошлись почти в такт, — законный сид, а не поломка.
-   */
-  test('задний обходит переднего, и не на одном сиде', () => {
-    let seen = 0;
-    for (const { g } of guards) {
-      const first = patrolAt(g, 0);
-      let swapped = false;
-      for (let t = TICK; t < 300 && !swapped; t += TICK) {
-        const men = patrolAt(g, t);
-        for (let i = 0; i < SQUAD && !swapped; i++) {
-          for (let j = i + 1; j < SQUAD; j++) {
-            const was = first[i]!.along - first[j]!.along;
-            const now = men[i]!.along - men[j]!.along;
-            if (was * now < 0) { swapped = true; break; }
-          }
-        }
-      }
-      if (swapped) seen++;
-    }
-    assert.ok(seen * 2 >= guards.length, `обгон виден только на ${seen} сидах из ${guards.length}`);
-  });
-
-  test('никто не пятится: пройденное ногами только растёт', () => {
+  test('через смену постовые и патрульные меняются местами', () => {
     for (const { site, g } of guards) {
-      let prev = patrolAt(g, 0);
-      for (let t = TICK; t < 200; t += TICK) {
-        const men = patrolAt(g, t);
-        for (let i = 0; i < SQUAD; i++) {
-          assert.ok(
-            men[i]!.along >= prev[i]!.along - 1e-9,
-            `сид ${site.loc.seed}: рыцарь ${i} сдал назад`,
-          );
-        }
-        prev = men;
+      const duties = (t: number): Map<number, Patrolman['duty']> => {
+        const out = new Map<number, Patrolman['duty']>();
+        for (const man of patrolAt(g, t)) out.set(man.group, man.duty);
+        return out;
+      };
+      const a = duties(3.7);
+      const b = duties(3.7 + g.shift);
+      for (let group = 0; group < PATROL_GROUPS; group++) {
+        assert.notEqual(
+          a.get(group),
+          b.get(group),
+          `сид ${site.loc.seed}: смена ${group} не поменяла службу`,
+        );
       }
     }
   });
 
-  /**
-   * Прежде проверялось, что через круг отряд стоит там же. С личным ходом
-   * это неверно и не должно быть верным: у каждого свои стоянки, и «круг»
-   * в секундах у них разный. Обещание, которое осталось, — тропа замкнута:
-   * рыцарь обходит все четыре угла и возвращается, а не упирается в конец
-   * списка точек.
-   */
-  test('тропа замкнута: рыцарь обходит все четыре угла', () => {
+  test('постовые стоят у ворот и смотрят наружу', () => {
     for (const { site, g } of guards) {
-      const lap = g.length / PATROL_SPEED * 1.6;
+      for (let t = 0; t < g.shift * PATROL_GROUPS; t += 1.1) {
+        for (const man of patrolAt(g, t).filter((m) => m.duty === 'post')) {
+          assert.equal(man.walking, false, `сид ${site.loc.seed}: постовой ушёл шагать`);
+          const near = Math.min(...g.posts.map((p) => Math.hypot(p.x - man.x, p.z - man.z)));
+          assert.ok(near < 0.8, `сид ${site.loc.seed}: постовой в ${near.toFixed(2)} от ворот`);
+          const dot = Math.sin(man.facing) * g.gateOut[0] + Math.cos(man.facing) * g.gateOut[1];
+          assert.ok(dot > 0.95, `сид ${site.loc.seed}: постовой смотрит не наружу`);
+        }
+      }
+    }
+  });
+
+  test('маршрут богаче прямоугольника, а фаза входа сидовая', () => {
+    const starts = new Set<number>();
+    for (const { site, g } of guards) {
+      starts.add(Math.round(g.start * 10));
+      assert.ok(g.route.length > 8, `сид ${site.loc.seed}: маршрут не получил проверочных крюков`);
+      assert.ok(g.start > 0 && g.start < g.shift * PATROL_GROUPS, `сид ${site.loc.seed}: старт вне цикла`);
+    }
+    assert.ok(starts.size > 1, `случайная фаза совпала у всех сидов`);
+  });
+
+  test('постовые переговариваются короткими парами реплик', () => {
+    const allowed = new Set<string>(Object.values(GARRISON_TEXT));
+    const heard = new Set<string>();
+    for (const { site, g } of guards) {
+      for (let t = 0; t < HOUR; t += TICK) {
+        const speaking = patrolAt(g, t).filter((m) => m.talk !== null);
+        assert.ok(speaking.length <= 1, `сид ${site.loc.seed}: говорят сразу ${speaking.length}`);
+        for (const man of speaking) {
+          assert.equal(man.duty, 'post', `сид ${site.loc.seed}: реплика ушла с обхода`);
+          assert.ok(allowed.has(man.talk!), `сид ${site.loc.seed}: чужая реплика «${man.talk}»`);
+          heard.add(man.talk!);
+        }
+      }
+    }
+    assert.ok(heard.size >= 4, `реплик услышано только ${heard.size}`);
+  });
+
+  test('тропа замкнута: обход проходит все точки маршрута', () => {
+    for (const { site, g } of guards) {
       const near = g.route.map(() => false);
-      for (let t = 0; t < lap; t += TICK) {
-        const man = patrolAt(g, t)[0]!;
+      for (let t = 0; t < g.shift * PATROL_GROUPS; t += TICK) {
+        const men = patrolAt(g, t).filter((m) => m.duty === 'patrol');
         g.route.forEach((corner, k) => {
-          if (Math.hypot(man.x - corner.x, man.z - corner.z) < 1.6) near[k] = true;
+          if (men.some((man) => Math.hypot(man.x - corner.x, man.z - corner.z) < 1.8)) near[k] = true;
         });
       }
       near.forEach((hit, k) => {
-        assert.ok(hit, `сид ${site.loc.seed}: угол ${k} тропы не пройден за круг с запасом`);
+        assert.ok(hit, `сид ${site.loc.seed}: точка ${k} тропы не пройдена за цикл`);
       });
     }
   });
@@ -208,21 +213,25 @@ describe('Гарнизон: отряд обходит периметр', () => {
    * и должен смотреть.
    */
   test('отряд идёт лицом вперёд, в какую сторону ни шёл бы обход', () => {
+    const LOOK = 1 / 60;
     for (const { site, g } of guards) {
       for (let t = 1; t < 60; t += 1.7) {
-        const now = patrolAt(g, t)[0]!;
-        const next = patrolAt(g, t + TICK)[0]!;
-        const dx = next.x - now.x;
-        const dz = next.z - now.z;
-        const step = Math.hypot(dx, dz);
-        if (step < 1e-6) continue;
-        // На повороте лицо уже новой стороны, а шаг ещё старой: угол между
-        // ними там честные 90°, и такие кадры проверять нечем.
-        const dot = (dx / step) * Math.sin(now.facing) + (dz / step) * Math.cos(now.facing);
-        assert.ok(
-          dot > 0,
-          `сид ${site.loc.seed}, way ${g.way}, t=${t.toFixed(1)}: идёт спиной вперёд (${dot.toFixed(2)})`,
-        );
+        const now = patrolAt(g, t);
+        const next = patrolAt(g, t + LOOK);
+        for (let i = 0; i < SQUAD; i++) {
+          if (!now[i]!.walking || !next[i]!.walking) continue;
+          const dx = next[i]!.x - now[i]!.x;
+          const dz = next[i]!.z - now[i]!.z;
+          const step = Math.hypot(dx, dz);
+          if (step < PATROL_SPEED * LOOK * 0.5) continue;
+          // На повороте лицо уже новой стороны, а шаг ещё старой: угол между
+          // ними там честные 90°, и такие кадры проверять нечем.
+          const dot = (dx / step) * Math.sin(now[i]!.facing) + (dz / step) * Math.cos(now[i]!.facing);
+          assert.ok(
+            dot > 0,
+            `сид ${site.loc.seed}, way ${g.way}, t=${t.toFixed(1)}: идёт спиной вперёд (${dot.toFixed(2)})`,
+          );
+        }
       }
     }
   });
