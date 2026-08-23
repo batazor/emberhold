@@ -130,6 +130,24 @@ export function stash(camp: CampState, from: Partial<Resources>): number {
   return lost;
 }
 
+/**
+ * Сколько из этого не влезет в кладовую. Тот же счёт, что делает `stash`,
+ * но **до** зачисления: панели обязаны называть потерю заранее, а не сообщать
+ * о ней после нажатия (§29.4).
+ *
+ * Считается суммой, а не по видам, ровно потому, что счёт кладовой один
+ * (§13.6): что именно пропадёт при нехватке места, решает порядок `stash` —
+ * от дорогого к дешёвому, — а сколько пропадёт, от порядка не зависит.
+ *
+ * Держит эти две функции вместе правило `chests.rules.ts`: предупреждение
+ * обязано совпасть с потерей на любом наборе. Разойдись они — игра соврала бы
+ * не в мелочи, а ровно в том, ради чего предупреждение и заведено.
+ */
+export function overflowOf(camp: CampState, from: Partial<Resources>): number {
+  const asked = (Object.values(from) as number[]).reduce((sum, n) => sum + Math.max(0, n), 0);
+  return Math.max(0, asked - storeFree(camp));
+}
+
 /** §20.4 — площадь растёт с Жильём: 6×6 на ур. 1 … 10×10 на ур. 5. */
 export const campArea = (hqLevel: number): number => Math.min(10, 5 + hqLevel);
 

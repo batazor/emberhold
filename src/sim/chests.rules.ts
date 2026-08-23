@@ -15,12 +15,14 @@ import {
   buildChest,
   chestBlock,
   chestFits,
+  overflowOf,
   stash,
   storeCapacity,
   storeFree,
   storeUsed,
 } from './chests';
 import { BUILD_COST } from './camp';
+import type { Resources } from './resources';
 import { buildTent, tentFits } from './residents';
 import { commandMove, createRaid, stepRaid } from './raid';
 import { chestSiteNear, generateGlade } from './prologue';
@@ -44,6 +46,35 @@ describe('сундуки-хранилища', () => {
     assert.equal(chestBlock(camp), 'resources');
     assert.equal(buildChest(camp, { x: 0, z: 0 }), null);
     assert.equal(camp.chests.length, 0);
+  });
+
+  test('предупреждение о полной кладовой совпадает с потерей', () => {
+    // §29.4 — панель называет потерю до нажатия, а теряет её `stash` после.
+    // Два счёта в двух местах разошлись бы молча, и соврала бы игра ровно
+    // в том, ради чего предупреждение заведено.
+    const sets: Partial<Resources>[] = [
+      { wood: 4 },
+      { stone: 3, wood: 3 },
+      { stone: 10, wood: 10, iron: 10 },
+      { iron: 1 },
+      {},
+    ];
+    for (const free of [0, 1, 5, 40, 1000]) {
+      for (const gift of sets) {
+        const camp = createCamp();
+        // Кладовая заполняется до нужного остатка: свободное место — это
+        // вместимость минус занятое, и задавать надо занятое.
+        const filled = Math.max(0, storeCapacity(camp) - free);
+        camp.resources.stone = filled;
+        const warned = overflowOf(camp, gift);
+        const lost = stash(camp, gift);
+        assert.equal(
+          warned,
+          lost,
+          `свободно ${free}, подарок ${JSON.stringify(gift)}: предупредили ${warned}, потеряли ${lost}`,
+        );
+      }
+    }
   });
 
   test('цена сундука ниже второго уровня любого здания — правило палатки', () => {

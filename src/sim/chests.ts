@@ -33,7 +33,7 @@ import type { Resources } from './resources';
  * для тех же функций завёл бы цикл. Здесь остаётся их лицо: сундук —
  * это то, чем кладовая стоит в сцене и чем прокачивается.
  */
-export { CHEST_BONUS, STORE_BASE, stash, storeCapacity, storeFree, storeUsed } from './camp';
+export { CHEST_BONUS, STORE_BASE, overflowOf, stash, storeCapacity, storeFree, storeUsed } from './camp';
 
 /** След сундука в клетках: предмет, а не здание. */
 export const CHEST_FOOT = 1;
