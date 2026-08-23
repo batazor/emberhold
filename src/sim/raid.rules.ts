@@ -4,6 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { START_FOOD } from './balance';
 import { TICK } from '../core/loop';
 import { createCamp, kitchenFood, storageCapacity } from './camp';
 import { bowQuiver, emptyGear } from './gear';
@@ -242,6 +243,8 @@ describe('Вылазка', () => {
     raid.bagTotal = 8;
     raid.status = 'evacuated';
     addResources(camp.resources, raidResult(raid).carried);
-    assert.deepEqual(camp.resources, { stone: 4, wood: 3, iron: 1, crystal: 0, food: 0 });
+    // §13.7 — пища стартового запаса лежит нетронутой: вылазка её не приносит
+    // (в находках пищи нет) и не тратит (содержание считается в лагере).
+    assert.deepEqual(camp.resources, { stone: 4, wood: 3, iron: 1, crystal: 0, food: START_FOOD });
   });
 });
