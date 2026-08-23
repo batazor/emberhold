@@ -162,6 +162,7 @@ interface SaveV1 {
    * открываться. Отсутствие читается «гостей не звали».
    */
   fires?: { x: number; z: number }[];
+  bushes?: { x: number; z: number; pickedAt?: number }[];
   guests?: number[];
 }
 
@@ -222,6 +223,18 @@ export function save(
     ...(camp.clan != null ? { clan: { name: camp.clan.name, at: camp.clan.at } } : {}),
     // exactOptionalPropertyTypes: у лагеря без гостей этих ключей нет вовсе.
     ...(camp.fires !== undefined ? { fires: camp.fires.map((f) => ({ x: f.x, z: f.z })) } : {}),
+    // §13.8 — кусты: клетка и время сбора. Обобранный обязан пережить
+    // перезагрузку так же, как разбитый валун, иначе ягоды становятся
+    // бесконечными на любой кнопке «обновить».
+    ...(camp.bushes !== undefined
+      ? {
+          bushes: camp.bushes.map((b) => ({
+            x: b.x,
+            z: b.z,
+            ...(b.pickedAt !== undefined ? { pickedAt: b.pickedAt } : {}),
+          })),
+        }
+      : {}),
     ...(camp.guests !== undefined ? { guests: [...camp.guests] } : {}),
     onb: onboarding,
     heroes: {
@@ -476,6 +489,17 @@ export function load(): LoadResult {
       // к Жилью, как у пролога; места нет — сундук подождёт перестановки:
       // прибавка считается от списка, и пустой список честнее фантомного.
       adoptChest(camp, { x: -1, z: -1 });
+    }
+    if (Array.isArray(data.bushes)) {
+      camp.bushes = data.bushes
+        .filter((b): b is { x: number; z: number; pickedAt?: number } =>
+          b != null && typeof b.x === 'number' && typeof b.z === 'number')
+        .map((b, id) => ({
+          id,
+          x: b.x,
+          z: b.z,
+          ...(typeof b.pickedAt === 'number' ? { pickedAt: b.pickedAt } : {}),
+        }));
     }
     if (Array.isArray(data.fires)) {
       camp.fires = data.fires

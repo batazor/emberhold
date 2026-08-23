@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ripe } from '../sim/berries';
 import { blockingMaterial } from './blocking';
 import { RESIDENT_TOOL, RESIDENT_WORK_CLIP, buildingGeometry, dwellerParts, heroGeometry, heroParts } from './models';
 import { hasRoof } from '../sim/residents';
@@ -75,6 +76,34 @@ const WALK_EPS = 1e-4;
 const CAMP_TREES = WOODS;
 const CAMP_ROCKS: readonly Tree[] = [forestTree('Rock_1_G_Color1'), forestTree('Rock_3_H_Color1')];
 
+/**
+ * §13.8 — ягодные кусты. Геометрия из того же набора, что лес и камни,
+ * а ягоды печём сами: в палитре KayKit три градиента — зелёный, осенний,
+ * сухой, — и красного там нет вовсе, поэтому куста с плодами в наборе
+ * не бывает. Своя горсть зёрен дешевле и честнее второго набора в кадре
+ * (тот же довод, что у домов городов и портретов).
+ */
+const CAMP_BUSHES: readonly Tree[] = [
+  forestTree('Bush_1_A_Color1'),
+  forestTree('Bush_2_B_Color1'),
+  forestTree('Bush_4_C_Color1'),
+];
+
+/** Высота куста и ягоды. Куст ниже валуна: он не должен спорить с постройкой
+ *  за силуэт, а ягода — заметное пятно, а не точка. */
+const BUSH_HEIGHT = 0.5;
+const BERRY_RADIUS = 0.045;
+/** Сколько ягод на кусте. Пять — читается горстью и не превращает куст
+ *  в шар: рисуем их инстансами, поэтому цена одна на все. */
+const BERRY_COUNT = 5;
+
+/** Геометрия ягоды. Одна на все кусты: инстансы рисуют её, а не копии. */
+let berryGeo: THREE.SphereGeometry | null = null;
+const berryGeometry = (): THREE.SphereGeometry => {
+  berryGeo ??= new THREE.SphereGeometry(BERRY_RADIUS, 6, 4);
+  return berryGeo;
+};
+
 /** Уровень земли вокруг площадки: луг из buildMeadow, на нём же стоит лес. */
 const MEADOW_Y = -0.02;
 
@@ -148,6 +177,9 @@ export class CampView {
   /** Валуны лагеря (§13.4): по мешу на камень — их единицы, и каждый дрожит
    *  от удара и исчезает поодиночке. */
   private readonly stones = new Map<number, THREE.Mesh>();
+  /** §13.8 — кусты: куст и его ягоды живут одной парой, гаснут вместе. */
+  private readonly bushes = new Map<number, THREE.Object3D>();
+  private berryMat: THREE.Material | null = null;
   private readonly stoneHits = new Map<number, number>();
   private stoneMat: THREE.MeshLambertMaterial | null = null;
   /** Пятно работы под валуном. Заводится в первый же замах, а не на входе. */
@@ -165,6 +197,7 @@ export class CampView {
     this.group.add(this.fire.group);
     this.rebuildBuildings();
     this.buildStones();
+    this.buildBushes(0);
   }
 
   private track<T extends THREE.BufferGeometry | THREE.Material>(x: T): T {
@@ -670,6 +703,69 @@ export class CampView {
       this.group.add(mesh);
       this.stones.set(stone.id, mesh);
     }
+  }
+
+  /**
+   * §13.8 — кусты поляны. Обобранный не исчезает, а стоит без ягод: куст
+   * созревает снова (§13.8), и пустая ветка — это и есть «приходи позже»,
+   * сказанное кадром, а не строкой.
+   */
+  private buildBushes(now: number): void {
+    for (const node of this.bushes.values()) node.removeFromParent();
+    this.bushes.clear();
+    this.stoneMat ??= this.track(forestMaterial());
+    // Ягоды своим материалом: красного в палитре набора нет, и брать его
+    // неоткуда, кроме как завести.
+    this.berryMat ??= this.track(
+      new THREE.MeshLambertMaterial({ color: 0xb1233a }),
+    );
+    for (const bush of this.camp.bushes ?? []) {
+      const n = noise(bush.x * 5.3, bush.z * 2.9);
+      const model = CAMP_BUSHES[Math.floor(n * CAMP_BUSHES.length) % CAMP_BUSHES.length]!;
+      const node = new THREE.Group();
+      const mesh = new THREE.Mesh(
+        treeGeometry(model, BUSH_HEIGHT * (0.85 + n * 0.35)),
+        this.stoneMat,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.rotation.y = n * 6.28;
+      node.add(mesh);
+
+      if (ripe(bush, now)) {
+        const berries = new THREE.InstancedMesh(
+          berryGeometry(),
+          this.berryMat,
+          BERRY_COUNT,
+        );
+        const m = new THREE.Matrix4();
+        for (let i = 0; i < BERRY_COUNT; i++) {
+          const a = noise(bush.x * 11.3 + i, bush.z * 7.1 - i);
+          const b = noise(bush.z * 13.7 - i, bush.x * 3.3 + i);
+          const angle = a * Math.PI * 2;
+          const r = 0.12 + b * 0.1;
+          m.setPosition(
+            Math.cos(angle) * r,
+            BUSH_HEIGHT * (0.35 + b * 0.45),
+            Math.sin(angle) * r,
+          );
+          berries.setMatrixAt(i, m);
+        }
+        berries.instanceMatrix.needsUpdate = true;
+        berries.castShadow = true;
+        node.add(berries);
+      }
+
+      node.position.set(bush.x, MEADOW_Y, bush.z);
+      this.group.add(node);
+      this.bushes.set(bush.id, node);
+    }
+  }
+
+  /** Куст обобран: ягоды гаснут, ветка остаётся. Пересборка одной пары
+   *  дешевле полной, но её и хватает — куст в кадре один. */
+  pickBush(now: number): void {
+    this.buildBushes(now);
   }
 
   /** Замах пришёлся в валун: камень оседает под ударом. */

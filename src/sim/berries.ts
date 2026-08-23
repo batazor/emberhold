@@ -26,7 +26,9 @@
  * перед выходом.
  */
 import { mulberry32, randInt } from '../core/rng';
-import { SWING_SECONDS } from './work';
+import { SWING_SECONDS, inReach, startWork, stepWork } from './work';
+import type { Work, WorkBlock, Worker } from './work';
+import type { Resources } from './resources';
 
 /**
  * Пищи с одного куста. Вдвое меньше, чем камня с валуна (3–5), и это
@@ -173,3 +175,62 @@ export const PICK_REASON: Record<Exclude<PickBlock, 'ok'>, string> = {
   пусто: 'Здесь нечего рвать',
   зелёный: 'Ягоды ещё не поспели',
 };
+
+
+/* ---------- сбор: тот же аппарат, что у кайла ---------- */
+
+/** Взяться за куст: десять замахов той же работы, что рубит и кайлит. */
+export const startPick = (cell: { x: number; z: number }): Work =>
+  startWork(cell, PICK_SWINGS);
+
+/**
+ * Можно ли рвать. Причины те же, что у валуна, плюс своя — зелёный куст:
+ * обобранный созревает два часа, и до срока по нему стучать незачем.
+ * Возвращает причину работы (`WorkBlock`), потому что её читает общий
+ * `stepWork`, а не отдельный код куста.
+ */
+export function pickWorkBlock(
+  worker: Worker,
+  bushes: readonly Bush[],
+  cell: { x: number; z: number },
+  now: number,
+): WorkBlock {
+  const bush = bushAt(bushes, cell);
+  if (bush === null) return 'gone';
+  if (!ripe(bush, now)) return 'gone';
+  return inReach(worker, cell) ? 'ok' : 'far';
+}
+
+export interface PickStep {
+  /** Пришёлся ли замах: рендеру — дрогнуть кустом. */
+  readonly swing: boolean;
+  /** Обобран ли куст на этом шаге. */
+  readonly taken: boolean;
+  /** Сколько пищи легло в кладовую. */
+  readonly food: number;
+  readonly stopped: WorkBlock | null;
+}
+
+/**
+ * Шаг сбора. Пища кладётся напрямую, а не через кладовую: места она
+ * не занимает (§13.7), и потолок ей не писан.
+ */
+export function stepPickInto(
+  worker: Worker,
+  walking: boolean,
+  bushes: readonly Bush[],
+  work: Work,
+  dt: number,
+  into: Resources,
+  now: number,
+): PickStep {
+  const step = stepWork(worker, walking, work, dt, pickWorkBlock(worker, bushes, work.cell, now));
+  if (!step.done) return { swing: step.swing, taken: false, food: 0, stopped: step.stopped };
+
+  const bush = bushAt(bushes, work.cell);
+  if (bush === null) return { swing: step.swing, taken: false, food: 0, stopped: 'gone' };
+  const food = berryYield(bush);
+  into.food += food;
+  bush.pickedAt = now;
+  return { swing: step.swing, taken: true, food, stopped: null };
+}

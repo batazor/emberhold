@@ -291,6 +291,8 @@ import {
   tentSpot,
 } from './sim/residents';
 import { payUpkeep, workingAfter } from './sim/upkeep';
+import { PICK_REASON, bushAt, ripe, startPick, stepPickInto } from './sim/berries';
+import type { Bush } from './sim/berries';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
 import type { Chore } from './sim/chores';
@@ -438,6 +440,8 @@ let chop: Chop | null = null;
 let mine: Work | null = null;
 /** То же в лагере: там рюкзака нет, и камень идёт прямо в кладовую. */
 let campMine: { work: Work; stone: Stone } | null = null;
+/** §13.8 — сбор ягод в лагере: та же пара «работа и цель», что у кайла. */
+let campPick: { work: Work; bush: Bush } | null = null;
 
 /**
  * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
@@ -3632,6 +3636,7 @@ function toGladeCamp(): void {
   leaveWalkSites();
   chop = null;
   campMine = null;
+  campPick = null;
   raidView?.dispose();
   const glade = camp.glade!;
   const blocked = unpackGlade(glade);
@@ -3737,6 +3742,7 @@ function toPadCamp(): void {
   leaveWalkSites();
   chop = null;
   campMine = null;
+  campPick = null;
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
   // в лагере провиант ничего не отсчитывает. Взамен — единственная
   // мелодия игры, и звучит она только здесь: всё это в таблице сцены.
@@ -3889,6 +3895,23 @@ function campTap(clientX: number, clientY: number): void {
   const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
   const free = cell.x >= 0 && cell.z >= 0 && cell.x < nav.area && cell.z < nav.area
     && nav.ground[idx(nav.area, cell.x, cell.z)] === 0;
+  /**
+   * §13.8 — тап по кусту. Спрашивается раньше валуна и здания по тому же
+   * правилу, что валун: куст ловится ровно своей клеткой, а здание — с запасом,
+   * и иначе куст у Склада был бы нетапаемым.
+   */
+  const bush = bushAt(camp.bushes ?? [], cell);
+  if (bush !== null && free && campHero.level === 'земля') {
+    if (!ripe(bush, clock.now())) {
+      campHud.notify(PICK_REASON['зелёный']);
+      return;
+    }
+    campHud.close();
+    campView.highlight(null);
+    startCampPicking(bush, nav);
+    return;
+  }
+
   const stone = stoneAt(camp.stones, cell);
   if (stone !== null && free && campHero.level === 'земля') {
     campHud.close();
@@ -3942,6 +3965,77 @@ function campTap(clientX: number, clientY: number): void {
 /* ---------- добыча камня в лагере (§13.5) ---------- */
 
 /** Взяться за валун: дойти до него или встать, если кайло уже достаёт. */
+/**
+ * §13.8 — сбор ягод в лагере. Всё, кроме награды и клипа, — тот же аппарат,
+ * что у кайла: работа по клетке, замахи, остановка по причине. Второй копии
+ * этих восьми секунд заводить нельзя (`work.ts` про это и написан).
+ */
+function startCampPicking(bush: Bush, nav: CampNav): void {
+  campPick = { work: startPick(bush), bush };
+  if (inReach(campHero, bush)) {
+    campHero.path.length = 0;
+    return;
+  }
+  const spot = standNear(campHero, bush, (x, z) =>
+    x >= 0 && z >= 0 && x < nav.area && z < nav.area && nav.ground[idx(nav.area, x, z)] === 0);
+  commandCampMove(camp, campHero, spot);
+}
+
+function stopCampPicking(): void {
+  campPick = null;
+  campView.hideWork();
+}
+
+/**
+ * Тик сбора. Отличий от кайла три, и все три — про пищу: она идёт в кладовую
+ * мимо потолка (§13.7, места не занимает), куст не исчезает, а созревает,
+ * и время сбора пишется в сохранение — обобранный куст обязан пережить
+ * перезагрузку так же, как разбитый валун.
+ */
+function stepCampPicking(dt: number): void {
+  if (campPick === null) return;
+  const { work, bush } = campPick;
+  const foodBefore = camp.resources.food;
+  const step = stepPickInto(
+    campHero,
+    campHero.path.length > 0,
+    camp.bushes ?? [],
+    work,
+    dt,
+    camp.resources,
+    clock.now(),
+  );
+  if (step.stopped !== null) {
+    play('deny');
+    // «Пусто» — свой отказ куста (обобрали, пока шли); остальные причины
+    // общие с кайлом, и слова у них те же.
+    campHud.notify(
+      step.stopped === 'gone' || step.stopped === 'ok'
+        ? PICK_REASON['пусто']
+        : MINE_REASON[step.stopped],
+    );
+    stopCampPicking();
+    return;
+  }
+  if (campHero.path.length > 0) {
+    campView.hideWork();
+    return;
+  }
+  campView.showWork(work.cell.x, work.cell.z, mineProgress(work));
+  if (step.swing) play('build');
+  if (step.taken) {
+    // Куст остаётся стоять — гаснут только ягоды (§13.8): пустая ветка
+    // и есть «приходи позже», сказанное кадром.
+    campView.pickBush(clock.now());
+    campHud.notify(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
+    campHud.sync(camp, clock.now(), 0);
+    play('levelup');
+    stopCampPicking();
+    persist();
+  }
+  void bush;
+}
+
 function startCampMining(stone: Stone, nav: CampNav): void {
   campMine = { work: startMine(stone), stone };
   if (inReach(campHero, stone)) {
@@ -3955,6 +4049,7 @@ function startCampMining(stone: Stone, nav: CampNav): void {
 
 function stopCampMining(): void {
   campMine = null;
+  campPick = null;
   campView.hideWork();
 }
 
@@ -5430,6 +5525,7 @@ startLoop({
       // симуляцией, потом ставится в сцену.
       stepCampHero(camp, campHero, campDt);
       stepCampMining(campDt);
+      stepCampPicking(campDt);
       // На площадке стоит тот, кем сейчас ведут отряд (§11.8): его же лицо
       // отмечено кольцом в веере. Смена ведущего обязана быть видна в лагере,
       // а не только в карточке.
