@@ -209,7 +209,10 @@ const CASTLE_FADE = 0.45;
 const rateFor = (speed: number, scale: number): number =>
   Math.min(MAX_RATE, speed / Math.max(1e-3, SLIDE * scale));
 const walkRate = (kind: EnemyKind, scale: number): number =>
-  rateFor(ENEMY_STATS[kind].speed, scale);
+  rateFor(
+    kind === 'mage' ? Math.max(ENEMY_STATS[kind].speed, 0.7) : ENEMY_STATS[kind].speed,
+    scale,
+  );
 
 /**
  * §17.6 — весь удар героя обязан уложиться в половину интервала атаки,

@@ -223,7 +223,7 @@ import {
 } from './sim/castleGuest';
 import type { CastleGuest, GuestMeet } from './sim/castleGuest';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
-import { generateGraveSite, readEpitaph } from './sim/graveSite';
+import { generateGraveSite, readEpitaph, stepGraveNpcs } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
 import { DEAL_REASON, askOf, dealBlock, makeDeal, marketKey, pruneBought, stockOf, worthOf } from './sim/trade';
 import type { Stock } from './sim/trade';
@@ -5474,6 +5474,9 @@ startLoop({
        * это не делает — кладбище остаётся прогулкой.
        */
       if (graveSite !== null) {
+        if (raid.battle === null && raid.status === 'running') {
+          stepGraveNpcs(graveSite, raid.elapsed, raid.hero);
+        }
         const read = readEpitaph(graveSite, raid.hero.x, raid.hero.z, readStone);
         readStone = read.last;
         if (read.say !== null) raid.events.push(read.say);

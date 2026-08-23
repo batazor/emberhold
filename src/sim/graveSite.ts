@@ -25,6 +25,8 @@ import { mulberry32, randInt, type Rng } from '../core/rng';
 import { ENEMY_STATS } from './enemies';
 import { FENCE_CELL, FENCE_MATERIALS, buildFence, type FenceMaterial, type FencePiece } from './fence';
 import { distanceField, idx } from './grid';
+import { findPath, nearestWalkable } from './pathfinding';
+import { keepApart } from './crowd';
 import type { Spot } from './castle';
 import type { Cell, Enemy, GameLocation } from './types';
 
@@ -48,6 +50,15 @@ const GHOSTS_MIN = 2;
 const GHOSTS_MAX = 6;
 /** Свободных клеток участка на одно привидение. */
 const GHOST_TILES = 28;
+
+/**
+ * Мирный ход привидения по участку. Быстрее — и оно читалось бы погоней
+ * ещё до пробуждения; медленнее — снова становилось бы поставленной фигуркой.
+ */
+export const GRAVE_NPC_SPEED = 0.62;
+/** Сколько привидение стоит у могилы, ворот или склепа: дело должно быть
+ *  видно как остановка, а не как едва заметная задержка на маршруте. */
+const GRAVE_NPC_WAIT = 2.8;
 
 /** Надгробия. Первое — насыпь без камня: по ней ходят, остальные обходят. */
 const MOUND = 'grave';
@@ -110,6 +121,25 @@ export interface GraveMark {
    * и это не пропуск, а разница между могилой и надгробием.
    */
   readonly epitaph: string | null;
+}
+
+/** Нога кладбищенского обхода: стоянка у `at`, потом путь к следующему делу. */
+export interface GraveNpcLeg {
+  readonly at: Cell;
+  readonly path: readonly Cell[];
+  readonly length: number;
+  readonly wait: number;
+}
+
+/**
+ * Обход одного обитателя кладбища. Хранится у участка, а не у врага: это
+ * поведение места, а не состояние боя. Враг остаётся прежним `ghost`; маршрут
+ * только говорит, где он плавает, пока не проснулся.
+ */
+export interface GraveNpcPatrol {
+  readonly enemy: number;
+  readonly legs: readonly GraveNpcLeg[];
+  readonly cycle: number;
 }
 
 /**
@@ -179,6 +209,8 @@ export interface GraveSite {
   readonly stumps: readonly Spot[];
   /** Проезд в клетках локации — сюда приходят снаружи. */
   readonly gate: Cell;
+  /** Обходы привидений, пока они не проснулись и не гонятся за героем. */
+  readonly npcs: readonly GraveNpcPatrol[];
 }
 
 /** Клетка локации, в которую попадает клетка плана. */
@@ -197,6 +229,204 @@ function writeEpitaph(rng: Rng, crypt = false): string {
   const deed = DEED[randInt(rng, DEED.length)]!;
   if (crypt) return `Склеп ${from}. Здесь те, кто не дошёл до выхода`;
   return `Здесь ${who.toLowerCase()} ${from}. ${deed}`;
+}
+
+function pathLength(path: readonly Cell[]): number {
+  let out = 0;
+  for (let i = 1; i < path.length; i++) {
+    out += Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.z - path[i - 1]!.z);
+  }
+  return out;
+}
+
+function pointOn(path: readonly Cell[], distance: number): { readonly x: number; readonly z: number } {
+  if (path.length === 0) return { x: 0, z: 0 };
+  let left = distance;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!;
+    const b = path[i]!;
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    if (left <= len || i === path.length - 1) {
+      const t = len <= 1e-6 ? 0 : Math.min(1, Math.max(0, left / len));
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+    }
+    left -= len;
+  }
+  const last = path[path.length - 1]!;
+  return { x: last.x, z: last.z };
+}
+
+function connect(size: number, blocked: Uint8Array, from: Cell, to: Cell): Cell[] {
+  if (from.x === to.x && from.z === to.z) return [from];
+  const tail = findPath(size, blocked, from, to);
+  return tail.length === 0 ? [] : [from, ...tail];
+}
+
+/** Границы внутреннего двора в клетках локации. */
+function yardBounds(site: {
+  readonly loc: { readonly size: number };
+  readonly at: Spot;
+  readonly fence: readonly FencePiece[];
+}): { readonly x0: number; readonly z0: number; readonly x1: number; readonly z1: number } {
+  let minX = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxZ = -Infinity;
+  for (const piece of site.fence) {
+    minX = Math.min(minX, piece.x);
+    minZ = Math.min(minZ, piece.z);
+    maxX = Math.max(maxX, piece.x);
+    maxZ = Math.max(maxZ, piece.z);
+  }
+  if (!Number.isFinite(minX)) return { x0: 0, z0: 0, x1: site.loc.size - 1, z1: site.loc.size - 1 };
+  return {
+    x0: site.at.x + (Math.floor(minX) + 1) * FENCE_CELL,
+    z0: site.at.z + (Math.floor(minZ) + 1) * FENCE_CELL,
+    x1: site.at.x + Math.ceil(maxX) * FENCE_CELL - 1,
+    z1: site.at.z + Math.ceil(maxZ) * FENCE_CELL - 1,
+  };
+}
+
+function graveNpcSpots(site: {
+  readonly loc: { readonly size: number; readonly blocked: Uint8Array };
+  readonly at: Spot;
+  readonly fence: readonly FencePiece[];
+  readonly marks: readonly GraveMark[];
+  readonly gate: Cell;
+}): Cell[] {
+  const { loc } = site;
+  const out: Cell[] = [];
+  const seen = new Set<string>();
+  const add = (spot: Cell | null): void => {
+    if (spot === null) return;
+    if (spot.x < 0 || spot.z < 0 || spot.x >= loc.size || spot.z >= loc.size) return;
+    if (loc.blocked[idx(loc.size, spot.x, spot.z)] !== 0) return;
+    const key = `${spot.x}:${spot.z}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(spot);
+  };
+  const near = (spot: Cell): Cell | null => nearestWalkable(loc.size, loc.blocked, spot);
+
+  add(site.gate);
+  const b = yardBounds(site);
+  add(near({ x: b.x0, z: b.z0 }));
+  add(near({ x: b.x1, z: b.z0 }));
+  add(near({ x: b.x1, z: b.z1 }));
+  add(near({ x: b.x0, z: b.z1 }));
+  add(near({ x: Math.round((b.x0 + b.x1) / 2), z: Math.round((b.z0 + b.z1) / 2) }));
+
+  for (const mark of site.marks) {
+    // Остановка у насыпи, гроба или камня: если клетка занята, встаём рядом.
+    add(near({ x: mark.x, z: mark.z }));
+  }
+  return out;
+}
+
+function shuffle<T>(list: T[], rng: Rng): void {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = randInt(rng, i + 1);
+    const tmp = list[i]!;
+    list[i] = list[j]!;
+    list[j] = tmp;
+  }
+}
+
+function graveNpcPatrol(
+  site: {
+    readonly loc: { readonly size: number; readonly blocked: Uint8Array; readonly seed: number };
+    readonly at: Spot;
+    readonly fence: readonly FencePiece[];
+    readonly marks: readonly GraveMark[];
+    readonly gate: Cell;
+  },
+  enemy: number,
+): GraveNpcPatrol | null {
+  const spots = graveNpcSpots(site);
+  if (spots.length < 2) return null;
+
+  const rng = mulberry32(site.loc.seed ^ Math.imul(enemy + 1, 0x9e3779b9));
+  shuffle(spots, rng);
+  const b = yardBounds(site);
+  const firstInside = spots.findIndex((s) => s.x >= b.x0 && s.x <= b.x1 && s.z >= b.z0 && s.z <= b.z1);
+  if (firstInside > 0) {
+    const first = spots[firstInside]!;
+    spots[firstInside] = spots[0]!;
+    spots[0] = first;
+  }
+  const extra = spots.length <= 3 ? 0 : randInt(rng, Math.min(3, spots.length - 3) + 1);
+  const count = Math.min(spots.length, 3 + extra);
+  const route = spots.slice(0, count);
+
+  const legs: GraveNpcLeg[] = [];
+  for (let i = 0; i < route.length; i++) {
+    const from = route[i]!;
+    const to = route[(i + 1) % route.length]!;
+    const path = connect(site.loc.size, site.loc.blocked, from, to);
+    if (path.length === 0) continue;
+    const length = pathLength(path);
+    legs.push({
+      at: from,
+      path,
+      length,
+      wait: GRAVE_NPC_WAIT + randInt(rng, 4) * 0.45,
+    });
+  }
+  if (legs.length < 2) return null;
+  const cycle = legs.reduce((sum, leg) => sum + leg.wait + leg.length / GRAVE_NPC_SPEED, 0);
+  return { enemy, legs, cycle };
+}
+
+/** Где обитатель кладбища стоит в заданную секунду своего обхода. */
+export function graveNpcAt(
+  patrol: GraveNpcPatrol,
+  seconds: number,
+): { readonly x: number; readonly z: number } {
+  let t = ((seconds % patrol.cycle) + patrol.cycle) % patrol.cycle;
+  for (const leg of patrol.legs) {
+    if (t < leg.wait) return leg.at;
+    t -= leg.wait;
+    const walk = leg.length / GRAVE_NPC_SPEED;
+    if (t <= walk) return pointOn(leg.path, t * GRAVE_NPC_SPEED);
+    t -= walk;
+  }
+  const first = patrol.legs[0]!.at;
+  return { x: first.x, z: first.z };
+}
+
+/**
+ * Кладбищенские NPC двигаются только пока не проснулись. Проснулся — это уже
+ * прежний противник: погоню и бой ведёт `stepRaid`, и второй хозяин движения
+ * ему не нужен.
+ */
+export function stepGraveNpcs(
+  site: GraveSite,
+  seconds: number,
+  hero?: { readonly x: number; readonly z: number },
+): void {
+  const moving: Enemy[] = [];
+  for (const patrol of site.npcs) {
+    const enemy = site.loc.enemies.find((e) => e.id === patrol.enemy);
+    if (enemy === undefined || enemy.kind !== 'ghost' || enemy.hp <= 0 || enemy.awake) continue;
+    const at = graveNpcAt(patrol, seconds);
+    enemy.prevX = enemy.x;
+    enemy.prevZ = enemy.z;
+    enemy.x = at.x;
+    enemy.z = at.z;
+    moving.push(enemy);
+  }
+  if (moving.length === 0) return;
+
+  const bodies: { x: number; z: number }[] = hero === undefined ? moving : [...moving, { x: hero.x, z: hero.z }];
+  keepApart(bodies, {
+    fixed: (i) => hero !== undefined && i === bodies.length - 1,
+    free: (x, z) => {
+      const cx = Math.round(x);
+      const cz = Math.round(z);
+      return cx >= 0 && cz >= 0 && cx < site.loc.size && cz < site.loc.size
+        && site.loc.blocked[idx(site.loc.size, cx, cz)] === 0;
+    },
+  });
 }
 
 /** Периметр участка по часовой стрелке — цепь, из которой строится ограда. */
@@ -409,22 +639,25 @@ export function generateGraveSite(seed: number): GraveSite {
     }
   }
   const enemies: Enemy[] = [];
+  const npcs: GraveNpcPatrol[] = [];
   const count = Math.min(
     open.length,
     Math.max(GHOSTS_MIN, Math.min(GHOSTS_MAX, Math.round(open.length / GHOST_TILES))),
   );
   for (let i = 0; i < count; i++) {
-    const cell = open.splice(randInt(rng, open.length), 1)[0];
-    if (cell === undefined) break;
+    const patrol = graveNpcPatrol({ loc: { size, blocked, seed }, at, fence, marks, gate }, i);
+    const start = patrol === null ? open.splice(randInt(rng, open.length), 1)[0] : graveNpcAt(patrol, 0);
+    if (start === undefined) break;
+    if (patrol !== null) npcs.push(patrol);
     enemies.push({
       id: i,
       kind: 'ghost',
       // Обитатель места, а не яруса: живёт первым уровнем (§22.6).
       level: 1,
-      x: cell.x,
-      z: cell.z,
-      prevX: cell.x,
-      prevZ: cell.z,
+      x: start.x,
+      z: start.z,
+      prevX: start.x,
+      prevZ: start.z,
       hp: ENEMY_STATS.ghost.hp,
       awake: false,
       telegraph: 0,
@@ -464,5 +697,5 @@ export function generateGraveSite(seed: number): GraveSite {
     (x, z) => !busyCell.has(`${x},${z}`),
     true,
   );
-  return { loc, material, fence, at, marks, trees, bushes, stumps, gate };
+  return { loc, material, fence, at, marks, trees, bushes, stumps, gate, npcs };
 }

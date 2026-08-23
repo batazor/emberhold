@@ -21,7 +21,17 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CLANS } from './world';
 import { FENCE_CELL } from './fence';
-import { EPITAPH_REACH, FIELD, WOOD, epitaphAt, generateGraveSite, readEpitaph } from './graveSite';
+import {
+  EPITAPH_REACH,
+  FIELD,
+  GRAVE_NPC_SPEED,
+  WOOD,
+  epitaphAt,
+  generateGraveSite,
+  graveNpcAt,
+  readEpitaph,
+  stepGraveNpcs,
+} from './graveSite';
 import { distanceField, idx } from './grid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
@@ -184,6 +194,59 @@ describe('Кладбище: что в нём есть и чего нет', () =>
         );
       }
     }
+  });
+});
+
+describe('Кладбище: привидения патрулируют и занимаются своим', () => {
+  test('каждому привидению назначен обход со стоянками', () => {
+    for (const site of sites) {
+      assert.equal(
+        site.npcs.length,
+        site.loc.enemies.length,
+        `сид ${site.loc.seed}: не у каждого привидения есть обход`,
+      );
+      for (const patrol of site.npcs) {
+        assert.ok(patrol.legs.length >= 2, `сид ${site.loc.seed}: обход слишком короткий`);
+        assert.ok(patrol.cycle > 10, `сид ${site.loc.seed}: обход не похож на жизнь участка`);
+        assert.ok(
+          patrol.legs.some((leg) => leg.wait >= 2),
+          `сид ${site.loc.seed}: привидение нигде не задерживается у дела`,
+        );
+      }
+    }
+  });
+
+  test('обход ходит только по свободным клеткам', () => {
+    for (const site of sites) {
+      for (const patrol of site.npcs) {
+        const step = Math.max(0.35, 1 / GRAVE_NPC_SPEED);
+        for (let t = 0; t < patrol.cycle; t += step) {
+          const p = graveNpcAt(patrol, t);
+          const x = Math.round(p.x);
+          const z = Math.round(p.z);
+          assert.equal(
+            site.loc.blocked[idx(site.loc.size, x, z)],
+            0,
+            `сид ${site.loc.seed}: обход ${patrol.enemy} вошёл в занятое ${x},${z}`,
+          );
+        }
+      }
+    }
+  });
+
+  test('спящие привидения двигаются, проснувшихся ведёт уже бой', () => {
+    const site = generateGraveSite(42);
+    const sleeping = site.loc.enemies[0]!;
+    const awake = site.loc.enemies[1]!;
+    awake.awake = true;
+    const awakeAt = { x: awake.x, z: awake.z };
+    let moved = false;
+    for (let t = 0; t <= 30; t += 1) {
+      stepGraveNpcs(site, t, { x: site.loc.evac.x, z: site.loc.evac.z });
+      moved ||= Math.hypot(sleeping.x - sleeping.prevX, sleeping.z - sleeping.prevZ) > 0.01;
+    }
+    assert.ok(moved, 'спящее привидение так и осталось стоять');
+    assert.deepEqual({ x: awake.x, z: awake.z }, awakeAt, 'проснувшееся привидение перехватил патруль');
   });
 });
 
