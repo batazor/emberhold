@@ -70,6 +70,18 @@ export interface StopRule {
   readonly fail: (spare: number) => number;
   /** Доля добычи, теряемая при провале (§11.2). */
   readonly risk: number;
+  /**
+   * Своё решение вместо формулы §22.5. Правило остановки — это функция
+   * состояния, а формула раздела — её частный случай, притом **близорукий**:
+   * она взвешивает одну следующую находку против рюкзака и не знает, что
+   * будет после неё. Оптимальная политика считается обратной индукцией
+   * и в одну строку не записывается, поэтому подаётся сюда функцией
+   * (`npm run optimal`).
+   *
+   * Необязательное: без него бот считает по §22.5 ровно как прежде,
+   * и золотой мастер обязан это подтвердить.
+   */
+  readonly decide?: (state: { bag: number; gain: number; spare: number }) => boolean;
 }
 
 interface Policy {
@@ -384,7 +396,11 @@ export function playRaid(
      */
     if (opts.stop !== undefined && kind === 'container') {
       const spare = state.food - back * FOOD_COST.step;
-      if (!shouldContinue(state.bagTotal, targetGain, opts.stop.fail(spare), opts.stop.risk)) {
+      const rule = opts.stop;
+      const go = rule.decide !== undefined
+        ? rule.decide({ bag: state.bagTotal, gain: targetGain, spare })
+        : shouldContinue(state.bagTotal, targetGain, rule.fail(spare), rule.risk);
+      if (!go) {
         target = null;
         kind = 'evac';
         targetGain = 0;
