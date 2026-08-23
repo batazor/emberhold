@@ -233,6 +233,7 @@ import { events, loadTelemetry, setTelemetrySink, track } from './sim/telemetry'
 import { analyticsIdentify, startAnalytics } from './core/analytics';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
+import { FarmView } from './render/farmView';
 import { gearIcon } from './render/gearIcon';
 import { giftIcon } from './render/giftIcon';
 import { CursorWind } from './render/cursorWind';
@@ -244,6 +245,8 @@ import { WheelView } from './render/wheelView';
 import { streetScene } from './render/village';
 import { CampHud } from './ui/campHud';
 import type { FlyTarget } from './ui/campHud';
+import { CampLocations, FarmOnboarding } from './ui/farmOnboarding';
+import type { CampLocation } from './ui/farmOnboarding';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
@@ -320,6 +323,12 @@ import type { MeetState, SelfAnswer, Settler } from './sim/settler';
 import { panelsFor, soundFor } from './features/scene';
 import type { Scene } from './features/scene';
 import { createRaidEar } from './features/raidAudio';
+import {
+  FARM_FOOD_GOAL,
+  advanceFarmOnboarding,
+  gatherFarmFood,
+  startFarmOnboarding,
+} from './sim/farm';
 
 const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
@@ -384,6 +393,9 @@ const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark)
  */
 const upkeep = payUpkeep(camp, awaySec);
 const worked = collectWork(camp, awaySec, workingAfter(camp, upkeep.hungry));
+// Старый сейв со вторым жителем получает новую цель при первом запуске этой
+// версии. Оффлайн-работа выше к ней не относится: задания тогда ещё не было.
+startFarmOnboarding(camp);
 /** Сказать о наработанном один раз за сессию, а не на каждый вход в лагерь. */
 let workShown = false;
 
@@ -393,6 +405,7 @@ if (finishedOffline !== null) {
 }
 
 let mode: 'title' | 'camp' | 'raid' = 'title';
+let campLocation: CampLocation = 'camp';
 let raid: RaidState | null = null;
 let titleView: TitleView | null = null;
 /** Колесо призов — оверлей поверх карты, в риг не входит (`wheelView.ts`). */
@@ -590,6 +603,8 @@ const setNight = (value: number): void => {
 };
 const campView = new CampView(camp);
 rig.world.add(campView.group);
+const farmView = new FarmView();
+rig.world.add(farmView.group);
 
 /* ---------- HUD ---------- */
 const hud = new Hud(app, {
@@ -761,6 +776,23 @@ const campHud = new CampHud(app, {
   // §29.4 — та же дорога у картинок подарка: бревно, валун и слиток берутся
   // из тех же наборов, которыми набран лагерь.
   giftIcon: (name) => giftIcon(name),
+});
+
+const farmOnboarding = new FarmOnboarding(app, {
+  onAdvance: () => {
+    if (!advanceFarmOnboarding(camp)) return;
+    syncFarmUi();
+    persist();
+  },
+  onOpenFarm: () => {
+    advanceFarmOnboarding(camp);
+    switchCampLocation('farm');
+    persist();
+  },
+});
+
+const campLocations = new CampLocations(app, {
+  onSelect: (location) => switchCampLocation(location),
 });
 
 /**
@@ -1445,6 +1477,7 @@ function meetCallbacks(): MeetPanelCallbacks {
           answer: meet.answer,
           rest: false,
         });
+        syncFarmUi();
         persist();
       }
       play('build');
@@ -2531,7 +2564,61 @@ const ear = createRaidEar();
 const quietFrame = (): boolean =>
   (onboarding.step === 'build' || onboarding.step === 'craft') && camp.residents.length === 0;
 
+function syncFarmUi(): void {
+  farmOnboarding.sync(camp);
+  campLocations.sync(camp, campLocation);
+}
+
+/** Сменить соседнюю локацию, не превращая Ферму в место мировой карты. */
+function switchCampLocation(next: CampLocation): void {
+  if (mode !== 'camp') return;
+  const farm = camp.farm;
+  if (next === 'farm' && farm?.unlocked !== true) {
+    play('deny');
+    return;
+  }
+  campLocation = next;
+  const onFarm = next === 'farm';
+  if (onFarm) {
+    buildPanel.setVisible(false);
+    buildTool = null;
+    selected = null;
+    placingTent = false;
+    placingChest = false;
+    stopCampMining();
+    campView.highlight(null);
+    campView.hideWallGhost();
+    hidePlacingSpot();
+  }
+  farmView.group.visible = onFarm;
+  campView.group.visible = !onFarm && !inGladeCamp;
+  if (inGladeCamp && raidView !== null) raidView.group.visible = !onFarm;
+  campHud.close();
+  heroCard.setVisible(false);
+  residentCard.setVisible(false);
+  closeCharacter();
+  heroFan.setVisible(!onFarm && !quietFrame());
+  if (onFarm) {
+    rig.lookAt(farmView.center.x, farmView.center.z, true);
+    rig.setZoom(18, true);
+    setNight(0.18);
+  } else if (inGladeCamp && raid !== null) {
+    rig.lookAt(raid.hero.x, raid.hero.z, true);
+    rig.setZoom(20, true);
+  } else {
+    const c = campView.center;
+    rig.lookAt(c.x, c.z, true);
+    rig.setZoom(campArea(camp.levels.hq) * 2.8, true);
+  }
+  idleSeconds = 0;
+  syncFarmUi();
+}
+
 function showScene(scene: Scene, tier: Tier = 0): void {
+  if (scene !== 'camp') {
+    campLocation = 'camp';
+    farmView.group.visible = false;
+  }
   // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
   // палец поверх вылазки.
   if (scene !== 'camp' && buildPanel.visible) {
@@ -2543,6 +2630,9 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   hud.setVisible(panels.hud);
   campHud.setVisible(panels.campHud);
   heroFan.setVisible(panels.roster);
+  farmOnboarding.setVisible(scene === 'camp');
+  campLocations.setVisible(scene === 'camp');
+  syncFarmUi();
   // Карточки героя и жильца не переживают смену сцены: их открывает тап
   // по лицу, а не сцена. Страница персонажа уходит с ними: она о человеке
   // лагеря, а сцена сменилась.
@@ -2982,6 +3072,7 @@ function guestCallbacks(): MeetPanelCallbacks {
         answer: GUEST_WORK[castleGuest.seek],
         rest: false,
       });
+      syncFarmUi();
       const pitch = guestPitch(camp, castleGuest.who.seed);
       if (pitch !== null) {
         camp.tents.push(pitch.tent);
@@ -3617,6 +3708,7 @@ function stepWorldPicking(dt: number): void {
   if (step.taken) {
     // Узел места не хранится — хранится то, что его тронули (§13.8).
     camp.picks = { ...(camp.picks ?? {}), [pickKey(place, bush.id)]: clock.now() };
+    if (gatherFarmFood(camp, step.food)) syncFarmUi();
     say(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
     play('levelup');
     worldPick = null;
@@ -3883,6 +3975,8 @@ function notifyWorked(): void {
  * адресов: второй лагерь существует чисто для тестов (`toPadCamp`).
  */
 function toCamp(): void {
+  campLocation = 'camp';
+  farmView.group.visible = false;
   // Снятие прошлой сцены повторится в теле — и пусть: вызов идемпотентен,
   // а правило арх-теста «каждый to* начинается с уборки» дороже одной строки.
   leaveWalkSites();
@@ -4071,7 +4165,7 @@ const campInput = bindCampInput({
   // Пока выбрана карточка стройки, камера не двигается: палец рисует стену.
   // На поляне панорамы нет: жест лагеря-на-поляне — прологовый, тап-ходьба,
   // и камера ходит за героем.
-  active: () => mode === 'camp' && buildTool === null && !inGladeCamp,
+  active: () => mode === 'camp' && campLocation === 'camp' && buildTool === null && !inGladeCamp,
   center: () => campView.center,
   area: () => campArea(camp.levels.hq),
   onTap: (clientX, clientY) => campTap(clientX, clientY),
@@ -4292,6 +4386,7 @@ function stepCampPicking(dt: number): void {
     // Куст остаётся стоять — гаснут только ягоды (§13.8): пустая ветка
     // и есть «приходи позже», сказанное кадром.
     campView.pickBush(clock.now());
+    if (gatherFarmFood(camp, step.food)) syncFarmUi();
     campHud.notify(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
     campHud.sync(camp, clock.now(), 0);
     play('levelup');
@@ -4376,7 +4471,7 @@ function stepCampMining(dt: number): void {
  */
 function syncWorkBars(): void {
   const items: WorkItem[] = [];
-  if (mode === 'camp') {
+  if (mode === 'camp' && campLocation === 'camp') {
     const c = camp.construction;
     if (c !== null) {
       const o = campOrigin(camp);
@@ -4397,11 +4492,17 @@ function syncWorkBars(): void {
       });
     }
   }
-  if ((mode === 'raid' || inGladeCamp) && raid !== null && raid.path.length === 0) {
+  if (
+    (mode === 'raid' || (inGladeCamp && campLocation === 'camp')) &&
+    raid !== null && raid.path.length === 0
+  ) {
     if (chop !== null) items.push({ x: chop.cell.x, y: 1.9, z: chop.cell.z, share: chopProgress(chop) });
     if (mine !== null) items.push({ x: mine.cell.x, y: 1.1, z: mine.cell.z, share: mineProgress(mine) });
   }
-  if (mode === 'camp' && !inGladeCamp && campMine !== null && campHero.path.length === 0) {
+  if (
+    mode === 'camp' && campLocation === 'camp' && !inGladeCamp &&
+    campMine !== null && campHero.path.length === 0
+  ) {
     const o = campOrigin(camp);
     items.push({
       x: o.x + campMine.work.cell.x,
@@ -4511,6 +4612,9 @@ canvas.addEventListener('pointerdown', (e) => {
   play('tap');
   askTilt();
   idleSeconds = 0;
+  // Ферма пока сцена-награда: у неё нет жестов лагеря, и тап по грядке не
+  // должен двигать героя на скрытой площадке.
+  if (mode === 'camp' && campLocation === 'farm') return;
   // Стройка стен перехватывает палец целиком: пока карточка выбрана,
   // лагерь не крутится и здания не выбираются.
   if (mode === 'camp' && buildTool !== null) {
@@ -4887,6 +4991,8 @@ if (debugTier !== null || debugNode !== null) {
  * `?test=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
  *   Ровно та планировка, на которой видно все четыре ответа сразу — ход
  *   поверху, разрыв на башне, проезд под воротами и подъём.
+ * `?test=farm-intro|farm-goal|farm-reward` — три состояния карточек пищи.
+ *   Текст и адаптивную раскладку можно проверять без прохождения пролога.
  *
  * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
  * но открыть их можно лишь адресом, которого в игре нет.
@@ -4954,6 +5060,15 @@ if (debugCamp !== null) {
     camp.resources.stone = 500;
     camp.resources.iron = 100;
     camp.resources.crystal = 50;
+  }
+  if (debugCamp === 'farm-intro' || debugCamp === 'farm-goal' || debugCamp === 'farm-reward') {
+    const reward = debugCamp === 'farm-reward';
+    camp.farm = {
+      foodAtStart: 18,
+      gatheredFood: reward ? FARM_FOOD_GOAL : debugCamp === 'farm-goal' ? 14 : 0,
+      step: reward ? 'reward' : debugCamp === 'farm-goal' ? 'goal' : 'intro',
+      unlocked: reward,
+    };
   }
   // Площадка напрямую, мимо маршрутизатора: второй лагерь существует
   // чисто для тестов, и сейв с поляной не должен уводить кадр отладки.
@@ -5042,6 +5157,7 @@ if (debugCamp !== null) {
     away: (seconds: number) => {
       const done = collectWork(camp, seconds);
       campHud.sync(camp, clock.now(), 0);
+      syncFarmUi();
       persist();
       return done.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`);
     },
@@ -5091,6 +5207,7 @@ if (debugCamp !== null) {
         answer: local,
         rest: false,
       });
+      syncFarmUi();
       persist();
       return homeless(camp);
     },
@@ -5790,7 +5907,7 @@ startLoop({
     stepWind(dt);
     // Пузыри живут только в лагере на поляне: любой другой кадр их чистит,
     // и слова не переживают говорящего при смене сцены.
-    if (inGladeCamp) campBubbles();
+    if (inGladeCamp && campLocation === 'camp') campBubbles();
     else bubbles.clear();
     // Полосы прогресса — каждый кадр и в любой сцене: список сам пустеет
     // там, где работ нет, и чистить его отдельной веткой не нужно.
@@ -5806,7 +5923,16 @@ startLoop({
       return;
     }
 
-    if ((mode === 'raid' || inGladeCamp) && raid !== null && raidView !== null) {
+    if (mode === 'camp' && campLocation === 'farm') {
+      if (idleSeconds > 20) return;
+      if (now - lastCampFrame < 1000 / 30) return;
+      const farmDt = Math.min(0.1, (now - lastCampFrame) / 1000);
+      lastCampFrame = now;
+      const c = farmView.center;
+      rig.lookAt(c.x, c.z);
+      rig.update(farmDt, c.x, c.z, 12);
+      rig.render();
+    } else if ((mode === 'raid' || inGladeCamp) && raid !== null && raidView !== null) {
       /**
        * Небо лагеря поворачивается по смене мира (§24). Значение идёт
        * через `setNight`, а не в `rig.night` напрямую, ровно ради `?night=`:

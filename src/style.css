@@ -896,6 +896,203 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #camp .task button { font-size: 13px; padding: 8px 16px; }
 #camp .task button:disabled { opacity: 0.45; }
 
+/* ---------- ресурсы → ферма: продолжение онбординга ---------- */
+#farm-onboarding {
+  position: fixed; inset: 0; z-index: 18; display: grid; place-items: center;
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  color: var(--ink); pointer-events: auto; user-select: none; -webkit-user-select: none;
+}
+#farm-onboarding[hidden], #farm-onboarding [hidden] { display: none !important; }
+/* Ввод и награда останавливают взгляд, цель остаётся компактным слоем над
+   лагерем. Изображения не содержат интерфейса: вся рамка и весь текст здесь. */
+#farm-onboarding::before {
+  content: ''; position: absolute; inset: 0; background: var(--scrim-soft);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+#farm-onboarding .fo-panel {
+  position: relative; width: min(920px, 100%); max-height: calc(100dvh - 28px);
+  overflow: auto; padding: 18px 20px 20px; box-shadow: 0 20px 64px var(--scrim);
+}
+#farm-onboarding .fo-head { max-width: 700px; }
+#farm-onboarding .fo-kicker {
+  color: var(--gold); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+#farm-onboarding h2 { margin: 4px 0 6px; font-size: clamp(20px, 3vw, 28px); line-height: 1.1; }
+#farm-onboarding .fo-head p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.5; }
+#farm-onboarding .fo-lessons {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+  margin-top: 18px;
+}
+#farm-onboarding .fo-lesson {
+  min-width: 0; gap: 0; padding: 0; overflow: hidden;
+  background: color-mix(in srgb, var(--panel) 88%, var(--fill-2));
+  border-color: var(--line);
+}
+#farm-onboarding .fo-lesson-media {
+  position: relative; aspect-ratio: 4 / 5; overflow: hidden; background: var(--ground);
+}
+#farm-onboarding .fo-lesson-media::after {
+  content: ''; position: absolute; inset: auto 0 0; height: 26%;
+  background: linear-gradient(transparent, color-mix(in srgb, var(--ground) 76%, transparent));
+  pointer-events: none;
+}
+#farm-onboarding .fo-lesson img, #farm-onboarding .fo-farm-art img {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+}
+#farm-onboarding .fo-lesson img { transition: transform 220ms ease-out; }
+@media (hover: hover) {
+  #farm-onboarding .fo-lesson:hover img { transform: scale(1.025); }
+}
+#farm-onboarding .fo-lesson-body { padding: 11px 12px 13px; }
+#farm-onboarding .fo-lesson h3 { margin: 0 0 4px; font-size: 15px; line-height: 1.2; }
+#farm-onboarding .fo-lesson p {
+  margin: 0; color: var(--dim); font-size: 11px; line-height: 1.42;
+}
+#farm-onboarding .fo-focus {
+  display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  align-items: center; gap: 20px; margin-top: 16px;
+}
+#farm-onboarding .fo-farm-art {
+  position: relative; aspect-ratio: 4 / 5; margin: 0; overflow: hidden;
+  border: 1px solid var(--pick-line); border-radius: var(--r-card); background: var(--ground);
+}
+#farm-onboarding .fo-farm-badge {
+  position: absolute; top: 9px; left: 9px; color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line);
+  backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+}
+#farm-onboarding .fo-status { min-width: 0; }
+#farm-onboarding .fo-action {
+  min-width: 190px; padding: 11px 16px; background: var(--pick);
+  border-color: var(--pick-line); font-weight: 600;
+}
+#farm-onboarding .fo-footer { display: flex; justify-content: flex-end; margin-top: 16px; }
+#farm-onboarding .fo-goal { margin-top: 2px; }
+#farm-onboarding .fo-goal-head {
+  display: flex; justify-content: space-between; gap: 10px; font-size: 13px;
+}
+#farm-onboarding .fo-goal-head span { color: var(--gold); font-variant-numeric: tabular-nums; }
+#farm-onboarding .fo-track {
+  height: 12px; margin-top: 8px; overflow: hidden; border-radius: var(--r-bar);
+  background: color-mix(in srgb, var(--line) 70%, var(--panel));
+}
+#farm-onboarding .fo-track i {
+  display: block; width: 0; height: 100%; border-radius: inherit;
+  background: var(--gold); transition: width 240ms ease-out;
+}
+#farm-onboarding .fo-baseline { margin-top: 7px; color: var(--dim); font-size: 10px; }
+#farm-onboarding .fo-reward { margin-top: 10px; color: var(--good); font-size: 12px; line-height: 1.4; }
+
+/* Цель не перекрывает игру: миниатюра обещает награду, вся остальная ширина
+   остаётся читаемым счётчиком добычи относительно момента выдачи. */
+#farm-onboarding.is-goal {
+  inset: auto 14px calc(72px + env(safe-area-inset-bottom)) 138px;
+  display: block; padding: 0; pointer-events: none;
+}
+#farm-onboarding.is-goal::before { display: none; }
+#farm-onboarding.is-goal .fo-panel {
+  display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 0 14px;
+  width: min(720px, 100%); margin-left: auto; padding: 11px 13px;
+  overflow: visible; pointer-events: auto;
+}
+#farm-onboarding.is-goal .fo-head { grid-column: 2; grid-row: 1; align-self: end; }
+#farm-onboarding.is-goal h2 { margin: 2px 0 3px; font-size: 17px; }
+#farm-onboarding.is-goal .fo-head p { font-size: 11px; line-height: 1.35; }
+#farm-onboarding.is-goal .fo-focus { display: contents; }
+#farm-onboarding.is-goal .fo-farm-art {
+  grid-column: 1; grid-row: 1 / span 2; width: 94px; align-self: stretch;
+  filter: saturate(0.55) brightness(0.72);
+}
+#farm-onboarding.is-goal .fo-farm-badge { top: 6px; left: 6px; padding: 1px 5px; font-size: 8px; }
+#farm-onboarding.is-goal .fo-status { grid-column: 2; grid-row: 2; align-self: start; }
+#farm-onboarding.is-goal .fo-footer { display: none; }
+#farm-onboarding.is-goal .fo-reward { margin-top: 6px; font-size: 10px; }
+
+/* Награда использует ту же иллюстрацию уже без затемнения: игрок видит,
+   что именно открыл, а не только читает название следующего экрана. */
+#farm-onboarding.is-reward .fo-panel {
+  display: grid; grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);
+  gap: 0 22px; width: min(760px, 100%);
+}
+#farm-onboarding.is-reward .fo-head { grid-column: 2; grid-row: 1; align-self: end; }
+#farm-onboarding.is-reward .fo-focus { display: contents; }
+#farm-onboarding.is-reward .fo-farm-art { grid-column: 1; grid-row: 1 / span 3; }
+#farm-onboarding.is-reward .fo-status { grid-column: 2; grid-row: 2; align-self: start; }
+#farm-onboarding.is-reward .fo-footer { grid-column: 2; grid-row: 3; align-self: end; }
+
+#camp-locations {
+  position: fixed; z-index: 16; left: 10px; top: calc(78px + env(safe-area-inset-top));
+  display: grid; width: 112px; gap: 7px; pointer-events: auto;
+}
+#camp-locations .cl-label {
+  padding-left: 3px; color: var(--dim); font-size: 9px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+#camp-locations .cl-place {
+  position: relative; min-height: 62px; display: flex; align-items: flex-end;
+  justify-content: space-between; padding: 9px; overflow: hidden;
+  color: var(--ink); text-align: left; border-color: var(--line);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--good) 24%, var(--panel)) 0 48%, var(--panel) 49%);
+}
+#camp-locations .cl-place.farm {
+  background: repeating-linear-gradient(105deg, color-mix(in srgb, var(--warn) 30%, var(--panel)) 0 8px, color-mix(in srgb, var(--panel) 92%, var(--warn)) 9px 17px);
+}
+#camp-locations .cl-place b, #camp-locations .cl-place span { position: relative; z-index: 1; }
+#camp-locations .cl-place span { font-size: 11px; }
+#camp-locations .cl-place[aria-pressed="true"] { border-color: var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 22%, transparent); }
+#camp-locations .cl-place.locked { filter: saturate(0.45); opacity: 0.72; }
+
+@media (max-width: 620px) {
+  #farm-onboarding {
+    inset: 0; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+  #farm-onboarding .fo-panel { max-height: calc(100dvh - 16px); padding: 13px; }
+  #farm-onboarding h2 { font-size: 21px; }
+  #farm-onboarding .fo-head p { font-size: 12px; }
+  #farm-onboarding .fo-lessons { grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+  #farm-onboarding .fo-lesson { display: grid; grid-template-columns: 96px minmax(0, 1fr); }
+  #farm-onboarding .fo-lesson-media { aspect-ratio: 4 / 5; }
+  #farm-onboarding .fo-lesson-body { align-self: center; padding: 10px 11px; }
+  #farm-onboarding .fo-lesson h3 { font-size: 14px; }
+  #farm-onboarding .fo-lesson p { font-size: 10.5px; }
+  #farm-onboarding .fo-action { min-width: 0; width: 100%; }
+  #farm-onboarding .fo-footer { margin-top: 12px; }
+
+  #farm-onboarding.is-goal {
+    inset: auto 8px calc(62px + env(safe-area-inset-bottom)) 8px; padding: 0;
+  }
+  #farm-onboarding.is-goal .fo-panel {
+    grid-template-columns: 72px minmax(0, 1fr); gap: 0 10px;
+    width: 100%; padding: 9px 10px;
+  }
+  #farm-onboarding.is-goal .fo-farm-art { width: 72px; }
+  #farm-onboarding.is-goal .fo-farm-badge { display: none; }
+  #farm-onboarding.is-goal h2 { font-size: 15px; }
+  #farm-onboarding.is-goal .fo-head p { display: none; }
+  #farm-onboarding.is-goal .fo-goal-head { font-size: 11px; }
+  #farm-onboarding.is-goal .fo-track { height: 10px; margin-top: 6px; }
+  #farm-onboarding.is-goal .fo-baseline { margin-top: 5px; font-size: 9px; }
+  #farm-onboarding.is-goal .fo-reward { margin-top: 4px; font-size: 9px; }
+
+  #farm-onboarding.is-reward .fo-panel {
+    grid-template-columns: 120px minmax(0, 1fr); gap: 0 12px; width: 100%;
+  }
+  #farm-onboarding.is-reward h2 { font-size: 19px; }
+  #farm-onboarding.is-reward .fo-head p { font-size: 11px; }
+  #farm-onboarding.is-reward .fo-farm-badge { top: 6px; left: 6px; font-size: 8px; }
+  #farm-onboarding.is-reward .fo-reward { margin-top: 7px; font-size: 10px; }
+  #farm-onboarding.is-reward .fo-footer { margin-top: 10px; }
+  #camp-locations { top: calc(126px + env(safe-area-inset-top)); width: 92px; }
+  #camp-locations .cl-place { min-height: 54px; padding: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #farm-onboarding .fo-lesson img, #farm-onboarding .fo-track i { transition: none; }
+}
+
 /* ---------- пузыри реплик жильцов ---------- */
 /* Речь висит над говорящим: слой не ловит касаний и лежит ниже панелей —
    человек не вправе перекрыть собой ни карточку, ни диалог знакомства.
