@@ -223,7 +223,7 @@ export function giftLine(gift: Gift): string {
   const order: readonly ResourceKind[] = ['wood', 'stone', 'iron', 'crystal'];
   for (const kind of order) {
     const n = gift.resources[kind];
-    if (n > 0) parts.push(`${RESOURCE_NAME[kind]} ${n}`);
+    if ((n ?? 0) > 0) parts.push(`${RESOURCE_NAME[kind]} ${n}`);
   }
   parts.push(...gift.things);
   return parts.join(' · ');

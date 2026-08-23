@@ -22,6 +22,7 @@ import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
 import { KIND, dayAt, regionAt, worldAt } from '../sim/world';
 import type { Visit } from '../sim/world';
+import { resourceIcon } from './resourceIcons';
 
 /**
  * Экран возврата (мокап 04). Самый важный экран для удержания: здесь игрок
@@ -34,7 +35,7 @@ import type { Visit } from '../sim/world';
  *   3. Главная кнопка — трата, а не повтор (§20.1).
  */
 const ACCRUAL_SECONDS = 1.5;
-const ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
+const ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal', 'meat', 'pelt'];
 
 export interface ReturnCallbacks {
   onBuild(id: BuildingId): void;
@@ -260,13 +261,21 @@ export class ReturnScreen {
     this.lootBox.innerHTML = '';
     this.counters.clear();
     for (const kind of ORDER) {
-      const amount = result.carried[kind];
+      const amount = result.carried[kind] ?? 0;
       if (amount <= 0) continue;
       const row = document.createElement('div');
       row.className = 'row loot-row';
       const name = document.createElement('span');
       name.className = 'lbl';
       name.textContent = RESOURCE_NAME[kind];
+      const icon = resourceIcon(kind);
+      if (icon !== undefined) {
+        const pic = document.createElement('img');
+        pic.className = 'resource-pic';
+        pic.src = icon;
+        pic.alt = '';
+        row.appendChild(pic);
+      }
       const value = document.createElement('b');
       value.textContent = '0';
       row.append(name, value);
@@ -352,8 +361,8 @@ export class ReturnScreen {
     }
     const cost = BUILD_COST[next] ?? {};
     const need = (Object.entries(cost) as [ResourceKind, number][])
-      .filter(([kind, amount]) => camp.resources[kind] < amount)
-      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${camp.resources[kind]}/${amount}`)
+      .filter(([kind, amount]) => (camp.resources[kind] ?? 0) < amount)
+      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${camp.resources[kind] ?? 0}/${amount}`)
       .join(' · ');
     const tail = [need, block].filter((part) => part !== null && part !== '').join(' · ');
     this.progressLabel.textContent = `${BUILDINGS[id].name} ур. ${next} — ${tail}`;

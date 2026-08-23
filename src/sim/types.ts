@@ -33,7 +33,7 @@ export type RaidEnemyKind = 'minion' | 'warrior' | 'mage';
  * он привязан к месту, как привидение, и появляется одним способом —
  * засадой вскрытого сундука (`Container.ambush`).
  */
-export type EnemyKind = RaidEnemyKind | 'ghost' | 'guard';
+export type EnemyKind = RaidEnemyKind | 'ghost' | 'guard' | 'fox';
 
 /** §15 — три типа, по одному на диапазон ярусов, различимы силуэтом. */
 export interface EnemyStats {
@@ -119,6 +119,8 @@ export interface Enemy {
    * это два шага в сторону.
    */
   readonly relentless?: boolean;
+  /** Добыча с животного уже снята. Отдельно от hp: тело остаётся в кадре. */
+  harvested?: boolean;
 }
 
 export interface Container {

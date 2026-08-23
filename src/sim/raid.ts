@@ -51,6 +51,7 @@ import { findPath, nearestWalkable } from './pathfinding';
 import type {
   Cell,
   Container,
+  Enemy,
   EnemyKind,
   GameLocation,
   Fighter,
@@ -982,6 +983,24 @@ function openBattle(state: RaidState): void {
  * и то, где все оказались. Мир — источник правды о положении, поле боя —
  * о том, что случилось.
  */
+/** Снять добычу с лисы один раз. Шкура кладётся первой: она редкая и дороже,
+ * а при одном свободном месте терять её ради куска мяса было бы ловушкой. */
+export function harvestFox(state: RaidState, enemy: Enemy): void {
+  if (enemy.kind !== 'fox' || enemy.harvested === true) return;
+  enemy.harvested = true;
+  let free = Math.max(0, state.capacity - state.bagTotal);
+  const pelt = Math.min(1, free);
+  state.bag.pelt = (state.bag.pelt ?? 0) + pelt;
+  state.bagTotal += pelt;
+  free -= pelt;
+  const meat = Math.min(2, free);
+  state.bag.meat = (state.bag.meat ?? 0) + meat;
+  state.bagTotal += meat;
+  const got = [pelt > 0 ? `лисья шкура ${pelt}` : '', meat > 0 ? `мясо ${meat}` : '']
+    .filter(Boolean).join(' · ');
+  state.events.push(got === '' ? 'Рюкзак полон — добыча с лисы потеряна' : `Добыто: ${got}`);
+}
+
 function closeBattle(state: RaidState): void {
   const battle = state.battle;
   if (battle === null) return;
@@ -1006,7 +1025,10 @@ function closeBattle(state: RaidState): void {
     enemy.z = world.z;
     if (u.hp <= 0 && enemy.hp > 0) state.kills += 1;
     enemy.hp = u.hp;
-    if (u.hp <= 0) enemy.awake = false;
+    if (u.hp <= 0) {
+      enemy.awake = false;
+      harvestFox(state, enemy);
+    }
   }
 
   state.battle = null;
@@ -1287,14 +1309,14 @@ function loseProportionally(bag: Resources, total: number, lost: number): Resour
   const kinds = Object.keys(kept) as ResourceKind[];
   let removed = 0;
   for (const kind of kinds) {
-    const take = Math.floor((kept[kind] / total) * lost);
-    kept[kind] -= take;
+    const take = Math.floor(((kept[kind] ?? 0) / total) * lost);
+    kept[kind] = (kept[kind] ?? 0) - take;
     removed += take;
   }
   while (removed < lost) {
-    const biggest = kinds.reduce((a, b) => (kept[a] >= kept[b] ? a : b));
-    if (kept[biggest] <= 0) break;
-    kept[biggest] -= 1;
+    const biggest = kinds.reduce((a, b) => ((kept[a] ?? 0) >= (kept[b] ?? 0) ? a : b));
+    if ((kept[biggest] ?? 0) <= 0) break;
+    kept[biggest] = (kept[biggest] ?? 0) - 1;
     removed += 1;
   }
   return kept;

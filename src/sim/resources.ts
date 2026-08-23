@@ -10,7 +10,9 @@ import type { Tier } from './types';
  * Это единственный ресурс, у которого сток идёт без участия игрока, и потому
  * единственный, который связывает лагерь с часами, а не с решениями.
  */
-export type ResourceKind = 'stone' | 'wood' | 'iron' | 'crystal' | 'food';
+export type BaseResourceKind = 'stone' | 'wood' | 'iron' | 'crystal' | 'food';
+export type CommodityKind = 'meat' | 'pelt';
+export type ResourceKind = BaseResourceKind | CommodityKind;
 
 export const RESOURCE_NAME: Record<ResourceKind, string> = {
   stone: 'Камень',
@@ -18,13 +20,23 @@ export const RESOURCE_NAME: Record<ResourceKind, string> = {
   iron: 'Железо',
   crystal: 'Кристалл',
   food: 'Пища',
+  meat: 'Мясо',
+  pelt: 'Лисья шкура',
 };
 
-export type Resources = Record<ResourceKind, number>;
+export const RESOURCE_KINDS: readonly ResourceKind[] = [
+  'stone', 'wood', 'iron', 'crystal', 'food', 'meat', 'pelt',
+];
 
-export const emptyResources = (): Resources => ({ stone: 0, wood: 0, iron: 0, crystal: 0, food: 0 });
+/** Охотничьи товары необязательны в старых сейвах и тестовых заготовках. */
+export type Resources = Record<BaseResourceKind, number> & Partial<Record<CommodityKind, number>>;
 
-export const totalOf = (r: Resources): number => r.stone + r.wood + r.iron + r.crystal + r.food;
+export const emptyResources = (): Resources => ({
+  stone: 0, wood: 0, iron: 0, crystal: 0, food: 0,
+});
+
+export const totalOf = (r: Resources): number =>
+  r.stone + r.wood + r.iron + r.crystal + r.food + (r.meat ?? 0) + (r.pelt ?? 0);
 
 /**
  * §13: камень — со всех ярусов, дерево — 0–2, железо — 1–3,
@@ -66,16 +78,18 @@ export function addResources(into: Resources, from: Resources): void {
   into.iron += from.iron;
   into.crystal += from.crystal;
   into.food += from.food;
+  if ((from.meat ?? 0) > 0) into.meat = (into.meat ?? 0) + (from.meat ?? 0);
+  if ((from.pelt ?? 0) > 0) into.pelt = (into.pelt ?? 0) + (from.pelt ?? 0);
 }
 
 export function canAfford(have: Resources, cost: Partial<Resources>): boolean {
   return (Object.entries(cost) as [ResourceKind, number][]).every(
-    ([kind, amount]) => have[kind] >= amount,
+    ([kind, amount]) => (have[kind] ?? 0) >= amount,
   );
 }
 
 export function spend(have: Resources, cost: Partial<Resources>): void {
   for (const [kind, amount] of Object.entries(cost) as [ResourceKind, number][]) {
-    have[kind] -= amount;
+    have[kind] = (have[kind] ?? 0) - amount;
   }
 }

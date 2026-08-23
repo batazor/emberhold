@@ -28,7 +28,8 @@
 import { mulberry32, randInt, type Rng } from '../core/rng';
 import { distanceField, idx } from './grid';
 import type { Stone } from './stones';
-import type { Cell, GameLocation } from './types';
+import type { Cell, Enemy, GameLocation } from './types';
+import { enemyStats } from './enemies';
 
 /** Толщина леса по краю локации: та же рамка, что у кладбища. */
 export const WOOD = 3;
@@ -320,18 +321,39 @@ export function generateTrailSite(seed: number): TrailSite {
   // нарисовать выход, за которым ничего нет.
   const evac: Cell = { x: spine[0]!.x, z: spine[0]!.z };
 
+  // Лисы держатся в тупиках боковых троп: охота требует свернуть с главного
+  // хода, а не просто столкнуться со зверем на дороге. На короткой тропе
+  // живёт одна, на длинной иногда две; выбор целиком следует из сида.
+  const foxCount = Math.min(branches.length, 1 + (rng() < 0.35 ? 1 : 0));
+  const enemies: Enemy[] = branches.slice(0, foxCount).map((branch, id) => {
+    const at = branch.line[branch.line.length - 1]!;
+    return {
+      id,
+      kind: 'fox',
+      level: 1,
+      x: at.x,
+      z: at.z,
+      prevX: at.x,
+      prevZ: at.z,
+      hp: enemyStats('fox', 1).hp,
+      awake: false,
+      telegraph: 0,
+      cooldown: 0,
+      harvested: false,
+    };
+  });
+
   const loc: GameLocation = {
     seed,
     tier: 0,
     size,
     blocked,
     evac,
-    // Контейнеров и противников нет — пока: засады и охота придут своими
-    // решениями. А вот добыча руками здесь есть с самого начала: валуны
-    // на обочине и рубка леса — тропа кормит работой, а не находками.
+    // Контейнеров нет: добыча здесь требует работы. Валуны стоят на обочине,
+    // лес рубится, а лис ради мяса и шкуры ищут в тупиках боковых троп.
     containers: [],
     stones,
-    enemies: [],
+    enemies,
     backSteps: distanceField(size, blocked, evac),
   };
   return { loc, path, length, spine, branches, exit };

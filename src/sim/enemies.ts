@@ -20,6 +20,7 @@ export const ENEMY_GROWTH: Record<EnemyKind, { readonly hp: number; readonly att
   mage: { hp: 2, attack: 1 },
   ghost: { hp: 2, attack: 1 },
   guard: { hp: 3, attack: 1 },
+  fox: { hp: 1, attack: 0 },
 };
 
 /** Статы противника уровня `level`. Первый уровень — ровно `ENEMY_STATS`. */
@@ -70,6 +71,20 @@ export function enemyStats(kind: EnemyKind, level: number): EnemyStats {
  * ни баланс, ни генератор, ни сейв. Спорить за нынешние слова не нужно.
  */
 export const ENEMY_STATS: Record<EnemyKind, EnemyStats> = {
+  fox: {
+    kind: 'fox',
+    name: 'Лиса',
+    hp: 5,
+    attack: 3,
+    agility: 4,
+    speed: 2.4,
+    telegraph: 0.35,
+    attackInterval: 1.8,
+    reach: 0.75,
+    chases: true,
+    ranged: false,
+    projectileSpeed: 0,
+  },
   minion: {
     kind: 'minion',
     name: 'Скелет',

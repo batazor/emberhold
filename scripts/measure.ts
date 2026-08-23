@@ -116,7 +116,9 @@ function measure(tier: Tier, kitchenLevel: number, storageLevel: number): TierSt
     if (r.status === 'evacuated') {
       stat.success += 1;
       stat.carriedTotal += r.carriedTotal;
-      for (const k of Object.keys(stat.carried) as ResourceKind[]) stat.carried[k] += r.carried[k];
+      for (const k of Object.keys(stat.carried) as ResourceKind[]) {
+        stat.carried[k] = (stat.carried[k] ?? 0) + (r.carried[k] ?? 0);
+      }
     }
   }
   return stat;
@@ -343,7 +345,7 @@ console.log('\nСостав добычи успешной вылазки (§13)'
 console.log('─'.repeat(74));
 for (const s of stats) {
   const parts = (Object.keys(s.carried) as ResourceKind[])
-    .map((k) => `${RESOURCE_NAME[k]} ${(s.carried[k] / Math.max(1, s.success)).toFixed(1)}`)
+    .map((k) => `${RESOURCE_NAME[k]} ${((s.carried[k] ?? 0) / Math.max(1, s.success)).toFixed(1)}`)
     .join(' · ');
   console.log(`  ярус ${s.tier}: ${parts}`);
 }

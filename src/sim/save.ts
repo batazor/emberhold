@@ -15,9 +15,9 @@ import type { HeroState, Roster, Stats } from './heroes';
 import { CONSUMABLES, CONSUMABLE_SLOTS } from './consumables';
 import { ONB_ORDER, RENAMED_STEPS, restartStep } from './onboarding';
 import type { OnbStep } from './onboarding';
-import { emptyResources } from './resources';
+import { RESOURCE_KINDS, emptyResources } from './resources';
 import { liveVisits } from './world';
-import type { ResourceKind } from './resources';
+import type { Resources } from './resources';
 import type { Tier } from './types';
 import { FARM_FOOD_GOAL } from './farm';
 
@@ -42,7 +42,7 @@ interface SaveV1 {
   watermark: number;
   levels: Record<BuildingId, number>;
   layout: Record<BuildingId, { x: number; z: number }>;
-  resources: Record<ResourceKind, number> & {
+  resources: Resources & {
     /** Легаси: до переименования камень звался солью. Пишется только чтением. */
     salt?: number;
   };
@@ -397,7 +397,7 @@ export function load(): LoadResult {
       if (p.x < 0 || p.z < 0 || p.x + 2 > area || p.z + 2 > area) camp.layout[id] = fallback[id];
     }
     const res = emptyResources();
-    for (const kind of Object.keys(res) as ResourceKind[]) {
+    for (const kind of RESOURCE_KINDS) {
       // Камень раньше звался солью. Версия сейва ради переименования не поднята
       // по той же причине, по какой не поднималась ради отряда: сохранения
       // прежних этапов обязаны открываться, а форма поля не изменилась —

@@ -23,6 +23,7 @@ import type { RigClipName, RiggedParts } from './rigged';
 import { graveyardGeometry } from './graveyard';
 import { hutParts } from './hut';
 import { skeletonGeometry, skeletonParts } from './skeleton';
+import { foxGeometry } from './fox';
 
 /**
  * Модели из артбука. Формы взяты из `artbook.html` (раздел 03 — здания,
@@ -450,6 +451,7 @@ const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
   // Стражник замка — тот же рыцарь с мечом, что ходит дозором (§6.1.6):
   // засада сундука поднимает гарнизон, а не третью породу людей.
   guard: () => adventurerGeometry('Knight', heroHeight('knight'), adventurerHeld('sword_1handed')),
+  fox: foxGeometry,
   // Те же числа, что в ENEMY_HEIGHT ниже: неподвижная версия обязана стоять
   // ровно там же, где стоит подвижная.
 };
@@ -602,6 +604,7 @@ export const ENEMY_HEIGHT: Record<EnemyKind, number> = {
   // Стражник — рост героя, той же меркой, что дозор (§6.1.6): гарнизон
   // и герой — люди одного мира.
   guard: heroHeight('knight'),
+  fox: 0.72,
 };
 
 const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {

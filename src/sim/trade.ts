@@ -169,10 +169,12 @@ export function offerOf(id: OfferId, deals: number): Offer {
  * Кристалл линейки не имеет намеренно: он не продаётся и не принимается
  * (§13 — «нельзя получить иначе, кроме как рискнув»).
  */
-export const VALUE: Partial<Record<ResourceKind, number>> = { stone: 3, wood: 8, iron: 24, food: 6 };
+export const VALUE: Partial<Record<ResourceKind, number>> = {
+  stone: 3, wood: 8, iron: 24, food: 6, meat: 8, pelt: 24,
+};
 
 /** Что игрок может класть на прилавок. Железа здесь нет: обратного курса нет. */
-export const GIVABLE: readonly ResourceKind[] = ['stone', 'wood'];
+export const GIVABLE: readonly ResourceKind[] = ['stone', 'wood', 'meat', 'pelt'];
 
 /** Чем торгует торговец. */
 export const SELLABLE: readonly ResourceKind[] = ['iron', 'food'];

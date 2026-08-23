@@ -13,9 +13,8 @@
  * отвилок удлиняет путь назад, а не срезает его: срезка отменяет длину,
  * ради которой локация заведена.
  *
- * Четвёртое: **это прогулка с работой**. Противников и находок нет — засады
- * придут своим записанным решением, — а добыча руками есть: валуны стоят
- * на обочине, и карточка карты обещает «дерево и камень», а не «нет».
+ * Четвёртое: **это прогулка с работой и охотой**. Находок нет, валуны стоят
+ * на обочине, а лисы прячутся в тупиках и дают мясо со шкурой.
  *
  * И как у всякой точки карты: **один сид — одна тропа** (§4).
  *
@@ -36,6 +35,7 @@ import {
 } from './trailSite';
 import type { Cell } from './types';
 import { distanceField, idx } from './grid';
+import { createRaid, harvestFox } from './raid';
 
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337, 4, 5, 6, 8, 9];
 const sites = SEEDS.map(generateTrailSite);
@@ -221,11 +221,38 @@ describe('Тропа: она ветвится в тупики', () => {
 });
 
 describe('Тропа: прогулка с работой', () => {
-  test('ни находок, ни противников — ни на одном сиде', () => {
+  test('нет находок, а лисы живут в тупиках боковых троп', () => {
     for (const site of sites) {
       assert.equal(site.loc.containers.length, 0, `сид ${site.loc.seed}: на тропе находки`);
-      assert.equal(site.loc.enemies.length, 0, `сид ${site.loc.seed}: на тропе противники`);
+      assert.ok(site.loc.enemies.length >= 1 && site.loc.enemies.length <= 2, `сид ${site.loc.seed}: неверное число лис`);
+      for (const fox of site.loc.enemies) {
+        assert.equal(fox.kind, 'fox');
+        assert.ok(site.branches.some((b) => {
+          const tip = b.line[b.line.length - 1];
+          return tip?.x === fox.x && tip.z === fox.z;
+        }), `сид ${site.loc.seed}: лиса стоит не в тупике`);
+      }
     }
+  });
+
+  test('лиса даёт мясо и шкуру один раз и не переполняет рюкзак', () => {
+    const site = generateTrailSite(42);
+    const raid = createRaid({ seed: 42, tier: 0, kitchenLevel: 1, storageLevel: 1, loc: site.loc, capacity: 3 });
+    const fox = site.loc.enemies[0];
+    assert.ok(fox !== undefined);
+    harvestFox(raid, fox);
+    assert.equal(raid.bag.pelt, 1);
+    assert.equal(raid.bag.meat, 2);
+    assert.equal(raid.bagTotal, 3);
+    harvestFox(raid, fox);
+    assert.equal(raid.bagTotal, 3, 'с одной лисы добыча снята только раз');
+
+    const crampedSite = generateTrailSite(43);
+    const cramped = createRaid({ seed: 43, tier: 0, kitchenLevel: 1, storageLevel: 1, loc: crampedSite.loc, capacity: 1 });
+    harvestFox(cramped, crampedSite.loc.enemies[0]!);
+    assert.equal(cramped.bag.pelt, 1, 'последнее место отдано редкой шкуре');
+    assert.equal(cramped.bag.meat ?? 0, 0);
+    assert.equal(cramped.bagTotal, 1);
   });
 
   /**

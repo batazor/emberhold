@@ -89,7 +89,7 @@ export function cheapestAffordable(have: Resources, taken: Loadout): ConsumableI
   for (const id of CONSUMABLE_ORDER) {
     const price = CONSUMABLES[id].price;
     const ok = (Object.entries(price) as [keyof Resources, number][]).every(
-      ([kind, amount]) => have[kind] >= amount,
+      ([kind, amount]) => (have[kind] ?? 0) >= amount,
     );
     if (!ok) continue;
     const total = totalPrice(id);
