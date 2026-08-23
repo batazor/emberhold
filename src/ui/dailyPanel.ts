@@ -6,6 +6,7 @@ import {
   claimBlock,
   dayOf,
   emptyDaily,
+  giftAt,
   giftLoot,
   giftTier,
   guestSeed,
@@ -14,7 +15,7 @@ import {
   weekOf,
 } from '../sim/daily';
 import type { DailyGift } from '../sim/daily';
-import { CHEST_BONUS } from '../sim/chests';
+import { CHEST_BONUS, chestSpot, overflowOf } from '../sim/chests';
 import { campOrigin } from '../sim/camp';
 import { generateSettler } from '../sim/settler';
 import { DAY_SEC, dayAt } from '../sim/world';
@@ -116,6 +117,32 @@ function picOf(gift: DailyGift, camp: CampState, taken: number): GiftPic | null 
       // Лицо рисуется своим приёмом: человек — не вещь из набора.
       return null;
   }
+}
+
+/**
+ * Чем сегодняшний подарок обернётся потерей — до нажатия, а не после.
+ *
+ * Раньше об этом узнавали строкой полосы, когда кучка уже пропала в полной
+ * кладовой: игра называла цену задним числом, то есть не называла вовсе.
+ * Считает потерю тот же счёт, которым её делает `stash` (`overflowOf`),
+ * и совпадение сторожит `chests.rules.ts`.
+ *
+ * Кнопку это не запирает. Полная кладовая — не отказ: игрок вправе взять
+ * подарок и потерять часть, а вот не знать об этом заранее не вправе.
+ */
+function giftWarn(camp: CampState, taken: number): string | null {
+  const gift = giftAt(taken);
+  if (gift.id === 'сундук') {
+    return chestSpot(camp) === null ? 'Сундук некуда поставить — площадка занята' : null;
+  }
+  if (gift.kinds.length === 0) return null;
+  const loot = giftLoot(gift, giftTier(camp.levels.kitchen), taken);
+  const lost = overflowOf(camp, loot);
+  if (lost === 0) return null;
+  const asked = (Object.values(loot) as number[]).reduce((sum, n) => sum + n, 0);
+  return lost >= asked
+    ? 'Кладовая полна — из подарка не влезет ничего'
+    : `Кладовая почти полна — из ${asked} влезет ${asked - lost}`;
 }
 
 export class DailyPanel {
@@ -253,9 +280,29 @@ export class DailyPanel {
     // Взявшему называется срок, а не запрет: «приходите завтра» без числа —
     // это отказ, а число — это уже свидание. Считается оно теми же часами,
     // которыми считается сам день (§27).
-    this.note.textContent = free
-      ? 'Подарок сегодняшнего дня ждёт в лагере'
-      : `${CLAIM_REASON.today}, через ${formatDuration((day + 1) * DAY_SEC - now)}`;
+    const warn = free ? giftWarn(camp, state.taken) : null;
+    this.note.textContent =
+      warn ??
+      (free
+        ? 'Подарок сегодняшнего дня ждёт в лагере'
+        : `${CLAIM_REASON.today}, через ${formatDuration((day + 1) * DAY_SEC - now)}`);
+    // Предупреждение красится как предупреждение: строка о потере, набранная
+    // тем же серым, что и «ждёт в лагере», сообщает ровно ничего.
+    this.note.classList.toggle('warn', warn !== null);
+    this.note.classList.toggle('dim', warn === null);
+  }
+
+  /**
+   * Откуда вылетает подарок (§29.4). Картинка сегодняшнего дня, а если лист
+   * закрыт — сам значок: лететь неоткуда не бывает, иначе подарок появляется
+   * в полосе ресурсов из ниоткуда.
+   */
+  origin(camp: CampState): { rect: DOMRect; url: string } {
+    const today = dayOf((camp.daily ?? emptyDaily()).taken);
+    const card = this.cards[today];
+    const box = card !== undefined && card.pic.offsetParent !== null ? card.pic : this.icon;
+    const img = box.querySelector('img');
+    return { rect: box.getBoundingClientRect(), url: img?.src ?? '' };
   }
 
   /**
