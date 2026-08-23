@@ -1,7 +1,7 @@
 import { BUILDINGS } from '../sim/camp';
 import type { CampState } from '../sim/camp';
 import { neighboursOpen } from '../sim/clan';
-import { standings } from '../sim/power';
+import { standings } from '../sim/standing';
 import { clearTelemetry, events, summarize } from '../sim/telemetry';
 
 /**
@@ -23,7 +23,7 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`;
 export class StatsPanel {
   private readonly overlay: HTMLElement;
   private readonly body: HTMLElement;
-  /** Таблица лагерей (§29). Стоит выше сводки: она про мир, а сводка —
+  /** Таблица лагерей (§30). Стоит выше сводки: она про мир, а сводка —
    *  про то, как игрок в него ходит. */
   private readonly table: HTMLElement;
   private last: { camp: CampState; now: number } | null = null;
@@ -59,7 +59,7 @@ export class StatsPanel {
   /**
    * Открыть сводку. Зовёт настройки — своей кнопки у панели нет.
    *
-   * Лагерь и часы приходят снаружи: таблица лагерей (§29) считается от них,
+   * Лагерь и часы приходят снаружи: таблица лагерей (§30) считается от них,
    * а телеметрия — от событий, и спрашивать сохранение панель не должна.
    */
   open(camp: CampState, now: number): void {
@@ -80,7 +80,7 @@ export class StatsPanel {
    * не с кем сравниваться, и таблица из одной своей строки — это не таблица,
    * а зеркало.
    *
-   * Сила у всех строк считается одним правилом (`sim/power.ts`): таблица,
+   * Сила у всех строк считается одним правилом (`sim/standing.ts`): таблица,
    * в которой своё число считается иначе, чем чужое, ничего не сравнивает.
    */
   private renderTable(): void {

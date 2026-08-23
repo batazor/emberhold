@@ -434,7 +434,7 @@ describe('Время суток (§24)', () => {
   });
 });
 
-describe('Лагеря соседей (§29)', () => {
+describe('Лагеря соседей (§30)', () => {
   test('лагерь фракции у каждой, и он один', () => {
     assert.equal(CLAN_CAMPS.length, CLANS.length);
     assert.equal(new Set(CLAN_CAMPS.map((c) => `${c.x}:${c.y}`)).size, CLANS.length);

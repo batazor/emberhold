@@ -633,7 +633,7 @@ const campHud = new CampHud(app, {
   },
   onOffhand: (hand) => swapOffhand(hand),
   /**
-   * §29 — задание про клан. Кнопка не заводит клан, а спрашивает имя:
+   * §30 — задание про клан. Кнопка не заводит клан, а спрашивает имя:
    * заведённый одним тапом клан назывался бы сам собой, а имя — это
    * единственное, что у него сейчас есть.
    */
@@ -1889,7 +1889,7 @@ const setHint = (text: string): void => hud.setHint(meetPanel.visible ? '' : tex
 const statsPanel = new StatsPanel(app);
 
 /**
- * §29 — почта и клан. Значок почты живёт в углу рядом с шестернёй и включается
+ * §30 — почта и клан. Значок почты живёт в углу рядом с шестернёй и включается
  * слоем соседей; окно клана открывает строка задания.
  */
 const mailButton = new MailButton(app);
@@ -2266,7 +2266,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   heroCard.setVisible(false);
   residentCard.setVisible(false);
   closeCharacter();
-  // §29 — почта в углу видна во всех сценах, как шестерня рядом: она про
+  // §30 — почта в углу видна во всех сценах, как шестерня рядом: она про
   // связь с соседями, а не про то, где сейчас герой. Открытый ящик со сценой
   // всё же уходит — окно поверх вылазки было бы окном поверх боя.
   mailButton.setShown(neighboursOpen(camp));
@@ -4844,7 +4844,7 @@ function stepCampSystems(dt: number, now: number): void {
     if (collectSortie(now)) persist();
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
-    // §29 — почта зажигается тем же порогом, что и вся остальная связь
+    // §30 — почта зажигается тем же порогом, что и вся остальная связь
     // с соседями: до второго жильца ящику неоткуда взяться.
     mailButton.setShown(neighboursOpen(camp));
     // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
