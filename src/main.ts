@@ -2368,7 +2368,10 @@ function sendSortie(node: number): void {
   // а серверный срок, если он придёт, поправит местный. Без сессии всё
   // остаётся как было: поход считает клиент (см. collectSortie).
   const ticket = camp.sortie;
-  void cloudSortieStart(ticket, hero).then((answer) => {
+  // Отладочные кадры границу сохранения не пересекают (`persist`) — и границу
+  // сервера тоже: тестовый билет, легший в облако, при следующем входе
+  // вернулся бы отрядом, которого игрок никуда не посылал.
+  if (!debugScene) void cloudSortieStart(ticket, hero).then((answer) => {
     if (answer === null || camp.sortie !== ticket) return;
     camp.sortie = { ...ticket, endsAt: answer.endsAt };
     const same = roster.heroes.find((h) => h.id === ticket.hero);

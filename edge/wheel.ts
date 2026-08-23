@@ -33,11 +33,21 @@ const json = (body: unknown, status = 200): Response =>
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
+  /*
+   * Клиент служебный, без заголовка игрока. Заголовок здесь стоял и всё
+   * ломал: PostgREST брал токен игрока вместо служебного ключа, включалась
+   * RLS, а политики на запись у таблицы нет и быть не должно — писать сюда
+   * может только эта функция. Ответ был «не записать прокрутку» на каждую
+   * попытку, и колесо не работало вовсе.
+   *
+   * Взамен личность игрока проверяется явно: токен разбирается отдельно,
+   * а каждый запрос к базе фильтруется по добытому `user.id`. Служебный
+   * ключ снимает защиту, поэтому фильтр — обязанность кода, а не привычка.
+   */
   const auth = req.headers.get('Authorization') ?? '';
   const db = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    { global: { headers: { Authorization: auth } } },
   );
   const { data: got } = await db.auth.getUser(auth.replace('Bearer ', ''));
   const user = got?.user;
