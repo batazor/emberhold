@@ -1,4 +1,7 @@
 import { BUILDINGS } from '../sim/camp';
+import type { CampState } from '../sim/camp';
+import { neighboursOpen } from '../sim/clan';
+import { standings } from '../sim/standing';
 import { clearTelemetry, events, summarize } from '../sim/telemetry';
 
 /**
@@ -20,6 +23,10 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`;
 export class StatsPanel {
   private readonly overlay: HTMLElement;
   private readonly body: HTMLElement;
+  /** Таблица лагерей (§30). Стоит выше сводки: она про мир, а сводка —
+   *  про то, как игрок в него ходит. */
+  private readonly table: HTMLElement;
+  private last: { camp: CampState; now: number } | null = null;
 
   constructor(parent: HTMLElement) {
     this.overlay = document.createElement('div');
@@ -27,6 +34,7 @@ export class StatsPanel {
     this.overlay.innerHTML = `
       <div class="panel">
         <h2>Статистика</h2>
+        <div id="sp-table"></div>
         <div id="sp-body"></div>
         <div class="acts">
           <button id="sp-copy">Скопировать события</button>
@@ -36,6 +44,7 @@ export class StatsPanel {
       </div>`;
     parent.appendChild(this.overlay);
     this.body = this.overlay.querySelector('#sp-body') as HTMLElement;
+    this.table = this.overlay.querySelector('#sp-table') as HTMLElement;
 
     this.overlay.querySelector('#sp-close')?.addEventListener('click', () => this.close());
     this.overlay.querySelector('#sp-clear')?.addEventListener('click', () => {
@@ -47,8 +56,15 @@ export class StatsPanel {
     });
   }
 
-  /** Открыть сводку. Зовёт настройки — своей кнопки у панели нет. */
-  open(): void {
+  /**
+   * Открыть сводку. Зовёт настройки — своей кнопки у панели нет.
+   *
+   * Лагерь и часы приходят снаружи: таблица лагерей (§30) считается от них,
+   * а телеметрия — от событий, и спрашивать сохранение панель не должна.
+   */
+  open(camp: CampState, now: number): void {
+    this.last = { camp, now };
+    this.renderTable();
     this.render();
     this.overlay.classList.add('on');
   }
@@ -56,6 +72,38 @@ export class StatsPanel {
   /** Сцена сменилась — сводка не переезжает вместе с ней. */
   close(): void {
     this.overlay.classList.remove('on');
+  }
+
+  /**
+   * Таблица лагерей (§4 — «таблица развития лагерей»). Появляется вместе
+   * со всем слоем соседей, со вторым жильцом (`clan.ts`): до него в мире
+   * не с кем сравниваться, и таблица из одной своей строки — это не таблица,
+   * а зеркало.
+   *
+   * Сила у всех строк считается одним правилом (`sim/standing.ts`): таблица,
+   * в которой своё число считается иначе, чем чужое, ничего не сравнивает.
+   */
+  private renderTable(): void {
+    const last = this.last;
+    if (last === null || !neighboursOpen(last.camp)) {
+      this.table.innerHTML = '';
+      return;
+    }
+    const rows = standings(last.camp, last.now, last.camp.clan?.name ?? null);
+    this.table.innerHTML =
+      '<h3 class="sp-head">Лагеря по силе</h3>' +
+      rows
+        .map(
+          (r, i) =>
+            `<div class="row sp-row${r.you ? ' you' : ''}">` +
+            `<span class="lbl"><i class="sp-place">${i + 1}</i>` +
+            `<s class="sp-flag" style="background:${r.color}"></s>${r.who}</span>` +
+            `<b>${r.power}</b></div>` +
+            `<div class="sp-note">ур. ${r.level}` +
+            (r.folk === null ? '' : ` · народу ${r.folk}`) +
+            '</div>',
+        )
+        .join('');
   }
 
   private render(): void {

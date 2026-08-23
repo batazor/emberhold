@@ -19,7 +19,9 @@ import {
   SHIFTS_PER_DAY,
   SHIFT_SEC,
   WORLD_EPOCH,
+  CLAN_CAMPS,
   CLAN_STAY,
+  clanGrowth,
   clanState,
   clanTier,
   dayAt,
@@ -429,5 +431,58 @@ describe('Время суток (§24)', () => {
     const t = WORLD_EPOCH + 1234;
     assert.equal(nightAt(t), nightAt(t));
     assert.equal(nightAt(t + SHIFT_SEC * 1000), nightAt(t));
+  });
+});
+
+describe('Лагеря соседей (§30)', () => {
+  test('лагерь фракции у каждой, и он один', () => {
+    assert.equal(CLAN_CAMPS.length, CLANS.length);
+    assert.equal(new Set(CLAN_CAMPS.map((c) => `${c.x}:${c.y}`)).size, CLANS.length);
+  });
+
+  /**
+   * Место вечное — в этом вся разница между соседом и точкой дня. Регион
+   * пересобирается каждые сутки, лагерь нет: сосед, переезжающий вместе
+   * с раздачей, был бы ещё одной точкой, а не соседом.
+   */
+  test('лагерь не переезжает вместе с регионом', () => {
+    const first = JSON.stringify(CLAN_CAMPS);
+    for (let day = DAY0; day < DAY0 + 60; day++) {
+      // Регион спрашивается нарочно: если места лагерей однажды начнут
+      // считаться от дня, разъедутся они именно здесь.
+      regionAt(day);
+      assert.equal(JSON.stringify(CLAN_CAMPS), first, `день ${day}`);
+    }
+  });
+
+  /**
+   * Точка дня не садится на чужой лагерь ни в один день — не проверкой
+   * в раздаче, а по построению: клетки лагерей вынуты из колоды до неё.
+   * Порог тот же, каким `world.rules` меряет зазор между точками.
+   */
+  test('точки дня не наступают на чужие лагеря', () => {
+    const MIN = 0.05;
+    for (let day = DAY0; day < DAY0 + 60; day++) {
+      for (const node of regionAt(day).nodes) {
+        for (const camp of CLAN_CAMPS) {
+          const d = Math.hypot(node.x - camp.x, node.y - camp.y);
+          assert.ok(d >= MIN, `день ${day}: «${node.name}» в ${d.toFixed(3)} от лагеря ${camp.id}`);
+        }
+      }
+    }
+  });
+
+  test('колода вмещает самый людный день и после выемки клеток', () => {
+    // 22 вылазки и до девяти прогулок — 31 точка; клеток остаётся столько же.
+    let most = 0;
+    for (let day = DAY0; day < DAY0 + 400; day++) most = Math.max(most, regionAt(day).nodes.length);
+    assert.ok(most >= 26, `самый людный день из четырёхсот — всего ${most} точек`);
+  });
+
+  test('рост фракции без округления — тот же уровень, только целый', () => {
+    for (let k = 0; k < CLANS.length; k++) {
+      const t = WORLD_EPOCH + 3 * DAY_SEC;
+      assert.equal(Math.floor(clanGrowth(k, t)), clanState(k, t).level, `фракция ${k}`);
+    }
   });
 });

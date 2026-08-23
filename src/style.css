@@ -513,6 +513,27 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #stats-panel .panel { width: 100%; max-width: 380px; max-height: 82vh; overflow-y: auto; }
 #stats-panel h2 { margin: 0 0 10px; font-size: 18px; }
 .sp-row b { font-variant-numeric: tabular-nums; }
+/* ---------- таблица лагерей (§29) ---------- */
+/* Стоит выше сводки: она про мир, сводка — про то, как игрок в него ходит.
+   Своя строка выделена рамкой слева, а не цветом текста: цвет в строке уже
+   занят флажком фракции. */
+#stats-panel .sp-head {
+  margin: 0 0 8px; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--dim);
+}
+#stats-panel #sp-table { margin-bottom: 14px; }
+#stats-panel #sp-table:empty { display: none; }
+.sp-row .sp-place {
+  display: inline-block; min-width: 14px; font-style: normal; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+/* Флажок — тот же цвет, каким фракция помечена на карте: строка таблицы
+   и флаг на точке обязаны читаться одним человеком. */
+.sp-row .sp-flag {
+  display: inline-block; width: 8px; height: 8px; margin: 0 6px 0 4px;
+  text-decoration: none;
+}
+.sp-row.you { border-left: 2px solid var(--gold); padding-left: 6px; margin-left: -8px; }
 .sp-note { font-size: 11px; color: var(--dim); margin: 0 0 8px; }
 #stats-panel .acts { display: flex; gap: 6px; margin-top: 12px; }
 #stats-panel .acts button { flex: 1; }
@@ -665,6 +686,51 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Шестерня проворачивается на нажатие — единственная анимация интерфейса,
    и она отвечает пальцу, а не играет сама по себе. */
 #settings-open:active svg { transform: rotate(45deg); }
+
+/* ---------- почта (§29) ---------- */
+/* Под шестернёй, в том же углу и по тем же правилам: угол — единственное
+   место, свободное во всех сценах сразу. Столбиком, а не в строку: справа
+   от шестерни начинается полоса ресурсов, и второй значок сдвинул бы её
+   ещё на полсотни пикселей — на 360-пиксельном экране это столбец чисел.
+   Кнопка по факту 54×54 (шестерня такая же), отсюда и сдвиг. */
+#mail-open {
+  position: fixed; top: calc(8px + env(safe-area-inset-top) + 46px); left: 8px;
+  z-index: 50; padding: 6px; line-height: 0; opacity: 0.72; color: var(--ink);
+}
+#mail-open:hover { opacity: 1; }
+#mail-open svg { display: block; width: 18px; height: 18px; }
+#mail {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 60;
+}
+#mail.on { display: flex; }
+#mail .panel { width: 100%; max-width: 340px; }
+#mail h2 { margin: 0 0 8px; font-size: 18px; }
+#mail p { margin: 0 0 12px; font-size: 13px; }
+#mail .acts button { width: 100%; padding: 11px; }
+
+/* ---------- свой клан (§29) ---------- */
+/* Окно спрашивает одно поле, и выглядит оно как знакомство: 16px в поле —
+   не вкус, на меньшем телефон зумит страницу на фокусе и кадр уезжает
+   из-под окна. */
+#clan {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 60;
+}
+#clan.on { display: flex; }
+#clan .panel {
+  width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 8px;
+}
+#clan h2 { margin: 0; font-size: 18px; }
+#clan p { margin: 0; font-size: 13px; }
+#clan input { font: inherit; font-size: 16px; padding: 9px 12px; width: 100%; }
+/* Отказ красится цветом потери и пропадает вместе с причиной: пустая строка
+   между полем и кнопками дёргала бы окно на каждой букве. */
+#clan .why { font-size: 12px; color: var(--bad); min-height: 15px; }
+#clan .acts { display: flex; flex-direction: column; gap: 7px; }
+#clan .acts button { width: 100%; padding: 11px; }
+#clan .acts button:disabled { opacity: 0.45; }
+#clan .sp-note { margin: 0; }
 
 #settings {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
@@ -826,6 +892,10 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* В строке задания лицо мелкое: там на него смотрят краем глаза, а места
    ровно на строку. */
 #camp .task .face { width: 26px; height: 26px; flex: none; }
+/* У задания про клан лица нет: клан не человек, и чужое лицо рядом с ним
+   читалось бы как «этот просит клан». Пустая коробка при этом не должна
+   оставлять зазор — отсюда `display: none` из кода и правило на всякий. */
+#camp .task .face:empty { display: none; }
 #meet .say {
   margin: 0; font-size: 14px; letter-spacing: 0.03em; color: var(--ink);
   max-width: 22em; text-align: center;

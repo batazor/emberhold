@@ -143,6 +143,12 @@ interface SaveV1 {
   residents?: { name: string; look: string; answer: string; seed?: number; rest?: boolean }[];
   tents?: { x: number; z: number }[];
   /**
+   * Свой клан (§30) — имя и час основания. Поле необязательное и по той же
+   * причине, что все соседние: сейв, записанный до кланов, обязан
+   * открываться, и открывается он лагерем без клана.
+   */
+  clan?: { name: string; at: number };
+  /**
    * Сундуки-хранилища (`chests.ts`). Необязательное — сейв прежних этапов
    * обязан открываться; но отсутствие поля читается не пустотой, а миграцией:
    * первый сундук достаётся прологом вместе с палаткой, и лагерь, разбитый
@@ -212,6 +218,8 @@ export function save(
     })),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
     chests: camp.chests.map((c) => ({ x: c.x, z: c.z })),
+    // exactOptionalPropertyTypes: у лагеря без клана ключа нет вовсе.
+    ...(camp.clan != null ? { clan: { name: camp.clan.name, at: camp.clan.at } } : {}),
     // exactOptionalPropertyTypes: у лагеря без гостей этих ключей нет вовсе.
     ...(camp.fires !== undefined ? { fires: camp.fires.map((f) => ({ x: f.x, z: f.z })) } : {}),
     ...(camp.guests !== undefined ? { guests: [...camp.guests] } : {}),
@@ -446,6 +454,14 @@ export function load(): LoadResult {
       camp.tents = data.tents
         .filter((t) => t != null && typeof t.x === 'number' && typeof t.z === 'number')
         .map((t) => ({ x: Math.floor(t.x), z: Math.floor(t.z) }));
+    }
+    // Клан читается только целым: имя без часа основания и час без имени —
+    // это половина записи, а не лагерь со странным кланом.
+    if (data.clan != null && typeof data.clan.name === 'string' && data.clan.name.trim() !== '') {
+      camp.clan = {
+        name: data.clan.name.trim(),
+        at: typeof data.clan.at === 'number' ? data.clan.at : 0,
+      };
     }
     if (Array.isArray(data.chests)) {
       camp.chests = data.chests

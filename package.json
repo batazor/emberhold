@@ -33,6 +33,7 @@
     "tents": "tsx scripts/tents.ts",
     "shift": "tsx scripts/shift.ts",
     "clans": "tsx scripts/clans.ts",
+    "standing": "tsx scripts/standing.ts",
     "fan": "tsx scripts/fan.ts",
     "levels": "tsx scripts/levels.ts",
     "stop": "tsx scripts/stop.ts",

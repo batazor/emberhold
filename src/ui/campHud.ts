@@ -34,6 +34,7 @@ import { dayAt, firstRaidNode } from '../sim/world';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
+import { clanTaskOpen } from '../sim/clan';
 import { avatarSvg } from './avatar';
 import { DailyPanel } from './dailyPanel';
 import type { ResourceKind, Resources } from '../sim/resources';
@@ -77,6 +78,8 @@ export interface CampCallbacks {
   onOffhand(offhand: Offhand): void;
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
+  /** §30 — завести свой клан: строка задания открывает окно с именем. */
+  onClan(): void;
   /** §29 — забрать сегодняшний подарок. Считает и зачисляет лагерь, а не
    *  панель: подарок проходит через кладовую наравне с добычей. */
   onClaimGift(): void;
@@ -174,6 +177,8 @@ export class CampHud {
   private readonly taskFace: HTMLElement;
   private readonly taskWhy: HTMLElement;
   private readonly taskButton: HTMLButtonElement;
+  /** Какое задание сейчас на строке: от него зависит, что делает кнопка. */
+  private taskDoes: 'tent' | 'clan' = 'tent';
 
   private readonly sheet: HTMLElement;
   private readonly sheetTitle: HTMLElement;
@@ -269,7 +274,13 @@ export class CampHud {
     this.taskWhy = document.createElement('span');
     this.taskWhy.className = 'why';
     this.taskButton = document.createElement('button');
-    this.taskButton.addEventListener('click', () => this.cb.onTent());
+    // Кнопка одна на все задания, и что она делает, решает то, что сейчас
+    // на строке: две кнопки в одной строке — это уже меню, а задание обязано
+    // называть одно действие.
+    this.taskButton.addEventListener('click', () => {
+      if (this.taskDoes === 'clan') this.cb.onClan();
+      else this.cb.onTent();
+    });
     this.task.append(this.taskFace, this.taskWhy, this.taskButton);
 
     // Пустая середина — это и есть лагерь. Клики сквозь неё уходят на сцену,
@@ -695,8 +706,11 @@ export class CampHud {
    */
   private syncTask(camp: CampState): void {
     const need = homeless(camp);
-    this.task.style.display = need === 0 ? 'none' : 'flex';
-    if (need === 0) return;
+    this.task.style.display = need === 0 && !clanTaskOpen(camp) ? 'none' : 'flex';
+    if (need === 0) {
+      if (clanTaskOpen(camp)) this.syncClanTask();
+      return;
+    }
     // Имя вместо «гостя»: человек, которого позвали, стоит в лагере
     // с именем и лицом, и звать его в задании гостем — значит забыть
     // знакомство, ради которого он и пришёл.
@@ -721,6 +735,28 @@ export class CampHud {
     // должен видеть и что просят, и почему нельзя, — одно без другого
     // это либо задание без выхода, либо отказ без повода.
     if (block !== 'ok') this.taskWhy.textContent += ` · ${TENT_REASON[block]}`;
+    this.taskDoes = 'tent';
+  }
+
+  /**
+   * Задание про клан (§30). Стоит **за** крышей и не рядом с ней: строка
+   * задания одна, и порядок в ней решает не важность вообще, а срочность.
+   * Человек без крыши ждёт сегодня; имя лагеря подождёт до вечера — и стоит
+   * оно ровно того, чтобы дождаться пустой строки, а не делить её.
+   *
+   * Лица у этого задания нет: клан — не человек, и чужое лицо рядом с ним
+   * читалось бы как «этот просит клан».
+   */
+  private syncClanTask(): void {
+    this.taskDoes = 'clan';
+    if (this.taskFace.dataset['who'] !== '') {
+      this.taskFace.dataset['who'] = '';
+      this.taskFace.innerHTML = '';
+      this.taskFace.style.display = 'none';
+    }
+    this.taskWhy.textContent = 'Лагерь без имени: соседи уже в таблице';
+    this.taskButton.textContent = 'Создать клан';
+    this.taskButton.disabled = false;
   }
 
   /**

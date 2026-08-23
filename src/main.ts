@@ -236,6 +236,9 @@ import { CampHud } from './ui/campHud';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
+import { ClanPanel } from './ui/clanPanel';
+import { MailButton } from './ui/mail';
+import { foundClan, neighboursOpen } from './sim/clan';
 import { CampPrompt } from './ui/campPrompt';
 import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
@@ -642,6 +645,12 @@ const campHud = new CampHud(app, {
     persist();
   },
   onOffhand: (hand) => swapOffhand(hand),
+  /**
+   * §30 — задание про клан. Кнопка не заводит клан, а спрашивает имя:
+   * заведённый одним тапом клан назывался бы сам собой, а имя — это
+   * единственное, что у него сейчас есть.
+   */
+  onClan: () => clanPanel.open(),
   /**
    * Задание «поставить палатку» (`sim/residents.ts`). Кнопка не ставит,
    * а вооружает: место выбирает игрок следующим тапом — тем же жестом,
@@ -1993,6 +2002,24 @@ const setHint = (text: string): void => hud.setHint(meetPanel.visible ? '' : tex
  */
 const statsPanel = new StatsPanel(app);
 
+/**
+ * §30 — почта и клан. Значок почты живёт в углу рядом с шестернёй и включается
+ * слоем соседей; окно клана открывает строка задания.
+ */
+const mailButton = new MailButton(app);
+const clanPanel = new ClanPanel(app, {
+  onFound: (name) => {
+    if (!foundClan(camp, name, clock.now())) {
+      play('deny');
+      return;
+    }
+    play('build');
+    campHud.notify(`Клан «${camp.clan?.name ?? name}» основан`);
+    persist();
+    campHud.sync(camp, clock.now(), 0);
+  },
+});
+
 new SettingsMenu(app, {
   onNewGame: () => {
     wiped = true;
@@ -2005,7 +2032,7 @@ new SettingsMenu(app, {
     );
   },
   // §9 — сводка открывается из настроек: своей кнопки на экране у неё нет.
-  onStats: () => statsPanel.open(),
+  onStats: () => statsPanel.open(camp, clock.now()),
 });
 
 /**
@@ -2353,6 +2380,12 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   heroCard.setVisible(false);
   residentCard.setVisible(false);
   closeCharacter();
+  // §30 — почта в углу видна во всех сценах, как шестерня рядом: она про
+  // связь с соседями, а не про то, где сейчас герой. Открытый ящик со сценой
+  // всё же уходит — окно поверх вылазки было бы окном поверх боя.
+  mailButton.setShown(neighboursOpen(camp));
+  mailButton.close();
+  clanPanel.close();
   // Сводка закрывается со сменой сцены: она смотрит на игру со стороны,
   // и её незачем нести из лагеря в вылазку.
   statsPanel.close();
@@ -4929,6 +4962,9 @@ function stepCampSystems(dt: number, now: number): void {
     if (collectSortie(now)) persist();
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
+    // §30 — почта зажигается тем же порогом, что и вся остальная связь
+    // с соседями: до второго жильца ящику неоткуда взяться.
+    mailButton.setShown(neighboursOpen(camp));
     // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
     // лагерь про героев не знает, и сказать ему может только тот, кто знает
     // обоих.

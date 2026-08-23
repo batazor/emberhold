@@ -22,6 +22,7 @@ import { STONES, scatterStones, type Stone } from './stones';
  * Плац — на второй-третий день, когда простой отряда уже заметен.
  */
 import type { Resident } from './residents';
+import type { OwnClan } from './clan';
 
 export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge' | 'infirmary' | 'yard';
 
@@ -432,6 +433,13 @@ export interface CampState {
    * остаётся разобранным.
    */
   stones: Stone[];
+  /**
+   * Свой клан (§30): имя, под которым лагерь стоит в таблице. Поле
+   * необязательное, версия сейва ради него не поднята — сохранение,
+   * сделанное до кланов, обязано открываться, и открывается оно лагерем
+   * без клана, что и есть правда.
+   */
+  clan?: OwnClan | null;
 }
 
 /**
