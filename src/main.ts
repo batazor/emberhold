@@ -24,6 +24,7 @@ import {
   moveBuilding,
   speedup,
   setOffhand,
+  claimDailyCoins,
   speedupCost,
   startUpgrade,
   upgradeBlock,
@@ -227,7 +228,8 @@ import { generateTrailSite, type TrailSite } from './sim/trailSite';
 import { askOf, dealBlock, makeDeal, worthOf } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
-import { events, loadTelemetry, track } from './sim/telemetry';
+import { events, loadTelemetry, setTelemetrySink, track } from './sim/telemetry';
+import { analyticsIdentify, startAnalytics } from './core/analytics';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { gearIcon } from './render/gearIcon';
@@ -292,7 +294,7 @@ import {
   tentSpot,
 } from './sim/residents';
 import { payUpkeep, workingAfter } from './sim/upkeep';
-import { PICK_REASON, bushAt, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
+import { PICK_REASON, bushAt, pickKey, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
 import type { Bush } from './sim/berries';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
@@ -338,7 +340,17 @@ if (serverNow !== null) clock.sync(serverNow);
 let camp: CampState = loaded.camp;
 const roster: Roster = loaded.roster;
 
+// §20.5 — монеты за вход: десять в сутки, один раз. Считается здесь, а не
+// в лагере: заход в игру — это заход, независимо от того, дошёл ли игрок
+// до лагеря в эту сессию. Сутки мировые (§27), поэтому перевод телефона
+// вперёд второй десятки не даёт.
+const gotCoins = claimDailyCoins(camp, dayAt(clock.now()));
+
 loadTelemetry();
+// §9 — те же события уходят наружу. Сток ставится до первого `track`, иначе
+// `session_start` — единственное событие, которое случается ровно один раз
+// за сессию, — уедет в буфер и никуда больше.
+setTelemetrySink(startAnalytics());
 // §9 — время до возвращения в игру после установки таймера. Меряется только
 // там, где таймер реально шёл: иначе это просто «как часто заходят».
 const startedAt = clock.now();
@@ -443,6 +455,8 @@ let mine: Work | null = null;
 let campMine: { work: Work; stone: Stone } | null = null;
 /** §13.8 — сбор ягод в лагере: та же пара «работа и цель», что у кайла. */
 let campPick: { work: Work; bush: Bush } | null = null;
+/** §13.8 — сбор в местах мира: место, узел и работа по нему. */
+let worldPick: { place: string; bush: Bush; work: Work } | null = null;
 
 /**
  * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
@@ -2090,6 +2104,9 @@ new SettingsMenu(app, {
 let hasSession = false;
 void cloudUser().then((email) => {
   hasSession = email !== null;
+  // §9 — с этого мига события пишутся на человека, а не на устройство:
+  // иначе один игрок с телефона и с ноутбука считается двумя.
+  if (email !== null) analyticsIdentify(email);
 });
 const authCard = new AuthCard(app);
 // Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
@@ -2098,6 +2115,9 @@ cloudOnSignIn(() => {
   if (hasSession) return;
   hasSession = true;
   authCard.hide();
+  void cloudUser().then((email) => {
+    if (email !== null) analyticsIdentify(email);
+  });
   void syncCloud();
 });
 
@@ -3381,6 +3401,68 @@ function stepChopping(dt: number): void {
  * работать, когда дойдёт. Отказ здесь бывает один — полный рюкзак:
  * «далеко» не отказ, а дорога.
  */
+/**
+ * §13.8 — сбор ягод в местах мира. Отличий от лагеря два, и оба про место:
+ * пища идёт в кладовую лагеря напрямую (в рюкзак её класть нельзя — это
+ * не добыча вылазки), а сорванное пишется в самоистекающий список
+ * (`camp.picks`), потому что узлы мест не хранятся вовсе.
+ */
+function startWorldPicking(place: string, bush: Bush, hub: { x: number; z: number }, seed: number): void {
+  if (raid === null) return;
+  if (!worldRipe(seed, place, bush, hub, camp.picks ?? {}, clock.now())) {
+    play('deny');
+    say(PICK_REASON['зелёный']);
+    return;
+  }
+  chop = null;
+  mine = null;
+  worldPick = { place, bush, work: startPick(bush) };
+  commandMove(raid, bush);
+  raidView?.showMarker(bush.x, bush.z);
+}
+
+function stepWorldPicking(dt: number): void {
+  if (raid === null || worldPick === null) return;
+  const { place, bush, work } = worldPick;
+  const foodBefore = camp.resources.food;
+  const step = stepPickInto(
+    raid.hero,
+    raid.path.length > 0,
+    [bush],
+    work,
+    dt,
+    camp.resources,
+    clock.now(),
+  );
+  if (step.stopped !== null) {
+    play('deny');
+    say(
+      step.stopped === 'gone' || step.stopped === 'ok'
+        ? PICK_REASON['пусто']
+        : MINE_REASON[step.stopped],
+    );
+    worldPick = null;
+    raidView?.hideWork();
+    return;
+  }
+  if (raid.path.length > 0) {
+    raidView?.hideWork();
+    return;
+  }
+  raidView?.showWork(work.cell.x, work.cell.z, mineProgress(work));
+  if (step.swing) play('build');
+  if (step.taken) {
+    // Узел места не хранится — хранится то, что его тронули (§13.8).
+    camp.picks = { ...(camp.picks ?? {}), [pickKey(place, bush.id)]: clock.now() };
+    say(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
+    play('levelup');
+    worldPick = null;
+    raidView?.hideWork();
+    raidView?.refreshBushes();
+    persist();
+  }
+}
+
 function startMining(cell: Cell): void {
   if (raid === null) return;
   const block = mineBlock(raid.hero, raid.loc.stones, cell, raid.bagTotal < raid.capacity);
@@ -3603,7 +3685,13 @@ function toGlade(): void {
 /** Лагерь на поляне (§16.1): сцена пролога и есть сцена лагеря. */
 let inGladeCamp = false;
 
-/** Наработанное за отлучку — первым и один раз, общий у обеих сцен лагеря. */
+/**
+ * Наработанное за отлучку — первым и один раз, общий у обеих сцен лагеря.
+ *
+ * §20.5 — монеты за вход говорятся здесь же и той же строкой. Отдельным
+ * всплытием они стали бы вторым сообщением подряд об одном и том же:
+ * «пока вас не было» и «за вход» — это оба про то, что дал заход.
+ */
 function notifyWorked(): void {
   if (workShown) return;
   /**
@@ -3614,11 +3702,14 @@ function notifyWorked(): void {
   const trouble: string[] = [];
   if (upkeep.hungry > 0) trouble.push(`голодных ${upkeep.hungry}`);
   if (upkeep.dark) trouble.push('костёр погас');
-  if (worked.length === 0 && trouble.length === 0) return;
-  workShown = true;
+  const parts: string[] = [];
   if (worked.length > 0) {
-    campHud.notify(`Пока вас не было: ${worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · ')}`);
+    parts.push(worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · '));
   }
+  if (gotCoins > 0) parts.push(`монеты ${gotCoins}`);
+  if (parts.length === 0 && trouble.length === 0) return;
+  workShown = true;
+  if (parts.length > 0) campHud.notify(`Пока вас не было: ${parts.join(' · ')}`);
   if (trouble.length > 0) campHud.notify(`В лагере кончилась пища: ${trouble.join(', ')}`);
 }
 
@@ -4390,6 +4481,22 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   // Тап по валуну — добыча (§13.5). Спорить с деревом ему не о чем: дерево
   // стоит на занятой клетке, валун лежит на проходимой.
+  /**
+   * §13.8 — тап по кусту места. Спрашивается раньше валуна по тому же
+   * правилу, что в лагере: куст ловится ровно своей клеткой.
+   */
+  const site = castleNow !== null
+    ? { place: 'замок', bushes: castleNow.bushes, hub: castleNow.gate, seed: castleNow.loc.seed }
+    : graveSite !== null
+      ? { place: 'кладбище', bushes: graveSite.bushes, hub: graveSite.gate, seed: graveSite.loc.seed }
+      : null;
+  if (site !== null) {
+    const bush = bushAt(site.bushes, cell);
+    if (bush !== null) {
+      startWorldPicking(site.place, bush, site.hub, site.seed);
+      return;
+    }
+  }
   if (stoneAt(raid.loc.stones, cell) !== null) {
     startMining(cell);
     return;
@@ -5349,6 +5456,7 @@ startLoop({
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).
       stepChopping(dt);
       stepMining(dt);
+      stepWorldPicking(dt);
       // §6.1.17 — у тропы два конца, и дальний тоже выход. Сим знает один
       // `evac` (вход), второй конец сторожит сцена: та же клетка — тот же
       // уход, с тем же лучом над ней.

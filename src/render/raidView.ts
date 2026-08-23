@@ -1158,6 +1158,8 @@ export class RaidView {
    * рисуются полными, и это честное поведение отладочных кадров.
    */
   private buildBushes(bushes: readonly Bush[], ripeOf?: (bush: Bush) => boolean): void {
+    for (const node of this.bushNodes) node.removeFromParent();
+    this.bushNodes.length = 0;
     if (bushes.length === 0) return;
     const mat = this.track(forestMaterial());
     const berryMat = this.track(new THREE.MeshLambertMaterial({ color: 0xb1233a }));
@@ -1186,8 +1188,20 @@ export class RaidView {
       }
       node.position.set(bush.x, 0, bush.z);
       this.group.add(node);
+      this.bushNodes.push(node);
     }
   }
+
+  /** §13.8 — куст обобран: ягоды гаснут, ветка остаётся. Пересборка всех
+   *  кустов места дешевле поиска одного — их там единицы. */
+  refreshBushes(): void {
+    this.buildBushes(
+      [...(this.keep?.bushes ?? []), ...(this.grave?.bushes ?? [])],
+      this.ripeBush,
+    );
+  }
+
+  private readonly bushNodes: THREE.Object3D[] = [];
 
   setResidentLoad(i: number, answer: ResidentJob | null): void {
     this.residents[i]?.setHeld('handslot.l', answer === null ? null : residentLoad(answer));

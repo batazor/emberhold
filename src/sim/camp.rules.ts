@@ -20,6 +20,9 @@ import {
   kitchenFood,
   moveBuilding,
   speedup,
+  DAILY_COINS,
+  claimDailyCoins,
+  coinsOf,
   speedupCost,
   setOffhand,
   startUpgrade,
@@ -98,18 +101,44 @@ describe('Лагерь', () => {
     assert.ok(speedupCost(threeMin, threeMin) > 0, 'с первой секунды — уже нет');
     assert.equal(speedupCost(300, eightHours), 0, 'для длинной стройки пять минут даром');
     assert.equal(speedupCost(0, eightHours), 0);
-    // ×1.5 за каждый час: ускорять ночную стройку невыгодно.
-    assert.ok(speedupCost(eightHours, eightHours) > speedupCost(3 * 3600, 3 * 3600) * 10);
+    /**
+     * §20.5 — «дёшево для коротких, невыгодно для длинных». Раньше это
+     * обещание держала надбавка ×1.5 за час, и правило проверяло её саму
+     * (`8ч > 3ч × 10`). Надбавки больше нет: доход монеты плоский по суткам
+     * (§27, §29), и выпуклость переехала из цены в доход.
+     *
+     * Поэтому проверяется теперь не множитель, а само обещание, и в тех
+     * единицах, в которых оно сформулировано, — **в днях накопления**.
+     * Правило переживёт и следующую смену формулы, если та сохранит смысл.
+     */
+    /**
+     * Проверяется отношение, а не абсолют. Дохода у монеты сегодня нет
+     * (источник — задания, пятый этап §8), поэтому «дней накопления»
+     * посчитать не из чего, и правило, прибитое к выдуманному доходу,
+     * стало бы враньём с точностью до цифры. Отношение переживёт и смену
+     * курса, и появление выплаты: обещание §20.5 в нём, а не в числах.
+     */
+    assert.ok(
+      speedupCost(eightHours, eightHours) > speedupCost(3 * 60, 3 * 60) * 100,
+      'ночная стройка обязана быть на два порядка дороже трёхминутной',
+    );
+    assert.ok(
+      speedupCost(eightHours, eightHours) > speedupCost(3 * 3600, 3 * 3600),
+      'длиннее — дороже, монотонно',
+    );
   });
 
-  test('ускорение длинной стройки тратит камень и завершает её', () => {
+  test('ускорение длинной стройки тратит монеты и завершает её', () => {
     const camp = createCamp();
     camp.levels = { hq: 5, kitchen: 4, storage: 1, forge: 0 , infirmary: 0, yard: 0};
     camp.resources = { stone: 9999, wood: 9999, iron: 9999, crystal: 9999, food: 0 };
+    camp.coins = 9999;
     startUpgrade(camp, 'kitchen', 0); // до ур. 5 — три часа
-    const before = camp.resources.stone;
+    const before = coinsOf(camp);
+    const stone = camp.resources.stone;
     assert.equal(speedup(camp, 0), true);
-    assert.ok(camp.resources.stone < before, 'камень списан');
+    assert.ok(coinsOf(camp) < before, 'монеты списаны');
+    assert.equal(camp.resources.stone, stone, 'камень ускорением не трогается');
     assert.equal(camp.levels.kitchen, 5);
     assert.equal(camp.construction, null);
   });
@@ -123,6 +152,7 @@ describe('Лагерь', () => {
   test('первый таймер игры больше не пропускается даром', () => {
     const camp = createCamp();
     camp.resources = { stone: 100, wood: 10, iron: 0, crystal: 0, food: 0 };
+    camp.coins = 100;
     startUpgrade(camp, 'hq', 0);
     const c = camp.construction!;
     const total = c.endsAt - c.startedAt;
@@ -130,9 +160,11 @@ describe('Лагерь', () => {
     assert.ok(speedupCost(total, total) > 0, 'сразу после начала ускорение платное');
     assert.equal(speedupCost(40, total), 0, 'последние 45 секунд — бесплатны');
 
+    const before = coinsOf(camp);
     const stone = camp.resources.stone;
     assert.equal(speedup(camp, 0), true);
-    assert.ok(camp.resources.stone < stone, 'камень потрачен');
+    assert.ok(coinsOf(camp) < before, 'монеты потрачены');
+    assert.equal(camp.resources.stone, stone, 'камень ускорением не трогается');
     assert.equal(camp.levels.hq, 2);
   });
 
@@ -325,4 +357,35 @@ describe('Цены построек', () => {
       assert.ok(totals[i]! > totals[i - 1]!, `уровень ${i + 2} не дороже предыдущего`);
     }
   });
+
+  /**
+   * §20.5 — монеты за вход: десять в сутки, один раз. Проверяется не сумма,
+   * а замок: сумма — число, замок — обещание. Второй заход в те же сутки
+   * не даёт ничего, следующие сутки дают снова, и сутки берутся снаружи,
+   * то есть перевод часов игроком до этой функции не доходит.
+   */
+  test('§20.5 — монеты за вход начисляются раз в сутки', () => {
+    const camp = createCamp();
+    assert.equal(coinsOf(camp), 0, 'новый лагерь без монет');
+
+    assert.equal(claimDailyCoins(camp, 100), DAILY_COINS, 'первый вход за сутки платит');
+    assert.equal(coinsOf(camp), DAILY_COINS);
+
+    assert.equal(claimDailyCoins(camp, 100), 0, 'второй вход в те же сутки — ничего');
+    assert.equal(coinsOf(camp), DAILY_COINS, 'и монет не прибавилось');
+
+    assert.equal(claimDailyCoins(camp, 101), DAILY_COINS, 'назавтра — снова');
+    assert.equal(coinsOf(camp), DAILY_COINS * 2);
+
+    // Десятка не круглость: при ней цена ускорения читается прямо в днях.
+    assert.ok(
+      speedupCost(12 * 60, 12 * 60) <= DAILY_COINS * 2,
+      'двенадцатиминутная стройка добивается парой дней входов',
+    );
+    assert.ok(
+      speedupCost(8 * 3600, 8 * 3600) > DAILY_COINS * 30,
+      'ночная — дороже месяца входов, то есть невыгодна',
+    );
+  });
+
 });

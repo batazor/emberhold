@@ -11,6 +11,7 @@ import {
   kaplanMeier,
   meanOfAll,
   meanOfDeaths,
+  powerArea,
   powerFit,
   restrictedMean,
   survivalAt,
@@ -134,6 +135,53 @@ describe('Кривая выживания (§11.3, §9)', () => {
       const from = 30;
       const to = 400;
       const analytic = tailArea(fit, from)! - tailArea(fit, to)!;
+      let numeric = 0;
+      const dx = 0.001;
+      for (let x = from; x < to; x += dx) numeric += fit.a * (x + dx / 2) ** b * dx;
+      assert.ok(
+        Math.abs(analytic - numeric) / analytic < 1e-5,
+        `b=${b}: аналитически ${analytic}, численно ${numeric}`,
+      );
+    }
+  });
+
+  /**
+   * Опубликованный пример чужой статьи (gdcuffs, «Риск, ARPDAU и LTV»):
+   * из своих двух недель автор получает `S(t) = 0,612·t^(−0,34)` и печатает
+   * LT = 27,62 дня за полугодие и 44,60 за год.
+   *
+   * Проверка стоит здесь не ради самой статьи, а ради нас: она привязывает
+   * `powerArea` к внешнему числу, которое считал не этот код. Без такой
+   * привязки «наша арифметика совпадает с методом» — утверждение без
+   * свидетеля, и §22.16 не имел бы права ссылаться на статью, разбирая
+   * не арифметику, а выбор горизонта.
+   */
+  test('powerArea воспроизводит опубликованный пример', () => {
+    const fit = { a: 0.612, b: -0.34, r2: 1 };
+    assert.ok(
+      Math.abs(powerArea(fit, 1, 180)! - 27.62) < 0.01,
+      `полугодие: ${powerArea(fit, 1, 180)}`,
+    );
+    assert.ok(Math.abs(powerArea(fit, 1, 365)! - 44.6) < 0.01, `год: ${powerArea(fit, 1, 365)}`);
+  });
+
+  /**
+   * Тот же `b`, на котором статья считает LT, для `tailArea` расходится.
+   * Две функции обязаны расходиться в ответах именно здесь: конечный срок
+   * даёт число, бесконечный — отказ. Совпади они, «LT за год» читалось бы
+   * как «LT», а это и есть подмена, ради которой написан §22.16.
+   */
+  test('конечный срок считается там, где бесконечный хвост расходится', () => {
+    const fit = { a: 0.612, b: -0.34, r2: 1 };
+    assert.equal(tailArea(fit, 1), null);
+    assert.ok(powerArea(fit, 1, 365)! > 0);
+  });
+
+  test('powerArea совпадает с численным интегралом', () => {
+    for (const b of [-0.34, -1, -1.6]) {
+      const fit = { a: 0.9, b, r2: 1 };
+      const [from, to] = [1, 200];
+      const analytic = powerArea(fit, from, to)!;
       let numeric = 0;
       const dx = 0.001;
       for (let x = from; x < to; x += dx) numeric += fit.a * (x + dx / 2) ** b * dx;
