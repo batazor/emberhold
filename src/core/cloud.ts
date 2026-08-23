@@ -161,7 +161,13 @@ export async function cloudVisits(visits: readonly { node: number; shift: number
   }
 }
 
-/** Чужие метки — все, кроме своих: по ним карта отметит лагеря соседей. */
+/**
+ * Чужие метки — все, кроме своих: по ним карта отметит лагеря соседей.
+ *
+ * Пока не позван из игры. Когда позовут — вместе с фильтром по смене в самом
+ * запросе и уборкой старых строк кроном (§27.5): метки живут окном богатства,
+ * а строки в таблице — до тех пор, пока хозяин не откроет игру снова.
+ */
 export async function cloudNeighbours(): Promise<{ user: string; node: number; shift: number }[]> {
   const uid = await userId();
   if (uid === null) return [];
