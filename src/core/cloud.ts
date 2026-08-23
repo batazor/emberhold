@@ -162,11 +162,10 @@ export async function cloudVisits(visits: readonly { node: number; shift: number
 }
 
 /**
- * Чужие метки — все, кроме своих: по ним карта отметит лагеря соседей.
- *
- * Пока не позван из игры. Когда позовут — вместе с фильтром по смене в самом
- * запросе и уборкой старых строк кроном (§28.5): метки живут окном богатства,
- * а строки в таблице — до тех пор, пока хозяин не откроет игру снова.
+ * Чужие метки — все, кроме своих: ими богатство локации тратится наравне
+ * со своими (§30.6). Позван из `main`, оттуда же и фильтруется окном
+ * (`liveVisits`): просроченная строка, которую не подмёл крон (§28), обязана
+ * отваливаться на чтении, а не портить сегодняшнюю карту.
  */
 export async function cloudNeighbours(): Promise<{ user: string; node: number; shift: number }[]> {
   const uid = await userId();
@@ -177,6 +176,75 @@ export async function cloudNeighbours(): Promise<{ user: string; node: number; s
     return data
       .filter((r) => typeof r.node === 'number' && typeof r.shift === 'number')
       .map((r) => ({ user: String(r.user_id), node: r.node, shift: r.shift }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Лагерь соседа в общей таблице (§30.7). Ровно то, что лагерь показывает
+ * другим, и ничего сверх: имя клана, сила, уровень и сколько народу.
+ *
+ * Идентификатор здесь — не для показа: имён и почт в таблице нет вовсе,
+ * а `id` нужен единственному месту, которому нужен, — чтобы место лагеря
+ * на карте не прыгало от одного чтения к другому.
+ */
+export interface CloudCamp {
+  readonly id: string;
+  readonly clan: string | null;
+  readonly power: number;
+  readonly level: number;
+  readonly folk: number;
+}
+
+/**
+ * Отдать свою строку. Замена целиком (`upsert`), а не правка полей: строка
+ * маленькая и целая, и хранить в ней половину прошлого состояния незачем.
+ */
+export async function cloudCamp(row: Omit<CloudCamp, 'id'>): Promise<void> {
+  const uid = await userId();
+  if (uid === null) return;
+  try {
+    await client.from('camps').upsert({
+      user_id: uid,
+      clan: row.clan,
+      power: Math.max(0, Math.round(row.power)),
+      level: Math.max(0, Math.round(row.level)),
+      folk: Math.max(0, Math.round(row.folk)),
+      updated_at: new Date().toISOString(),
+    });
+  } catch {
+    /* см. шапку файла */
+  }
+}
+
+/**
+ * Чужие лагеря — все, кроме своего. Своя строка приходит не отсюда,
+ * а из своего же лагеря: она считается на месте и всегда свежее той,
+ * что успела доехать до сервера.
+ *
+ * Подрезано по силе и по числу: таблица — экран, а не выгрузка, и читать
+ * тысячу строк, чтобы показать десяток, значит платить за то, чего никто
+ * не увидит. Кого подрезали, `standings` говорит вслух.
+ */
+export async function cloudCamps(limit = 50): Promise<CloudCamp[]> {
+  const uid = await userId();
+  if (uid === null) return [];
+  try {
+    const { data } = await client
+      .from('camps')
+      .select('user_id, clan, power, level, folk')
+      .neq('user_id', uid)
+      .order('power', { ascending: false })
+      .limit(limit);
+    if (!Array.isArray(data)) return [];
+    return data.map((r) => ({
+      id: String(r.user_id),
+      clan: typeof r.clan === 'string' && r.clan.trim() !== '' ? r.clan : null,
+      power: typeof r.power === 'number' ? r.power : 0,
+      level: typeof r.level === 'number' ? r.level : 0,
+      folk: typeof r.folk === 'number' ? r.folk : 0,
+    }));
   } catch {
     return [];
   }
@@ -224,6 +292,9 @@ export async function cloudWipe(): Promise<void> {
   try {
     await client.from('saves').delete().eq('user_id', uid);
     await client.from('world_visits').delete().eq('user_id', uid);
+    // §30.7 — строка лагеря уходит вместе с сейвом: «Новая игра» обязана
+    // убрать игрока из общей таблицы, а не оставить там прежнюю силу.
+    await client.from('camps').delete().eq('user_id', uid);
   } catch {
     /* см. шапку файла */
   }

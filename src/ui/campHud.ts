@@ -32,6 +32,7 @@ import type { ConsumableId } from '../sim/consumables';
 import { ONB_HINT } from '../sim/onboarding';
 import { dayAt, firstRaidNode } from '../sim/world';
 import type { Visit } from '../sim/world';
+import type { LiveCamp } from '../sim/standing';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
@@ -724,6 +725,10 @@ export class CampHud {
         this.map.setOnly(firstRaidNode(dayAt(this.last.now), this.last.now));
       }
     }
+    // Неделя подарков выкладывается на открытии листа (§29.4). Красить
+    // её перед этим не нужно: `sync` идёт каждый кадр и для закрытого
+    // раздела тоже — карточки уже знают, что на них написано.
+    if (kind === 'daily') this.daily.appear();
     this.paintOpen();
     // Кнопка перестановки принадлежит карточке здания и переезжает в неё:
     // здание всегда одно, а разделов много.
@@ -904,6 +909,11 @@ export class CampHud {
    */
   setNeighbours(visits: readonly Visit[]): void {
     this.map.setNeighbours(visits);
+  }
+
+  /** §30.7 — то же для чужих лагерей: карта показывает их по кромке. */
+  setCamps(live: readonly LiveCamp[]): void {
+    this.map.setCamps(live);
   }
 
   private syncShop(camp: CampState): void {

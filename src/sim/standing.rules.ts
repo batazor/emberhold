@@ -12,6 +12,7 @@ import { RAIDS_PER_LEVEL } from './balance';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import { WORLD_EPOCH, clanGrowth } from './world';
 import {
+  NO_CLAN,
   buildingRaids,
   campPower,
   clanPower,
@@ -131,7 +132,7 @@ describe('Сила: таблица лагерей', () => {
 
   test('своя строка ровно одна', () => {
     const rows = standings(createCamp(), T0, null);
-    assert.equal(rows.filter((r) => r.you).length, 1);
+    assert.equal(rows.filter((r) => r.kind === 'вы').length, 1);
   });
 
   test('таблица идёт по убыванию силы', () => {
@@ -148,13 +149,13 @@ describe('Сила: таблица лагерей', () => {
    * одно и то же число.
    */
   test('фракции в таблице различимы', () => {
-    const rows = standings(createCamp(), T0, null).filter((r) => !r.you);
+    const rows = standings(createCamp(), T0, null).filter((r) => r.kind !== 'вы');
     assert.equal(new Set(rows.map((r) => r.power)).size, rows.length, 'силы фракций совпали');
   });
 
   test('своё имя берётся у своего клана', () => {
     const rows = standings(createCamp(), T0, 'Артель Гиты');
-    assert.equal(rows.find((r) => r.you)?.who, 'Артель Гиты');
+    assert.equal(rows.find((r) => r.kind === 'вы')?.who, 'Артель Гиты');
   });
 
   test('пустой лагерь стоит последним, полный поднимается', () => {
@@ -169,5 +170,41 @@ describe('Сила: таблица лагерей', () => {
     const later = clanRaids(clanGrowth(0, T0 + 60 * 24 * 3600));
     assert.ok(later > early, 'фракция не выросла за два месяца');
     assert.ok(clanPower(clanGrowth(0, T0)) > 0);
+  });
+});
+
+describe('Таблица: живые соседи (§30.7)', () => {
+  const T0 = WORLD_EPOCH + 3 * 24 * 3600;
+  const live = (id: string, power: number, clan: string | null = null) => ({
+    id,
+    clan,
+    power,
+    level: 3,
+    folk: 2,
+  });
+
+  test('сосед встаёт в ту же таблицу и на своё место по силе', () => {
+    const rows = standings(createCamp(), T0, null, [live('a', 10_000)]);
+    assert.equal(rows[0]?.kind, 'сосед', 'сильнейший сосед не первый');
+    assert.equal(rows.filter((r) => r.kind === 'сосед').length, 1);
+    assert.equal(rows.filter((r) => r.kind === 'вы').length, 1, 'своя строка не одна');
+  });
+
+  test('лагерь без клана стоит без имени, а не без строки', () => {
+    const rows = standings(createCamp(), T0, null, [live('a', 5)]);
+    assert.equal(rows.find((r) => r.kind === 'сосед')?.who, NO_CLAN);
+    const named = standings(createCamp(), T0, null, [live('a', 5, 'Артель Гиты')]);
+    assert.equal(named.find((r) => r.kind === 'сосед')?.who, 'Артель Гиты');
+  });
+
+  test('порядок остаётся по убыванию и с соседями', () => {
+    const rows = standings(fullCamp(), T0, null, [live('a', 1), live('b', 9_000), live('c', 300)]);
+    for (let i = 1; i < rows.length; i++) {
+      assert.ok(rows[i - 1]!.power >= rows[i]!.power, `строка ${i} выбилась из порядка`);
+    }
+  });
+
+  test('без соседей таблица такая же, какой была до них', () => {
+    assert.deepEqual(standings(createCamp(), T0, null, []), standings(createCamp(), T0, null));
   });
 });
