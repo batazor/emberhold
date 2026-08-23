@@ -13,17 +13,17 @@
   "raidsPerSession": 20,
   "metrics": {
     "failRate": 0,
-    "avgDamageTaken": 4.9753,
-    "avgFights": 1.3937,
-    "avgDepthShare": 0.7944,
+    "avgDamageTaken": 5.3975,
+    "avgFights": 1.3,
+    "avgDepthShare": 0.7908,
     "buyOfferRate": 0.775,
-    "buyTakeRate": 0.8799,
-    "avgCarried": 8.65,
+    "buyTakeRate": 0.8391,
+    "avgCarried": 8.3375,
     "avgLost": 0,
-    "medianReturnMin": 503.75,
+    "medianReturnMin": 227.5,
     "hq": 2.125,
     "kitchen": 2,
     "storage": 2,
-    "elapsedHours": 14.9068
+    "elapsedHours": 14.9079
   }
 }
