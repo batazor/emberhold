@@ -110,7 +110,20 @@ const cache = new Map<string, string>();
  */
 export function gearIcon(kind: GearIconKind, level = 0): string {
   const part = partOf(kind, level);
-  const key = `${kind}#${part.model.tris}#${part.model.idx.length}`;
+  return bakedIcon(part, kind);
+}
+
+/**
+ * Тот же значок, но из любой пары «модель + палитра». Выставлен наружу ради
+ * подарка за вход (§29): его карточки показывают бревно, слиток и валун —
+ * вещи не из наборов снаряжения, а рисовать их вторым художником значило бы
+ * завести второй свет, второй ракурс и второй способ переврать цвет.
+ *
+ * `name` входит в ключ кэша вместе с размерами модели: две вещи одного
+ * набора отличаются именно ими.
+ */
+export function bakedIcon(part: Part, name: string): string {
+  const key = `${name}#${part.model.tris}#${part.model.idx.length}`;
   const ready = cache.get(key);
   if (ready !== undefined) return ready;
 

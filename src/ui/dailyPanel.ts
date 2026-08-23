@@ -1,3 +1,4 @@
+import { formatDuration } from '../core/clock';
 import {
   CLAIM_REASON,
   GIFT_ARROWS,
@@ -7,18 +8,23 @@ import {
   emptyDaily,
   giftLoot,
   giftTier,
+  guestSeed,
   rookie,
   weekAt,
   weekOf,
 } from '../sim/daily';
 import type { DailyGift } from '../sim/daily';
 import { CHEST_BONUS } from '../sim/chests';
+import { campOrigin } from '../sim/camp';
+import { generateSettler } from '../sim/settler';
+import { DAY_SEC, dayAt } from '../sim/world';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { CampState } from '../sim/camp';
 import type { ResourceKind } from '../sim/resources';
+import { avatarSvg } from './avatar';
 
 /**
- * Подарок за вход (§29): значок над сценой и семь карточек в листе.
+ * Подарок за вход (§29.4): значок над сценой и семь карточек в листе.
  *
  * **Значок отдельно от листа, и это не украшение.** Механика, ради которой
  * игру открывают, обязана быть видна с первого кадра лагеря — иначе она
@@ -31,44 +37,84 @@ import type { ResourceKind } from '../sim/resources';
  * всегда, перестаёт звать вовсе — это тот же довод, по которому строка
  * задания гаснет вместе с заданием (`campHud.syncTask`).
  *
+ * **Карточка показывает вещь, а не слово о вещи.** Бревно, валун, слиток
+ * и сундук приходят картинкой из той же запечённой геометрии, которой набран
+ * лагерь (`render/giftIcon.ts`), а седьмой день первой недели показывает
+ * лицо — то самое, которое придёт к костру (§29.2). Слой рендера панелям
+ * не виден (`scripts/arch.ts`), поэтому картинка приходит снаружи, как
+ * значок вещи в Мастерской.
+ *
  * Словарь §6.2 не расширяется: лист — `.panel` листа лагеря, дни — `.card`,
- * номер дня — `.badge`, силуэт — `.glyph`, кнопка — `.cta`. Своего здесь
+ * номер дня — `.badge`, круг лица — `.face`, кнопка — `.cta`. Своего здесь
  * только раскладка семи карточек и место значка.
  */
+export type GiftPic = 'дерево' | 'камень' | 'железо' | 'сундук' | 'стрелы';
+
 export interface DailyCallbacks {
   /** Забрать сегодняшний подарок. Всё, что панель умеет делать. */
   onClaim(): void;
   /** Тап по значку: лист открывается или закрывается. */
   onIcon(): void;
+  /** Картинка вещи как `data:`-URL. Пустая строка — значка не будет. */
+  giftIcon(name: GiftPic): string;
 }
 
-/**
- * Силуэт сундука. Тот же приём, что у карточек стройки (`buildPanel`):
- * заливка без обводки, цвет — от кнопки. Рисованных значков в игре нет
- * (§6.1), а гонять ради одной картинки запечённую геометрию, как это делает
- * `gearIcon`, здесь не за чем: подарок — это не вещь из набора, и обещать
- * сундук моделью значило бы обещать конкретную вещь в конкретный день.
- */
-const CHEST_GLYPH =
-  '<path d="M3 9.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2V11H3V9.5Z"/>' +
-  '<path d="M3 12.5h7V15h4v-2.5h7V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6.5Z"/>' +
-  '<path d="M10.5 8h3v5h-3V8Z"/>';
+/** Какой моделью показывается ресурс. Кристалла подарок не даёт (§29.1). */
+const PIC_OF: Partial<Record<ResourceKind, GiftPic>> = {
+  wood: 'дерево',
+  stone: 'камень',
+  iron: 'железо',
+};
 
-/** Что написано на карточке дня под заголовком. */
-function giftLine(gift: DailyGift, camp: CampState, taken: number): string {
+/**
+ * Заголовок и подпись карточки.
+ *
+ * У ресурсного дня заголовком стоит сама кучка, а подписи нет вовсе:
+ * «Камень и дерево» над строкой «Камень 4 · Дерево 4» — это одно и то же
+ * слово дважды, и на телефоне оно съедало три строки из четырёх. Название
+ * дня при этом не потеряно: кучка его и называет, только с числами.
+ *
+ * У вещей наоборот: «Сундук» — это вещь, а «Кладовая +30» — то, что она
+ * делает, и второе из первого не выводится.
+ */
+function giftText(gift: DailyGift, camp: CampState, taken: number): { title: string; line: string } {
   switch (gift.id) {
     case 'ресурсы': {
       const loot = giftLoot(gift, giftTier(camp.levels.kitchen), taken);
-      return (Object.entries(loot) as [ResourceKind, number][])
+      const title = (Object.entries(loot) as [ResourceKind, number][])
         .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
         .join(' · ');
+      return { title, line: '' };
     }
     case 'сундук':
-      return `Кладовая +${CHEST_BONUS}`;
+      return { title: gift.title, line: `Кладовая +${CHEST_BONUS}` };
     case 'стрелы':
-      return `Стрелы ${GIFT_ARROWS}`;
+      return { title: gift.title, line: `Стрелы ${GIFT_ARROWS}` };
     case 'встреча':
-      return 'Человек к костру';
+      return { title: gift.title, line: 'Ему нужна крыша' };
+  }
+}
+
+/**
+ * Чем показывается день. У ресурсного — вещь самого крупного вида в кучке:
+ * две картинки на карточке шириной в четверть листа читались бы шумом,
+ * а не парой.
+ */
+function picOf(gift: DailyGift, camp: CampState, taken: number): GiftPic | null {
+  switch (gift.id) {
+    case 'ресурсы': {
+      const loot = giftLoot(gift, giftTier(camp.levels.kitchen), taken);
+      const top = (Object.entries(loot) as [ResourceKind, number][])
+        .sort((a, b) => b[1] - a[1])[0];
+      return top === undefined ? null : PIC_OF[top[0]] ?? null;
+    }
+    case 'сундук':
+      return 'сундук';
+    case 'стрелы':
+      return 'стрелы';
+    case 'встреча':
+      // Лицо рисуется своим приёмом: человек — не вещь из набора.
+      return null;
   }
 }
 
@@ -80,11 +126,14 @@ export class DailyPanel {
 
   private readonly mark: HTMLElement;
   private readonly week: HTMLElement;
+  private readonly weekName: HTMLElement;
+  private readonly weekCount: HTMLElement;
   private readonly days: HTMLElement;
   private readonly note: HTMLElement;
   private readonly take: HTMLButtonElement;
   private readonly cards: {
     box: HTMLElement;
+    pic: HTMLElement;
     title: HTMLElement;
     line: HTMLElement;
     badge: HTMLElement;
@@ -94,14 +143,14 @@ export class DailyPanel {
     this.icon = document.createElement('button');
     this.icon.className = 'chip gift-icon';
     this.icon.setAttribute('aria-label', 'Подарок за вход');
-    const glyph = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    glyph.setAttribute('class', 'glyph');
-    glyph.setAttribute('viewBox', '0 0 24 24');
-    glyph.setAttribute('aria-hidden', 'true');
-    glyph.innerHTML = CHEST_GLYPH;
+    // Значок над сценой — тот же сундук, что стоит в лагере: игрок узнаёт
+    // вещь раньше, чем прочтёт подпись, а подписи у значка нет вовсе.
+    const pic = document.createElement('img');
+    pic.alt = '';
+    pic.src = this.cb.giftIcon('сундук');
     this.mark = document.createElement('i');
     this.mark.className = 'gift-mark';
-    this.icon.append(glyph, this.mark);
+    this.icon.append(pic, this.mark);
     this.icon.addEventListener('click', () => this.cb.onIcon());
 
     this.root = document.createElement('div');
@@ -109,21 +158,38 @@ export class DailyPanel {
 
     this.week = document.createElement('div');
     this.week.className = 'row';
+    const weekName = document.createElement('span');
+    weekName.className = 'gift-week';
+    this.weekCount = document.createElement('b');
+    this.week.append(weekName, this.weekCount);
+    this.weekName = weekName;
+
 
     this.days = document.createElement('div');
     this.days.className = 'gift-days';
     for (let day = 0; day < WEEK; day++) {
       const box = document.createElement('div');
-      box.className = 'card gift-day';
+      // Седьмой день шире прочих: неделя обязана читаться подъёмом к концу,
+      // а не семью одинаковыми клетками. Ряд от этого сходится ровно —
+      // четыре карточки в первом, две и двойная во втором.
+      box.className = day === WEEK - 1 ? 'card gift-day gift-last' : 'card gift-day';
       const badge = document.createElement('span');
       badge.className = 'badge';
       badge.textContent = `День ${day + 1}`;
+      const pic2 = document.createElement('div');
+      pic2.className = 'gift-pic';
       const title = document.createElement('b');
       const line = document.createElement('span');
       line.className = 'dim gift-what';
-      box.append(badge, title, line);
+      const col = document.createElement('div');
+      col.className = 'gift-col';
+      col.append(title, line);
+      const body = document.createElement('div');
+      body.className = 'gift-body';
+      body.append(pic2, col);
+      box.append(badge, body);
       this.days.appendChild(box);
-      this.cards.push({ box, title, line, badge });
+      this.cards.push({ box, pic: pic2, title, line, badge });
     }
 
     this.note = document.createElement('div');
@@ -142,7 +208,8 @@ export class DailyPanel {
    * день меняется серверными часами (§27), и панель обязана узнавать об этом
    * оттуда же, откуда узнают стройка и лечение.
    */
-  sync(camp: CampState, day: number): void {
+  sync(camp: CampState, now: number): void {
+    const day = dayAt(now);
     const state = camp.daily ?? emptyDaily();
     const week = weekAt(state.taken);
     const first = rookie(state.taken);
@@ -152,14 +219,16 @@ export class DailyPanel {
     this.mark.style.display = free ? '' : 'none';
     this.icon.classList.toggle('ready', free);
 
-    this.week.innerHTML =
-      `<span>${first ? 'Первая неделя' : `Неделя ${weekOf(state.taken)}`}</span>` +
-      `<b>${first ? 'даётся один раз' : 'круг повторяется'}</b>`;
+    this.weekName.textContent = first ? 'Первая неделя' : `Неделя ${weekOf(state.taken)}`;
+    this.weekCount.textContent = first ? 'даётся один раз' : 'круг повторяется';
 
-    week.forEach((gift, day2) => {
-      const card = this.cards[day2]!;
-      card.title.textContent = gift.title;
-      card.line.textContent = giftLine(gift, camp, state.taken - today + day2);
+    week.forEach((gift, at) => {
+      const card = this.cards[at]!;
+      const taken = state.taken - today + at;
+      const text = giftText(gift, camp, taken);
+      card.title.textContent = text.title;
+      card.line.textContent = text.line;
+      this.paintPic(card.pic, gift, camp, taken);
       // Три состояния и ни одного лишнего: взято, следующий, впереди.
       // Взятое гасится, а не вычёркивается: вычеркнутое читается потерей.
       //
@@ -167,8 +236,8 @@ export class DailyPanel {
       // и первая сборка на этом ошиблась: сразу после подарка карточка
       // назавтра красилась «взято» — то есть игра показывала отданным то,
       // чего ещё не давала.
-      const done = day2 < today;
-      const next = day2 === today;
+      const done = at < today;
+      const next = at === today;
       card.box.classList.toggle('on', next && free);
       card.box.classList.toggle('gift-done', done);
       card.badge.textContent = done
@@ -177,12 +246,39 @@ export class DailyPanel {
           ? free
             ? 'сегодня'
             : 'завтра'
-          : `День ${day2 + 1}`;
+          : `День ${at + 1}`;
     });
 
     this.take.disabled = !free;
+    // Взявшему называется срок, а не запрет: «приходите завтра» без числа —
+    // это отказ, а число — это уже свидание. Считается оно теми же часами,
+    // которыми считается сам день (§27).
     this.note.textContent = free
-      ? 'Подарок сегодняшнего дня ждёт в лагере.'
-      : CLAIM_REASON.today;
+      ? 'Подарок сегодняшнего дня ждёт в лагере'
+      : `${CLAIM_REASON.today}, через ${formatDuration((day + 1) * DAY_SEC - now)}`;
+  }
+
+  /**
+   * Картинка дня. У встречи это лицо гостя — то самое, которое придёт
+   * к костру: сид считает `sim/daily.ts`, и панель со сценой берут его
+   * из одного места (§29.2).
+   */
+  private paintPic(box: HTMLElement, gift: DailyGift, camp: CampState, taken: number): void {
+    if (gift.id === 'встреча') {
+      const guest = generateSettler(guestSeed(campOrigin(camp), camp.residents.length));
+      box.className = 'gift-pic face';
+      box.innerHTML = avatarSvg(guest.look, guest.seed);
+      return;
+    }
+    const name = picOf(gift, camp, taken);
+    box.className = 'gift-pic';
+    box.innerHTML = '';
+    if (name === null) return;
+    const url = this.cb.giftIcon(name);
+    if (url === '') return;
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = url;
+    box.appendChild(img);
   }
 }

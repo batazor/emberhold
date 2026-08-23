@@ -342,21 +342,54 @@ button:active { filter: brightness(1.25); }
 .gift-mark {
   position: absolute; top: -3px; right: -3px; width: 9px; height: 9px;
   border-radius: var(--r-pill); background: var(--warn);
+  /* Точка зовёт дыханием, а не миганием: значок стоит поверх сцены всё
+     время, и резкая анимация в углу экрана раздражала бы ровно того, кто
+     уже пришёл. */
+  animation: gift-breathe 2.4s ease-in-out infinite;
 }
 .gift-icon.ready { border-color: var(--pick-line); }
-.gift-icon .glyph { width: 26px; height: 26px; }
+.gift-icon img { width: 34px; height: 34px; display: block; }
 
 /* Семь дней в два ряда: четыре и три. В один ряд карточка ужимается
-   до полутора слов, в столбец — неделя перестаёт читаться неделей. */
+   до полутора слов, в столбец — неделя перестаёт читаться неделей.
+   Седьмой день занимает две клетки — второй ряд от этого сходится ровно,
+   а неделя читается подъёмом к концу, как её и считают веса (§29.1). */
 .gift-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.gift-day { gap: 2px; padding: 7px 8px; }
+.gift-day { gap: 4px; padding: 7px 8px;
+  /* Смена состояния — не мигание: карточка гаснет и загорается за те же
+     140 мс, что и прочие переходы интерфейса. */
+  transition: opacity 140ms ease-out, border-color 140ms ease-out; }
+.gift-last { grid-column: span 2; }
 .gift-day b { font-size: 12px; }
 .gift-what { font-size: 11px; }
+.gift-what:empty { display: none; }
+@keyframes gift-breathe { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .gift-mark { animation: none; }
+}
+/* Вещь слева, слова справа: та же раскладка, что у строки Мастерской. */
+.gift-body { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gift-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Плашка под вещью — та же, что под портретом: значок стоит на подложке,
+   а не висит на фоне карточки. */
+.gift-pic {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: var(--r-chip);
+  background: var(--portrait); display: flex; align-items: center;
+  justify-content: center; overflow: hidden;
+}
+.gift-pic img, .gift-pic svg { width: 100%; height: 100%; display: block; }
+/* Лицо гостя — круг словаря, и размер у него тот же, что у вещи рядом. */
+.gift-pic.face { border-radius: var(--r-pill); }
 /* Взятый день гаснет, а не вычёркивается: вычеркнутое читается потерей. */
 .gift-done { opacity: 0.45; }
 .gift-note { font-size: 12px; min-height: 15px; }
 #camp .gift { gap: 8px; }
 #camp .gift .cta { align-self: stretch; }
+/* На телефоне четыре колонки ужимают карточку до переносов в каждом слове:
+   два дня в ряд, седьмой — во всю ширину. */
+@media (max-width: 480px) {
+  .gift-days { grid-template-columns: repeat(2, 1fr); }
+}
 #camp .sheet {
   display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
   align-self: stretch;
