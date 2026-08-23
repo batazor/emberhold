@@ -486,3 +486,46 @@ describe('Лагеря соседей (§30)', () => {
     }
   });
 });
+
+describe('Чужие заходы (§30.6)', () => {
+  const spot = quietNode();
+
+  /** Метка соседа в ту же смену, что и своя: список у них общий по форме. */
+  const at = (node: number, t: number): Visit => ({ node, shift: shiftAt(t) });
+
+  test('чужой заход тратит богатство ровно как свой', () => {
+    const mine = worldAt(spot.t, [at(spot.node, spot.t)], [])[spot.node]!;
+    const theirs = worldAt(spot.t, [], [at(spot.node, spot.t)])[spot.node]!;
+    assert.equal(theirs.rich, mine.rich, 'чужой заход стоит локации не столько же');
+    assert.equal(theirs.restShifts, mine.restShifts, 'срок восстановления разошёлся');
+  });
+
+  test('чужие заходы считаются, свои — нет', () => {
+    const both = worldAt(spot.t, [at(spot.node, spot.t)], [at(spot.node, spot.t)])[spot.node]!;
+    assert.equal(both.others, 1, 'посчитан не тот заход');
+    assert.equal(worldAt(spot.t, [at(spot.node, spot.t)])[spot.node]!.others, 0);
+  });
+
+  /**
+   * Смена, в которую сходили и я, и сосед, стоит локации **один** заход:
+   * богатство считается сменами, а не людьми. Иначе двое в одну смену
+   * выработали бы жилу вдвое быстрее, чем один за две.
+   */
+  test('своя и чужая метка в одну смену — один заход', () => {
+    const alone = worldAt(spot.t, [at(spot.node, spot.t)])[spot.node]!.rich;
+    const together = worldAt(spot.t, [at(spot.node, spot.t)], [at(spot.node, spot.t)])[spot.node]!;
+    assert.equal(together.rich, alone, 'смена посчитана дважды');
+    assert.equal(together.others, 1, 'сосед пропал из счёта');
+  });
+
+  test('чужая метка вне окна не считается ни в чём', () => {
+    const old = { node: spot.node, shift: shiftAt(spot.t) - RICH_WINDOW - 1 };
+    const state = worldAt(spot.t, [], [old])[spot.node]!;
+    assert.equal(state.rich, RICH_MAX, 'просроченная метка тронула богатство');
+    assert.equal(state.others, 0);
+  });
+
+  test('без соседей мир такой же, каким был до облака', () => {
+    assert.deepEqual(worldAt(spot.t, [], []), worldAt(spot.t, []));
+  });
+});

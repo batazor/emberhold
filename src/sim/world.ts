@@ -615,6 +615,15 @@ export interface NodeState {
   readonly rich: number;
   /** Клан, который работает здесь прямо сейчас; null — никого. */
   readonly clan: number | null;
+  /**
+   * Сколько чужих заходов съело здесь богатство за окно (§30.6) — живых
+   * соседей, не фракций: фракция видна флагом, а живой сосед не виден
+   * ничем и без этого числа выглядел бы порчей жилы из ниоткуда.
+   *
+   * Число, а не «кто»: имена и почты чужих игроков карте не нужны ни для
+   * одного решения, а решение здесь ровно одно — идти или не идти.
+   */
+  readonly others: number;
   /** Смен до следующего восстановления; 0 — восстанавливать нечего. */
   readonly restShifts: number;
   /** Что здесь сегодня (§11.6); null — обычный день, и таких большинство. */
@@ -626,10 +635,19 @@ export interface NodeState {
  * своё, — и восстанавливается покоем: конкуренция без единого удара по
  * чужому лагерю.
  *
+ * Чужое посещение приходит третьим списком (§30.6) и остаётся **входом
+ * функции, а не её памятью**: метки живых соседей лежат на сервере, читает
+ * их `main`, а модуль как был чистой функцией сида и часов, так и остался —
+ * иначе сервер (§6) не смог бы повторить тот же счёт и сверить результат.
+ *
  * Окно упирается в начало суток: за границей дня стоял другой регион,
  * и его заходы к сегодняшним точкам отношения не имеют.
  */
-export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
+export function worldAt(
+  t: number,
+  visits: readonly Visit[] = [],
+  others: readonly Visit[] = [],
+): NodeState[] {
   const day = dayAt(t);
   const region = regionAt(day);
   const now = shiftAt(t);
@@ -650,6 +668,20 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
     const s = now - visit.shift;
     if (s >= 0 && s < window && used[visit.node] !== undefined) used[visit.node]![s] = true;
   }
+  // Чужие заходы — тем же списком и тем же весом: §4 говорит «тратит его
+  // любое посещение, чужое или своё», и разного веса у них быть не может,
+  // иначе жила у соседа кончалась бы медленнее, чем у меня.
+  //
+  // Считаются они при этом отдельно (`seen`): смена, в которую сходили
+  // и я, и сосед, стоит локации один заход, а не два, — но сказать про неё
+  // «здесь были соседи» карточка обязана.
+  const seen = new Array<number>(region.nodes.length).fill(0);
+  for (const visit of others) {
+    const s = now - visit.shift;
+    if (s < 0 || s >= window || used[visit.node] === undefined) continue;
+    used[visit.node]![s] = true;
+    seen[visit.node]! += 1;
+  }
 
   return region.nodes.map((_, i) => {
     // От старой смены к новой: −1 за заход, +1/3 за смену покоя.
@@ -664,7 +696,7 @@ export function worldAt(t: number, visits: readonly Visit[] = []): NodeState[] {
     const restShifts = rich >= RICH_MAX ? 0 : Math.max(1, Math.ceil((rich + 1 - v) / RICH_REST));
     const node = region.nodes[i]!;
     const event = KIND[node.kind].events ? eventAt(day, node.id, t) : null;
-    return { rich, clan: clan[i]!, restShifts, event };
+    return { rich, clan: clan[i]!, others: seen[i]!, restShifts, event };
   });
 }
 
