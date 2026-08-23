@@ -1,12 +1,16 @@
 import {
   BUILDINGS,
+  BUILDING_ORDER,
   BUILD_COST,
   gearAction,
   suggestGear,
   suggestUpgrade,
+  upgradeBlock,
   upgradeProgress,
+  UPGRADE_REASON,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
+import { formatDuration } from '../core/clock';
 import { GEAR, gearLine } from '../sim/gear';
 import type { GearSlot } from '../sim/gear';
 import { TIER_NAME } from '../sim/config';
@@ -338,8 +342,11 @@ export class ReturnScreen {
     }
     const next = camp.levels[id] + 1;
     const progress = upgradeProgress(camp, id);
+    const block = this.upgradeBlockedLine(camp, id);
     if (progress >= 1) {
-      this.progressLabel.textContent = `${BUILDINGS[id].name} ур. ${next} — ресурсы собраны`;
+      this.progressLabel.textContent =
+        `${BUILDINGS[id].name} ур. ${next} — ресурсы собраны` +
+        (block === null ? '' : ` · ${block}`);
       this.progressBar.style.width = '100%';
       return;
     }
@@ -348,14 +355,32 @@ export class ReturnScreen {
       .filter(([kind, amount]) => camp.resources[kind] < amount)
       .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${camp.resources[kind]}/${amount}`)
       .join(' · ');
-    this.progressLabel.textContent = `${BUILDINGS[id].name} ур. ${next} — ${need}`;
+    const tail = [need, block].filter((part) => part !== null && part !== '').join(' · ');
+    this.progressLabel.textContent = `${BUILDINGS[id].name} ур. ${next} — ${tail}`;
     this.progressBar.style.width = `${(progress * 100).toFixed(1)}%`;
+  }
+
+  private upgradeBlockedLine(camp: CampState, id: BuildingId): string | null {
+    const block = upgradeBlock(camp, id);
+    if (block === 'ok' || block === 'resources') return null;
+    if (block === 'locked') return `нужно Жильё ур. ${BUILDINGS[id].unlockHq}`;
+    if (block === 'slot-busy') {
+      if (camp.construction !== null) {
+        const left = formatDuration(camp.construction.endsAt - this.at);
+        return `слот занят: ${BUILDINGS[camp.construction.building].name} ещё ${left}`;
+      }
+      if (camp.walls?.work != null) {
+        const left = formatDuration(camp.walls.work.endsAt - this.at);
+        return `слот занят: стена ещё ${left}`;
+      }
+    }
+    return UPGRADE_REASON[block];
   }
 
   private cheapestLocked(camp: CampState): BuildingId | null {
     let best: BuildingId | null = null;
     let bestProgress = -1;
-    for (const id of ['hq', 'kitchen', 'storage', 'forge'] as BuildingId[]) {
+    for (const id of BUILDING_ORDER) {
       if (camp.levels[id] >= 6) continue;
       const p = upgradeProgress(camp, id);
       if (p > bestProgress) {
