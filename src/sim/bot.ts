@@ -18,6 +18,7 @@ import {
 import { buildChest, chestBlock } from './chests';
 import type { BuildingId, CampState } from './camp';
 import { FOOD_COST, HERO_KNOWLEDGE, visionRadius } from './config';
+import { shouldContinue } from './balance';
 import { HAUL_CAPACITY, TRAIL_BACK_DISCOUNT } from './heroes';
 import { ENEMY_STATS } from './enemies';
 import { alive, current, moves, targets } from './battle';
@@ -54,6 +55,22 @@ import type { Cell, Tier } from './types';
  */
 
 export type PolicyName = 'cautious' | 'balanced' | 'greedy' | 'sloppy';
+
+/**
+ * Правило остановки §22.5, поданное боту снаружи. Внутри его собрать нельзя:
+ * вероятность не дойти `p` — величина **измеренная**, а не выводимая, и
+ * снимает её прогон без правила (`npm run stop`). Бот получает готовую
+ * функцию от запаса сверх дороги домой и ставку яруса.
+ *
+ * Необязательное поле: без него бот ходит ровно как раньше, и золотой мастер
+ * обязан это подтвердить. Правило — вторая модель игрока, а не замена первой.
+ */
+export interface StopRule {
+  /** Вероятность не дойти при таком запасе провианта сверх дороги домой. */
+  readonly fail: (spare: number) => number;
+  /** Доля добычи, теряемая при провале (§11.2). */
+  readonly risk: number;
+}
 
 interface Policy {
   /** Запас провианта, который бот держит сверх дороги домой. */
@@ -149,6 +166,18 @@ export interface Decision {
   readonly kind: 'container' | 'wander' | 'evac';
   readonly foodLeft: number;
   readonly backSteps: number;
+  /**
+   * Сколько уже в рюкзаке на момент решения — величина `B` правила §22.5.
+   * Записывается, а не решает: бот по-прежнему ходит по политике, и прибор
+   * `npm run stop` меряет, где правило разошлось бы с ней.
+   */
+  readonly bag: number;
+  /**
+   * Ценность цели, за которой бот пошёл, — величина `g` того же правила.
+   * У `evac` и крюка следующей находки нет, и здесь ноль: «идти дальше»
+   * там означает не «взять ещё», а «идти домой».
+   */
+  readonly gain: number;
 }
 
 export interface BotRaid extends RaidResult {
@@ -262,6 +291,12 @@ export function playRaid(
     /** Тратит ли бот умение. По умолчанию нет: базовая линия §22 снята
      *  без умений, и включать их молча значило бы сдвинуть её задним числом. */
     useSkills?: boolean;
+    /**
+     * §22.5 — правило остановки. По умолчанию нет, и это то же требование,
+     * что у умений: вся метрология §22 снята ботом, который правила не знает,
+     * и включать его молча значило бы сдвинуть базовую линию задним числом.
+     */
+    stop?: StopRule | undefined;
   },
   policy: Policy,
   rng: Rng,
@@ -298,6 +333,8 @@ export function playRaid(
 
     let target: { x: number; z: number } | null = null;
     let kind: Decision['kind'] = 'evac';
+    /** Ценность выбранной находки — та самая `g` §22.5. Ноль, пока цели нет. */
+    let targetGain = 0;
 
     // Раненый уходит. Это не оптимизация, а поведение: живой игрок с одной
     // раной не идёт за последним сундуком, он идёт к выходу.
@@ -331,7 +368,26 @@ export function playRaid(
           bestScore = score;
           target = { x: c.x, z: c.z };
           kind = 'container';
+          targetGain = gain;
         }
+      }
+    }
+
+    /**
+     * §22.5 — синица в руке. Правило прикладывается **после** выбора цели,
+     * а не вместо него: `g` — ценность той находки, за которой бот и так
+     * собрался, и спрашивать «стоит ли идти дальше» до того, как известно
+     * куда, значило бы спрашивать о среднем вместо конкретного.
+     *
+     * Отказ кончается уходом, а не другой находкой: правило говорит «хватит»,
+     * а не «возьми что подешевле».
+     */
+    if (opts.stop !== undefined && kind === 'container') {
+      const spare = state.food - back * FOOD_COST.step;
+      if (!shouldContinue(state.bagTotal, targetGain, opts.stop.fail(spare), opts.stop.risk)) {
+        target = null;
+        kind = 'evac';
+        targetGain = 0;
       }
     }
 
@@ -348,6 +404,7 @@ export function playRaid(
         if (state.food - d * wanderStep - home * wanderStep < policy.margin) continue;
         target = { x: cell % size, z: (cell / size) | 0 };
         kind = 'wander';
+        targetGain = 0;
         break;
       }
     }
@@ -355,9 +412,10 @@ export function playRaid(
     if (target === null) {
       target = { x: loc.evac.x, z: loc.evac.z };
       kind = 'evac';
+      targetGain = 0;
     }
 
-    decisions.push({ kind, foodLeft: state.food, backSteps: back });
+    decisions.push({ kind, foodLeft: state.food, backSteps: back, bag: state.bagTotal, gain: targetGain });
     if (opts.useSkills === true) maybeUseSkill(state, policy, kind === 'evac', toHere);
     if (!moveAvoiding(state, target, danger)) break;
 
