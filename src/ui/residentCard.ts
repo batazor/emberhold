@@ -106,7 +106,7 @@ export class ResidentCard {
     const roofed = hasRoof(camp, this.shown);
     // Занятие видно всегда, крыша — только когда её нет: строка о том,
     // что мешает, а не перечень свойств.
-    this.status.textContent = roofed ? residentState(r) : 'без крыши';
+    this.status.textContent = roofed ? (r.hunt !== undefined ? 'на охоте' : residentState(r)) : 'без крыши';
     this.status.className = roofed ? 'good' : 'dim';
 
     this.acts.replaceChildren(
@@ -115,7 +115,7 @@ export class ResidentCard {
         b.textContent = RESIDENT_ORDER[order];
         // Выключена кнопка происходящего: у отдыхающего — «Отдыхать»,
         // у работающего — его занятие.
-        b.disabled = order === 'отдых' ? r.rest : !r.rest && r.answer === order;
+        b.disabled = r.hunt !== undefined || (order === 'отдых' ? r.rest : !r.rest && r.answer === order);
         b.addEventListener('click', () => this.cb.onOrder(this.shown, order));
         return b;
       }),

@@ -1326,6 +1326,39 @@ button[disabled] { opacity: 0.4; cursor: default; }
   background: var(--scrim); backdrop-filter: blur(5px); padding: 14px; z-index: 7;
 }
 #character.on { display: flex; }
+
+/* ---------- управление жителями ---------- */
+#resident-manager {
+  position: fixed; inset: 0; z-index: 80; display: none; align-items: center;
+  justify-content: center; padding: 14px; background: var(--scrim);
+  backdrop-filter: blur(5px); pointer-events: auto;
+}
+#resident-manager.on { display: flex; }
+.rm-page {
+  width: min(760px, 100%); max-height: 92vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+}
+.rm-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.rm-head > span { display: flex; flex-direction: column; gap: 3px; }
+.rm-head b { font-size: 16px; }
+.rm-head small { color: var(--dim); }
+.rm-help { margin: 0; font-size: 11px; line-height: 1.4; }
+.rm-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rm-person { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+.rm-id { display: flex; align-items: center; gap: 9px; }
+.rm-id .face { width: 42px; height: 42px; flex: none; }
+.rm-id > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rm-schedule { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.rm-schedule select { max-width: 11em; font: inherit; padding: 5px; background: var(--fill); color: var(--ink); }
+.rm-timeline { min-height: 2.7em; line-height: 1.35; }
+.rm-jobs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.rm-jobs button, .rm-hunt, .rm-recall { font-size: 11px; padding: 8px 6px; }
+.rm-hunt { color: var(--ink); }
+.rm-recall { color: var(--warn); }
+@media (max-width: 620px) {
+  .rm-list { grid-template-columns: 1fr; }
+  .rm-page { max-height: 95vh; }
+}
 .ch-page {
   width: 100%; max-width: 760px; max-height: 90vh; overflow-y: auto;
   display: flex; flex-direction: column; gap: 8px; font-size: 12px;

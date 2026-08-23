@@ -306,6 +306,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     fights: 0,
     joined: 0,
     kills: 0,
+    foxesCaught: 0,
     evacOpen: opts.evacOpen ?? true,
     // §14.3 — колчан наполняется на выходе, из лагерного запаса и не выше
     // вместимости. У ближника вместимость нулевая, и «ноль стрел у Лучника»
@@ -990,6 +991,7 @@ function openBattle(state: RaidState): void {
 export function harvestFox(state: RaidState, enemy: Enemy): void {
   if (enemy.kind !== 'fox' || enemy.harvested === true) return;
   enemy.harvested = true;
+  state.foxesCaught += 1;
   let free = Math.max(0, state.capacity - state.bagTotal);
   const pelt = Math.min(1, free);
   state.bag.pelt = (state.bag.pelt ?? 0) + pelt;

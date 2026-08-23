@@ -182,6 +182,26 @@ describe('Сохранение', () => {
     wipe();
   });
 
+  test('счёт лис, смена и незавершённая охота переживают перезагрузку', () => {
+    const camp = createCamp();
+    camp.foxesCaught = 12;
+    camp.residents = [{
+      name: 'Гита',
+      look: 'поселенец',
+      seed: 12345,
+      answer: 'строим',
+      rest: false,
+      schedule: 'поздняя',
+      hunt: { startedAt: 100, endsAt: 18100, seed: 77 },
+    }];
+    save(camp, createRoster(), 101);
+    const back = load().camp;
+    assert.equal(back.foxesCaught, 12);
+    assert.equal(back.residents[0]?.schedule, 'поздняя');
+    assert.deepEqual(back.residents[0]?.hunt, camp.residents[0]?.hunt);
+    wipe();
+  });
+
   /**
    * Сейв, записанный до того, как лицо появилось, не роняет игру и не выдаёт
    * жильцу случайное лицо: сид берётся из имени, а имя у жильца не меняется.

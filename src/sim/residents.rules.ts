@@ -28,8 +28,17 @@ import {
   roofs,
   WORK_CAP,
   WORK_SECONDS,
+  HUNT_SECONDS,
+  HUNT_UNLOCK_FOXES,
   assignWork,
+  assignSchedule,
+  collectHunts,
   collectWork,
+  huntYield,
+  recallHunt,
+  residentPhaseAt,
+  scheduledWorkSeconds,
+  startHunt,
   tentBlock,
   tentSpot,
   workDone,
@@ -432,5 +441,67 @@ describe('Жильцы и палатки', () => {
     }
     assert.equal(tentSpot(camp), null, 'площадка так и не кончилась — проверять нечего');
     assert.equal(tentBlock(camp), 'area');
+  });
+
+  test('расписание оставляет отдельное время сну, еде и работе', () => {
+    const r = guest('Гита');
+    assert.equal(residentPhaseAt(r, 3 * 3600), 'сон');
+    assert.equal(residentPhaseAt(r, 6 * 3600 + 30 * 60), 'еда');
+    assert.equal(residentPhaseAt(r, 8 * 3600), 'работа');
+    assert.equal(residentPhaseAt(r, 20 * 3600), 'свободен');
+    assert.equal(scheduledWorkSeconds(r, 0, 24 * 3600), 10 * 3600);
+  });
+
+  test('смена расписания двигает окна, но не меняет их длину', () => {
+    const camp = rich();
+    admit(camp, guest('Гита'));
+    assert.ok(assignSchedule(camp, 0, 'ранняя'));
+    const r = camp.residents[0]!;
+    assert.equal(residentPhaseAt(r, 5 * 3600), 'работа');
+    assert.equal(residentPhaseAt(r, 21 * 3600), 'сон');
+    assert.equal(scheduledWorkSeconds(r, 0, 24 * 3600), 10 * 3600);
+  });
+
+  test('охота открывается на десятой лисе и длится пять часов', () => {
+    const camp = rich();
+    admit(camp, guest('Гита'));
+    buildTent(camp);
+    camp.foxesCaught = HUNT_UNLOCK_FOXES - 1;
+    assert.equal(startHunt(camp, 0, 100), false, 'охота открылась раньше порога');
+    camp.foxesCaught = HUNT_UNLOCK_FOXES;
+    assert.ok(startHunt(camp, 0, 100));
+    assert.equal(camp.residents[0]!.hunt!.endsAt, 100 + HUNT_SECONDS);
+    assert.deepEqual(collectHunts(camp, 100 + HUNT_SECONDS - 1), []);
+  });
+
+  test('охотник ловит от нуля до пяти лис и приносит две части мяса и шкуру', () => {
+    for (let seed = 0; seed < 100; seed++) {
+      const caught = huntYield({ startedAt: 0, endsAt: HUNT_SECONDS, seed });
+      assert.ok(caught >= 0 && caught <= 5, `сид ${seed}: поймано ${caught}`);
+    }
+    const camp = rich();
+    camp.resources.wood = 0;
+    camp.resources.stone = 0;
+    admit(camp, guest('Гита'));
+    camp.resources.wood = TENT_COST.wood ?? 0;
+    buildTent(camp);
+    camp.foxesCaught = HUNT_UNLOCK_FOXES;
+    startHunt(camp, 0, 100);
+    const report = collectHunts(camp, 100 + HUNT_SECONDS)[0]!;
+    assert.equal(report.meat, report.foxes * 2);
+    assert.equal(report.pelts, report.foxes);
+    assert.equal(camp.foxesCaught, HUNT_UNLOCK_FOXES + report.foxes);
+  });
+
+  test('отзыв возвращает жильца без награды', () => {
+    const camp = rich();
+    admit(camp, guest('Гита'));
+    buildTent(camp);
+    camp.foxesCaught = HUNT_UNLOCK_FOXES;
+    assert.ok(startHunt(camp, 0, 100));
+    const before = { ...camp.resources };
+    assert.ok(recallHunt(camp, 0));
+    assert.deepEqual(collectHunts(camp, 100 + HUNT_SECONDS), []);
+    assert.deepEqual(camp.resources, before);
   });
 });
