@@ -25,6 +25,31 @@ export interface CloudSave {
   readonly watermark: number;
 }
 
+/**
+ * Отметка сервера в секундах эпохи — или null, если сети нет.
+ *
+ * Круг запроса учитывается пополам, как это делает NTP: между отправкой
+ * и ответом прошло время, и отметка, взятая как есть, всегда отстаёт
+ * на дорогу обратно. Половина — предположение о симметричности канала,
+ * и оно грубое; но ошибка от него — десятки миллисекунд, а от отказа
+ * учитывать круг — сотни.
+ *
+ * Спрашивается без сессии тоже: заставка тикает раньше входа.
+ */
+export async function cloudTime(): Promise<number | null> {
+  try {
+    const sent = Date.now();
+    const { data, error } = await client.rpc('server_time');
+    if (error !== null || typeof data !== 'string') return null;
+    const got = Date.now();
+    const server = Date.parse(data);
+    if (!Number.isFinite(server)) return null;
+    return (server + (got - sent) / 2) / 1000;
+  } catch {
+    return null;
+  }
+}
+
 /** Почта вошедшего — или null, если сессии нет. */
 export async function cloudUser(): Promise<string | null> {
   try {

@@ -121,7 +121,15 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
-import { cloudOnSignIn, cloudPull, cloudPush, cloudUser, cloudVisits, cloudWipe } from './core/cloud';
+import {
+  cloudOnSignIn,
+  cloudPull,
+  cloudPush,
+  cloudTime,
+  cloudUser,
+  cloudVisits,
+  cloudWipe,
+} from './core/cloud';
 import { AuthCard } from './ui/authCard';
 import {
   KIND,
@@ -277,8 +285,24 @@ const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
 
 /* ---------- состояние ---------- */
+/**
+ * Время спрашивается до всего остального (§6). Порядок здесь важнее, чем
+ * кажется: офлайновый догон — законченная стройка, наработанное жильцами,
+ * восстановленные локации — считается один раз, прямо на этих строках,
+ * от `clock.now()`. Спросить сервер после догона значило бы починить часы,
+ * когда по ним уже начислили.
+ *
+ * Ожидание короткое и с потолком: игра обязана открываться без сети ровно
+ * как открывалась. Не ответил за секунду — идём на локальных, и это видно
+ * в `clock.synced`.
+ */
+const serverNow = await Promise.race([
+  cloudTime(),
+  new Promise<null>((done) => setTimeout(() => done(null), 1000)),
+]);
 const loaded = load();
 const clock = new Clock(loaded.watermark);
+if (serverNow !== null) clock.sync(serverNow);
 let camp: CampState = loaded.camp;
 const roster: Roster = loaded.roster;
 
@@ -1918,6 +1942,13 @@ function pushCloud(): void {
 
 // Свёрнутая вкладка — последний шанс дожать отложенное: таймеры там не идут.
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    // Вернулись. Монотонный счётчик браузера сон вкладки считает по-разному
+    // (а ноутбук мог и уснуть), поэтому серверная отметка подтверждается —
+    // молча и без ожидания: не ответил, значит идём на прежней привязке.
+    if (!debugScene) void cloudTime().then((now) => now !== null && clock.sync(now));
+    return;
+  }
   if (document.visibilityState !== 'hidden' || !cloudReady || wiped || debugScene) return;
   if (cloudTimer !== null) {
     clearTimeout(cloudTimer);
@@ -4246,6 +4277,17 @@ if (debugCamp !== null) {
     // красится в общем `sync`: без этой ручки её состояние из консоли
     // не проверить, только глазом на переднем окне.
     кадр: () => campHud.sync(camp, clock.now(), 0),
+    /**
+     * Часы §6: по серверному времени они идут или по здешнему. Вопрос
+     * невидимый — таймеры выглядят одинаково в обоих случаях, — а ответ
+     * на него нужен: без сервера лагерь верит системным часам.
+     * `расхождение` — насколько врут часы машины, в секундах.
+     */
+    часы: () => ({
+      сервер: clock.synced,
+      сейчас: clock.now(),
+      расхождение: clock.now() - Date.now() / 1000,
+    }),
     // Отлучка руками: ждать полчаса, чтобы посмотреть на прибавку, —
     // не проверка. Кладёт ровно то же, что положила бы загрузка.
     отлучка: (seconds: number) => {
