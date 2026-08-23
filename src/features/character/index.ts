@@ -5,6 +5,7 @@ import type { GearState, Offhand } from '../../sim/gear';
 import type { SpendableStat } from '../../sim/heroes';
 import { Figure } from '../../render/figureView';
 import type { FigureModel } from '../../render/figureView';
+import { itemIcon } from '../../render/iconView';
 import {
   BAG_CELLS,
   FREE_SLOTS,
@@ -13,11 +14,13 @@ import {
   SLOTS,
   equip,
   fits,
+  inHands,
   slotFor,
   startPack,
   unequip,
 } from './items';
 import type { PackState } from './items';
+import { raidSummary } from './summary';
 
 /**
  * Страница персонажа — то, что открывает команда «О персонаже» на любом
@@ -29,25 +32,43 @@ import type { PackState } from './items';
  * строкой, а не подставляет ноль (§11.7 — характеристика без потребителя
  * не показывается).
  *
+ * **Лица в шапке.** Экран открывается на одном, но людей в лагере больше,
+ * и сравнивают их не по памяти. Лица — те же, что в веере (§11.8): тап
+ * перелистывает разбор, не закрывая его.
+ *
  * **Три части, слева направо.** Кто это — фигура со слотами — сумка.
  * Раскладка взята из артбука инвентаря (`inventory.html`): там она проверена
  * пальцем, и повторять её заново незачем.
  *
  * **Вещи в кукле и сумке — макет** (`items.ts`), и это главное, что нужно
- * знать про экран. Настоящее снаряжение игры — пять кованых слотов внизу
- * страницы (`ui/gearSection.ts`, `sim/gear.ts`): они читают состояние лагеря
- * и меняют вылазку. Кукла сверху ничего не меняет: она черновик раскладки,
+ * знать про экран. Настоящее снаряжение игры — пять кованых слотов
+ * (`ui/gearSection.ts`, `sim/gear.ts`): они читают состояние лагеря
+ * и меняют вылазку. Кукла ничего не меняет: она черновик раскладки,
  * заведённый, чтобы решить, заводить ли предметы вообще. Смешивать их
  * в одну сетку было бы враньём — макетная вещь выглядела бы работающей.
  *
+ * Поэтому сводка «что будет в вылазке» считается **только по кованому**
+ * и считается формулой самой игры (`gearMods`), а не переписанной сюда
+ * табличкой. Она же показывает цену левой руки до того, как рука
+ * переложена: обзор против защиты, обе величины рядом (§14.2).
+ *
  * **Перетаскивание и тап — одно и то же** (§6: игра управляется тапом).
  * Тащить вещь на слот можно, но не обязательно: короткий тап отправляет её
- * в подходящий слот, а надетую — обратно в сумку.
+ * в подходящий слот, а надетую — обратно в сумку. Надетое видно на фигуре:
+ * вещь с моделью встаёт человеку в руку.
  */
 export interface StatRow {
   readonly name: string;
   readonly key: SpendableStat;
   readonly value: number;
+}
+
+/** Лицо в шапке: тот же человек, что в веере, и тот же тап по нему. */
+export interface PersonTab {
+  readonly key: string;
+  readonly name: string;
+  readonly look: AvatarLook;
+  readonly seed: number;
 }
 
 export interface CharacterSubject {
@@ -72,13 +93,17 @@ export interface CharacterSubject {
   readonly train: { readonly text: string; readonly disabled: boolean } | null;
   readonly gear: GearState | null;
   readonly offhand: Offhand;
+  /** §14.3 — колчан показывается только тому, кто стреляет. */
+  readonly ranged: boolean;
   readonly model: FigureModel;
+  readonly people: readonly PersonTab[];
 }
 
 export interface CharacterPageCallbacks {
   onSpend(key: SpendableStat): void;
   onTrain(): void;
   onOffhand(hand: Offhand): void;
+  onPick(key: string): void;
   onClose(): void;
 }
 
@@ -86,9 +111,13 @@ export interface CharacterPageCallbacks {
 const FIGURE_W = 260;
 const FIGURE_H = 320;
 
+/** Размер значка вещи. Меньше клетки: у подписи под ним своя строка. */
+const ICON = 34;
+
 export class CharacterPage {
   private readonly root: HTMLElement;
   private readonly face: HTMLElement;
+  private readonly tabs: HTMLElement;
   private readonly name: HTMLElement;
   private readonly status: HTMLElement;
   private readonly level: HTMLElement;
@@ -99,6 +128,7 @@ export class CharacterPage {
   private readonly train: HTMLButtonElement;
   private readonly wornEl: HTMLElement;
   private readonly bagEl: HTMLElement;
+  private readonly raid: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly gear: GearSection;
   private readonly figure = new Figure();
@@ -106,9 +136,13 @@ export class CharacterPage {
   /** Чья раскладка сейчас разложена: у другого человека она своя. */
   private packKey = '';
   private faceKey = '';
+  private tabsKey = '';
+  /** Что нарисовано в сводке: она считается формулой, а не тиком. */
+  private raidKey = '';
+  private shown: CharacterSubject | null = null;
   private drag: {
     readonly item: string;
-    readonly from: { readonly kind: 'сумка'; readonly at: number } | { readonly kind: 'слот'; readonly id: string };
+    readonly from: { readonly kind: 'сумка' } | { readonly kind: 'слот'; readonly id: string };
     readonly ghost: HTMLElement;
     readonly source: HTMLElement;
     moved: boolean;
@@ -124,6 +158,7 @@ export class CharacterPage {
         <div class="ch-head">
           <span class="face" id="ch-face"></span>
           <span class="ch-who"><b id="ch-name"></b><span id="ch-status" class="dim"></span></span>
+          <span class="ch-tabs" id="ch-tabs"></span>
           <span class="ch-level" id="ch-level"></span>
           <button id="ch-close" class="ghost">Закрыть</button>
         </div>
@@ -139,7 +174,9 @@ export class CharacterPage {
           <div class="ch-side" id="ch-side">
             <h3>Сумка</h3>
             <div class="ch-bag" id="ch-bag"></div>
-            <h3 id="ch-stats-title">Характеристики</h3>
+            <h3>Что будет в вылазке · §14</h3>
+            <div class="ch-raid" id="ch-raid"></div>
+            <h3>Характеристики</h3>
             <div class="ch-stats" id="ch-stats"></div>
             <div class="r-skill" id="ch-note"></div>
             <button id="ch-train"></button>
@@ -150,6 +187,7 @@ export class CharacterPage {
       </div>`;
     const pick = <T extends HTMLElement>(id: string): T => this.root.querySelector<T>(`#${id}`)!;
     this.face = pick('ch-face');
+    this.tabs = pick('ch-tabs');
     this.name = pick('ch-name');
     this.status = pick('ch-status');
     this.level = pick('ch-level');
@@ -160,6 +198,7 @@ export class CharacterPage {
     this.train = pick<HTMLButtonElement>('ch-train');
     this.wornEl = pick('ch-worn');
     this.bagEl = pick('ch-bag');
+    this.raid = pick('ch-raid');
     this.hint = pick('ch-hint');
     pick('ch-canvas').appendChild(this.figure.el);
 
@@ -174,6 +213,10 @@ export class CharacterPage {
     this.statsEl.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-stat]');
       if (b !== null) this.cb.onSpend(b.dataset['stat'] as SpendableStat);
+    });
+    this.tabs.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-who]');
+      if (b !== null) this.cb.onPick(b.dataset['who'] as string);
     });
     // Тап по фону закрывает: то же, чем закрываются панели лагеря.
     this.root.addEventListener('pointerdown', (e) => {
@@ -190,9 +233,14 @@ export class CharacterPage {
 
   setVisible(visible: boolean): void {
     this.root.classList.toggle('on', visible);
+    // Покой — клип, и крутится он только под открытым экраном: закрытая
+    // страница не имеет права держать кадр.
+    if (visible) this.figure.start();
+    else this.figure.stop();
   }
 
   sync(s: CharacterSubject): void {
+    this.shown = s;
     if (s.key !== this.faceKey) {
       this.faceKey = s.key;
       this.face.innerHTML = avatarSvg(s.look, s.seed);
@@ -204,6 +252,11 @@ export class CharacterPage {
       this.pack = startPack();
       this.hint.textContent = 'Тащите вещь из сумки на слот — или коротко тапните по ней.';
       this.drawPack();
+    }
+    const tabsKey = s.people.map((p) => p.key).join(',') + `|${s.key}`;
+    if (tabsKey !== this.tabsKey) {
+      this.tabsKey = tabsKey;
+      this.drawTabs(s);
     }
     this.name.textContent = s.name;
     this.status.textContent = s.status;
@@ -235,21 +288,69 @@ export class CharacterPage {
       this.train.disabled = s.train.disabled;
     }
     this.gear.sync(s.gear, s.offhand);
-    this.figure.show(s.model, FIGURE_W, FIGURE_H);
+    this.drawRaid(s);
+    this.figure.show(s.model, inHands(this.pack), FIGURE_W, FIGURE_H);
+  }
+
+  /* ---------- сводка вылазки ---------- */
+
+  /**
+   * Что снаряжение сделает в вылазке — формулой игры, а не пересказом.
+   * Третьей колонкой стоит цена левой руки: величина, которой у вещи
+   * сейчас нет, но она появится, если руку переложить (§14.2). Экран,
+   * показывающий только плюс, превращает выбор в «надеть всё».
+   */
+  private drawRaid(s: CharacterSubject): void {
+    if (s.gear === null) {
+      this.raid.replaceChildren();
+      this.raidKey = '';
+      return;
+    }
+    const key = `${Object.values(s.gear).join(',')}:${s.offhand}:${s.ranged}`;
+    if (key === this.raidKey) return;
+    this.raidKey = key;
+    const summary = raidSummary(s.gear, s.offhand, s.ranged);
+    this.raid.innerHTML = summary.rows
+      .map(
+        (row) =>
+          `<span class="dim">${row.name}</span><b>${row.now}</b>` +
+          `<i>${row.other === null ? '' : `→ ${row.other} ${summary.withOther}`}</i>`,
+      )
+      .join('');
+  }
+
+  /* ---------- лица в шапке ---------- */
+
+  private drawTabs(s: CharacterSubject): void {
+    this.tabs.replaceChildren(
+      ...s.people.map((p) => {
+        const b = document.createElement('button');
+        b.className = `face ch-tab${p.key === s.key ? ' on' : ''}`;
+        b.dataset['who'] = p.key;
+        b.title = p.name;
+        b.innerHTML = avatarSvg(p.look, p.seed);
+        return b;
+      }),
+    );
   }
 
   /* ---------- кукла и сумка ---------- */
 
-  private cell(itemId: string | null, from: HTMLElement): void {
+  private cell(itemId: string | null, into: HTMLElement): void {
     if (itemId === null) return;
     const item = ITEM.get(itemId);
     if (item === undefined) return;
     const el = document.createElement('div');
     el.className = 'ch-item';
     el.dataset['item'] = itemId;
-    el.innerHTML = `<span>${item.name}</span>`;
+    // Значок — та же модель, что в руке (`render/iconView.ts`). Вещи без
+    // модели остаются подписью: похожая модель читалась бы как «вот эта».
+    if (item.icon !== undefined) el.appendChild(itemIcon(item.icon, ICON));
+    const label = document.createElement('span');
+    label.textContent = item.name;
+    el.appendChild(label);
     el.title = `${item.effect} · ${item.cost}`;
-    from.appendChild(el);
+    into.appendChild(el);
   }
 
   private drawPack(): void {
@@ -279,20 +380,23 @@ export class CharacterPage {
         return el;
       }),
     );
+    // Фигура держит то, что надето: перетаскивание видно на человеке.
+    if (this.shown !== null) {
+      this.figure.show(this.shown.model, inHands(this.pack), FIGURE_W, FIGURE_H);
+    }
   }
 
   /** Надеть по тапу: вещь идёт в свой слот, надетая — обратно в сумку. */
   private tap(itemId: string, fromSlot: string | null): void {
+    const item = ITEM.get(itemId);
+    if (item === undefined) return;
     if (fromSlot !== null) {
-      const item = ITEM.get(itemId);
       this.hint.textContent = unequip(this.pack, fromSlot)
-        ? `${item?.name ?? itemId} убран в сумку.`
+        ? `${item.name} убран в сумку.`
         : 'В сумке нет места.';
       this.drawPack();
       return;
     }
-    const item = ITEM.get(itemId);
-    if (item === undefined) return;
     const slot = slotFor(this.pack, item);
     if (slot === null || !equip(this.pack, itemId, slot.id)) {
       this.hint.textContent = `${item.name} надеть некуда.`;
@@ -329,17 +433,13 @@ export class CharacterPage {
       const itemId = el.dataset['item'];
       if (itemId === undefined) return;
       const slot = el.closest<HTMLElement>('.ch-slot')?.dataset['slot'];
-      const at = el.closest<HTMLElement>('.ch-cell')?.dataset['bag'];
       const ghost = el.cloneNode(true) as HTMLElement;
       ghost.className = 'ch-item ch-ghost';
       ghost.style.display = 'none';
       this.root.appendChild(ghost);
       this.drag = {
         item: itemId,
-        from:
-          slot !== undefined
-            ? { kind: 'слот', id: slot }
-            : { kind: 'сумка', at: Number(at ?? 0) },
+        from: slot !== undefined ? { kind: 'слот', id: slot } : { kind: 'сумка' },
         ghost,
         source: el,
         moved: false,

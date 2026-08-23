@@ -29,6 +29,8 @@ import {
   unequip,
 } from './items';
 import type { PackState } from './items';
+import { raidSummary } from './summary';
+import { emptyGear, gearMods } from '../../sim/gear';
 
 /** Все вещи раскладки — надетые и лежащие: их число обязано быть постоянным. */
 function everything(pack: PackState): string[] {
@@ -119,12 +121,53 @@ describe('вещи страницы персонажа', () => {
   });
 
   test('сумка вмещает всё, что можно снять', () => {
-    // Иначе снятие упирается в место, и «снял — потерял» становится вопросом
-    // везения: у макета столько вещей, что клеток обязано хватать всем.
+    // Снять можно всё сразу, и тогда в сумке оказывается каждая вещь макета.
+    // Клеток меньше — и «снял — потерял» становится вопросом везения,
+    // а не решением игрока. Это уже ловилось: две новые вещи в сумке,
+    // и четвёртое снятие упёрлось в место.
     assert.ok(
-      BAG_CELLS >= ITEMS.length - SLOTS.length,
-      `клеток ${BAG_CELLS} мало для ${ITEMS.length} вещей при ${SLOTS.length} слотах`,
+      BAG_CELLS >= ITEMS.length,
+      `клеток ${BAG_CELLS} мало для ${ITEMS.length} вещей макета`,
     );
+  });
+
+  test('сводка вылазки не переписывает формулы игры', () => {
+    const gear = { ...emptyGear(), weapon: 3, armor: 2, torch: 2, bag: 1, ring: 1 };
+    const mods = gearMods(gear, 'torch');
+    const rows = raidSummary(gear, 'torch', false).rows;
+    const value = (name: string): string | undefined => rows.find((r) => r.name === name)?.now;
+    assert.equal(value('Атака'), `${mods.attack}`, 'атака в сводке не та, что считает игра');
+    assert.equal(value('Обзор'), `+${mods.vision}`, 'обзор в сводке не тот, что считает игра');
+    assert.equal(value('Рюкзак'), `${mods.capacity}`, 'рюкзак в сводке не тот, что считает игра');
+  });
+
+  test('цена левой руки видна до того, как рука переложена', () => {
+    // §14.2 — весь смысл слота в том, что обзор и защита стоят рядом.
+    // Со фонарём в руке строка «Защита» обязана показывать, чем станет
+    // защита со щитом, и наоборот.
+    const gear = { ...emptyGear(), torch: 3 };
+    const withTorch = raidSummary(gear, 'torch', false).rows;
+    const defense = withTorch.find((r) => r.name === 'Защита');
+    const vision = withTorch.find((r) => r.name === 'Обзор');
+    assert.notEqual(defense?.other, null, 'щит не обещает защиты — выбора не видно');
+    assert.notEqual(vision?.other, null, 'фонарь не обещает обзора — выбора не видно');
+
+    // А там, где рука ничего не меняет, третьей колонки нет: «→ 0» рядом
+    // с нулём — шум, а не выбор.
+    const bare = raidSummary(emptyGear(), 'torch', false).rows;
+    assert.deepEqual(
+      bare.filter((r) => r.other !== null).map((r) => r.name),
+      [],
+      'у невыкованного снаряжения рука ничего не меняет, а колонка есть',
+    );
+  });
+
+  test('колчан показывается только стрелку', () => {
+    const gear = { ...emptyGear(), weapon: 2 };
+    const near = raidSummary(gear, 'torch', false).rows.map((r) => r.name);
+    const far = raidSummary(gear, 'torch', true).rows.map((r) => r.name);
+    assert.ok(!near.includes('Колчан'), 'ближнику показали колчан');
+    assert.ok(far.includes('Колчан'), 'стрелку колчан не показали');
   });
 
   test('раскладка начинается с известных вещей', () => {
