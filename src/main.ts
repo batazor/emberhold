@@ -235,6 +235,7 @@ import { TitleView } from './render/titleView';
 import { WheelView } from './render/wheelView';
 import { streetScene } from './render/village';
 import { CampHud } from './ui/campHud';
+import type { FlyTarget } from './ui/campHud';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
@@ -748,19 +749,32 @@ function claimGift(): void {
   }
   const gift = giftAt(state.taken);
   let said = '';
+  // Куда подарок долетит на глазах (§29.4). Пусто у встречи: человек
+  // приходит сам, и его прилёт — это он сам, а не значок над полосой.
+  const flight: FlyTarget[] = [];
   switch (gift.id) {
     case 'ресурсы': {
       const loot = giftLoot(gift, giftTier(camp.levels.kitchen), state.taken);
+      // Летит только то, что вправду легло. Полная кладовая (§13.6) режет
+      // приток, и значок, долетевший до числа, которое не изменилось, —
+      // это обещание вместо ответа.
+      const before = { ...camp.resources };
       if (stash(camp, loot) > 0) campHud.notify(STORE_FULL);
       said = (Object.entries(loot) as [ResourceKind, number][])
         .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
         .join(', ');
+      flight.push(
+        ...(Object.keys(loot) as ResourceKind[]).filter((k) => camp.resources[k] > before[k]),
+      );
       break;
     }
     case 'стрелы': {
       const cap = gearMods(camp.gear, camp.offhand).arrows;
+      const before = camp.arrows;
       camp.arrows = Math.min(cap, camp.arrows + GIFT_ARROWS);
       said = `стрелы ${camp.arrows} / ${cap}`;
+      // Полный колчан — тот же случай, что полная кладовая: лететь незачем.
+      if (camp.arrows > before) flight.push('quiver');
       break;
     }
     case 'сундук': {
@@ -778,6 +792,7 @@ function claimGift(): void {
       }
       adoptChest(camp, spot);
       said = `сундук, кладовая ${storeCapacity(camp)}`;
+      flight.push('store');
       break;
     }
     case 'встреча': {
@@ -792,9 +807,15 @@ function claimGift(): void {
     }
   }
   camp.daily = claimed(state, day);
-  play('build');
+  play('gift');
   persist();
   campHud.notify(`Подарок ${dayOf(state.taken) + 1}-го дня: ${said}`);
+  // Полёт идёт последним и ничего не решает: подарок уже в лагере, а панель
+  // уже знает об этом. Он показывает, **куда** тот лёг, — и потому считается
+  // от карточки, которую игрок только что нажал, к числу, которое от этого
+  // изменилось.
+  campHud.sync(camp, clock.now(), 0);
+  campHud.flyGift(flight);
 }
 
 /* ---------- стройка стен (§6.1.6) ---------- */

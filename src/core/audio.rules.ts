@@ -6,6 +6,7 @@
  * Запуск: npm run check
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import { CAMP_PHRASES, SAMPLES, SFX, foodPulse, midiHz, phraseSec, sampleFile } from './audio';
 
@@ -48,9 +49,23 @@ describe('Звук: библиотека (§18.3)', () => {
   test('вся библиотека артбука перенесена', () => {
     const expected = [
       'step', 'swing', 'hit', 'wound', 'kill', 'chest', 'pick', 'tick',
-      'evac', 'fail', 'build', 'levelup', 'tap', 'deny',
+      'evac', 'fail', 'build', 'levelup', 'gift', 'tap', 'deny',
     ];
     assert.deepEqual(Object.keys(SFX).sort(), [...expected].sort());
+  });
+
+  test('созвучие остаётся одно на игру', () => {
+    // §18.3 — арпеджио приберегается росту здания. Правило записано словами
+    // и до сих пор держалось само собой; подарок за вход был первым звуком
+    // за долгое время, который просился в аккорд, и поводом его проверить.
+    const source = readFileSync(new URL('./audio.ts', import.meta.url), 'utf8');
+    const chords = [...source.matchAll(/(\w+): \(\): void => \{\s*for \(const \[i, f\] of \[/g)]
+      .map((m) => m[1]!);
+    assert.deepEqual(
+      chords.sort(),
+      ['evac', 'levelup'],
+      'созвучий стало больше двух — трезвучие возвращения и арпеджио здания были последними',
+    );
   });
 
   test('звук без контекста не падает в Node — симуляция гоняется headless', () => {
@@ -67,7 +82,7 @@ describe('Звук: сэмплы чужого набора (§18.5)', () => {
    * задан таблицей §18.2 и проверяется числами. Сэмпл сюда не заходит — иначе
    * проверять станет нечего, а решение уедет в чужой файл.
    */
-  const SIGNAL = ['wound', 'kill', 'tick', 'evac', 'fail', 'levelup', 'tap', 'deny'];
+  const SIGNAL = ['wound', 'kill', 'tick', 'evac', 'fail', 'levelup', 'gift', 'tap', 'deny'];
 
   test('сэмпл есть только у имени из библиотеки', () => {
     for (const spec of SAMPLES) {
