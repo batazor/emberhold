@@ -8,25 +8,25 @@ import { clearTelemetry, events, summarize } from '../sim/telemetry';
  *
  * Каждая строка снабжена целевым значением из документа: цифра без ориентира
  * не решение, а повод для спора.
+ *
+ * Своей кнопки на экране у панели нет: «Статистика» стоит в настройках
+ * (`settings.ts`), рядом с громкостью и «Новой игрой». Кнопка «Данные»
+ * держала правый край лагеря — постоянное место под то, что открывают раз
+ * в сессию, и строка задания ужималась, чтобы её не накрыть. Открывает
+ * панель тот, кто ей владеет, — здесь только `open`.
  */
 const pct = (x: number): string => `${Math.round(x * 100)}%`;
 
 export class StatsPanel {
-  private readonly button: HTMLButtonElement;
   private readonly overlay: HTMLElement;
   private readonly body: HTMLElement;
 
   constructor(parent: HTMLElement) {
-    this.button = document.createElement('button');
-    this.button.id = 'stats-open';
-    this.button.textContent = 'Данные';
-    parent.appendChild(this.button);
-
     this.overlay = document.createElement('div');
     this.overlay.id = 'stats-panel';
     this.overlay.innerHTML = `
       <div class="panel">
-        <h2>Телеметрия</h2>
+        <h2>Статистика</h2>
         <div id="sp-body"></div>
         <div class="acts">
           <button id="sp-copy">Скопировать события</button>
@@ -37,7 +37,6 @@ export class StatsPanel {
     parent.appendChild(this.overlay);
     this.body = this.overlay.querySelector('#sp-body') as HTMLElement;
 
-    this.button.addEventListener('click', () => this.open());
     this.overlay.querySelector('#sp-close')?.addEventListener('click', () => this.close());
     this.overlay.querySelector('#sp-clear')?.addEventListener('click', () => {
       clearTelemetry();
@@ -48,17 +47,14 @@ export class StatsPanel {
     });
   }
 
-  setVisible(visible: boolean): void {
-    this.button.style.display = visible ? 'block' : 'none';
-    if (!visible) this.close();
-  }
-
-  private open(): void {
+  /** Открыть сводку. Зовёт настройки — своей кнопки у панели нет. */
+  open(): void {
     this.render();
     this.overlay.classList.add('on');
   }
 
-  private close(): void {
+  /** Сцена сменилась — сводка не переезжает вместе с ней. */
+  close(): void {
     this.overlay.classList.remove('on');
   }
 

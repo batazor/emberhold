@@ -15,9 +15,16 @@ import { saveMix } from '../core/settings';
  * сейв переживает перезагрузку, и стереть его из консоли нельзя — игра тут
  * же запишет его обратно. Кнопка спрашивает подтверждение: это единственное
  * необратимое действие в игре.
+ *
+ * И здесь же «Статистика» (`statsPanel.ts`). Раньше сводку открывала кнопка
+ * «Данные», прибитая к правому краю лагеря: постоянное место под то, что
+ * смотрят раз в сессию. Настройки — то же самое по природе: не ход, а взгляд
+ * на игру со стороны, и открываются они оттуда же, из угла с шестерней.
  */
 export interface SettingsMenuCallbacks {
   onNewGame(): void;
+  /** Сводка телеметрии (§9): окно открывает тот, кто им владеет. */
+  onStats(): void;
 }
 
 /**
@@ -104,7 +111,12 @@ export class SettingsMenu {
       if (!(e.target instanceof HTMLButtonElement)) return;
       const act = e.target.dataset.act;
       if (act === 'close') this.close();
-      else if (act === 'new') this.setConfirming(true);
+      // Настройки уходят с экрана: сводка — окно во весь лист, и держать
+      // под ней ещё одно значило бы копить окна поверх окон.
+      else if (act === 'stats') {
+        this.close();
+        cb.onStats();
+      } else if (act === 'new') this.setConfirming(true);
       else if (act === 'cancel') this.setConfirming(false);
       else if (act === 'wipe') cb.onNewGame();
     });
@@ -146,7 +158,8 @@ export class SettingsMenu {
       ? `<p class="warn">Лагерь, отряд и запасы будут стёрты.</p>
          <button type="button" class="danger" data-act="wipe">Стереть и начать заново</button>
          <button type="button" class="ghost" data-act="cancel">Отмена</button>`
-      : `<button type="button" data-act="new">Новая игра</button>
+      : `<button type="button" data-act="stats">Статистика</button>
+         <button type="button" data-act="new">Новая игра</button>
          <button type="button" class="ghost" data-act="close">Закрыть</button>`;
   }
 }

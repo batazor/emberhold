@@ -58,7 +58,13 @@ export interface ControlHooks {
 }
 
 const CSS = `
-.fan-layer { position: fixed; inset: 0; pointer-events: none; z-index: 7; }
+/* Веер лежит НАД сценой, но ПОД листом игры (#hud, #camp — 6). Лист,
+   открытый во весь экран, — стройка, припасы, сводка — обязан накрывать
+   лица: пока веер стоял выше, карточки «Стен лагеря» уходили под чужие
+   головы, и нижние ряды нельзя было ни прочитать, ни нажать. Пустоты это
+   не касается: контейнер листа сквозной для пальца (pointer-events: none),
+   и лицо, которое ничем не накрыто, нажимается как раньше. */
+.fan-layer { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
 .fan-slot { position: absolute; border-radius: 50%; overflow: hidden;
   pointer-events: auto; touch-action: none;
   border: 1px solid rgba(232,226,212,0.35); background: rgba(30,28,24,0.9); }
