@@ -19,6 +19,7 @@
     "model": "tsx scripts/model.ts",
     "optimal": "tsx scripts/optimal.ts",
     "elites": "tsx scripts/elites.ts",
+    "depth": "tsx scripts/depth.ts",
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
     "hands": "tsx scripts/hands.ts",

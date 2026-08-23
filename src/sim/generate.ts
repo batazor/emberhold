@@ -1,6 +1,6 @@
 import { mulberry32, randInt } from '../core/rng';
 import type { Rng } from '../core/rng';
-import { ENEMY_DEPTH_SHARE, GOLD_CHEST_CHANCE, tierEnemyLevel } from './balance';
+import { BOTTOM_GUARD_LEVELS, ENEMY_DEPTH_SHARE, GOLD_CHEST_CHANCE, tierEnemyLevel } from './balance';
 import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } from './config';
 import { TIER_ROSTER, enemyStats } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
@@ -377,6 +377,46 @@ export function generateLocation(
       cooldown: 0,
     });
   });
+
+  /**
+   * §11.3 — **дно охраняется.** Самое глубокое тело переносится на последнюю
+   * клетку локации и получает `BOTTOM_GUARD_LEVELS` к уровню.
+   *
+   * Это ответ на вторую половину главного правила боя: павшие не могут быть
+   * мельче дошедших, пока гибель распределена по глубокой части ровно.
+   * Глубина дошедшего обрывается на его пределе — провиантом или рюкзаком, —
+   * поэтому средняя гибель обязана приходиться **дальше** этого предела,
+   * а туда доходят не все. Сильное тело у самого дна и делает последний шаг
+   * решением, а не формальностью.
+   *
+   * Тело переносится, а не добавляется: число врагов задаёт бюджет ран (§22),
+   * и вставлять сюда лишнего значило бы тратить бюджет, которого прибор
+   * не выделял.
+   *
+   * Маг стражем не становится (§15): его место — узкий проход, где обход
+   * существует, а дно локации таким проходом не является.
+   */
+  const guarded = BOTTOM_GUARD_LEVELS[tier] <= 0 ? undefined : enemies
+    .map((e, i) => ({ i, back: backSteps[idx(size, e.x, e.z)] ?? 0, kind: e.kind }))
+    .filter((e) => e.kind !== 'mage')
+    .sort((a, b) => b.back - a.back)[0];
+  const containerCells = new Set(containers.map((c) => idx(size, c.x, c.z)));
+  const bottomCell = open.find((cell) => !containerCells.has(cell));
+  if (guarded !== undefined && bottomCell !== undefined) {
+    const was = enemies[guarded.i]!;
+    const lvl = Math.max(1, tierEnemyLevel(tier, visit) + BOTTOM_GUARD_LEVELS[tier]);
+    const x = bottomCell % size;
+    const z = (bottomCell / size) | 0;
+    enemies[guarded.i] = {
+      ...was,
+      level: lvl,
+      hp: enemyStats(was.kind, lvl).hp,
+      x,
+      z,
+      prevX: x,
+      prevZ: z,
+    };
+  }
 
   /**
    * Валуны (§13.4) — последними и от своего потока случайности. Порядок
