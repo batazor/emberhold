@@ -47,6 +47,15 @@ describe('вещи страницы персонажа', () => {
     );
   });
 
+  test('у каждой вещи есть значок', () => {
+    const blank = ITEMS.filter((it) => it.icon === undefined && it.picture === undefined);
+    assert.deepEqual(
+      blank.map((it) => it.name),
+      [],
+      'вещь без модели должна иметь PNG-пиктограмму инвентаря',
+    );
+  });
+
   test('свободных слотов не больше потолка', () => {
     assert.ok(
       FREE_SLOTS >= 1 && FREE_SLOTS <= MAX_FREE_SLOTS,

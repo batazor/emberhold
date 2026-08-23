@@ -1165,9 +1165,8 @@ button[disabled] { opacity: 0.4; cursor: default; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   text-align: center; line-height: 1.2; cursor: grab; touch-action: none; user-select: none;
 }
-/* Значок вещи — кадр модели набора (`render/iconView.ts`), не картинка
-   на диске: вещь на значке и вещь в руке обязаны быть одной геометрией. */
-.ch-item canvas { display: block; width: 34px; height: 34px; }
+/* Значок вещи: модельный кадр или PNG-пиктограмма для вещей без модели. */
+.ch-item canvas, .ch-item img { display: block; width: 34px; height: 34px; object-fit: contain; }
 .ch-item:active { cursor: grabbing; }
 .ch-lift { opacity: 0.3; }
 /* Лица в шапке: тот же веер, только строкой. Выбранное не тусклое —
