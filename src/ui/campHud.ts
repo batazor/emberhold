@@ -6,6 +6,7 @@ import {
   BUILD_SECONDS,
   gearBlock,
   itemCap,
+  coinsOf,
   speedupCost,
   upgradeBlock,
   UPGRADE_REASON,
@@ -883,8 +884,8 @@ export class CampHud {
       row.status.textContent = formatDuration(left);
       row.button.dataset['mode'] = 'speedup';
       // §20.5 — последние пять минут бесплатны.
-      row.button.textContent = price === 0 ? 'Достроить' : `Ускорить · камень ${price}`;
-      row.button.disabled = price > camp.resources.stone;
+      row.button.textContent = price === 0 ? 'Достроить' : `Ускорить · монеты ${price}`;
+      row.button.disabled = price > coinsOf(camp);
       return;
     }
 

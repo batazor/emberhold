@@ -24,6 +24,7 @@ import {
   moveBuilding,
   speedup,
   setOffhand,
+  claimDailyCoins,
   speedupCost,
   startUpgrade,
   upgradeBlock,
@@ -329,6 +330,12 @@ const clock = new Clock(loaded.watermark);
 if (serverNow !== null) clock.sync(serverNow);
 let camp: CampState = loaded.camp;
 const roster: Roster = loaded.roster;
+
+// §20.5 — монеты за вход: десять в сутки, один раз. Считается здесь, а не
+// в лагере: заход в игру — это заход, независимо от того, дошёл ли игрок
+// до лагеря в эту сессию. Сутки мировые (§27), поэтому перевод телефона
+// вперёд второй десятки не даёт.
+const gotCoins = claimDailyCoins(camp, dayAt(clock.now()));
 
 loadTelemetry();
 // §9 — те же события уходят наружу. Сток ставится до первого `track`, иначе
@@ -3531,11 +3538,23 @@ function toGlade(): void {
 /** Лагерь на поляне (§16.1): сцена пролога и есть сцена лагеря. */
 let inGladeCamp = false;
 
-/** Наработанное за отлучку — первым и один раз, общий у обеих сцен лагеря. */
+/**
+ * Наработанное за отлучку — первым и один раз, общий у обеих сцен лагеря.
+ *
+ * §20.5 — монеты за вход говорятся здесь же и той же строкой. Отдельным
+ * всплытием они стали бы вторым сообщением подряд об одном и том же:
+ * «пока вас не было» и «за вход» — это оба про то, что дал заход.
+ */
 function notifyWorked(): void {
-  if (worked.length === 0 || workShown) return;
+  if (workShown) return;
+  const parts: string[] = [];
+  if (worked.length > 0) {
+    parts.push(worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · '));
+  }
+  if (gotCoins > 0) parts.push(`монеты ${gotCoins}`);
+  if (parts.length === 0) return;
   workShown = true;
-  campHud.notify(`Пока вас не было: ${worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · ')}`);
+  campHud.notify(`Пока вас не было: ${parts.join(' · ')}`);
 }
 
 /**

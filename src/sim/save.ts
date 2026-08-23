@@ -50,6 +50,12 @@ interface SaveV1 {
   glade?: { size: number; cells: string };
   /** Сделки с торговцем (§13.5). Необязательно: без поля лавка незнакома. */
   trades?: number;
+  /** §20.5 — монеты. Необязательно: сейв без поля начинает с нуля, потому
+   *  что до введения валюты монет не существовало. */
+  coins?: number;
+  /** §20.5 — сутки последнего начисления за вход. Без поля — начислится
+   *  первым же входом. */
+  coinDay?: number;
   /** Колесо призов: день последней прокрутки. Необязательно: без поля —
    *  не крутили. */
   wheelDay?: number;
@@ -188,6 +194,8 @@ export function save(
     ...(camp.origin !== undefined ? { origin: camp.origin } : {}),
     ...(camp.glade !== undefined ? { glade: camp.glade } : {}),
     ...(camp.trades !== undefined ? { trades: camp.trades } : {}),
+    ...(camp.coins !== undefined ? { coins: camp.coins } : {}),
+    ...(camp.coinDay !== undefined ? { coinDay: camp.coinDay } : {}),
     ...(camp.wheelDay !== undefined ? { wheelDay: camp.wheelDay } : {}),
     ...(camp.daily !== undefined ? { daily: { day: camp.daily.day, taken: camp.daily.taken } } : {}),
     ...(camp.guestPromised === true ? { guest: true } : {}),
@@ -323,6 +331,8 @@ export function load(): LoadResult {
       camp.glade = { size: g.size, cells: g.cells };
     }
     if (typeof data.trades === 'number' && data.trades >= 0) camp.trades = Math.floor(data.trades);
+    if (typeof data.coins === 'number' && data.coins >= 0) camp.coins = Math.floor(data.coins);
+    if (typeof data.coinDay === 'number') camp.coinDay = Math.floor(data.coinDay);
     if (typeof data.wheelDay === 'number') camp.wheelDay = Math.floor(data.wheelDay);
     // §29 — подарки. Оба числа разбираются по одному и чинятся порознь:
     // сейв с испорченным счётом подарков не должен стоить игроку недели.
