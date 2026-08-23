@@ -200,6 +200,10 @@ export class DailyPanel {
       // а не семью одинаковыми клетками. Ряд от этого сходится ровно —
       // четыре карточки в первом, две и двойная во втором.
       box.className = day === WEEK - 1 ? 'card gift-day gift-last' : 'card gift-day';
+      // Своя задержка на день: неделя выкладывается слева направо, тем же
+      // порядком, которым её читают. Число живёт в разметке, а не в карте
+      // стилей, потому что оно про номер дня, а не про вид карточки.
+      box.style.setProperty('--in', `${day * 45}ms`);
       const badge = document.createElement('span');
       badge.className = 'badge';
       badge.textContent = `День ${day + 1}`;
@@ -290,6 +294,21 @@ export class DailyPanel {
     // тем же серым, что и «ждёт в лагере», сообщает ровно ничего.
     this.note.classList.toggle('warn', warn !== null);
     this.note.classList.toggle('dim', warn === null);
+  }
+
+  /**
+   * Лист открылся — неделя выкладывается заново (§29.4).
+   *
+   * Зовётся на открытии, а не из `sync`: тот идёт каждый кадр, и карточка,
+   * въезжающая на каждой перерисовке, — это мигание, а не появление. Класс
+   * снимается и возвращается через чтение раскладки: без него браузер
+   * склеивает снятие и возврат в одно состояние, и второе открытие листа
+   * прошло бы вовсе без раскладки.
+   */
+  appear(): void {
+    this.days.classList.remove('appear');
+    void this.days.offsetWidth;
+    this.days.classList.add('appear');
   }
 
   /**
