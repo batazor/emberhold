@@ -16,7 +16,7 @@ import { saveMix } from '../core/settings';
  * же запишет его обратно. Кнопка спрашивает подтверждение: это единственное
  * необратимое действие в игре.
  *
- * И здесь же «Статистика» (`statsPanel.ts`). Раньше сводку открывала кнопка
+ * И здесь же «Летопись» (`statsPanel.ts`). Раньше сводку открывала кнопка
  * «Данные», прибитая к правому краю лагеря: постоянное место под то, что
  * смотрят раз в сессию. Настройки — то же самое по природе: не ход, а взгляд
  * на игру со стороны, и открываются они оттуда же, из угла с шестерней.
@@ -158,7 +158,7 @@ export class SettingsMenu {
       ? `<p class="warn">Лагерь, отряд и запасы будут стёрты.</p>
          <button type="button" class="danger" data-act="wipe">Стереть и начать заново</button>
          <button type="button" class="ghost" data-act="cancel">Отмена</button>`
-      : `<button type="button" data-act="stats">Статистика</button>
+      : `<button type="button" data-act="stats">Летопись</button>
          <button type="button" data-act="new">Новая игра</button>
          <button type="button" class="ghost" data-act="close">Закрыть</button>`;
   }

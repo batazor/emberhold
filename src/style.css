@@ -573,17 +573,79 @@ button:active { filter: brightness(1.25); }
 #camp .raid .lbl { grid-column: 1 / -1; }
 button[disabled] { opacity: 0.4; cursor: default; }
 
-/* ---------- панель телеметрии ---------- */
-/* Своей кнопки на экране у сводки нет: её открывает строка «Статистика»
-   в настройках (§9, `ui/settings.ts`). Прежняя «Данные» держала правый край
-   лагеря постоянно, а смотрят её раз в сессию. */
+/* ---------- летопись прогресса (§9) ---------- */
+/* Своей кнопки на экране у летописи нет: её открывает строка в настройках.
+   Это взгляд на путь игрока, а не действие внутри лагеря. */
 #stats-panel {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 7;
 }
 #stats-panel.on { display: flex; }
-#stats-panel .panel { width: 100%; max-width: 380px; max-height: 82vh; overflow-y: auto; }
-#stats-panel h2 { margin: 0 0 10px; font-size: 18px; }
+#stats-panel .panel { width: 100%; max-width: 720px; max-height: 90vh; overflow-y: auto; }
+#stats-panel h2 { margin: 0; font-size: 20px; letter-spacing: 0.03em; }
+#stats-panel .sp-title { margin-bottom: 12px; }
+#stats-panel .sp-title p { margin: 2px 0 0; color: var(--dim); font-size: 11px; }
+#stats-panel #sp-close {
+  flex: none; min-width: 38px; width: 38px; height: 38px; padding: 0;
+  color: var(--dim); font-size: 20px;
+}
+.sp-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 14px; }
+.sp-tabs button { min-width: 0; padding: 7px 4px; color: var(--dim); }
+.sp-tabs button[aria-selected="true"] {
+  color: var(--ink); background: var(--pick); border-color: var(--pick-line);
+}
+.sp-caption { margin: 0 2px 9px; }
+.sp-caption strong { font-size: 13px; }
+.sp-caption span { color: var(--dim); font-size: 11px; }
+.sp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sp-card { min-height: 134px; padding: 13px; }
+.sp-value {
+  display: block; margin-top: 3px; color: var(--ink); font-size: 28px;
+  line-height: 1.05; font-variant-numeric: tabular-nums;
+}
+.sp-value small { color: var(--dim); font-size: 12px; font-weight: 500; }
+.sp-card > .bar { margin-top: auto; }
+.sp-trend { margin-top: 4px; color: var(--gold); font-size: 11px; }
+.sp-scale { color: var(--dim); font-size: 10px; }
+.sp-spark { display: flex; align-items: flex-end; gap: 4px; height: 34px; margin-top: auto; }
+.sp-spark i {
+  flex: 1; min-width: 7px; border-radius: var(--r-bar) var(--r-bar) 0 0;
+  background: var(--gold); opacity: 0.82;
+}
+.sp-loops { display: flex; flex-direction: column; gap: 8px; }
+.sp-loop {
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center; gap: 12px; padding: 12px;
+}
+.sp-loop-mark {
+  display: grid; place-items: center; width: 38px; height: 38px;
+  border: 1px solid var(--pick-line); border-radius: var(--r-pill);
+  color: var(--gold); background: var(--fill-2); font-style: normal; font-weight: 700;
+}
+.sp-loop p { margin: 3px 0 7px; color: var(--dim); font-size: 11px; }
+.sp-loop > strong { min-width: 82px; text-align: right; font-size: 20px; font-variant-numeric: tabular-nums; }
+.sp-loop > strong small {
+  display: block; color: var(--dim); font-size: 9px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.sp-timeline { position: relative; padding-left: 7px; }
+.sp-timeline::before {
+  content: ""; position: absolute; left: 13px; top: 18px; bottom: 18px;
+  width: 1px; background: var(--line);
+}
+.sp-event {
+  position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line);
+}
+.sp-event:last-child { border-bottom: 0; }
+.sp-event > i {
+  z-index: 1; width: 9px; height: 9px; border: 2px solid var(--panel);
+  border-radius: var(--r-pill); background: var(--gold);
+}
+.sp-event p { margin: 2px 0 0; color: var(--dim); font-size: 11px; }
+.sp-event time { color: var(--gold); font-size: 10px; white-space: nowrap; }
+.sp-empty { align-items: center; margin: 26px auto; padding: 20px; text-align: center; }
+.sp-empty p { margin: 3px 0 0; color: var(--dim); font-size: 11px; }
 .sp-row b { font-variant-numeric: tabular-nums; }
 /* ---------- таблица лагерей (§30) ---------- */
 /* Стоит выше сводки: она про мир, сводка — про то, как игрок в него ходит.
@@ -607,8 +669,25 @@ button[disabled] { opacity: 0.4; cursor: default; }
 }
 .sp-row.you { border-left: 2px solid var(--gold); padding-left: 6px; margin-left: -8px; }
 .sp-note { font-size: 11px; color: var(--dim); margin: 0 0 8px; }
-#stats-panel .acts { display: flex; gap: 6px; margin-top: 12px; }
+#stats-panel .acts { display: flex; gap: 6px; margin-top: 14px; }
 #stats-panel .acts button { flex: 1; }
+#stats-panel .sp-tools { padding-top: 10px; border-top: 1px solid var(--line); }
+#stats-panel .sp-tools button { color: var(--dim); font-size: 10px; }
+@media (max-width: 560px) {
+  #stats-panel { padding: 10px; }
+  #stats-panel .panel { max-height: 94vh; }
+  .sp-grid { grid-template-columns: 1fr; }
+  .sp-card { min-height: 116px; }
+  .sp-loop { grid-template-columns: 36px minmax(0, 1fr); gap: 9px; }
+  .sp-loop-mark { width: 32px; height: 32px; }
+  .sp-loop > strong {
+    grid-column: 2; display: flex; align-items: baseline; gap: 6px;
+    min-width: 0; text-align: left; font-size: 17px;
+  }
+  .sp-loop > strong small { display: inline; }
+  .sp-event { grid-template-columns: 14px minmax(0, 1fr); }
+  .sp-event time { grid-column: 2; }
+}
 
 /* ---------- отряд (§11.8) ---------- */
 /* Списка отряда больше нет: кем идти, выбирают веером у большого пальца
