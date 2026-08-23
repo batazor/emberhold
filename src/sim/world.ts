@@ -337,6 +337,67 @@ export function phaseAt(t: number): 'день' | 'закат' | 'ночь' | 'р
   return 'рассвет';
 }
 
+/**
+ * Место клетки сетки в долях экрана. Раздача точек, прогулок и лагерей
+ * соседей считает его одинаково, и вынесено оно затем, что три копии одной
+ * арифметики расходятся молча — а расходиться им нельзя: минимальный зазор
+ * между точками сторожит `world.rules.ts` числом.
+ *
+ * Разброс приходит снаружи двумя долями, а не берётся здесь из своего
+ * генератора: у раздачи дня он свой, у лагерей — вечный, и порядок бросков
+ * в раздаче трогать нельзя.
+ */
+const cellSpot = (cell: number, jx: number, jy: number): { x: number; y: number } => {
+  const col = cell % GRID_X;
+  const row = (cell / GRID_X) | 0;
+  return {
+    // Нижняя полоса оставлена лагерю игрока: точка поверх лагеря сделала бы
+    // нечитаемыми обе.
+    x: (col + 0.5) / GRID_X + (jx - 0.5) / GRID_X / 2.2,
+    y: 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (jy - 0.5) / GRID_Y / 2.6,
+  };
+};
+
+/**
+ * Клетки, отданные лагерям соседей (§29). Отданы **до раздачи дня и навсегда**:
+ * регион пересобирается каждые сутки, а лагерь — нет. Сосед, переезжающий
+ * вместе с точками, был бы не соседом, а ещё одной точкой дня; та же причина,
+ * по которой лагерь игрока в раздаче не участвует.
+ *
+ * Отсюда же и способ: клетки вынимаются из общей колоды, поэтому вылазка
+ * не сядет на чужой лагерь ни в один день — не проверкой, а по построению.
+ * Колода при этом остаётся вместительной: 35 клеток минус четыре — 31,
+ * ровно самый людный день (22 вылазки и до девяти прогулок).
+ */
+const CAMP_CELLS: readonly number[] = (() => {
+  const cells: number[] = [];
+  for (let i = 0; i < GRID_X * GRID_Y; i++) cells.push(i);
+  const rng = mulberry32(hash(SEED, 11));
+  for (let i = cells.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const swap = cells[i]!;
+    cells[i] = cells[j]!;
+    cells[j] = swap;
+  }
+  return cells.slice(0, CLANS.length);
+})();
+
+/** Лагерь фракции на карте: кто и где. Место вечное, состояние — считается. */
+export interface ClanCamp {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * Лагеря фракций (§29). Мир был до игрока (§4), и его соседи стоят на карте
+ * всегда — в тот же день, когда игрок впервые её открыл, и в любой другой.
+ */
+export const CLAN_CAMPS: readonly ClanCamp[] = CAMP_CELLS.map((cell, id) => {
+  const rng = mulberry32(hash(SEED, id, 12));
+  return { id, ...cellSpot(cell, rng(), rng()) };
+});
+
 /** Лагерь: место постоянное, оно не переезжает вместе с картой. */
 const CAMP_SPOT = { x: 0.5, y: 0.9 };
 
@@ -357,7 +418,9 @@ export function regionAt(day: number): Region {
   // Клетки сетки перемешиваются и разбираются по одной: две точки не
   // садятся в одно место, а раздача при этом остаётся случайной.
   const cells: number[] = [];
-  for (let i = 0; i < GRID_X * GRID_Y; i++) cells.push(i);
+  // Клетки чужих лагерей в колоду не попадают вовсе: соседи стоят на месте,
+  // а точки дня раздаются вокруг них (`CAMP_CELLS`).
+  for (let i = 0; i < GRID_X * GRID_Y; i++) if (!CAMP_CELLS.includes(i)) cells.push(i);
   for (let i = cells.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     const swap = cells[i]!;
@@ -369,12 +432,7 @@ export function regionAt(day: number): Region {
   const nodes: WorldNode[] = [];
   for (let i = 0; i < Math.min(count, cells.length); i++) {
     const cell = cells[i]!;
-    const col = cell % GRID_X;
-    const row = (cell / GRID_X) | 0;
-    const x = (col + 0.5) / GRID_X + (rng() - 0.5) / GRID_X / 2.2;
-    // Нижняя полоса оставлена лагерю: точка поверх лагеря сделала бы
-    // нечитаемыми обе.
-    const y = 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6;
+    const { x, y } = cellSpot(cell, rng(), rng());
     const name = names.splice(Math.floor(rng() * names.length), 1)[0] ?? `Место ${i}`;
     nodes.push({ id: i, name, x, y, tier: Math.floor(rng() * 4) as Tier, kind: 'вылазка' });
   }
@@ -399,14 +457,11 @@ export function regionAt(day: number): Region {
     for (let i = 0; i < count; i++) {
       const cell = cells[nodes.length];
       if (cell === undefined) break;
-      const col = cell % GRID_X;
-      const row = (cell / GRID_X) | 0;
       const where = names.splice(Math.floor(rng() * names.length), 1)[0] ?? 'Пустошь';
       nodes.push({
         id: nodes.length,
         name: `${spec.label} «${where}»`,
-        x: (col + 0.5) / GRID_X + (rng() - 0.5) / GRID_X / 2.2,
-        y: 0.08 + ((row + 0.5) / GRID_Y) * 0.76 + (rng() - 0.5) / GRID_Y / 2.6,
+        ...cellSpot(cell, rng(), rng()),
         tier: 0,
         kind: spec.kind,
       });
@@ -522,15 +577,28 @@ function clanSpots(day: number, block: number): readonly number[] {
 }
 
 /**
+ * Рост фракции без округления: единица плюс `log2` от возраста, темп — свой
+ * у каждой (`pace`). Уровень (`clanState`) — это она же, срезанная до целого.
+ *
+ * Наружу выставлена ради силы (§29): на третий день мира все четыре фракции
+ * стоят на шестом уровне, и таблица по силе, считанная от целого, показала
+ * бы четыре одинаковые строки. Округлять дважды нельзя — округляет один
+ * последний слой (§20.3.3), а сравнение идёт по неокруглённому.
+ */
+export function clanGrowth(id: number, t: number): number {
+  const rng = mulberry32(hash(SEED, id));
+  const pace = 0.7 + rng() * 0.6; // характер: медленный / жадный
+  const age = Math.max(0, t - WORLD_EPOCH);
+  return 1 + Math.log2(1 + (age / (90 * 60)) * pace);
+}
+
+/**
  * Состояние клана в момент наблюдения. Ни таймера, ни записи: характер
  * клана — из сида, уровень — из прошедших часов, занятая точка — из номера
  * стоянки.
  */
 export function clanState(id: number, t: number): ClanState {
-  const rng = mulberry32(hash(SEED, id));
-  const pace = 0.7 + rng() * 0.6; // характер: медленный / жадный
-  const age = Math.max(0, t - WORLD_EPOCH);
-  const level = 1 + Math.floor(Math.log2(1 + (age / (90 * 60)) * pace));
+  const level = Math.floor(clanGrowth(id, t));
   const day = dayAt(t);
   if (regionAt(day).nodes.length === 0) return { level, nodes: [] };
   // Артбук предлагал «одну-две локации», и замер это отменил: вторая
