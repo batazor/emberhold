@@ -11,6 +11,7 @@ import {
   ARROW_PACK,
   ARROW_PACK_COST,
   BUILD_COST,
+  MAX_LEVEL,
   buyArrows,
   campArea,
   completeIfDue,
@@ -28,7 +29,9 @@ import {
   upgradeProgress,
   villagerCount,
 } from './camp';
-import { modelKitchenFood } from './balance';
+import { modelKitchenFood, roundNice, tierForLevel } from './balance';
+import { LOOT_SHARE } from './resources';
+import type { ResourceKind } from './resources';
 import { bowQuiver } from './gear';
 
 describe('Лагерь', () => {
@@ -166,13 +169,24 @@ describe('Лагерь', () => {
   });
 
   test('§2 — уровни зданий меняют вылазку', () => {
-    // Числа Кухни больше не назначены руками: кривая выведена моделью (§22).
-    // Закреплять здесь 50 и 90 означало бы фиксировать то, что модель обязана
-    // пересчитывать, — проверяем связь, а не значение.
-    assert.equal(kitchenFood(1), modelKitchenFood(1));
-    assert.equal(kitchenFood(3), modelKitchenFood(3));
-    assert.ok(kitchenFood(2) > kitchenFood(1), 'запас растёт с уровнем');
-    assert.equal(storageCapacity(2), 19); // пример «12 из 19» из §11.2
+    // Кухня — чистая модель (§22): слой округления к ней не кладётся, окно
+    // между «дойти до дна» и «обойти всё» на ярусе 0 уже шага округления.
+    // Склад — модель плюс округление (§20.3.3), и проверяется обещание
+    // приёма, а не число: модель обязана его пересчитывать.
+    for (let level = 1; level <= 4; level++) {
+      assert.equal(kitchenFood(level), modelKitchenFood(level), `Кухня ур. ${level}`);
+      assert.ok(kitchenFood(level) > kitchenFood(level - 1), 'запас растёт с уровнем');
+      assert.equal(storageCapacity(level) % 5, 0, `Склад ур. ${level}: игрок читает круглое`);
+      assert.ok(
+        Math.abs(storageCapacity(level) - (11 + 4 * level)) < 5,
+        `Склад ур. ${level}: округление увело от модели дальше шага`,
+      );
+      assert.ok(
+        storageCapacity(level) > storageCapacity(level - 1),
+        'рюкзак растёт с уровнем: округление не слепило две ступени в одну',
+      );
+    }
+    assert.equal(storageCapacity(2), 20); // пример «12 из 20» из §11.2
     assert.equal(campArea(1), 6); // §20.4
     assert.equal(campArea(5), 10);
     assert.equal(campArea(6), 10, 'площадь не растёт выше таблицы');
@@ -228,13 +242,40 @@ describe('Цены построек', () => {
     );
   });
 
-  test('§13 — ресурсы входят в цену не раньше своего яруса', () => {
+  test('§13 — ресурсы входят в цену не раньше, чем игрок может их добыть', () => {
+    /*
+     * Прежде правило называло уровни числами — «железо от третьего, кристалл
+     * от пятого», — и числа были списаны с таблицы, выписанной руками. Теперь
+     * цена выводится (§20.3), и проверять надо то, ради чего правило писалось:
+     * цену нечем платить, если ресурс не выпадает там, где игрок копит.
+     */
     for (const [level, cost] of Object.entries(BUILD_COST)) {
       const l = Number(level);
-      // Железо идёт с ярусов 1–3 и в постройки от третьего уровня,
-      // кристалл — только с ярусов 2–3 и в постройки от пятого.
-      if (l < 3) assert.equal(cost.iron ?? 0, 0, `железо на уровне ${l}`);
-      if (l < 5) assert.equal(cost.crystal ?? 0, 0, `кристалл на уровне ${l}`);
+      if (l < 2) continue; // ур. 1 — цена пролога, мимо вывода (§16.2)
+      const available = LOOT_SHARE[tierForLevel(l)];
+      for (const kind of Object.keys(cost) as ResourceKind[]) {
+        assert.ok(
+          (available[kind] ?? 0) > 0,
+          `уровень ${l}: ${kind} в цене, но не выпадает на ярусе ${tierForLevel(l)}`,
+        );
+      }
+    }
+  });
+
+  test('§20.3 — цена уровня растёт, и растёт круглыми числами', () => {
+    let prev = 0;
+    for (let level = 1; level <= MAX_LEVEL; level++) {
+      const cost = BUILD_COST[level] ?? {};
+      const sum = Object.values(cost).reduce((a, b) => a + b, 0);
+      assert.ok(sum > prev, `уровень ${level}: цена не выросла (${sum} против ${prev})`);
+      for (const [kind, amount] of Object.entries(cost) as [ResourceKind, number][]) {
+        assert.equal(
+          amount,
+          roundNice(amount),
+          `уровень ${level}: ${kind} ${amount} — игрок читает некруглое`,
+        );
+      }
+      prev = sum;
     }
   });
 
