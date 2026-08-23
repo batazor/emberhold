@@ -91,6 +91,8 @@ export interface CampCallbacks {
   /** Поставить сундук-хранилище (`sim/chests.ts`): карточка вооружает
    *  режим, дальше тап по клетке — тем же жестом, что палатка. */
   onChest(): void;
+  /** Открыть общий диспетчер жителей, их смен и поручений. */
+  onResidents(): void;
   /**
    * Лист открылся или закрылся. Панель зовёт это на переходе состояния,
    * а не на каждом `openSheet`: смена раздела внутри открытого листа —
@@ -511,6 +513,7 @@ export class CampHud {
     this.suppliesButton = supplies;
     this.bar.append(
       walls,
+      this.makeActionButton('Жители', () => this.cb.onResidents()),
       supplies,
       this.makeBarButton('В мир', 'tiers', true),
     );
@@ -636,6 +639,16 @@ export class CampHud {
     // Повторный тап по той же кнопке закрывает лист: кнопка, которая только
     // открывает, вынуждает целиться в «Закрыть».
     b.addEventListener('click', () => (this.open === kind ? this.close() : this.openSheet(kind)));
+    return b;
+  }
+
+  private makeActionButton(text: string, action: () => void): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.textContent = text;
+    b.addEventListener('click', () => {
+      this.close();
+      action();
+    });
     return b;
   }
 

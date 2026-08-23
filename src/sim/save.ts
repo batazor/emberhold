@@ -6,8 +6,8 @@ import type { DwellerLook } from './garrison';
 import { prunePicks } from './berries';
 import { pruneBought } from './trade';
 import type { PickLog } from './berries';
-import { RESIDENT_JOBS } from './residents';
-import type { ResidentJob } from './residents';
+import { RESIDENT_JOBS, RESIDENT_SCHEDULE_ORDER } from './residents';
+import type { ResidentJob, ResidentScheduleId } from './residents';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
 import { CLASS_ORDER, HERO_CLASSES, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
@@ -150,7 +150,17 @@ interface SaveV1 {
    * открываться. Отсутствие читается пустым лагерем — герой один и живёт
    * в Жилье, ровно как было до появления жильцов.
    */
-  residents?: { name: string; look: string; answer: string; seed?: number; rest?: boolean }[];
+  residents?: {
+    name: string;
+    look: string;
+    answer: string;
+    seed?: number;
+    rest?: boolean;
+    schedule?: string;
+    hunt?: { startedAt: number; endsAt: number; seed: number };
+  }[];
+  /** Счёт открытия поручения охоты. Без поля старый лагерь начинает с нуля. */
+  foxes?: number;
   tents?: { x: number; z: number }[];
   /** Первая цель хозяйства. Необязательна: старый сейв получит её по условию. */
   farm?: {
@@ -238,7 +248,10 @@ export function save(
       // Пишется только правда «отдыхает»: false — умолчание чтения,
       // и старый сейв без поля читается работающим лагерем, каким и был.
       ...(r.rest ? { rest: true } : {}),
+      ...(r.schedule !== undefined ? { schedule: r.schedule } : {}),
+      ...(r.hunt !== undefined ? { hunt: r.hunt } : {}),
     })),
+    ...(camp.foxesCaught !== undefined ? { foxes: camp.foxesCaught } : {}),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
     ...(camp.farm !== undefined
       ? {
@@ -389,6 +402,9 @@ export function load(): LoadResult {
       };
     }
     if (data.guest === true) camp.guestPromised = true;
+    if (typeof data.foxes === 'number' && Number.isFinite(data.foxes) && data.foxes >= 0) {
+      camp.foxesCaught = Math.floor(data.foxes);
+    }
 
     const area = campArea(camp.levels.hq);
     const fallback = createCamp().layout;
@@ -408,6 +424,12 @@ export function load(): LoadResult {
       }
     }
     camp.resources = res;
+    // До появления счётчика одна снятая шкура была лучшим доступным следом
+    // пойманной лисы. Проданные шкуры восстановить нельзя, но оставшиеся
+    // обязаны засчитаться, иначе старый лагерь начал бы охоту с нуля.
+    if (!(typeof data.foxes === 'number' && Number.isFinite(data.foxes) && data.foxes >= 0)) {
+      camp.foxesCaught = res.pelt ?? 0;
+    }
     const farm = data.farm;
     if (
       farm !== undefined &&
@@ -506,7 +528,15 @@ export function load(): LoadResult {
         // §13.7 — занятий стало три: к двум ответам знакомства добавился
         // приказ «добывать пищу». Проверять по `SELF_ANSWERS` теперь нельзя —
         // сохранение с добытчиком не открылось бы, и жилец пропал бы молча.
-        .filter((r): r is { name: string; look: DwellerLook; answer: ResidentJob; seed?: number; rest?: boolean } =>
+        .filter((r): r is {
+          name: string;
+          look: DwellerLook;
+          answer: ResidentJob;
+          seed?: number;
+          rest?: boolean;
+          schedule?: string;
+          hunt?: { startedAt: number; endsAt: number; seed: number };
+        } =>
           r != null &&
           typeof r.name === 'string' &&
           r.name !== '' &&
@@ -522,6 +552,22 @@ export function load(): LoadResult {
           seed: typeof r.seed === 'number' ? r.seed : seedOfName(r.name),
           // Отдых — недавнее поле: сейв без него читается работающим лагерем.
           rest: r.rest === true,
+          ...(RESIDENT_SCHEDULE_ORDER.includes(r.schedule as ResidentScheduleId)
+            ? { schedule: r.schedule as ResidentScheduleId }
+            : {}),
+          ...(r.hunt != null &&
+            typeof r.hunt.startedAt === 'number' && Number.isFinite(r.hunt.startedAt) &&
+            typeof r.hunt.endsAt === 'number' && Number.isFinite(r.hunt.endsAt) &&
+            r.hunt.endsAt >= r.hunt.startedAt &&
+            typeof r.hunt.seed === 'number' && Number.isFinite(r.hunt.seed)
+              ? {
+                  hunt: {
+                    startedAt: r.hunt.startedAt,
+                    endsAt: r.hunt.endsAt,
+                    seed: Math.floor(r.hunt.seed) >>> 0,
+                  },
+                }
+              : {}),
         }));
     }
     if (Array.isArray(data.tents)) {

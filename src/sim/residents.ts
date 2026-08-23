@@ -46,6 +46,7 @@ import { canAfford, spend } from './resources';
 import { GUEST_FOOD } from './balance';
 import type { ResourceKind, Resources } from './resources';
 import { gatherFarmFood, startFarmOnboarding } from './farm';
+import { mulberry32 } from '../core/rng';
 
 /**
  * Чем жилец занят. Двух первых он приносит с собой — это ответ на вопрос
@@ -71,6 +72,135 @@ export interface Resident {
    * приказом вернуться к нему, и жилец обязан помнить, к чему.
    */
   readonly rest: boolean;
+  /** Суточная смена. Без поля старый сейв живёт по дневной смене. */
+  readonly schedule?: ResidentScheduleId;
+  /** Пятичасовое поручение вне лагеря. До завершения можно только отозвать. */
+  readonly hunt?: ResidentHunt;
+}
+
+export type ResidentScheduleId = 'ранняя' | 'дневная' | 'поздняя';
+export type ResidentPhase = 'сон' | 'еда' | 'работа' | 'свободен' | 'охота';
+
+export interface ResidentSchedule {
+  readonly name: string;
+  readonly sleep: readonly [number, number];
+  readonly meals: readonly (readonly [number, number])[];
+  readonly work: readonly (readonly [number, number])[];
+}
+
+/**
+ * Три понятных профиля вместо почасового редактора на 24 клетки. В каждом
+ * восемь часов сна, два приёма пищи и десять часов работы; меняется только
+ * фаза суток. Это уже расписание, но ещё не таблица Excel на экране телефона.
+ */
+export const RESIDENT_SCHEDULES: Readonly<Record<ResidentScheduleId, ResidentSchedule>> = {
+  ранняя: { name: 'Ранняя смена', sleep: [20, 4], meals: [[4, 5], [10, 11]], work: [[5, 10], [11, 16]] },
+  дневная: { name: 'Дневная смена', sleep: [22, 6], meals: [[6, 7], [12, 13]], work: [[7, 12], [13, 18]] },
+  поздняя: { name: 'Поздняя смена', sleep: [2, 10], meals: [[10, 11], [16, 17]], work: [[11, 16], [17, 22]] },
+};
+
+export const RESIDENT_SCHEDULE_ORDER: readonly ResidentScheduleId[] = ['ранняя', 'дневная', 'поздняя'];
+export const scheduleOf = (r: Resident): ResidentScheduleId => r.schedule ?? 'дневная';
+
+const inHours = (hour: number, [from, to]: readonly [number, number]): boolean =>
+  from <= to ? hour >= from && hour < to : hour >= from || hour < to;
+
+/** Текущее окно по серверным часам. Охота старше обычного распорядка. */
+export function residentPhaseAt(r: Resident, now: number): ResidentPhase {
+  if (r.hunt !== undefined) return 'охота';
+  const hour = ((now / 3600) % 24 + 24) % 24;
+  const schedule = RESIDENT_SCHEDULES[scheduleOf(r)];
+  if (inHours(hour, schedule.sleep)) return 'сон';
+  if (schedule.meals.some((slot) => inHours(hour, slot))) return 'еда';
+  if (schedule.work.some((slot) => inHours(hour, slot))) return 'работа';
+  return 'свободен';
+}
+
+export interface ResidentHunt {
+  readonly startedAt: number;
+  readonly endsAt: number;
+  readonly seed: number;
+}
+
+/** Пять настоящих часов: таймер досчитывается и при закрытой игре. */
+export const HUNT_SECONDS = 5 * 60 * 60;
+export const HUNT_UNLOCK_FOXES = 10;
+export const foxesCaught = (camp: CampState): number => camp.foxesCaught ?? 0;
+export const huntUnlocked = (camp: CampState): boolean => foxesCaught(camp) >= HUNT_UNLOCK_FOXES;
+
+export type HuntBlock = 'ok' | 'locked' | 'missing' | 'roof' | 'away';
+
+export function huntBlock(camp: CampState, index: number): HuntBlock {
+  if (!huntUnlocked(camp)) return 'locked';
+  const r = camp.residents[index];
+  if (r === undefined) return 'missing';
+  if (!hasRoof(camp, index)) return 'roof';
+  if (r.hunt !== undefined) return 'away';
+  return 'ok';
+}
+
+export function startHunt(camp: CampState, index: number, now: number): boolean {
+  if (huntBlock(camp, index) !== 'ok') return false;
+  const r = camp.residents[index]!;
+  const seed = (r.seed ^ Math.floor(now) ^ (foxesCaught(camp) * 0x9e3779b9)) >>> 0;
+  camp.residents[index] = {
+    ...r,
+    rest: false,
+    hunt: { startedAt: now, endsAt: now + HUNT_SECONDS, seed },
+  };
+  return true;
+}
+
+/** Отзыв всегда без награды, даже за секунду до возвращения. */
+export function recallHunt(camp: CampState, index: number): boolean {
+  const r = camp.residents[index];
+  if (r?.hunt === undefined) return false;
+  const { hunt: _hunt, ...back } = r;
+  camp.residents[index] = back;
+  return true;
+}
+
+export interface HuntReport {
+  readonly resident: number;
+  readonly name: string;
+  readonly foxes: number;
+  readonly meat: number;
+  readonly pelts: number;
+  readonly lost: number;
+}
+
+/** Результат бросается из билета и потому одинаков после любой перезагрузки. */
+export function huntYield(hunt: ResidentHunt): number {
+  return Math.floor(mulberry32(hunt.seed)() * 6);
+}
+
+/** Завершить все дозревшие охоты и сразу положить добычу в кладовую. */
+export function collectHunts(camp: CampState, now: number): HuntReport[] {
+  const reports: HuntReport[] = [];
+  camp.residents.forEach((r, index) => {
+    const hunt = r.hunt;
+    if (hunt === undefined || now < hunt.endsAt) return;
+    const foxes = huntYield(hunt);
+    const meatAsked = foxes * 2;
+    const peltsAsked = foxes;
+    const meatBefore = camp.resources.meat ?? 0;
+    const peltsBefore = camp.resources.pelt ?? 0;
+    const lost = stash(camp, { meat: meatAsked, pelt: peltsAsked });
+    const meat = (camp.resources.meat ?? 0) - meatBefore;
+    const pelts = (camp.resources.pelt ?? 0) - peltsBefore;
+    camp.foxesCaught = foxesCaught(camp) + foxes;
+    const { hunt: _hunt, ...back } = r;
+    camp.residents[index] = back;
+    reports.push({ resident: index, name: r.name, foxes, meat, pelts, lost });
+  });
+  return reports;
+}
+
+export function assignSchedule(camp: CampState, index: number, schedule: ResidentScheduleId): boolean {
+  const r = camp.residents[index];
+  if (r === undefined || scheduleOf(r) === schedule) return false;
+  camp.residents[index] = { ...r, schedule };
+  return true;
 }
 
 /** Сколько человек вмещает одна палатка. Единица — это и есть вся механика. */
@@ -315,6 +445,23 @@ export const RESIDENT_STATE: Record<ResidentJob, string> = {
 export const residentState = (r: Resident): string =>
   r.rest ? 'отдыхает' : RESIDENT_STATE[r.answer];
 
+/** Полная строка для интерфейса: распорядок виден раньше постоянной работы. */
+export function residentStateAt(r: Resident, now: number): string {
+  if (r.hunt !== undefined) {
+    const left = Math.max(0, r.hunt.endsAt - now);
+    const totalMinutes = Math.ceil(left / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `на охоте · ${hours} ч ${minutes} мин`;
+  }
+  if (r.rest) return 'отдыхает по приказу';
+  const phase = residentPhaseAt(r, now);
+  if (phase === 'работа') return residentState(r);
+  if (phase === 'сон') return 'спит';
+  if (phase === 'еда') return 'ест';
+  return 'свободное время';
+}
+
 /**
  * Приказ карточки. Занятий по-прежнему два (`RESIDENT_WORK`), а приказов
  * три: «отдыхать» — не третье занятие, а разрешение отложить инструмент.
@@ -351,6 +498,9 @@ export function hasRoof(camp: CampState, index: number): boolean {
 export function assignWork(camp: CampState, index: number, order: ResidentOrder): boolean {
   const r = camp.residents[index];
   if (r === undefined) return false;
+  // Поручение вне лагеря сначала отзывают явно: смена работы не должна
+  // исподтишка отменять пять часов и стирать ожидаемую награду.
+  if (r.hunt !== undefined) return false;
   if (order === 'отдых') {
     if (r.rest) return false;
     camp.residents[index] = { ...r, rest: true };
@@ -385,6 +535,28 @@ export const WORK_SECONDS = 1800;
  */
 export const WORK_CAP = 3;
 
+const DAY_SECONDS = 24 * 60 * 60;
+
+/** Накопленное время в повторяющихся суточных окнах от эпохи до `at`. */
+function scheduledBefore(at: number, slots: readonly (readonly [number, number])[]): number {
+  const days = Math.floor(at / DAY_SECONDS);
+  const rem = at - days * DAY_SECONDS;
+  let total = days * slots.reduce((sum, [from, to]) => sum + (to - from) * 3600, 0);
+  for (const [from, to] of slots) {
+    const start = from * 3600;
+    const end = to * 3600;
+    total += Math.max(0, Math.min(rem, end) - start);
+  }
+  return total;
+}
+
+/** Сколько из промежутка пришлось на рабочие окна конкретного человека. */
+export function scheduledWorkSeconds(r: Resident, from: number, to: number): number {
+  if (to <= from || r.rest || r.hunt !== undefined) return 0;
+  const slots = RESIDENT_SCHEDULES[scheduleOf(r)].work;
+  return Math.max(0, scheduledBefore(to, slots) - scheduledBefore(from, slots));
+}
+
 /**
  * Что жильцы наработали за отлучку.
  *
@@ -402,9 +574,10 @@ export function workDone(
    * все прежние прогоны и золотой мастер сдвинулись бы молча.
    */
   working?: number,
+  /** Конец промежутка. Если задан, сон и еда вырезаются по расписанию. */
+  untilAt?: number,
 ): { kind: ResourceKind; n: number }[] {
-  const each = Math.min(WORK_CAP, Math.floor(Math.max(0, awaySec) / WORK_SECONDS));
-  if (each === 0) return [];
+  if (awaySec <= 0) return [];
   // Работает только тот, у кого есть крыша. Это не наказание, а то же
   // задание, сказанное третий раз: человек, ночующий у костра, за работу
   // не берётся, и видно это прибавкой, которой не случилось.
@@ -416,7 +589,12 @@ export function workDone(
   for (const r of camp.residents.slice(0, roofed)) {
     // Отдыхающий не приносит ничего: отдых — это и есть отложенный
     // инструмент, и прибавка от него была бы работой под другим именем.
-    if (r.rest) continue;
+    if (r.rest || r.hunt !== undefined) continue;
+    const active = untilAt === undefined
+      ? Math.max(0, awaySec)
+      : scheduledWorkSeconds(r, untilAt - Math.max(0, awaySec), untilAt);
+    const each = Math.min(WORK_CAP, Math.floor(active / WORK_SECONDS));
+    if (each === 0) continue;
     const kind = RESIDENT_WORK[r.answer];
     sum.set(kind, (sum.get(kind) ?? 0) + each);
   }
@@ -433,8 +611,9 @@ export function collectWork(
   camp: CampState,
   awaySec: number,
   working?: number,
+  untilAt?: number,
 ): { kind: ResourceKind; n: number }[] {
-  const done = workDone(camp, awaySec, working);
+  const done = workDone(camp, awaySec, working, untilAt);
   const collected = done
     .map(({ kind, n }) => ({ kind, n: n - stash(camp, { [kind]: n }) }))
     .filter(({ n }) => n > 0);

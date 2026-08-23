@@ -285,14 +285,19 @@ import { advance, answerSelf, generateSettler, giftOf, setHeroName, startMeet } 
 import {
   TENT_REASON,
   admit,
+  assignSchedule,
   assignWork,
+  collectHunts,
   buildTent,
   collectWork,
   RESIDENT_WORK,
   hasRoof,
   homeless,
+  recallHunt,
+  residentPhaseAt,
   residentState,
   roofs,
+  startHunt,
   tentBlock,
   tentFits,
   tentSpot,
@@ -316,6 +321,7 @@ import type { WorkItem } from './render/workbar';
 import type { Bubble } from './render/bubbles';
 import { DWELLER_SPEED } from './sim/garrison';
 import { ResidentCard } from './ui/residentCard';
+import { ResidentManager } from './ui/residentManager';
 import { CharacterPage } from './features/character';
 import type { CharacterSubject, PersonTab } from './features/character';
 import type { DwellerLook } from './sim/garrison';
@@ -392,7 +398,10 @@ const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark)
  * заплатить за смену, которой не было.
  */
 const upkeep = payUpkeep(camp, awaySec);
-const worked = collectWork(camp, awaySec, workingAfter(camp, upkeep.hungry));
+const worked = collectWork(camp, awaySec, workingAfter(camp, upkeep.hungry), startedAt);
+// Охотники не получают одновременно обычную зарплату: сначала считается
+// отлучка с живым билетом, затем дозревший билет возвращает их в лагерь.
+const huntReportsOffline = collectHunts(camp, startedAt);
 // Старый сейв со вторым жителем получает новую цель при первом запуске этой
 // версии. Оффлайн-работа выше к ней не относится: задания тогда ещё не было.
 startFarmOnboarding(camp);
@@ -629,6 +638,8 @@ const hud = new Hud(app, {
   },
 }, debugHud ? { night: debugNight ?? 1, grass: grassPerTile } : null);
 
+let residentManager: ResidentManager | null = null;
+
 const campHud = new CampHud(app, {
   onUpgrade: (id) => {
     // Кадр «поставьте Мастерскую» идёт обычной стройкой, без подарка.
@@ -753,6 +764,7 @@ const campHud = new CampHud(app, {
     const spot = chestSpot(camp);
     if (spot !== null) showPlacingSpot(spot);
   },
+  onResidents: () => residentManager?.show(camp, clock.now()),
   /**
    * Лист накрывает сцену, а веер рисуется поверх всего своим слоем —
    * и стоял ровно на карточке места в «Карте региона», споря с ней
@@ -776,6 +788,48 @@ const campHud = new CampHud(app, {
   // §29.4 — та же дорога у картинок подарка: бревно, валун и слиток берутся
   // из тех же наборов, которыми набран лагерь.
   giftIcon: (name) => giftIcon(name),
+});
+
+/** Любая правка поручения сразу перестраивает людей в живой сцене лагеря. */
+function refreshResidentAssignment(index: number): void {
+  const r = camp.residents[index];
+  if (r !== undefined) raidView?.setResidentTool(index, r.rest || r.hunt !== undefined ? null : RESIDENT_TOOL[r.answer]);
+  if (inGladeCamp) {
+    if (controlled === -1) seatResidents();
+    else planChores();
+  }
+  residentManager?.sync(camp, clock.now(), true);
+  persist();
+}
+
+residentManager = new ResidentManager(app, {
+  onWork: (index, order) => {
+    if (!assignWork(camp, index, order)) return;
+    play('pick');
+    refreshResidentAssignment(index);
+  },
+  onSchedule: (index, schedule) => {
+    if (!assignSchedule(camp, index, schedule)) return;
+    play('pick');
+    refreshResidentAssignment(index);
+  },
+  onHunt: (index) => {
+    if (!startHunt(camp, index, clock.now())) {
+      play('deny');
+      return;
+    }
+    play('pick');
+    const r = camp.residents[index];
+    if (r !== undefined) campHud.notify(`${r.name}: ушёл на охоту на 5 часов`);
+    refreshResidentAssignment(index);
+  },
+  onRecall: (index) => {
+    const name = camp.residents[index]?.name;
+    if (!recallHunt(camp, index)) return;
+    play('pick');
+    if (name !== undefined) campHud.notify(`${name}: вернулся без добычи`);
+    refreshResidentAssignment(index);
+  },
 });
 
 const farmOnboarding = new FarmOnboarding(app, {
@@ -1658,6 +1712,8 @@ let carried: (boolean | undefined)[] = [];
 /** Кто сейчас спит в палатке: кадр рендера про это знает от тика рутины,
  *  а не спрашивает расписание второй раз своими руками. */
 let sleeping: boolean[] = [];
+/** Последнее окно личного расписания: смена окна пересаживает людей один раз. */
+let residentPhases: ReturnType<typeof residentPhaseAt>[] = [];
 
 /**
  * Маршруты пересобираются с посадкой и с приказом карточки: кто идёт,
@@ -1670,6 +1726,7 @@ function planChores(): void {
   // о прошлой раскладке.
   carried = [];
   sleeping = [];
+  residentPhases = camp.residents.map((r) => residentPhaseAt(r, campTime()));
   if (raid === null) {
     chores = [];
     choreMask = null;
@@ -1715,7 +1772,12 @@ function planChores(): void {
       // §13.8 — кусты в клетках локации: к ним ходит добытчик пищи.
       bushes: (camp.bushes ?? []).map((b) => ({ x: o.x + b.x, z: o.z + b.z })),
     },
-    camp.residents,
+    camp.residents.map((r, i) => ({
+      ...r,
+      // `choresOf` знает только работа/покой; личное расписание превращает
+      // сон, еду, свободное время и охоту в честный покой для маршрута.
+      rest: r.rest || residentPhases[i] !== 'работа',
+    })),
     (i) => hasRoof(camp, i),
   );
 }
@@ -1779,6 +1841,11 @@ function seatResidents(): void {
     };
   });
   raidView.setResidents(list);
+  residentPhases.forEach((phase, i) => {
+    const hidden = phase === 'сон' || phase === 'охота';
+    raidView!.setResidentHidden(i, hidden);
+    sleeping[i] = hidden;
+  });
 }
 
 /**
@@ -1828,8 +1895,13 @@ function campSpeech(): (string | null)[] {
  * принадлежит руке (§16.1).
  */
 function stepChores(dt: number): void {
-  if (raid === null || raidView === null || chores.length === 0) return;
   const now = campTime();
+  const phases = camp.residents.map((r) => residentPhaseAt(r, now));
+  if (phases.some((phase, i) => phase !== residentPhases[i])) {
+    seatResidents();
+    return;
+  }
+  if (raid === null || raidView === null || chores.length === 0) return;
   const pinned = [{ x: raid.hero.x, z: raid.hero.z }, ...seatedBodies];
   if (meetAt !== null) pinned.push({ x: meetAt.x + 0.5, z: meetAt.z + 0.5 });
   const size = raid.loc.size;
@@ -3962,6 +4034,11 @@ function notifyWorked(): void {
   if (worked.length > 0) {
     parts.push(worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · '));
   }
+  for (const report of huntReportsOffline) {
+    parts.push(report.foxes === 0
+      ? `${report.name}: охота без добычи`
+      : `${report.name}: лис ${report.foxes}, мясо ${report.meat}, шкур ${report.pelts}`);
+  }
   if (gotCoins > 0) parts.push(`монеты ${gotCoins}`);
   if (parts.length === 0 && trouble.length === 0) return;
   workShown = true;
@@ -5071,6 +5148,18 @@ if (debugCamp !== null) {
       unlocked: reward,
     };
   }
+  if (debugCamp === 'staff') {
+    camp.foxesCaught = 10;
+    const staff = [
+      { name: 'Гита', look: 'поселенец' as const, seed: 11, answer: 'строим' as const },
+      { name: 'Руна', look: 'поселенец' as const, seed: 22, answer: 'ходим' as const },
+      { name: 'Тихон', look: 'поселенец' as const, seed: 33, answer: 'кормим' as const },
+    ];
+    for (const resident of staff) {
+      admit(camp, { ...resident, rest: false });
+      buildTent(camp);
+    }
+  }
   // Площадка напрямую, мимо маршрутизатора: второй лагерь существует
   // чисто для тестов, и сейв с поляной не должен уводить кадр отладки.
   toPadCamp();
@@ -5673,6 +5762,18 @@ function stepCampSystems(dt: number, now: number): void {
     // §26 — отряд возвращается тем же тиком, что и стройка: слот освобождается
     // одинаково, и досчитывается он после закрытой вкладки так же.
     if (collectSortie(now)) persist();
+    const hunts = collectHunts(camp, now);
+    if (hunts.length > 0) {
+      for (const report of hunts) {
+        campHud.notify(report.foxes === 0
+          ? `${report.name}: вернулся без лис`
+          : `${report.name}: лис ${report.foxes} · мясо ${report.meat} · шкур ${report.pelts}`);
+        if (report.lost > 0) campHud.notify(STORE_FULL);
+      }
+      if (inGladeCamp && controlled === -1) seatResidents();
+      residentManager?.sync(camp, now, true);
+      persist();
+    }
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
     refreshNeighbours(now);
@@ -5694,6 +5795,7 @@ function stepCampSystems(dt: number, now: number): void {
     residentCard.setBottom(campHud.bands().bottom + 6);
     // Крыша могла появиться или пропасть, пока карточка открыта.
     if (residentCard.visible) residentCard.sync(camp, shownResident);
+    residentManager?.sync(camp, now);
     // Таймеры Плаца и Лазарета идут и под открытой страницей: разбор обязан
     // считать то же, что карточка, а не застывать на кадре открытия.
     if (characterPage.visible) syncCharacter();
@@ -5853,6 +5955,9 @@ startLoop({
         // §13.6 — потолок кладовой: не поместившееся пропадает, и об этом
         // говорится. Молчаливая потеря добычи хуже самой потери.
         if (stash(camp, result.carried) > 0) campHud.notify(STORE_FULL);
+        if (raid.foxesCaught > 0) {
+          camp.foxesCaught = (camp.foxesCaught ?? 0) + raid.foxesCaught;
+        }
         if (counts) {
           camp.raids += 1;
           // §22.6б — ярус взрослеет заходами: смягчение входа кончается.

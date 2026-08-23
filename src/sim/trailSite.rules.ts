@@ -241,11 +241,13 @@ describe('Тропа: прогулка с работой', () => {
     const fox = site.loc.enemies[0];
     assert.ok(fox !== undefined);
     harvestFox(raid, fox);
+    assert.equal(raid.foxesCaught, 1);
     assert.equal(raid.bag.pelt, 1);
     assert.equal(raid.bag.meat, 2);
     assert.equal(raid.bagTotal, 3);
     harvestFox(raid, fox);
     assert.equal(raid.bagTotal, 3, 'с одной лисы добыча снята только раз');
+    assert.equal(raid.foxesCaught, 1, 'одна лиса посчиталась дважды');
 
     const crampedSite = generateTrailSite(43);
     const cramped = createRaid({ seed: 43, tier: 0, kitchenLevel: 1, storageLevel: 1, loc: crampedSite.loc, capacity: 1 });
