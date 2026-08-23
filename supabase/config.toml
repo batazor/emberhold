@@ -1,0 +1,11 @@
+# Раскладка серверных функций (§6). Точка входа названа явно: CLI по умолчанию
+# ищет `index.ts`, а у нас лежит сборка — `index.js`, склеенная из `src/sim`
+# скриптом `npm run edge`. Писать функции прямо здесь нельзя: им нужен код
+# симуляции, а он живёт в игре и обязан быть тем же самым.
+project_id = "ynprsyzjdaheivhfcuel"
+
+[functions.sortie]
+entrypoint = "./functions/sortie/index.js"
+
+[functions.wheel]
+entrypoint = "./functions/wheel/index.js"

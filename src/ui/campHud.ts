@@ -31,10 +31,14 @@ import {
 import type { ConsumableId } from '../sim/consumables';
 import { ONB_HINT } from '../sim/onboarding';
 import { dayAt, firstRaidNode } from '../sim/world';
+import type { Visit } from '../sim/world';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
+import { clanTaskOpen } from '../sim/clan';
 import { avatarSvg } from './avatar';
+import { DailyPanel } from './dailyPanel';
+import type { GiftPic } from './dailyPanel';
 import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
 import type { Roster } from '../sim/heroes';
@@ -76,6 +80,11 @@ export interface CampCallbacks {
   onOffhand(offhand: Offhand): void;
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
+  /** §30 — завести свой клан: строка задания открывает окно с именем. */
+  onClan(): void;
+  /** §29 — забрать сегодняшний подарок. Считает и зачисляет лагерь, а не
+   *  панель: подарок проходит через кладовую наравне с добычей. */
+  onClaimGift(): void;
   /** Поставить сундук-хранилище (`sim/chests.ts`): карточка вооружает
    *  режим, дальше тап по клетке — тем же жестом, что палатка. */
   onChest(): void;
@@ -94,6 +103,9 @@ export interface CampCallbacks {
    * и строка списка остаётся такой, какой была.
    */
   gearIcon(kind: GearSlot | 'shield', level: number): string;
+  /** §29.4 — картинка вещи на карточке дня. Приходит оттуда же, откуда
+   *  значок снаряжения, и по той же причине: рендер панелям не виден. */
+  giftIcon(name: GiftPic): string;
 }
 
 const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
@@ -114,8 +126,9 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'cryst
  */
 
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь.
- *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене. */
-type SheetKind = BuildingId | 'tiers' | 'shop' | 'store' | null;
+ *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене.
+ *  'daily' — подарок за вход (§29): открывается тапом по значку над сценой. */
+type SheetKind = BuildingId | 'tiers' | 'shop' | 'store' | 'daily' | null;
 
 const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
@@ -158,6 +171,8 @@ export class CampHud {
   private chestButton!: HTMLButtonElement;
   /** Карта региона (§4). Живёт в том же листе, где раньше был список ярусов. */
   private readonly map: WorldMap;
+  /** Подарок за вход (§29): значок над сценой и семь карточек в листе. */
+  private readonly daily: DailyPanel;
   /** Отряд, отданный лагерю снаружи (§26): карте он нужен, чтобы знать,
    *  есть ли кого отправить. */
   private roster: Roster | null = null;
@@ -167,6 +182,8 @@ export class CampHud {
   private readonly taskFace: HTMLElement;
   private readonly taskWhy: HTMLElement;
   private readonly taskButton: HTMLButtonElement;
+  /** Какое задание сейчас на строке: от него зависит, что делает кнопка. */
+  private taskDoes: 'tent' | 'clan' = 'tent';
 
   private readonly sheet: HTMLElement;
   private readonly sheetTitle: HTMLElement;
@@ -262,7 +279,13 @@ export class CampHud {
     this.taskWhy = document.createElement('span');
     this.taskWhy.className = 'why';
     this.taskButton = document.createElement('button');
-    this.taskButton.addEventListener('click', () => this.cb.onTent());
+    // Кнопка одна на все задания, и что она делает, решает то, что сейчас
+    // на строке: две кнопки в одной строке — это уже меню, а задание обязано
+    // называть одно действие.
+    this.taskButton.addEventListener('click', () => {
+      if (this.taskDoes === 'clan') this.cb.onClan();
+      else this.cb.onTent();
+    });
     this.task.append(this.taskFace, this.taskWhy, this.taskButton);
 
     // Пустая середина — это и есть лагерь. Клики сквозь неё уходят на сцену,
@@ -416,6 +439,16 @@ export class CampHud {
     this.sections.set('tiers', tiers);
     this.sheet.appendChild(tiers);
 
+    // §29 — подарок за вход. Раздел листа, как карта: панель приносит свою
+    // разметку целиком, лагерь даёт ей место и день.
+    this.daily = new DailyPanel({
+      onClaim: () => this.cb.onClaimGift(),
+      onIcon: () => (this.open === 'daily' ? this.close() : this.openSheet('daily')),
+      giftIcon: (name) => this.cb.giftIcon(name),
+    });
+    this.sections.set('daily', this.daily.root);
+    this.sheet.appendChild(this.daily.root);
+
     this.slot = document.createElement('div');
     this.slot.className = 'sec camp-slot';
 
@@ -441,6 +474,11 @@ export class CampHud {
       this.makeBarButton('Припасы', 'shop'),
       this.makeBarButton('В мир', 'tiers', true),
     );
+
+    // Значок стоит в пустом месте между полосами — там же, где сцена.
+    // Отдельным слоем поверх всего он не нужен: `camp-space` и есть та
+    // середина экрана, которая принадлежит лагерю (§6.2.6).
+    space.appendChild(this.daily.icon);
 
     this.root.append(res, this.banner, this.task, space, this.sheet, this.slot, this.bar);
     parent.appendChild(this.root);
@@ -621,6 +659,7 @@ export class CampHud {
     // называло кнопку, которой больше нет.
     if (kind === 'shop') return 'Припасы';
     if (kind === 'store') return 'Кладовая';
+    if (kind === 'daily') return 'Подарок за вход';
     return BUILDINGS[kind].name;
   }
 
@@ -656,6 +695,7 @@ export class CampHud {
     this.line.tick(dt);
 
     this.syncTask(camp);
+    this.daily.sync(camp, now);
 
     this.last = { camp, now };
     this.paintOpen();
@@ -672,8 +712,11 @@ export class CampHud {
    */
   private syncTask(camp: CampState): void {
     const need = homeless(camp);
-    this.task.style.display = need === 0 ? 'none' : 'flex';
-    if (need === 0) return;
+    this.task.style.display = need === 0 && !clanTaskOpen(camp) ? 'none' : 'flex';
+    if (need === 0) {
+      if (clanTaskOpen(camp)) this.syncClanTask();
+      return;
+    }
     // Имя вместо «гостя»: человек, которого позвали, стоит в лагере
     // с именем и лицом, и звать его в задании гостем — значит забыть
     // знакомство, ради которого он и пришёл.
@@ -698,6 +741,28 @@ export class CampHud {
     // должен видеть и что просят, и почему нельзя, — одно без другого
     // это либо задание без выхода, либо отказ без повода.
     if (block !== 'ok') this.taskWhy.textContent += ` · ${TENT_REASON[block]}`;
+    this.taskDoes = 'tent';
+  }
+
+  /**
+   * Задание про клан (§30). Стоит **за** крышей и не рядом с ней: строка
+   * задания одна, и порядок в ней решает не важность вообще, а срочность.
+   * Человек без крыши ждёт сегодня; имя лагеря подождёт до вечера — и стоит
+   * оно ровно того, чтобы дождаться пустой строки, а не делить её.
+   *
+   * Лица у этого задания нет: клан — не человек, и чужое лицо рядом с ним
+   * читалось бы как «этот просит клан».
+   */
+  private syncClanTask(): void {
+    this.taskDoes = 'clan';
+    if (this.taskFace.dataset['who'] !== '') {
+      this.taskFace.dataset['who'] = '';
+      this.taskFace.innerHTML = '';
+      this.taskFace.style.display = 'none';
+    }
+    this.taskWhy.textContent = 'Лагерь без имени: соседи уже в таблице';
+    this.taskButton.textContent = 'Создать клан';
+    this.taskButton.disabled = false;
   }
 
   /**
@@ -726,6 +791,15 @@ export class CampHud {
    */
   setRoster(roster: Roster): void {
     this.roster = roster;
+  }
+
+  /**
+   * §30.6 — карте нужны чужие метки: читает их сеть, а панель про сеть
+   * не знает. Тот же случай и та же причина, что у ростера строкой выше;
+   * лагерь их только передаёт, потому что карта живёт в его листе.
+   */
+  setNeighbours(visits: readonly Visit[]): void {
+    this.map.setNeighbours(visits);
   }
 
   private syncShop(camp: CampState): void {
@@ -950,6 +1024,10 @@ export class CampHud {
     this.banner.textContent = this.line.text;
 
     this.bar.style.display = quiet ? 'none' : '';
+    // Значок подарка (§29) уходит вместе с нижней строкой и по той же
+    // причине: тихий кадр оставляет на экране ровно одно действие, и второе,
+    // сколь угодно бесплатное, отменяет весь кадр.
+    this.daily.icon.style.display = quiet ? 'none' : '';
     this.sheetClose.style.display = quiet ? 'none' : '';
     if (quiet) this.moveButton.style.display = 'none';
 

@@ -26,6 +26,7 @@
     "classes": "tsx scripts/classes.ts",
     "trade": "tsx scripts/trade.ts",
     "fence": "tsx scripts/fence.ts",
+    "gift": "tsx scripts/gift.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
     "resample": "tsx scripts/resample.ts",
@@ -35,10 +36,12 @@
     "tents": "tsx scripts/tents.ts",
     "shift": "tsx scripts/shift.ts",
     "clans": "tsx scripts/clans.ts",
+    "standing": "tsx scripts/standing.ts",
     "fan": "tsx scripts/fan.ts",
     "levels": "tsx scripts/levels.ts",
     "stop": "tsx scripts/stop.ts",
-    "edge": "tsx scripts/edge.ts"
+    "edge": "tsx scripts/edge.ts",
+    "edge:deploy": "npm run edge && npx supabase functions deploy sortie wheel --project-ref ynprsyzjdaheivhfcuel --use-api"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

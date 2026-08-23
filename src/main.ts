@@ -85,7 +85,20 @@ import {
   chestFits,
   chestSpot,
   stash,
+  storeCapacity,
 } from './sim/chests';
+import {
+  CLAIM_REASON,
+  GIFT_ARROWS,
+  claimBlock,
+  claimed,
+  dayOf,
+  emptyDaily,
+  giftAt,
+  giftLoot,
+  giftTier,
+  guestSeed,
+} from './sim/daily';
 
 /** Одна строка на все потери у потолка кладовой (§13.6): канал события. */
 const STORE_FULL = 'Кладовая полна — часть добычи пропала';
@@ -120,8 +133,10 @@ import type { RaidState } from './sim/raid';
 import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } from './sim/consumables';
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
+import type { ResourceKind } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
+  cloudNeighbours,
   cloudOnSignIn,
   cloudPull,
   cloudPush,
@@ -147,7 +162,7 @@ import {
   shiftAt,
   worldAt,
 } from './sim/world';
-import type { WorldNode } from './sim/world';
+import type { Visit, WorldNode } from './sim/world';
 import { BuildPanel } from './ui/buildPanel';
 import {
   campNav,
@@ -212,6 +227,7 @@ import { events, loadTelemetry, track } from './sim/telemetry';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { gearIcon } from './render/gearIcon';
+import { giftIcon } from './render/giftIcon';
 import { CursorWind } from './render/cursorWind';
 import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
@@ -223,6 +239,9 @@ import { CampHud } from './ui/campHud';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
+import { ClanPanel } from './ui/clanPanel';
+import { MailButton } from './ui/mail';
+import { foundClan, neighboursOpen } from './sim/clan';
 import { CampPrompt } from './ui/campPrompt';
 import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
@@ -630,6 +649,12 @@ const campHud = new CampHud(app, {
   },
   onOffhand: (hand) => swapOffhand(hand),
   /**
+   * §30 — задание про клан. Кнопка не заводит клан, а спрашивает имя:
+   * заведённый одним тапом клан назывался бы сам собой, а имя — это
+   * единственное, что у него сейчас есть.
+   */
+  onClan: () => clanPanel.open(),
+  /**
    * Задание «поставить палатку» (`sim/residents.ts`). Кнопка не ставит,
    * а вооружает: место выбирает игрок следующим тапом — тем же жестом,
    * каким переставляются здания (§20.4). Первая версия ставила сама,
@@ -691,10 +716,87 @@ const campHud = new CampHud(app, {
     if (!campHud.visible) return;
     heroFan.setVisible(!open && !quietFrame());
   },
+  /** §29 — подарок за вход. Считает и зачисляет лагерь, а не панель. */
+  onClaimGift: () => claimGift(),
   // Значок вещи §14 рисует запечённая геометрия; панелям слой рендера
   // не виден, поэтому картинка приходит к ним отсюда (`scripts/arch.ts`).
   gearIcon: (kind, level) => gearIcon(kind, level),
+  // §29.4 — та же дорога у картинок подарка: бревно, валун и слиток берутся
+  // из тех же наборов, которыми набран лагерь.
+  giftIcon: (name) => giftIcon(name),
 });
+
+/**
+ * Забрать сегодняшний подарок (§29).
+ *
+ * Всё, что здесь есть сверх счёта, — три способа выдачи, и каждый идёт
+ * тем же путём, каким эта вещь появляется в игре обычно: ресурсы —
+ * через кладовую (§13.6), стрелы — в колчан по его вместимости (§14.3),
+ * сундук — на свободную клетку площадки, как ставит его пролог. Человек
+ * не выдаётся вовсе: подарок только обещает его, а приходит он сам,
+ * знакомством (§29.2).
+ *
+ * День берётся серверными часами (§27): переводом телефона вперёд второй
+ * подарок больше не достаётся.
+ */
+function claimGift(): void {
+  const day = dayAt(clock.now());
+  const state = camp.daily ?? emptyDaily();
+  if (claimBlock(state, day) !== 'ok') {
+    play('deny');
+    campHud.notify(CLAIM_REASON.today);
+    return;
+  }
+  const gift = giftAt(state.taken);
+  let said = '';
+  switch (gift.id) {
+    case 'ресурсы': {
+      const loot = giftLoot(gift, giftTier(camp.levels.kitchen), state.taken);
+      if (stash(camp, loot) > 0) campHud.notify(STORE_FULL);
+      said = (Object.entries(loot) as [ResourceKind, number][])
+        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .join(', ');
+      break;
+    }
+    case 'стрелы': {
+      const cap = gearMods(camp.gear, camp.offhand).arrows;
+      camp.arrows = Math.min(cap, camp.arrows + GIFT_ARROWS);
+      said = `стрелы ${camp.arrows} / ${cap}`;
+      break;
+    }
+    case 'сундук': {
+      // Даром и на свободное место: спрашивать за подарок клетку значило бы
+      // требовать жеста за то, что дают. Места нет — подарок не пропадает,
+      // а говорит об этом; взятым он при этом считается, иначе игрок
+      // упрётся в тот же день назавтра.
+      const spot = chestSpot(camp);
+      if (spot === null) {
+        // Слова те же, что у платного сундука: причина одна, и вторая
+        // её формулировка разошлась бы с первой молча (§23.3).
+        play('deny');
+        campHud.notify(CHEST_REASON.area);
+        return;
+      }
+      adoptChest(camp, spot);
+      said = `сундук, кладовая ${storeCapacity(camp)}`;
+      break;
+    }
+    case 'встреча': {
+      // Обещание, а не жилец: человек приходит к костру сам, и знакомство
+      // с ним такое же, как первое (§29.2).
+      camp.guestPromised = true;
+      // Садится он сразу, если игрок стоит в лагере: «к костру кто-то идёт»
+      // и пустое место у костра — это обещание, не выполненное на глазах.
+      if (inGladeCamp && campDoor !== null) seatSettler(campDoor);
+      said = 'к костру кто-то идёт';
+      break;
+    }
+  }
+  camp.daily = claimed(state, day);
+  play('build');
+  persist();
+  campHud.notify(`Подарок ${dayOf(state.taken) + 1}-го дня: ${said}`);
+}
 
 /* ---------- стройка стен (§6.1.6) ---------- */
 
@@ -1163,6 +1265,14 @@ const residentCard = new ResidentCard(app, {
  * всегда.
  */
 let meetOn: MeetPanelCallbacks | null = null;
+/** Сидящий у костра — обещанный подарком гость (§29.2), а не первый поселенец. */
+let meetIsGuest = false;
+/**
+ * Клетка у входа в палатку — то место, откуда садят пришедшего. Запоминается
+ * входом в лагерь: обещанный гость (§29.2) обязан прийти в ту же минуту,
+ * когда подарок взят, а не после следующей загрузки сцены.
+ */
+let campDoor: Cell | null = null;
 const meetPanel = new MeetPanel(app, {
   onName: (name) => meetOn?.onName(name),
   onAnswer: (answer) => meetOn?.onAnswer(answer),
@@ -1262,6 +1372,12 @@ function meetCallbacks(): MeetPanelCallbacks {
       // Он остаётся в лагере независимо от того, есть ли крыша: запирать
       // знакомство за ценой значило бы отменять само знакомство
       // (`residents.ts`). Нехватка крыши станет заданием, а не отказом.
+      // Обещание закрыто человеком, а не подарком: гаснет оно на приглашении,
+      // а не на выдаче, — до этой минуты у костра кто-то сидит и ждёт.
+      if (meetIsGuest) {
+        camp.guestPromised = false;
+        persist();
+      }
       if (meetSettler !== null && meet.answer !== null) {
         // Сид приходит вместе с человеком: с каким лицом сидел на прогалине,
         // с таким и войдёт в лагерь.
@@ -1691,8 +1807,15 @@ function campBubbles(): void {
 function seatSettler(door: Cell): void {
   meetAt = null;
   meetShown = false;
+  meetIsGuest = false;
   if (raid === null || raidView === null) return;
-  if (camp.raids < 1 || camp.residents.length > 0) return;
+  // Двое приходят к лагерю по разным поводам: первый — потому что лагерь
+  // встал (§16.1), второй — потому что его пообещал седьмой день первой
+  // недели (§29.2). Первый важнее: он часть кривой первых минут, и подменять
+  // его подарочным гостем значило бы отменять знакомство ради подарка.
+  const first = camp.raids >= 1 && camp.residents.length === 0;
+  const promised = camp.guestPromised === true;
+  if (!first && !promised) return;
   const o0 = campOrigin(camp);
   const sit = sitSpotNear(door, raid.loc, (x, z) =>
     PITCH_ORDER.some((id) => {
@@ -1703,7 +1826,13 @@ function seatSettler(door: Cell): void {
   // Человек выводится из якоря лагеря: тот же лагерь — тот же человек,
   // и «а тот ли это был» перестаёт быть вопросом к памяти.
   const o = campOrigin(camp);
-  meetSettler = generateSettler((o.x * 73 + o.z * 131) ^ 0x5eed);
+  // У обещанного гостя своё лицо: тот же якорь, но с числом уже живущих.
+  // Без этого второй пришедший оказался бы двойником первого — тем же
+  // человеком, с тем же именем, во второй раз. Считает сид `sim/daily.ts`:
+  // то же лицо рисует карточка седьмого дня, и формула у них обязана быть
+  // одна (§29.2).
+  meetIsGuest = !first;
+  meetSettler = generateSettler(guestSeed(o, meetIsGuest ? camp.residents.length : 0));
   meet = startMeet(meetSettler);
   meetAt = sit;
   raidView.putSettler(
@@ -1879,6 +2008,24 @@ const setHint = (text: string): void => hud.setHint(meetPanel.visible ? '' : tex
  */
 const statsPanel = new StatsPanel(app);
 
+/**
+ * §30 — почта и клан. Значок почты живёт в углу рядом с шестернёй и включается
+ * слоем соседей; окно клана открывает строка задания.
+ */
+const mailButton = new MailButton(app);
+const clanPanel = new ClanPanel(app, {
+  onFound: (name) => {
+    if (!foundClan(camp, name, clock.now())) {
+      play('deny');
+      return;
+    }
+    play('build');
+    campHud.notify(`Клан «${camp.clan?.name ?? name}» основан`);
+    persist();
+    campHud.sync(camp, clock.now(), 0);
+  },
+});
+
 new SettingsMenu(app, {
   onNewGame: () => {
     wiped = true;
@@ -1891,7 +2038,7 @@ new SettingsMenu(app, {
     );
   },
   // §9 — сводка открывается из настроек: своей кнопки на экране у неё нет.
-  onStats: () => statsPanel.open(),
+  onStats: () => statsPanel.open(camp, clock.now()),
 });
 
 /**
@@ -1979,6 +2126,42 @@ function pushCloud(): void {
   }, 3000);
 }
 
+/**
+ * Метки живых соседей (§30.6). Держатся в памяти и **не едут в сохранение**:
+ * это чужие дельты, а сейв хранит только свои (§4). Пустой список — честный
+ * ответ и без сети, и без соседей: мир тогда показывается ровно таким, каким
+ * показывался до облака.
+ */
+let neighbours: Visit[] = [];
+/** Когда спрашивали в последний раз. Ноль — не спрашивали ни разу. */
+let neighboursAt = 0;
+
+/**
+ * Спросить сервер о чужих заходах. Обновляется **сменами, а не секундами**:
+ * богатство локации считается сменами (`world.ts`), и данные, которые
+ * меняются реже, чем шкала, спрашивать чаще шкалы незачем. Возвращение
+ * в лагерь спрашивает вне очереди — но не чаще минуты: сцена меняется
+ * тапом, а сеть от этого зависеть не должна.
+ *
+ * Ответ фильтруется тем же `liveVisits`, что и свои метки: заходы прошлых
+ * суток относятся к другому региону, а чужая строка, которую не подмёл крон
+ * (§28), обязана отваливаться на чтении, а не портить сегодняшнюю карту.
+ */
+function refreshNeighbours(now: number, force = false): void {
+  if (debugScene || !cloudReady) return;
+  const fresh = now - neighboursAt;
+  if (!force ? fresh < SHIFT_SEC : fresh < 60) return;
+  neighboursAt = now;
+  void cloudNeighbours().then((rows) => {
+    neighbours = liveVisits(
+      rows.map((r) => ({ node: r.node, shift: r.shift })),
+      clock.now(),
+    );
+    campHud.setNeighbours(neighbours);
+    returnScreen.setNeighbours(neighbours);
+  });
+}
+
 // Свёрнутая вкладка — последний шанс дожать отложенное: таймеры там не идут.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
@@ -2011,6 +2194,9 @@ async function syncCloud(): Promise<boolean> {
   }
   cloudReady = true;
   pushCloud();
+  // Первый вопрос про соседей — сразу за сверкой: до неё сессии могло
+  // не быть вовсе, и спрашивать было не от чьего имени.
+  refreshNeighbours(clock.now(), true);
   return false;
 }
 void syncCloud();
@@ -2239,6 +2425,15 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   heroCard.setVisible(false);
   residentCard.setVisible(false);
   closeCharacter();
+  // §30.6 — вернулись в лагерь: чужие заходы могли случиться, пока игрок
+  // был в вылазке, и карта откроется уже с ними.
+  if (scene === 'camp') refreshNeighbours(clock.now(), true);
+  // §30 — почта в углу видна во всех сценах, как шестерня рядом: она про
+  // связь с соседями, а не про то, где сейчас герой. Открытый ящик со сценой
+  // всё же уходит — окно поверх вылазки было бы окном поверх боя.
+  mailButton.setShown(neighboursOpen(camp));
+  mailButton.close();
+  clanPanel.close();
   // Сводка закрывается со сменой сцены: она смотрит на игру со стороны,
   // и её незачем нести из лагеря в вылазку.
   statsPanel.close();
@@ -2344,7 +2539,7 @@ function sendSortie(node: number): void {
     campHud.notify(block === 'ok' ? SORTIE_REASON.hero : SORTIE_REASON[block]);
     return;
   }
-  const state = worldAt(now, camp.visits)[node];
+  const state = worldAt(now, camp.visits, neighbours)[node];
   camp.sortie = ticketOf(
     node,
     place.tier,
@@ -2368,7 +2563,10 @@ function sendSortie(node: number): void {
   // а серверный срок, если он придёт, поправит местный. Без сессии всё
   // остаётся как было: поход считает клиент (см. collectSortie).
   const ticket = camp.sortie;
-  void cloudSortieStart(ticket, hero).then((answer) => {
+  // Отладочные кадры границу сохранения не пересекают (`persist`) — и границу
+  // сервера тоже: тестовый билет, легший в облако, при следующем входе
+  // вернулся бы отрядом, которого игрок никуда не посылал.
+  if (!debugScene) void cloudSortieStart(ticket, hero).then((answer) => {
     if (answer === null || camp.sortie !== ticket) return;
     camp.sortie = { ...ticket, endsAt: answer.endsAt };
     const same = roster.heroes.find((h) => h.id === ticket.hero);
@@ -2532,7 +2730,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   hero.status = 'raid';
   raidHero = hero;
 
-  const state = worldAt(now, camp.visits)[node];
+  const state = worldAt(now, camp.visits, neighbours)[node];
   const rich = state?.rich ?? 0;
   const mul = lootMul(rich);
   // §11.6 — событие объявлено картой до входа, и здесь оно уже принятое
@@ -3428,6 +3626,7 @@ function toGladeCamp(): void {
   raidView.setTents(camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })));
   raidView.setChests(camp.chests.map((c) => ({ x: o.x + c.x, z: o.z + c.z })));
   raidView.setFires((camp.fires ?? []).map((f) => ({ x: o.x + f.x, z: o.z + f.z })));
+  campDoor = door;
   seatSettler(door);
   bubbles.clear();
   seatResidents();
@@ -4375,6 +4574,23 @@ if (debugCamp !== null) {
       persist();
       return done.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`);
     },
+    /**
+     * Чужие метки из ниоткуда (§30.6). Заводить второй аккаунт, чтобы
+     * посмотреть, как выработанная соседями точка выглядит на карте, —
+     * не проверка, а лотерея: сосед должен ещё и сходить в ту же точку
+     * в то же окно. Ручка кладёт ровно то, что положил бы ответ сервера.
+     *
+     * Без номера точки — самая щадящая из сегодняшних (`safestNode`): та же,
+     * куда игру пускает первая вылазка, и она есть в любой день.
+     */
+    сосед: (node?: number, заходов = 1) => {
+      const at = shiftAt(clock.now());
+      const spot = node ?? safestNode(clock.now());
+      for (let i = 0; i < заходов; i++) neighbours.push({ node: spot, shift: at - i });
+      campHud.setNeighbours(neighbours);
+      returnScreen.setNeighbours(neighbours);
+      return worldAt(clock.now(), camp.visits, neighbours)[spot];
+    },
     // Гость из ниоткуда: проверять палатки, каждый раз проходя знакомство,
     // — не проверка. Имя раздаётся по счёту, потому что повтор не принимается.
     гость: (answer: 'строим' | 'ходим' = 'строим') => {
@@ -4811,6 +5027,10 @@ function stepCampSystems(dt: number, now: number): void {
     if (collectSortie(now)) persist();
     if (tickHeroes(now)) persist();
     campHud.sync(camp, now, dt);
+    refreshNeighbours(now);
+    // §30 — почта зажигается тем же порогом, что и вся остальная связь
+    // с соседями: до второго жильца ящику неоткуда взяться.
+    mailButton.setShown(neighboursOpen(camp));
     // §14.3 — колчан показывается только стрелку, а класс живёт в ростере:
     // лагерь про героев не знает, и сказать ему может только тот, кто знает
     // обоих.

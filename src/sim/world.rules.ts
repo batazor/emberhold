@@ -19,7 +19,9 @@ import {
   SHIFTS_PER_DAY,
   SHIFT_SEC,
   WORLD_EPOCH,
+  CLAN_CAMPS,
   CLAN_STAY,
+  clanGrowth,
   clanState,
   clanTier,
   dayAt,
@@ -429,5 +431,101 @@ describe('Время суток (§24)', () => {
     const t = WORLD_EPOCH + 1234;
     assert.equal(nightAt(t), nightAt(t));
     assert.equal(nightAt(t + SHIFT_SEC * 1000), nightAt(t));
+  });
+});
+
+describe('Лагеря соседей (§30)', () => {
+  test('лагерь фракции у каждой, и он один', () => {
+    assert.equal(CLAN_CAMPS.length, CLANS.length);
+    assert.equal(new Set(CLAN_CAMPS.map((c) => `${c.x}:${c.y}`)).size, CLANS.length);
+  });
+
+  /**
+   * Место вечное — в этом вся разница между соседом и точкой дня. Регион
+   * пересобирается каждые сутки, лагерь нет: сосед, переезжающий вместе
+   * с раздачей, был бы ещё одной точкой, а не соседом.
+   */
+  test('лагерь не переезжает вместе с регионом', () => {
+    const first = JSON.stringify(CLAN_CAMPS);
+    for (let day = DAY0; day < DAY0 + 60; day++) {
+      // Регион спрашивается нарочно: если места лагерей однажды начнут
+      // считаться от дня, разъедутся они именно здесь.
+      regionAt(day);
+      assert.equal(JSON.stringify(CLAN_CAMPS), first, `день ${day}`);
+    }
+  });
+
+  /**
+   * Точка дня не садится на чужой лагерь ни в один день — не проверкой
+   * в раздаче, а по построению: клетки лагерей вынуты из колоды до неё.
+   * Порог тот же, каким `world.rules` меряет зазор между точками.
+   */
+  test('точки дня не наступают на чужие лагеря', () => {
+    const MIN = 0.05;
+    for (let day = DAY0; day < DAY0 + 60; day++) {
+      for (const node of regionAt(day).nodes) {
+        for (const camp of CLAN_CAMPS) {
+          const d = Math.hypot(node.x - camp.x, node.y - camp.y);
+          assert.ok(d >= MIN, `день ${day}: «${node.name}» в ${d.toFixed(3)} от лагеря ${camp.id}`);
+        }
+      }
+    }
+  });
+
+  test('колода вмещает самый людный день и после выемки клеток', () => {
+    // 22 вылазки и до девяти прогулок — 31 точка; клеток остаётся столько же.
+    let most = 0;
+    for (let day = DAY0; day < DAY0 + 400; day++) most = Math.max(most, regionAt(day).nodes.length);
+    assert.ok(most >= 26, `самый людный день из четырёхсот — всего ${most} точек`);
+  });
+
+  test('рост фракции без округления — тот же уровень, только целый', () => {
+    for (let k = 0; k < CLANS.length; k++) {
+      const t = WORLD_EPOCH + 3 * DAY_SEC;
+      assert.equal(Math.floor(clanGrowth(k, t)), clanState(k, t).level, `фракция ${k}`);
+    }
+  });
+});
+
+describe('Чужие заходы (§30.6)', () => {
+  const spot = quietNode();
+
+  /** Метка соседа в ту же смену, что и своя: список у них общий по форме. */
+  const at = (node: number, t: number): Visit => ({ node, shift: shiftAt(t) });
+
+  test('чужой заход тратит богатство ровно как свой', () => {
+    const mine = worldAt(spot.t, [at(spot.node, spot.t)], [])[spot.node]!;
+    const theirs = worldAt(spot.t, [], [at(spot.node, spot.t)])[spot.node]!;
+    assert.equal(theirs.rich, mine.rich, 'чужой заход стоит локации не столько же');
+    assert.equal(theirs.restShifts, mine.restShifts, 'срок восстановления разошёлся');
+  });
+
+  test('чужие заходы считаются, свои — нет', () => {
+    const both = worldAt(spot.t, [at(spot.node, spot.t)], [at(spot.node, spot.t)])[spot.node]!;
+    assert.equal(both.others, 1, 'посчитан не тот заход');
+    assert.equal(worldAt(spot.t, [at(spot.node, spot.t)])[spot.node]!.others, 0);
+  });
+
+  /**
+   * Смена, в которую сходили и я, и сосед, стоит локации **один** заход:
+   * богатство считается сменами, а не людьми. Иначе двое в одну смену
+   * выработали бы жилу вдвое быстрее, чем один за две.
+   */
+  test('своя и чужая метка в одну смену — один заход', () => {
+    const alone = worldAt(spot.t, [at(spot.node, spot.t)])[spot.node]!.rich;
+    const together = worldAt(spot.t, [at(spot.node, spot.t)], [at(spot.node, spot.t)])[spot.node]!;
+    assert.equal(together.rich, alone, 'смена посчитана дважды');
+    assert.equal(together.others, 1, 'сосед пропал из счёта');
+  });
+
+  test('чужая метка вне окна не считается ни в чём', () => {
+    const old = { node: spot.node, shift: shiftAt(spot.t) - RICH_WINDOW - 1 };
+    const state = worldAt(spot.t, [], [old])[spot.node]!;
+    assert.equal(state.rich, RICH_MAX, 'просроченная метка тронула богатство');
+    assert.equal(state.others, 0);
+  });
+
+  test('без соседей мир такой же, каким был до облака', () => {
+    assert.deepEqual(worldAt(spot.t, [], []), worldAt(spot.t, []));
   });
 });

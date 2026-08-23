@@ -29,16 +29,20 @@ import {
 } from '../sim/sortie';
 import {
   CLANS,
+  CLAN_CAMPS,
   RICH_MAX,
   SHIFT_SEC,
+  clanGrowth,
   clanState,
   dayAt,
   lootMul,
   regionAt,
   worldAt,
 } from '../sim/world';
+import { neighboursOpen } from '../sim/clan';
+import { campLevel, campPower, clanPower, standings, yourPlace } from '../sim/standing';
 import { KIND } from '../sim/world';
-import type { NodeKind, NodeState, Region, WorldNode } from '../sim/world';
+import type { NodeKind, NodeState, Region, Visit, WorldNode } from '../sim/world';
 import { drawMapTerrain } from './mapTerrain';
 
 /**
@@ -55,6 +59,12 @@ const WALK_COLOR: Partial<Record<NodeKind, string>> = {
   // зелёный и красный у богатства, синева у кладбища. Ярмарке достался он.
   'призы': '#a778c9',
 };
+
+/**
+ * Золото своего лагеря — тот же цвет, каким карта рисует его палатку
+ * с первого дня, и та же строка, что у своей строки таблицы (`sim/standing.ts`).
+ */
+const OWN_CAMP_COLOR = '#c8a24a';
 
 /**
  * Цвет узла по богатству: от выработанной к полной жиле. Наружу выставлен
@@ -353,9 +363,24 @@ export class WorldMap {
   /** Выбранный узел. Карта открывается с выбранным местом, а не пустой:
    *  пустая карточка вынуждает тапнуть дважды, чтобы вообще что-то узнать. */
   private focus = 0;
+  /**
+   * Выбранный лагерь (§30): `-1` — свой, `0…3` — фракция, `null` — выбран
+   * узел, и карточку рисует он. Второе поле, а не значение в `focus`:
+   * лагерь не узел — в него не ходят, у него нет ни яруса, ни богатства,
+   * и общий номер заставил бы каждую строку карточки спрашивать, кто перед
+   * ней. Ровно на этом §4 уже терял кладбище.
+   */
+  private focusCamp: number | null = null;
   /** Регион сегодняшнего дня: завтра здесь будут другие точки (§4). */
   private region: Region = regionAt(0);
   private world: NodeState[] = [];
+  /**
+   * Метки живых соседей (§30.6). Приходят снаружи и в сохранение не едут:
+   * это чужие дельты, а сейв хранит только свои (§4). Пустой список —
+   * честный ответ и при отсутствии сети, и при отсутствии соседей: карта
+   * в обоих случаях показывает мир без них, ровно как показывала до облака.
+   */
+  private others: readonly Visit[] = [];
   private camp: CampState | null = null;
   private roster: Roster | null = null;
   private now = 0;
@@ -420,8 +445,11 @@ export class WorldMap {
     this.camp = camp;
     this.now = now;
     this.region = regionAt(dayAt(now));
-    this.world = worldAt(now, camp.visits);
+    this.world = worldAt(now, camp.visits, this.others);
     this.focus = this.defaultFocus();
+    // Карта открывается на месте, а не на лагере: лагерь — то, откуда игрок
+    // только что пришёл, и рассказывать ему про себя незачем.
+    this.focusCamp = null;
     this.paint();
   }
 
@@ -432,7 +460,7 @@ export class WorldMap {
     // незачем, а вот срок восстановления в карточке идёт вживую.
     if (Math.floor(now / SHIFT_SEC) !== Math.floor(this.now / SHIFT_SEC)) {
       this.region = regionAt(dayAt(now));
-      this.world = worldAt(now, camp.visits);
+      this.world = worldAt(now, camp.visits, this.others);
       if (this.focus >= this.region.nodes.length) this.focus = this.defaultFocus();
     }
     this.now = now;
@@ -443,21 +471,45 @@ export class WorldMap {
     const box = this.canvas.getBoundingClientRect();
     const px = (e.clientX - box.left) / box.width;
     const py = (e.clientY - box.top) / box.height;
+    const near = (x: number, y: number): number =>
+      Math.hypot((x - px) * box.width, (y - py) * box.height);
     let best = -1;
     let bestDist = Infinity;
     for (const node of this.region.nodes) {
-      const d = Math.hypot((node.x - px) * box.width, (node.y - py) * box.height);
+      const d = near(node.x, node.y);
       if (d < bestDist) {
         bestDist = d;
         best = node.id;
       }
     }
-    // Промах мимо всех узлов ничего не меняет: карточка обязана оставаться
-    // на том месте, о котором игрок только что читал.
-    if (best >= 0 && bestDist < box.width * 0.09) {
-      this.focus = best;
-      this.paint();
+    // Лагеря — в том же переборе, а не отдельным: два перебора с разными
+    // порогами дали бы точку, которая ловится и тем и другим, и карточка
+    // зависела бы от порядка проверок.
+    let bestCamp: number | null = null;
+    for (const spot of this.camps()) {
+      const d = near(spot.x, spot.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestCamp = spot.id;
+      }
     }
+    // Промах мимо всего ничего не меняет: карточка обязана оставаться
+    // на том месте, о котором игрок только что читал.
+    if (bestDist >= box.width * 0.09) return;
+    this.focusCamp = bestCamp;
+    if (bestCamp === null && best >= 0) this.focus = best;
+    this.paint();
+  }
+
+  /**
+   * Лагеря на карте: свой и соседские (§30). Свой стоит всегда — он и был
+   * первой точкой карты; соседи зажигаются со вторым жильцом (`clan.ts`),
+   * и до того их не видно даже тапом.
+   */
+  private camps(): readonly { readonly id: number; readonly x: number; readonly y: number }[] {
+    const own = { id: -1, x: this.region.camp.x, y: this.region.camp.y };
+    if (this.camp === null || !neighboursOpen(this.camp)) return [own];
+    return [own, ...CLAN_CAMPS];
   }
 
   private paint(): void {
@@ -481,7 +533,7 @@ export class WorldMap {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const spots = [...this.region.nodes, { ...this.region.camp, id: -1 }];
+    const spots = [...this.region.nodes, ...this.camps()];
 
     // §4.2 — земля под точками. Чёрный экран делал из региона список кружков,
     // разложенный по прямоугольнику; местность делает из него место. Ни одного
@@ -509,19 +561,43 @@ export class WorldMap {
     }
 
     const r = Math.max(5, w * 0.026);
-    // Лагерь — такая же точка карты, только в него не ходят.
-    const camp = this.region.camp;
-    ctx.beginPath();
-    ctx.arc(camp.x * w, camp.y * h, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(200, 162, 74, 0.22)';
-    ctx.fill();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = '#c8a24a';
-    ctx.stroke();
-    ctx.beginPath();
-    drawCampTent(ctx, camp.x * w, camp.y * h, r);
-    ctx.fillStyle = '#c8a24a';
-    ctx.fill();
+    // Лагеря — такие же точки карты, только в них не ходят: свой золотом,
+    // соседские цветом своей фракции — тем же, каким её флаг стоит
+    // на занятой точке, иначе флаг и лагерь читались бы разными людьми.
+    for (const spot of this.camps()) {
+      const own = spot.id < 0;
+      const color = own ? OWN_CAMP_COLOR : CLANS[spot.id % CLANS.length]!.color;
+      const x = spot.x * w;
+      const y = spot.y * h;
+      if (this.focusCamp === spot.id) {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 2, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(200, 162, 74, 0.85)';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(11, 10, 9, 0.85)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.beginPath();
+      drawCampTent(ctx, x, y, r);
+      // Свой лагерь закрашен, чужие — контуром. Цветом их не различить:
+      // золото «Клана Отвала» (#C9A227) и золото своего лагеря (#c8a24a) —
+      // один и тот же цвет для глаза, и на карте стояли бы две одинаковые
+      // палатки. Заливка против контура читается и без цвета вовсе.
+      if (own) {
+        ctx.fillStyle = color;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+    }
 
     for (const node of this.region.nodes) {
       const x = node.x * w;
@@ -611,6 +687,22 @@ export class WorldMap {
   }
 
   /**
+   * Отдать карте чужие метки (§30.6). Зовётся снаружи, потому что читает их
+   * сеть, а панели про сеть не знают — как и симуляция: `worldAt` берёт их
+   * входом и остаётся чистой функцией.
+   *
+   * Мир пересчитывается сразу: метки приходят ответом сервера, то есть
+   * в произвольный момент, а не на границе смены, и ждать следующей значило
+   * бы показывать заведомо старое богатство.
+   */
+  setNeighbours(visits: readonly Visit[]): void {
+    this.others = visits;
+    if (this.camp === null) return;
+    this.world = worldAt(this.now, this.camp.visits, visits);
+    this.paint();
+  }
+
+  /**
    * Открыть карту целиком или запереть на одном месте (§16.2). Зовётся
    * снаружи: про кадры раскадровки карта не знает и знать не должна.
    *
@@ -621,13 +713,23 @@ export class WorldMap {
   setOnly(node: number | null): void {
     if (this.only === node) return;
     this.only = node;
-    if (node !== null) this.focus = node;
+    if (node !== null) {
+      this.focus = node;
+      this.focusCamp = null;
+    }
     this.paint();
   }
 
   /* ---------- карточка ---------- */
 
   private paintCard(): void {
+    if (this.focusCamp !== null) {
+      this.paintCampCard(this.focusCamp);
+      return;
+    }
+    // Кнопки входа лагерь прячет, а узел обязан их вернуть: карточка узла
+    // ставит их состояние, но не показывает — показ снимается здесь.
+    this.go.style.display = '';
     const node = this.node();
     if (node.kind === 'замок') {
       this.paintKeepCard(node);
@@ -645,7 +747,8 @@ export class WorldMap {
       this.paintPrizeCard(node);
       return;
     }
-    const state = this.world[node.id] ?? { rich: RICH_MAX, clan: null, restShifts: 0, event: null };
+    const state = this.world[node.id] ??
+      { rich: RICH_MAX, clan: null, others: 0, restShifts: 0, event: null };
     // §11.6 — «объявляются до входа». Объявлять надо итог: карточка, которая
     // пишет «ставка 0%» и «×0,6», пока буря делает 25% и ×0,9, — это и есть
     // сюрприз после входа, которого раздел прямо не хочет.
@@ -673,6 +776,18 @@ export class WorldMap {
       // второго, и узнать это можно было только сходив. Ставку игрок читает
       // до входа — награда обязана читаться там же.
       `<div class="row line"><span>Падает</span><b>${lootLine(node.tier)}</b></div>` +
+      // §30.6 — кто ещё сюда ходил. Строка появляется только тогда, когда
+      // соседи были: «заходов 0» — это не сведение, а шум, и стоять
+      // на карточке ему незачем. Имён нет: решение здесь одно — идти или
+      // не идти, — и чужая почта его не меняет.
+      //
+      // Подпись слева, число справа и без склонения: «1 заход» против
+      // «2 захода» против «5 заходов» — три формы ради одной цифры,
+      // и падеж здесь взялся бы ниоткуда ровно так же, как у имён (§0.1).
+      (state.others > 0
+        ? `<div class="row line"><span>Заходы соседей</span>` +
+          `<b class="bad">${state.others}</b></div>`
+        : '') +
       `<div class="row line"><span>Кто здесь</span>` +
       // §4 — кланы «растут», и до этой строки рост считался, но не показывался
       // нигде. Уровень — та самая таблица развития, свёрнутая до одного
@@ -714,6 +829,67 @@ export class WorldMap {
     // важнее, почему сюда нельзя, чем когда сюда снова будет выгодно.
     if (block !== 'ok') this.note.textContent = ENTRY_REASON[block];
     this.paintSend(node, block);
+  }
+
+  /**
+   * Карточка лагеря — своего или соседского (§30). Ни ставки, ни добычи,
+   * ни события: в лагерь не ходят, и четыре прочерка подряд обещали бы,
+   * что когда-нибудь они заполнятся сами. Сказано ровно то, что про лагерь
+   * известно: кто, насколько силён и где сегодня работает.
+   *
+   * Кнопки под ней нет вовсе — не запертая, а именно нет. Запертая кнопка
+   * говорит «сюда пока нельзя», а сюда нельзя не «пока»: чужой лагерь —
+   * не место входа, и обещать вход было бы враньём.
+   */
+  private paintCampCard(id: number): void {
+    this.go.style.display = 'none';
+    this.sendRow.style.display = 'none';
+    if (id < 0) this.paintOwnCard();
+    else this.paintNeighbourCard(id);
+  }
+
+  private paintOwnCard(): void {
+    const camp = this.camp;
+    if (camp === null) return;
+    const rows = standings(camp, this.now, camp.clan?.name ?? null);
+    const place = yourPlace(rows);
+    this.card.innerHTML =
+      `<div class="row t"><b>${camp.clan?.name ?? 'Ваш лагерь'}</b><i>лагерь</i></div>` +
+      `<div class="row line"><span>Сила</span>` +
+      `<b style="color:${OWN_CAMP_COLOR}">${campPower(camp)}</b></div>` +
+      `<div class="row line"><span>Жильё</span><b>ур. ${campLevel(camp)}</b></div>` +
+      `<div class="row line"><span>Народу</span><b>${1 + camp.residents.length}</b></div>` +
+      `<div class="row line"><span>В таблице</span>` +
+      `<b class="${place === 1 ? 'good' : ''}">${place} из ${rows.length}</b></div>` +
+      (camp.clan === null || camp.clan === undefined
+        ? ''
+        : `<div class="row line"><span>Клан</span><b>${camp.clan.name}</b></div>`);
+    // Сила — число выведенное (`sim/standing.ts`), и строка обязана называть,
+    // из чего оно: иначе это цифра без ориентира, то есть повод для спора.
+    this.note.textContent = 'Сила — вылазки, вложенные в лагерь: постройки, снаряжение, палатки и сундуки.';
+  }
+
+  private paintNeighbourCard(id: number): void {
+    const clan = CLANS[id % CLANS.length]!;
+    const state = clanState(id, this.now);
+    const at = state.nodes[0];
+    const where = at === undefined ? null : this.region.nodes[at];
+    this.card.innerHTML =
+      `<div class="row t"><b style="color:${clan.color}">${clan.name}</b><i>фракция</i></div>` +
+      `<div class="row line"><span>Сила</span>` +
+      `<b style="color:${clan.color}">${clanPower(clanGrowth(id, this.now))}</b></div>` +
+      `<div class="row line"><span>Лагерь</span><b>ур. ${state.level}</b></div>` +
+      `<div class="row line"><span>Сегодня работает</span>` +
+      (where === undefined || where === null
+        ? '<b class="good">нигде</b>'
+        : `<b class="bad">${where.name}</b>`) +
+      '</div>';
+    // Почему это важно игроку, а не просто любопытно: занятая точка тратит
+    // богатство (§4), и читается строка выше именно так.
+    this.note.textContent =
+      where === null
+        ? 'Фракция мира. Сегодня её людей на точках не видно.'
+        : `Пока они там, точка тратит богатство — заход туда обойдётся дешевле по добыче.`;
   }
 
   /**

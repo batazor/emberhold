@@ -322,7 +322,74 @@ button:active { filter: brightness(1.25); }
 /* Лагерь: сцена первая. Постоянно на экране только ресурсы и нижняя строка,
    всё остальное выезжает листом по тапу. На 360×780 прежние списки закрывали
    поселение целиком — игрок видел набор карточек, а не свой лагерь. */
-.camp-space { flex: 1 1 auto; pointer-events: none; }
+/* Середина экрана принадлежит сцене. Значок подарка (§29) — единственное,
+   что в ней стоит: он прижат к правому краю под полосой ресурсов, там же,
+   где такие значки стоят во всех играх с ежедневным входом, и нажатия берёт
+   он один — остальная середина по-прежнему прозрачна для пальца. */
+.camp-space { flex: 1 1 auto; pointer-events: none; display: flex;
+  align-self: stretch; justify-content: flex-end; align-items: flex-start; }
+
+/* ---------- подарок за вход (§29) ---------- */
+
+/* Значок — метка словаря с квадратной колодкой под силуэт. Своей коробки
+   не заводит: край, стекло и скругление приходят от `.chip`. */
+.gift-icon {
+  pointer-events: auto; display: flex; align-items: center; justify-content: center;
+  position: relative; width: 46px; height: 46px; padding: 0; color: var(--ink);
+}
+/* Точка «сегодня не брали». Не счётчик и не восклицательный знак: значку
+   нечего считать, а звать он обязан ровно один раз в сутки. */
+.gift-mark {
+  position: absolute; top: -3px; right: -3px; width: 9px; height: 9px;
+  border-radius: var(--r-pill); background: var(--warn);
+  /* Точка зовёт дыханием, а не миганием: значок стоит поверх сцены всё
+     время, и резкая анимация в углу экрана раздражала бы ровно того, кто
+     уже пришёл. */
+  animation: gift-breathe 2.4s ease-in-out infinite;
+}
+.gift-icon.ready { border-color: var(--pick-line); }
+.gift-icon img { width: 34px; height: 34px; display: block; }
+
+/* Семь дней в два ряда: четыре и три. В один ряд карточка ужимается
+   до полутора слов, в столбец — неделя перестаёт читаться неделей.
+   Седьмой день занимает две клетки — второй ряд от этого сходится ровно,
+   а неделя читается подъёмом к концу, как её и считают веса (§29.1). */
+.gift-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.gift-day { gap: 4px; padding: 7px 8px;
+  /* Смена состояния — не мигание: карточка гаснет и загорается за те же
+     140 мс, что и прочие переходы интерфейса. */
+  transition: opacity 140ms ease-out, border-color 140ms ease-out; }
+.gift-last { grid-column: span 2; }
+.gift-day b { font-size: 12px; }
+.gift-what { font-size: 11px; }
+.gift-what:empty { display: none; }
+@keyframes gift-breathe { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .gift-mark { animation: none; }
+}
+/* Вещь слева, слова справа: та же раскладка, что у строки Мастерской. */
+.gift-body { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gift-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Плашка под вещью — та же, что под портретом: значок стоит на подложке,
+   а не висит на фоне карточки. */
+.gift-pic {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: var(--r-chip);
+  background: var(--portrait); display: flex; align-items: center;
+  justify-content: center; overflow: hidden;
+}
+.gift-pic img, .gift-pic svg { width: 100%; height: 100%; display: block; }
+/* Лицо гостя — круг словаря, и размер у него тот же, что у вещи рядом. */
+.gift-pic.face { border-radius: var(--r-pill); }
+/* Взятый день гаснет, а не вычёркивается: вычеркнутое читается потерей. */
+.gift-done { opacity: 0.45; }
+.gift-note { font-size: 12px; min-height: 15px; }
+#camp .gift { gap: 8px; }
+#camp .gift .cta { align-self: stretch; }
+/* На телефоне четыре колонки ужимают карточку до переносов в каждом слове:
+   два дня в ряд, седьмой — во всю ширину. */
+@media (max-width: 480px) {
+  .gift-days { grid-template-columns: repeat(2, 1fr); }
+}
 #camp .sheet {
   display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
   align-self: stretch;
@@ -479,6 +546,27 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #stats-panel .panel { width: 100%; max-width: 380px; max-height: 82vh; overflow-y: auto; }
 #stats-panel h2 { margin: 0 0 10px; font-size: 18px; }
 .sp-row b { font-variant-numeric: tabular-nums; }
+/* ---------- таблица лагерей (§30) ---------- */
+/* Стоит выше сводки: она про мир, сводка — про то, как игрок в него ходит.
+   Своя строка выделена рамкой слева, а не цветом текста: цвет в строке уже
+   занят флажком фракции. */
+#stats-panel .sp-head {
+  margin: 0 0 8px; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--dim);
+}
+#stats-panel #sp-table { margin-bottom: 14px; }
+#stats-panel #sp-table:empty { display: none; }
+.sp-row .sp-place {
+  display: inline-block; min-width: 14px; font-style: normal; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+/* Флажок — тот же цвет, каким фракция помечена на карте: строка таблицы
+   и флаг на точке обязаны читаться одним человеком. */
+.sp-row .sp-flag {
+  display: inline-block; width: 8px; height: 8px; margin: 0 6px 0 4px;
+  text-decoration: none;
+}
+.sp-row.you { border-left: 2px solid var(--gold); padding-left: 6px; margin-left: -8px; }
 .sp-note { font-size: 11px; color: var(--dim); margin: 0 0 8px; }
 #stats-panel .acts { display: flex; gap: 6px; margin-top: 12px; }
 #stats-panel .acts button { flex: 1; }
@@ -631,6 +719,51 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Шестерня проворачивается на нажатие — единственная анимация интерфейса,
    и она отвечает пальцу, а не играет сама по себе. */
 #settings-open:active svg { transform: rotate(45deg); }
+
+/* ---------- почта (§30) ---------- */
+/* Под шестернёй, в том же углу и по тем же правилам: угол — единственное
+   место, свободное во всех сценах сразу. Столбиком, а не в строку: справа
+   от шестерни начинается полоса ресурсов, и второй значок сдвинул бы её
+   ещё на полсотни пикселей — на 360-пиксельном экране это столбец чисел.
+   Кнопка по факту 54×54 (шестерня такая же), отсюда и сдвиг. */
+#mail-open {
+  position: fixed; top: calc(8px + env(safe-area-inset-top) + 46px); left: 8px;
+  z-index: 50; padding: 6px; line-height: 0; opacity: 0.72; color: var(--ink);
+}
+#mail-open:hover { opacity: 1; }
+#mail-open svg { display: block; width: 18px; height: 18px; }
+#mail {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 60;
+}
+#mail.on { display: flex; }
+#mail .panel { width: 100%; max-width: 340px; }
+#mail h2 { margin: 0 0 8px; font-size: 18px; }
+#mail p { margin: 0 0 12px; font-size: 13px; }
+#mail .acts button { width: 100%; padding: 11px; }
+
+/* ---------- свой клан (§30) ---------- */
+/* Окно спрашивает одно поле, и выглядит оно как знакомство: 16px в поле —
+   не вкус, на меньшем телефон зумит страницу на фокусе и кадр уезжает
+   из-под окна. */
+#clan {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 60;
+}
+#clan.on { display: flex; }
+#clan .panel {
+  width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 8px;
+}
+#clan h2 { margin: 0; font-size: 18px; }
+#clan p { margin: 0; font-size: 13px; }
+#clan input { font: inherit; font-size: 16px; padding: 9px 12px; width: 100%; }
+/* Отказ красится цветом потери и пропадает вместе с причиной: пустая строка
+   между полем и кнопками дёргала бы окно на каждой букве. */
+#clan .why { font-size: 12px; color: var(--bad); min-height: 15px; }
+#clan .acts { display: flex; flex-direction: column; gap: 7px; }
+#clan .acts button { width: 100%; padding: 11px; }
+#clan .acts button:disabled { opacity: 0.45; }
+#clan .sp-note { margin: 0; }
 
 #settings {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
@@ -792,6 +925,10 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* В строке задания лицо мелкое: там на него смотрят краем глаза, а места
    ровно на строку. */
 #camp .task .face { width: 26px; height: 26px; flex: none; }
+/* У задания про клан лица нет: клан не человек, и чужое лицо рядом с ним
+   читалось бы как «этот просит клан». Пустая коробка при этом не должна
+   оставлять зазор — отсюда `display: none` из кода и правило на всякий. */
+#camp .task .face:empty { display: none; }
 #meet .say {
   margin: 0; font-size: 14px; letter-spacing: 0.03em; color: var(--ink);
   max-width: 22em; text-align: center;
