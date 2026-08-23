@@ -1654,6 +1654,8 @@ function planChores(): void {
       // Палатки в клетках локации: жилец спит в своей, а какая его —
       // говорит номер, тот же, что у `hasRoof` и в веере.
       tents: camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })),
+      // §13.8 — кусты в клетках локации: к ним ходит добытчик пищи.
+      bushes: (camp.bushes ?? []).map((b) => ({ x: o.x + b.x, z: o.z + b.z })),
     },
     camp.residents,
     (i) => hasRoof(camp, i),

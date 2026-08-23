@@ -171,6 +171,13 @@ export interface ChoreSite {
    * значит последним крыши не досталось, и ночуют они у огня.
    */
   readonly tents: readonly Cell[];
+  /**
+   * §13.8 — ягодные кусты площадки. Необязательные: сцены, которых кусты
+   * ещё не касались, отдают рутину без них, и добытчик тогда ходит к кромке
+   * леса, как все. Куст — не препятствие, поэтому в `blocked` его нет:
+   * к нему подходят вплотную и садятся рядом.
+   */
+  readonly bushes?: readonly Cell[];
 }
 
 /**
@@ -294,12 +301,42 @@ const faceTo = (from: Cell, to: Cell): number => Math.atan2(to.x - from.x, to.z 
  * считает жильё (`residents.ts`), и вторая копия этого счёта разошлась бы
  * с первой молча.
  */
+/**
+ * §13.8 — клетки, с которых достают до куста. Кустов мало и они наперечёт,
+ * поэтому правило проще лесного: каждый сосед куста, по которому можно
+ * пройти, годится, а дальше выбор качается тем же сидом, что у леса.
+ */
+function bushSpots(site: ChoreSite): { spot: Cell; tree: Cell }[] {
+  const { size, blocked } = site;
+  const out: { spot: Cell; tree: Cell }[] = [];
+  for (const bush of site.bushes ?? []) {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const x = bush.x + dx;
+      const z = bush.z + dz;
+      if (x < 0 || z < 0 || x >= size || z >= size) continue;
+      if (blocked[idx(size, x, z)]) continue;
+      out.push({ spot: { x, z }, tree: { x: bush.x, z: bush.z } });
+    }
+  }
+  return out;
+}
+
 export function choresOf(
   site: ChoreSite,
   residents: readonly Resident[],
   roofed: (i: number) => boolean,
 ): (Chore | null)[] {
   const spots = treeSpots(site);
+  /**
+   * §13.8 — добытчик пищи ходит к кусту, а не к кромке леса. Это первое
+   * место, где занятие жильца видно маршрутом, а не только строкой карточки:
+   * дровосек уходит к деревьям, добытчик — к ягодам, и разница читается
+   * с одного взгляда на поляну.
+   *
+   * Если кустов на площадке нет, он идёт к кромке вместе со всеми: рутина
+   * не имеет права остановиться из-за того, что грядку ещё не посадили.
+   */
+  const berry = bushSpots(site);
   const takenWork: Cell[] = [];
   const takenBase: Cell[] = [];
   const works = (i: number): boolean => {
@@ -356,7 +393,8 @@ export function choresOf(
     // по делу, а не через всю поляну, — но выбор качается сидом, чтобы
     // двое не вставали к одному дереву. «Врозь» отпускается, когда точек
     // мало: пусть двое рубят рядом, чем один сидит без дела.
-    const near = [...spots].sort((a, b) => dist(a.spot, base) - dist(b.spot, base));
+    const mine = r.answer === 'кормим' && berry.length > 0 ? berry : spots;
+    const near = [...mine].sort((a, b) => dist(a.spot, base) - dist(b.spot, base));
     const pool = near.slice(0, Math.max(8, near.length / 4));
     const pickSpot = (away: readonly Cell[], tries: number): { spot: Cell; tree: Cell } | null => {
       for (let k = 0; k < tries; k++) {
@@ -370,7 +408,14 @@ export function choresOf(
     // Дорога ко сну прикладывается при укладке в список: она зависит
     // от места у костра, а его выбирает та же ветка, что и тропу.
     let built: Omit<Draft, 'bed'> | null = null;
-    if (r.answer === 'строим') {
+    /**
+     * §13.8 — добытчик пищи ходит кругом дровосека: пришёл, сел у куста,
+     * вернулся с ношей. Круг камнетёса ему не годится — тот высматривает
+     * породу с двух углов кромки и работой это не считается (`working: false`),
+     * а сбор ягод — работа: рендер обязан играть труд, иначе жилец
+     * прогуливается у куста и приносит пищу неизвестно откуда.
+     */
+    if (r.answer === 'строим' || r.answer === 'кормим') {
       const work = pickSpot(takenWork, 24);
       if (work !== null) {
         const ring = ringOf(site, [base, work.spot]);
