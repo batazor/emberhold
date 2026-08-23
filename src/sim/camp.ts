@@ -25,6 +25,7 @@ import { STONES, scatterStones, type Stone } from './stones';
  */
 import type { Resident } from './residents';
 import type { OwnClan } from './clan';
+import type { FarmState } from './farm';
 
 export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge' | 'infirmary' | 'yard';
 
@@ -381,6 +382,8 @@ export interface CampState {
    */
   coinDay?: number;
   resources: Resources;
+  /** Первая локация хозяйства и её ввод. Необязательна для старых сейвов. */
+  farm?: FarmState;
   /** §20.1 — один слот. Это и делает вопрос «что дальше» настоящим выбором. */
   construction: Construction | null;
   /** §14 — снаряжение живёт в лагере, а не в вылазке: при провале не теряется. */

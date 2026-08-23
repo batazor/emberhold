@@ -19,6 +19,7 @@ import { emptyResources } from './resources';
 import { liveVisits } from './world';
 import type { ResourceKind } from './resources';
 import type { Tier } from './types';
+import { FARM_FOOD_GOAL } from './farm';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -151,6 +152,13 @@ interface SaveV1 {
    */
   residents?: { name: string; look: string; answer: string; seed?: number; rest?: boolean }[];
   tents?: { x: number; z: number }[];
+  /** Первая цель хозяйства. Необязательна: старый сейв получит её по условию. */
+  farm?: {
+    foodAtStart: number;
+    gatheredFood: number;
+    step: 'intro' | 'goal' | 'reward' | 'done';
+    unlocked: boolean;
+  };
   /**
    * Свой клан (§30) — имя и час основания. Поле необязательное и по той же
    * причине, что все соседние: сейв, записанный до кланов, обязан
@@ -232,6 +240,16 @@ export function save(
       ...(r.rest ? { rest: true } : {}),
     })),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
+    ...(camp.farm !== undefined
+      ? {
+          farm: {
+            foodAtStart: camp.farm.foodAtStart,
+            gatheredFood: camp.farm.gatheredFood,
+            step: camp.farm.step,
+            unlocked: camp.farm.unlocked,
+          },
+        }
+      : {}),
     chests: camp.chests.map((c) => ({ x: c.x, z: c.z })),
     // exactOptionalPropertyTypes: у лагеря без клана ключа нет вовсе.
     ...(camp.clan != null ? { clan: { name: camp.clan.name, at: camp.clan.at } } : {}),
@@ -390,6 +408,22 @@ export function load(): LoadResult {
       }
     }
     camp.resources = res;
+    const farm = data.farm;
+    if (
+      farm !== undefined &&
+      typeof farm.foodAtStart === 'number' && Number.isFinite(farm.foodAtStart) && farm.foodAtStart >= 0 &&
+      typeof farm.gatheredFood === 'number' && Number.isFinite(farm.gatheredFood) && farm.gatheredFood >= 0 &&
+      (farm.step === 'intro' || farm.step === 'goal' || farm.step === 'reward' || farm.step === 'done')
+    ) {
+      const gatheredFood = Math.min(FARM_FOOD_GOAL, Math.floor(farm.gatheredFood));
+      const unlocked = farm.unlocked === true || gatheredFood >= FARM_FOOD_GOAL;
+      camp.farm = {
+        foodAtStart: Math.floor(farm.foodAtStart),
+        gatheredFood,
+        step: unlocked && (farm.step === 'intro' || farm.step === 'goal') ? 'reward' : farm.step,
+        unlocked,
+      };
+    }
     if (typeof data.raids === 'number') camp.raids = data.raids;
     // §22.6б — зрелость ярусов. Нет поля — ярусы свежие, вход снова мягкий.
     if (Array.isArray(data.tierRaids)) {

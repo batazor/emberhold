@@ -45,6 +45,7 @@ import type { SelfAnswer } from './settler';
 import { canAfford, spend } from './resources';
 import { GUEST_FOOD } from './balance';
 import type { ResourceKind, Resources } from './resources';
+import { gatherFarmFood, startFarmOnboarding } from './farm';
 
 /**
  * Чем жилец занят. Двух первых он приносит с собой — это ответ на вопрос
@@ -434,9 +435,12 @@ export function collectWork(
   working?: number,
 ): { kind: ResourceKind; n: number }[] {
   const done = workDone(camp, awaySec, working);
-  return done
+  const collected = done
     .map(({ kind, n }) => ({ kind, n: n - stash(camp, { [kind]: n }) }))
     .filter(({ n }) => n > 0);
+  const food = collected.find((item) => item.kind === 'food')?.n ?? 0;
+  if (food > 0) gatherFarmFood(camp, food);
+  return collected;
 }
 
 /**
@@ -451,5 +455,8 @@ export function admit(camp: CampState, who: Resident): boolean {
   // кладовую (§13.6): у неё есть дно, и подарок, не влезший в закрома,
   // пропадает так же, как принесённое жильцом.
   stash(camp, { food: GUEST_FOOD });
+  // Узелок второго жителя уже лежит в запасе: именно этот уровень становится
+  // точкой отсчёта, а подарок не считается добычей задания.
+  startFarmOnboarding(camp);
   return true;
 }
