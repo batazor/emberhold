@@ -8,8 +8,8 @@
         "run",
         "dev"
       ],
-      "port": 52185,
-      "autoPort": true
+      "port": 52118,
+      "autoPort": false
     },
     {
       "name": "site",

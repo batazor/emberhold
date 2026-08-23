@@ -35,7 +35,8 @@
     "fan": "tsx scripts/fan.ts",
     "levels": "tsx scripts/levels.ts",
     "stop": "tsx scripts/stop.ts",
-    "edge": "tsx scripts/edge.ts"
+    "edge": "tsx scripts/edge.ts",
+    "edge:deploy": "npm run edge && npx supabase functions deploy sortie wheel --project-ref ynprsyzjdaheivhfcuel --use-api"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
