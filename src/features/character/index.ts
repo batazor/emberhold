@@ -3,6 +3,11 @@ import type { AvatarLook } from '../../ui/avatar';
 import { GearSection } from '../../ui/gearSection';
 import type { GearState, Offhand } from '../../sim/gear';
 import type { SpendableStat } from '../../sim/heroes';
+import bootsIcon from '../../../assets/item-icons/boots.png?url';
+import calmRingIcon from '../../../assets/item-icons/calm-ring.png?url';
+import helmetIcon from '../../../assets/item-icons/helmet.png?url';
+import quiltedJacketIcon from '../../../assets/item-icons/quilted-jacket.png?url';
+import tinctureIcon from '../../../assets/item-icons/tincture.png?url';
 import { Figure } from '../../render/figureView';
 import type { FigureModel } from '../../render/figureView';
 import { itemIcon } from '../../render/iconView';
@@ -19,8 +24,16 @@ import {
   startPack,
   unequip,
 } from './items';
-import type { PackState } from './items';
+import type { ItemPicture, PackState } from './items';
 import { raidSummary } from './summary';
+
+const ITEM_PICTURE: Record<ItemPicture, string> = {
+  helmet: helmetIcon,
+  'quilted-jacket': quiltedJacketIcon,
+  boots: bootsIcon,
+  'calm-ring': calmRingIcon,
+  tincture: tinctureIcon,
+};
 
 /**
  * Страница персонажа — то, что открывает команда «О персонаже» на любом
@@ -343,9 +356,16 @@ export class CharacterPage {
     const el = document.createElement('div');
     el.className = 'ch-item';
     el.dataset['item'] = itemId;
-    // Значок — та же модель, что в руке (`render/iconView.ts`). Вещи без
-    // модели остаются подписью: похожая модель читалась бы как «вот эта».
+    // Значок с моделью берётся из того же набора, что и вещь в руке.
+    // У вещей без модели есть только PNG-пиктограмма инвентаря.
     if (item.icon !== undefined) el.appendChild(itemIcon(item.icon, ICON));
+    else if (item.picture !== undefined) {
+      const pic = document.createElement('img');
+      pic.alt = '';
+      pic.draggable = false;
+      pic.src = ITEM_PICTURE[item.picture];
+      el.appendChild(pic);
+    }
     const label = document.createElement('span');
     label.textContent = item.name;
     el.appendChild(label);
