@@ -20,7 +20,7 @@
  * никому. Список сплошных ролей — единственное, что здесь объявлено.
  */
 import { distanceField, idx } from './grid';
-import { BUSHES, scatterBushes } from './berries';
+import { castleBushCount, scatterBushes } from './berries';
 import type { Bush } from './berries';
 import { STONES, scatterStones } from './stones';
 import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
@@ -407,8 +407,9 @@ export function generateCastleSite(seed: number): CastleSite {
     seed ^ 0x1c05,
     loc.size,
     loc.blocked,
-    BUSHES.castle,
+    castleBushCount(seed),
     (x, z) => !busyCell.has(`${x},${z}`),
+    true,
   );
   return { loc, castle, at, trees, bushes, gate, trader, roads, lamps };
 }

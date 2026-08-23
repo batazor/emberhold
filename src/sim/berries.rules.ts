@@ -85,15 +85,56 @@ test('§13.8 — кусты не растут в одной клетке и не
   }
 });
 
-test('§13.8 — кусты стоят там, где обещано: лагерь, замок, кладбище', () => {
+test('§13.8 — кусты стоят там, где обещано, и в назначенном числе', () => {
   assert.ok(campBushes().length > 0, 'на стартовой поляне не выросло ни куста');
   assert.ok(createCamp().bushes !== undefined, 'новый лагерь заводится без кустов');
-  assert.equal(generateCastleSite(7).bushes.length > 0, true, 'у замка пусто');
-  const grave = generateGraveSite(7);
-  assert.ok(
-    grave.bushes.length >= BUSHES.castle,
-    'на кладбище кустов не больше, чем у замка, — прогулке снова нечего дать',
-  );
+  for (const seed of [1, 7, 42, 100]) {
+    const castle = generateCastleSite(seed).bushes.length;
+    assert.ok(
+      castle >= BUSHES.castleMin && castle <= BUSHES.castleMax,
+      `у замка ${castle} кустов вместо ${BUSHES.castleMin}–${BUSHES.castleMax}`,
+    );
+    assert.equal(generateGraveSite(seed).bushes.length, BUSHES.grave, 'кладбище — один дичок');
+  }
+});
+
+test('§13.8 — в местах мира кусты растут у края карты', () => {
+  /**
+   * «У края» меряется среди проходимых клеток: рамка локации — лес и ограда,
+   * по ним не ходят, и требовать от куста стоять на них значило бы требовать
+   * невозможного. Берём самое внешнее доступное кольцо места и допуск
+   * в две клетки вглубь — ровно то, что делает рассадка.
+   */
+  const outer = (loc: { size: number; blocked: Uint8Array }): number => {
+    let best = loc.size;
+    for (let i = 0; i < loc.size * loc.size; i++) {
+      if (loc.blocked[i]) continue;
+      const x = i % loc.size;
+      const z = (i / loc.size) | 0;
+      best = Math.min(best, x, z, loc.size - 1 - x, loc.size - 1 - z);
+    }
+    return best;
+  };
+  const rimOf = (loc: { size: number }, b: { x: number; z: number }): number =>
+    Math.min(b.x, b.z, loc.size - 1 - b.x, loc.size - 1 - b.z);
+
+  for (const seed of [3, 11, 29]) {
+    for (const site of [generateCastleSite(seed), generateGraveSite(seed)]) {
+      /**
+       * Допуск — внешняя четверть места, и он шире, чем полоса рассадки,
+       * намеренно: та считает кромку среди свободных клеток и потому зависит
+       * от того, где стоят деревья, дороги и могилы. Правило проверяет
+       * читаемое глазом «у края», а не арифметику рассадки.
+       */
+      const edge = Math.max(outer(site.loc) + 2, Math.floor(site.loc.size / 4));
+      for (const b of site.bushes) {
+        assert.ok(
+          rimOf(site.loc, b) <= edge,
+          `куст в ${rimOf(site.loc, b)} клетках от рамки при кромке ${edge} — это середина места`,
+        );
+      }
+    }
+  }
 });
 
 test('§13.8 — куст не встаёт на занятую клетку', () => {
