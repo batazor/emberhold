@@ -223,7 +223,7 @@ import {
 } from './sim/castleGuest';
 import type { CastleGuest, GuestMeet } from './sim/castleGuest';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
-import { generateGraveSite, readEpitaph } from './sim/graveSite';
+import { generateGraveSite, readEpitaph, stepGraveNpcs } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
 import { DEAL_REASON, askOf, dealBlock, makeDeal, marketKey, pruneBought, stockOf, worthOf } from './sim/trade';
 import type { Stock } from './sim/trade';
@@ -3388,8 +3388,9 @@ function toCastle(node: number, seed: number): boolean {
   // Замок выше всего, что игра показывала до сих пор: с высоты вылазки
   // стена закрывала бы двор целиком.
   rig.setZoom(26, true);
-  // День: замок стоит на поверхности, и подземный мрак спрятал бы его.
-  setNight(0.1);
+  // Поверхность: замок живёт теми же сутками, что лагерь, чтобы фонари
+  // зажигались ночью, а не по отладочной постоянной.
+  setNight(nightAt(campTime()));
   resultShown = false;
   ear.reset(raid);
   showScene('raid', 0);
@@ -5749,6 +5750,9 @@ startLoop({
        * это не делает — кладбище остаётся прогулкой.
        */
       if (graveSite !== null) {
+        if (raid.battle === null && raid.status === 'running') {
+          stepGraveNpcs(graveSite, raid.elapsed, raid.hero);
+        }
         const read = readEpitaph(graveSite, raid.hero.x, raid.hero.z, readStone);
         readStone = read.last;
         if (read.say !== null) raid.events.push(read.say);
@@ -5905,9 +5909,10 @@ startLoop({
 
     returnScreen.update();
     stepWind(dt);
-    // Пузыри живут только в лагере на поляне: любой другой кадр их чистит,
-    // и слова не переживают говорящего при смене сцены.
+    // Пузыри живут над теми, кто говорит: в лагере на поляне — жильцы,
+    // в замке — постовые у ворот. Любой другой кадр чистит слова со сценой.
     if (inGladeCamp && campLocation === 'camp') campBubbles();
+    else if (mode === 'raid' && castleNow !== null && raidView !== null) bubbles.sync(raidView.garrisonBubbles());
     else bubbles.clear();
     // Полосы прогресса — каждый кадр и в любой сцене: список сам пустеет
     // там, где работ нет, и чистить его отдельной веткой не нужно.
@@ -5943,7 +5948,7 @@ startLoop({
        * замирания, — поэтому ход неба ничего не стоит по батарее. Вылазку
        * это не трогает: под землёй время суток не при чём, там своя тьма.
        */
-      if (inGladeCamp) setNight(nightAt(campTime()));
+      if (inGladeCamp || castleNow !== null) setNight(nightAt(campTime()));
       raidView.sync(raid, alpha, dt, now, rig.dayFactor);
       // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
       // теми же правилами, которыми применит ход: кнопка, предлагающая

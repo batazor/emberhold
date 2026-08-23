@@ -6,6 +6,7 @@ import { TIER_ROSTER, enemyStats } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
 import { rollLoot } from './resources';
 import { STONES, scatterStones } from './stones';
+import { buildDungeonEnemyPatrols } from './dungeonNpc';
 import type { Cell, Container, Enemy, GameLocation, Tier } from './types';
 
 /**
@@ -441,7 +442,8 @@ export function generateLocation(
     (x, z) => !busy.has(idx(size, x, z)),
   );
 
-  return { seed, tier, size, blocked, evac, containers, stones, enemies, backSteps };
+  const loc: GameLocation = { seed, tier, size, blocked, evac, containers, stones, enemies, backSteps };
+  return { ...loc, enemyPatrols: buildDungeonEnemyPatrols(loc) };
 }
 
 /**

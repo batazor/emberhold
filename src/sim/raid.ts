@@ -27,6 +27,7 @@ import {
 } from './consumables';
 import type { ConsumableId } from './consumables';
 import { generateLocation } from './generate';
+import { firstDungeonNpcLineAt, stepDungeonNpcs } from './dungeonNpc';
 import { effectOf } from './events';
 import { effectOfCard } from './draft';
 import type { DraftCardId } from './draft';
@@ -317,6 +318,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     paidRound: 0,
     projectiles: [],
     nextProjectileId: 0,
+    nextNpcLine: firstDungeonNpcLineAt(loc.seed),
     events: [],
   };
 }
@@ -1198,6 +1200,7 @@ export function stepRaid(state: RaidState, dt: number, night: boolean, knowledge
   // поле (§11.3), и считать его дважды нельзя.
   stepContact(state, dt, state.vision);
   if (state.inFight && state.battle === null) openBattle(state);
+  if (state.battle === null) stepDungeonNpcs(state);
 
   // Голод не убивает мгновенно: провиант обязан оставаться главной причиной
   // провала (§11.3), но провал должен наступать в дороге, а не внезапно.

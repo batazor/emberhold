@@ -121,6 +121,25 @@ export interface Enemy {
   readonly relentless?: boolean;
 }
 
+/** Нога мирного обхода противника: стоянка у `at`, потом путь к следующей точке. */
+export interface EnemyPatrolLeg {
+  readonly at: Cell;
+  readonly path: readonly Cell[];
+  readonly length: number;
+  readonly wait: number;
+}
+
+/**
+ * Мирный маршрут ярусного противника, пока он ещё не проснулся. Хранится у
+ * локации, потому что это поведение места: бой по-прежнему ведёт сам `Enemy`.
+ */
+export interface EnemyPatrol {
+  readonly enemy: number;
+  readonly legs: readonly EnemyPatrolLeg[];
+  readonly cycle: number;
+  readonly speed: number;
+}
+
 export interface Container {
   readonly id: number;
   readonly x: number;
@@ -159,6 +178,8 @@ export interface GameLocation {
    */
   readonly stones: Stone[];
   readonly enemies: Enemy[];
+  /** Мирные обходы скелетов в обычном подземелье. У прогулочных мест их нет. */
+  readonly enemyPatrols?: readonly EnemyPatrol[];
   /** §11.1 «путь назад»: длина кратчайшего пути до выхода, в шагах. */
   readonly backSteps: Int32Array;
 }
@@ -394,6 +415,8 @@ export interface RaidState {
   /** §11.3 — снаряды в полёте. Пустой массив у локации без стрелков. */
   projectiles: Projectile[];
   nextProjectileId: number;
+  /** Когда ближайший скелет в следующий раз может пробурчать в полосу HUD. */
+  nextNpcLine: number;
   /** Реплики для HUD — то, что игрок должен заметить в этот тик. */
   events: string[];
 }

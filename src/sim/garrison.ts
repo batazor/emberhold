@@ -1,5 +1,5 @@
 /**
- * Кто в замке (§6.1.6, §6.1.6.1). Трое родом: отряд, обходящий периметр,
+ * Кто в замке (§6.1.6, §6.1.6.1). Трое родом: смена у ворот и на обходе,
  * стрелок, который иногда выходит на стену, и жильцы двора. Локация замка
  * до этого стояла пустой намеренно — постройка была, а живущих в ней
  * не было, — и первое, чем её наполняют, это не добыча и не бой, а то,
@@ -20,7 +20,7 @@
  * порядке. Отсюда и проверяемость: правила гоняют весь час обхода в Node,
  * не заводя ни кадра.
  *
- * **Маршрут — прямоугольник снаружи стены, и это выведено, а не выбрано.**
+ * **Маршрут — петля от ворот вокруг стены, и это выведено, а не выбрано.**
  * Кольца по верху стены не существует: ход рвётся на воротах и на каждой
  * башне (это измерено, §6.1.6), и «обойти периметр поверху» нельзя ни в одном
  * замке. Двор камера прячет за стеной — она выше героя вдвое. Снаружи же
@@ -35,7 +35,7 @@
  * из башни или с лестницы неоткуда, и появление посреди прогона читалось бы
  * как подмена кадра.
  */
-import { mulberry32, randInt } from '../core/rng';
+import { mulberry32, randInt, type Rng } from '../core/rng';
 import {
   CASTLE_CELL,
   DIRS,
@@ -68,49 +68,49 @@ export const PATROL_GAP = 1;
  */
 export const PATROL_SPEED = 1.5;
 
-/** Сколько рыцарей в отряде и на сколько клеток они растянуты в колонне. */
+/** Сколько рыцарей в гарнизоне: две смены по двое. */
 export const SQUAD = 4;
-export const SQUAD_STEP = 1.3;
+export const PATROL_GROUPS = 2;
+export const PATROL_PAIR = 2;
+
+/** Сколько смена стоит у ворот перед тем, как уйти в обход или встать на пост. */
+export const PATROL_HANDOFF = 5.2;
 
 /**
- * Личный ход рыцаря. Отряд шёл одной скоростью и одним интервалом — четверо
- * в ряд, как зубья одной шестерни, — и читался не караулом, а деталью
- * механизма. Живым его делают три вещи, и все три считаются от времени,
- * а не хранятся: **шаг со стоянками**, **своя полоса** и **обгон**.
- *
- * Стоянка и ход одинаковой длины у всех, а фаза у каждого своя. Это не
- * мелочь, а условие: разная средняя скорость растащила бы колонну по всему
- * периметру за пару кругов, и «отряд — это те, кто идёт вместе» перестало бы
- * быть правдой. Одинаковая средняя при разных фазах держит их вместе
- * и при этом даёт обгон: стоящего обходит тот, кто сзади.
- *
- * Замеренный разброс колонны — 7,6 клетки при периметре в семьдесят: интервал
- * между крайними плюс то, что успевает пройти идущий, пока стоит соседний.
- * Число снято по двум сотням сидов, а не выбрано; округлено вверх.
+ * Речь постовых: короткие пары строк. Это диалог людей, но без обращения
+ * к игроку; в пузыре слышно, что смена живая, а не рассказывается правило.
  */
-export const PATROL_SPREAD_MAX = 7.8;
+export const GARRISON_TEXT = {
+  quiet: 'У ворот тихо',
+  quietBack: 'Тихо тоже служба',
+  lantern: 'Фонарь коптит',
+  lanternBack: 'Зато тени честные',
+  wall: 'Северная стена чиста',
+  wallBack: 'Запишем как чудо',
+  relief: 'Смена пришла',
+  reliefBack: 'Ноги голосуют за пост',
+  bushes: 'Кусты шуршат по уставу',
+  bushesBack: 'Пусть шуршат строем',
+} as const;
 
-export const PATROL_WALK = 9.5;
-export const PATROL_STAND = 2.6;
+const GARRISON_DIALOGS: readonly (readonly [keyof typeof GARRISON_TEXT, keyof typeof GARRISON_TEXT])[] = [
+  ['quiet', 'quietBack'],
+  ['lantern', 'lanternBack'],
+  ['wall', 'wallBack'],
+  ['relief', 'reliefBack'],
+  ['bushes', 'bushesBack'],
+];
+
+const GARRISON_TALK_CYCLE = 31;
+const GARRISON_TALK_LINE = 2.4;
 
 /**
- * Своя полоса и покачивание. Полоса — постоянный сдвиг вбок: без неё обгон
- * означал бы проход сквозь товарища. Покачивание поверх неё — то, зачем оно
- * и нужно: рыцарь идёт не по нитке.
- *
- * У угла и то и другое сходит на нет: тропа там поворачивает на прямой угол,
- * и сдвиг вбок, повернувшись вместе с ней, дёрнул бы рыцаря на полклетки
- * поперёк. `PATROL_SWAY_FADE` — на скольких клетках до угла ход выпрямляется.
+ * Полоса пары. В смене двое идут рядом, а не в одну точку, и стоят у ворот
+ * по двум сторонам прохода. Больше разводить нельзя: обход идёт вплотную
+ * к стене, а поле вокруг замка всего четыре клетки.
  */
-/**
- * Полосы обхода: каждый рыцарь идёт по своему кольцу, а кольца разведены
- * на ширину фигуры. Обгон при этом остаётся обгоном, а не проходом насквозь.
- *
- * Только наружу: внутрь до замка одна клетка, наружу поле свободно на три.
- * Дальний идёт в 1,6 клетки от тропы — это ещё поле, а не лес.
- */
-const PATROL_LANE_FIRST = 0.15;
-const PATROL_LANE_STEP = 0.47;
+const PAIR_LANE = 0.32;
+const POST_RELIEF = 0.28;
 
 /**
  * Покачивание — свойство **тропы**, а не идущего: волна одна на всех, и её
@@ -140,7 +140,7 @@ const PATROL_CORNER = 2.6;
  * там работает разведение (`sim/crowd.ts`), и его сдвиг — отдельное
  * обещание с отдельной меркой. См. правило про непрерывность шага.
  */
-export const PATROL_STEP_MAX = 1.6;
+export const PATROL_STEP_MAX = 1.8;
 
 /**
  * Скорость стрелка по стене, клеток локации в секунду. Он идёт по узкому
@@ -249,14 +249,22 @@ export interface YardWalk {
 
 export interface Garrison {
   readonly seed: number;
-  /** Тропа обхода: замкнутая ломаная по углам прямоугольника. */
+  /** Тропа обхода: замкнутая ломаная от ворот вокруг стены. */
   readonly route: readonly { readonly x: number; readonly z: number }[];
   /** Длина тропы в клетках локации. */
   readonly length: number;
+  /** Сколько длится одна служба: выйти в обход, вернуться к воротам, сдать пост. */
+  readonly shift: number;
+  /** Сидовый сдвиг часов: при входе игрок не видит караул всегда в одной фазе. */
+  readonly start: number;
   /** По часовой стрелке или против — решает сид. */
   readonly way: 1 | -1;
-  /** Личный ход каждого рыцаря: фаза шага, полоса и фаза покачивания. */
-  readonly gait: readonly { readonly phase: number; readonly lane: number }[];
+  /** Две клетки поста у ворот, по одной на человека смены. */
+  readonly posts: readonly { readonly x: number; readonly z: number; readonly facing: number }[];
+  /** Линия наружу от ворот: нужна постовым, чтобы смотреть в поле. */
+  readonly gateOut: readonly [number, number];
+  /** Личный сдвиг каждого рыцаря: двое в смене идут рядом, а не в одну точку. */
+  readonly gait: readonly { readonly lane: number }[];
   /** Участки верха стены. Пусто — стрелку выходить некуда. */
   readonly runs: readonly Run[];
   /** Обходы жильцов двора. Пусто — двор не даёт замкнуть ни одного кольца. */
@@ -657,6 +665,137 @@ function walkYard(w: YardWalk, t: number): Dweller {
   return { x: home.x, z: home.z, facing: 0, walking: false, look: w.look };
 }
 
+type GateSide = 'north' | 'east' | 'south' | 'west';
+
+function routeLength(route: readonly { readonly x: number; readonly z: number }[]): number {
+  let out = 0;
+  for (let i = 0; i < route.length; i++) {
+    const a = route[i]!;
+    const b = route[(i + 1) % route.length]!;
+    out += Math.abs(b.x - a.x) + Math.abs(b.z - a.z);
+  }
+  return out;
+}
+
+function enrichRoute(
+  route: readonly { readonly x: number; readonly z: number }[],
+  rng: Rng,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+): { readonly x: number; readonly z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  let added = 0;
+  let fallback: { readonly at: number; readonly points: readonly { readonly x: number; readonly z: number }[]; readonly len: number } | null = null;
+  for (let i = 0; i < route.length; i++) {
+    const from = route[i]!;
+    const to = route[(i + 1) % route.length]!;
+    out.push(from);
+    const len = Math.abs(to.x - from.x) + Math.abs(to.z - from.z);
+    if (len < 7) continue;
+    const normal: readonly [number, number] | null =
+      from.z === to.z && from.z === z0 ? [0, -1]
+        : from.z === to.z && from.z === z1 ? [0, 1]
+          : from.x === to.x && from.x === x0 ? [-1, 0]
+          : from.x === to.x && from.x === x1 ? [1, 0]
+              : null;
+    if (normal === null) continue;
+    const a = 0.24 + rng() * 0.28;
+    const b = Math.min(0.86, a + 0.16 + rng() * 0.18);
+    const depth = 1.1 + rng() * 0.7;
+    const nearA = {
+      x: from.x + (to.x - from.x) * a,
+      z: from.z + (to.z - from.z) * a,
+    };
+    const nearB = {
+      x: from.x + (to.x - from.x) * b,
+      z: from.z + (to.z - from.z) * b,
+    };
+    const farA = {
+      x: nearA.x + normal[0] * depth,
+      z: nearA.z + normal[1] * depth,
+    };
+    const farB = {
+      x: nearB.x + normal[0] * depth,
+      z: nearB.z + normal[1] * depth,
+    };
+    const points = [nearA, farA, farB, nearB] as const;
+    if (fallback === null || len > fallback.len) fallback = { at: out.length, points, len };
+    if (rng() < 0.25) continue;
+    out.push(...points);
+    added++;
+  }
+  if (added === 0 && fallback !== null) out.splice(fallback.at, 0, ...fallback.points);
+  return out;
+}
+
+function gateSide(
+  gate: Cell,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+): GateSide {
+  const gx = gate.x + (CASTLE_CELL - 1) / 2;
+  const gz = gate.z + (CASTLE_CELL - 1) / 2;
+  const sides: readonly { readonly side: GateSide; readonly dist: number }[] = [
+    { side: 'north', dist: Math.abs(gz - z0) },
+    { side: 'east', dist: Math.abs(gx - x1) },
+    { side: 'south', dist: Math.abs(gz - z1) },
+    { side: 'west', dist: Math.abs(gx - x0) },
+  ];
+  return [...sides].sort((a, b) => a.dist - b.dist)[0]!.side;
+}
+
+const gateOut = (side: GateSide): readonly [number, number] =>
+  side === 'north' ? [0, -1]
+    : side === 'east' ? [1, 0]
+      : side === 'south' ? [0, 1]
+        : [-1, 0];
+
+function patrolRoute(
+  gate: Cell,
+  rng: Rng,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+): { readonly route: readonly { readonly x: number; readonly z: number }[]; readonly out: readonly [number, number] } {
+  const side = gateSide(gate, x0, z0, x1, z1);
+  const gx = Math.max(x0, Math.min(x1, gate.x + (CASTLE_CELL - 1) / 2));
+  const gz = Math.max(z0, Math.min(z1, gate.z + (CASTLE_CELL - 1) / 2));
+  const xm = (x0 + x1) / 2;
+  const zm = (z0 + z1) / 2;
+  const start =
+    side === 'north' ? { x: gx, z: z0 }
+      : side === 'east' ? { x: x1, z: gz }
+        : side === 'south' ? { x: gx, z: z1 }
+          : { x: x0, z: gz };
+  const route = side === 'north'
+    ? [start, { x: x1, z: z0 }, { x: x1, z: zm }, { x: x1, z: z1 }, { x: xm, z: z1 }, { x: x0, z: z1 }, { x: x0, z: zm }, { x: x0, z: z0 }]
+    : side === 'east'
+      ? [start, { x: x1, z: z1 }, { x: xm, z: z1 }, { x: x0, z: z1 }, { x: x0, z: zm }, { x: x0, z: z0 }, { x: xm, z: z0 }, { x: x1, z: z0 }]
+      : side === 'south'
+        ? [start, { x: x0, z: z1 }, { x: x0, z: zm }, { x: x0, z: z0 }, { x: xm, z: z0 }, { x: x1, z: z0 }, { x: x1, z: zm }, { x: x1, z: z1 }]
+        : [start, { x: x0, z: z0 }, { x: xm, z: z0 }, { x: x1, z: z0 }, { x: x1, z: zm }, { x: x1, z: z1 }, { x: xm, z: z1 }, { x: x0, z: z1 }];
+  return { route: enrichRoute(route, rng, x0, z0, x1, z1), out: gateOut(side) };
+}
+
+function gatePosts(
+  route: readonly { readonly x: number; readonly z: number }[],
+  out: readonly [number, number],
+): readonly { readonly x: number; readonly z: number; readonly facing: number }[] {
+  const start = route[0]!;
+  const side: readonly [number, number] = [-out[1], out[0]];
+  const x = start.x + out[0] * 0.65;
+  const z = start.z + out[1] * 0.65;
+  return [
+    { x: x - side[0] * 0.55, z: z - side[1] * 0.55, facing: Math.atan2(out[0], out[1]) },
+    { x: x + side[0] * 0.55, z: z + side[1] * 0.55, facing: Math.atan2(out[0], out[1]) },
+  ];
+}
+
 /**
  * Гарнизон площадки. Считается один раз на заход: ни одно из этих чисел
  * не меняется, пока стоит замок.
@@ -665,6 +804,7 @@ export function garrisonOf(site: {
   castle: Castle;
   at: Spot;
   loc: GameLocation;
+  gate?: Cell;
   trader?: Cell | null;
 }): Garrison {
   const { castle, at } = site;
@@ -672,38 +812,25 @@ export function garrisonOf(site: {
   const z0 = at.z - PATROL_GAP;
   const x1 = at.x + castle.width * CASTLE_CELL - 1 + PATROL_GAP;
   const z1 = at.z + castle.depth * CASTLE_CELL - 1 + PATROL_GAP;
-  const route = [
-    { x: x0, z: z0 },
-    { x: x1, z: z0 },
-    { x: x1, z: z1 },
-    { x: x0, z: z1 },
-  ];
-  const length = 2 * (x1 - x0) + 2 * (z1 - z0);
+  const gate = site.gate ?? { x: at.x + castle.gate.x * CASTLE_CELL, z: at.z + castle.gate.z * CASTLE_CELL };
   const rng = mulberry32(castle.seed ^ 0x6c07);
-  // Раздача полос: перестановка номеров, а не их порядок.
-  const order = Array.from({ length: SQUAD }, (_, i) => i);
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = randInt(rng, i + 1);
-    [order[i], order[j]] = [order[j]!, order[i]!];
-  }
+  const { route, out } = patrolRoute(gate, rng, x0, z0, x1, z1);
+  const length = routeLength(route);
+  const shift = length / PATROL_SPEED + PATROL_HANDOFF;
+  const laneSign = randInt(rng, 2) === 0 ? 1 : -1;
   return {
     seed: castle.seed,
     route,
     length,
+    shift,
+    start: rng() * shift * PATROL_GROUPS,
     way: randInt(rng, 2) === 0 ? 1 : -1,
-    // Фаза шага у каждого своя, длины хода и стоянки — общие: разная средняя
-    // скорость растащила бы колонну по периметру. Полосы разведены по номеру
-    // в колонне и качнуты сидом: две одинаковые означали бы обгон насквозь.
+    posts: gatePosts(route, out),
+    gateOut: out,
+    // В каждой смене двое идут плечом к плечу. Знак сидовый: в разных замках
+    // ближе к стене оказывается то левый, то правый рыцарь.
     gait: Array.from({ length: SQUAD }, (_, i) => ({
-      // Фаза мала намеренно. Она сдвигает не только момент стоянки, но
-      // и место: сдвиг на весь цикл — это четырнадцать клеток пути, и колонна
-      // расползлась бы на четверть периметра. Стоянки хватает, чтобы задний
-      // обошёл переднего (3,9 клетки против интервала в 1,3).
-      phase: rng() * PATROL_STAND,
-      // Полоса своя у каждого и разведена на ширину фигуры: обгон обязан
-      // быть обгоном, а не проходом насквозь. Кто в какой — решает сид,
-      // поэтому в двух заходах ближе к стене идут разные.
-      lane: -(PATROL_LANE_FIRST + order[i]! * PATROL_LANE_STEP),
+      lane: ((i % PATROL_PAIR === 0 ? -PAIR_LANE : PAIR_LANE) * laneSign),
     })),
     runs: runsOf(castle, at),
     yard: yardWalks(castle, at, site.loc, site.trader ?? null),
@@ -728,6 +855,12 @@ export interface Patrolman extends Marcher {
   /** Сколько прошёл ногами от начала тропы. Растёт всегда, и по нему одному
    *  видно, кто кого обошёл: у обогнавшего число больше. */
   readonly along: number;
+  /** Какая пара рыцарей: одна стоит у ворот, вторая идёт в обход. */
+  readonly group: number;
+  /** Сейчас он в обходе или на посту у ворот. */
+  readonly duty: 'patrol' | 'post';
+  /** Реплика над головой. `null` — в этот кадр молчит. */
+  readonly talk: string | null;
 }
 
 /**
@@ -743,6 +876,7 @@ function pointAt(g: Garrison, s: number, lane: number): { x: number; z: number }
     const dx = to.x - from.x;
     const dz = to.z - from.z;
     const side = Math.abs(dx) + Math.abs(dz);
+    if (side <= 1e-9) continue;
     if (left > side) {
       left -= side;
       continue;
@@ -769,8 +903,9 @@ function pointAt(g: Garrison, s: number, lane: number): { x: number; z: number }
     const prev = g.route[(i - 1 + g.route.length) % g.route.length]!;
     const next = g.route[(i + 2) % g.route.length]!;
     let [ox, oz] = nx(from, to);
-    const head = Math.min(left, PATROL_CORNER) / PATROL_CORNER;
-    const tail = Math.min(side - left, PATROL_CORNER) / PATROL_CORNER;
+    const corner = Math.min(PATROL_CORNER, Math.max(1e-6, side / 2));
+    const head = Math.min(left, corner) / corner;
+    const tail = Math.min(side - left, corner) / corner;
     if (head < 1) {
       const [px, pz] = nx(prev, from);
       const w = 0.5 + 0.5 * head;
@@ -791,24 +926,77 @@ function pointAt(g: Garrison, s: number, lane: number): { x: number; z: number }
   return { x: g.route[0]!.x, z: g.route[0]!.z };
 }
 
-/**
- * Сколько рыцарь `i` прошёл ногами к моменту `t` и идёт ли он сейчас.
- * Ход и стоянка чередуются, длины у всех одни, фаза у каждого своя.
- * Функция монотонна: назад никто не пятится ни на одном кадре.
- */
-function walkedBy(g: Garrison, i: number, t: number): { u: number; walking: boolean } {
-  const cycle = PATROL_WALK + PATROL_STAND;
-  const at = t + g.gait[i]!.phase;
-  const laps = Math.floor(at / cycle);
-  const local = at - laps * cycle;
-  const walked = laps * PATROL_WALK + Math.min(local, PATROL_WALK);
-  return { u: PATROL_SPEED * walked - i * SQUAD_STEP, walking: local < PATROL_WALK };
+function positiveMod(x: number, n: number): number {
+  return ((x % n) + n) % n;
 }
 
+function talkAt(g: Garrison, group: number, member: number, t: number): string | null {
+  const clock = t + g.start + g.seed * 0.017;
+  const local = positiveMod(clock, GARRISON_TALK_CYCLE);
+  const round = Math.floor(clock / GARRISON_TALK_CYCLE);
+  const pair = GARRISON_DIALOGS[positiveMod(g.seed + group * 3 + round, GARRISON_DIALOGS.length)]!;
+  if (local < GARRISON_TALK_LINE) return member === 0 ? GARRISON_TEXT[pair[0]] : null;
+  if (local < GARRISON_TALK_LINE * 2) return member === 1 ? GARRISON_TEXT[pair[1]] : null;
+  return null;
+}
+
+function postPoint(
+  g: Garrison,
+  group: number,
+  member: number,
+): { readonly x: number; readonly z: number; readonly facing: number } {
+  const post = g.posts[member] ?? g.posts[0]!;
+  const relief = (group === 0 ? -POST_RELIEF : POST_RELIEF);
+  return {
+    x: post.x + g.gateOut[0] * relief,
+    z: post.z + g.gateOut[1] * relief,
+    facing: post.facing,
+  };
+}
+
+function restingPost(
+  g: Garrison,
+  group: number,
+  member: number,
+  t: number,
+): { readonly x: number; readonly z: number; readonly facing: number } {
+  const post = postPoint(g, group, member);
+  const breathe = Math.sin((t + g.seed * 0.01 + group * 8 + member * 3) / 4.8) * 0.06;
+  return {
+    x: post.x + g.gateOut[0] * breathe,
+    z: post.z + g.gateOut[1] * breathe,
+    facing: post.facing,
+  };
+}
+
+function postMan(g: Garrison, group: number, member: number, t: number, along: number): Patrolman {
+  const post = restingPost(g, group, member, t);
+  return {
+    x: post.x,
+    z: post.z,
+    facing: post.facing,
+    walking: false,
+    along,
+    group,
+    duty: 'post',
+    talk: talkAt(g, group, member, t),
+  };
+}
+
+const mix = (
+  a: { readonly x: number; readonly z: number },
+  b: { readonly x: number; readonly z: number },
+  share: number,
+): { x: number; z: number } => ({
+  x: a.x + (b.x - a.x) * share,
+  z: a.z + (b.z - a.z) * share,
+});
+
 /**
- * Отряд на момент `t` секунд от входа в локацию. Колонна, а не цепь по всему
- * периметру: отряд — это те, кто идёт вместе, и растянутый на четыре стороны
- * он читался бы четырьмя одиночками.
+ * Отряд на момент `t` секунд от входа в локацию. Это не один караван из
+ * четырёх: замок живёт сменами. Одна пара держит ворота, вторая обходит
+ * стены, затем у ворот они меняются ролями. Часы сдвинуты сидом (`start`),
+ * поэтому игрок при каждом плане видит не одну и ту же картинку входа.
  *
  * Лицо берётся не у отрезка тропы, а у самого движения — разностью двух
  * близких точек пути. Отрезок тропы врал дважды: при обходе против часовой
@@ -816,27 +1004,79 @@ function walkedBy(g: Garrison, i: number, t: number): { u: number; walking: bool
  * поперёк. Разность честна в обоих случаях и стоит двух вызовов `pointAt`.
  */
 export function patrolAt(g: Garrison, t: number): Patrolman[] {
-  // Окно взгляда — ровно шаг одного кадра вперёд. Симметричное окно на углу
-  // врало: оно смотрело в обе стороны поворота разом, а рыцарь за кадр
-  // проходит только одну из них.
-  const eps = PATROL_SPEED / 30;
+  // Окно взгляда — короткий шаг вперёд. Симметричное окно на углу врало:
+  // оно смотрело в обе стороны поворота разом, а рыцарь за кадр проходит
+  // только одну из них. Длинное окно тоже врёт на коротких проверочных
+  // крюках, где за четверть клетки направление успевает смениться дважды.
+  const eps = PATROL_SPEED / 120;
+  const clock = t + g.start;
+  const full = g.shift * PATROL_GROUPS;
+  const lap = Math.floor(clock / full);
+  const walkTime = g.length / PATROL_SPEED;
+  const stand = PATROL_HANDOFF / 2;
+  const approach = Math.min(0.8, stand / 2);
   const out: Patrolman[] = [];
   for (let i = 0; i < SQUAD; i++) {
-    const { u, walking } = walkedBy(g, i, t);
+    const group = Math.floor(i / PATROL_PAIR);
+    const member = i % PATROL_PAIR;
+    const local = positiveMod(clock + group * g.shift, full);
+    const duty = local < g.shift ? 'patrol' : 'post';
+    if (duty === 'post') {
+      out.push(postMan(g, group, member, t, lap * g.length));
+      continue;
+    }
+
     const lane = g.gait[i]!.lane;
-    const here = pointAt(g, u * g.way, lane);
-    const ahead = pointAt(g, (u + eps) * g.way, lane);
+    const post = restingPost(g, group, member, t);
+    const routeStart = pointAt(g, 0, lane);
+    const walkEnd = stand + walkTime;
+    let u = 0;
+    let walking = false;
+    let here: { x: number; z: number };
+    let ahead: { x: number; z: number };
+    if (local < stand) {
+      if (local < stand - approach) {
+        here = post;
+        ahead = { x: post.x + g.gateOut[0], z: post.z + g.gateOut[1] };
+      } else {
+        const share = (local - (stand - approach)) / approach;
+        here = mix(post, routeStart, share);
+        ahead = mix(post, routeStart, Math.min(1, share + eps / approach));
+        walking = true;
+      }
+    } else if (local < walkEnd) {
+      const walkAt = local - stand;
+      u = Math.max(0, Math.min(g.length, walkAt * PATROL_SPEED));
+      here = pointAt(g, u * g.way, lane);
+      ahead = pointAt(g, (Math.min(g.length, u + eps)) * g.way, lane);
+      walking = true;
+    } else {
+      u = g.length;
+      const endLocal = local - walkEnd;
+      if (endLocal < approach) {
+        const share = endLocal / approach;
+        here = mix(routeStart, post, share);
+        ahead = mix(routeStart, post, Math.min(1, share + eps / approach));
+        walking = true;
+      } else {
+        here = post;
+        ahead = { x: post.x + g.gateOut[0], z: post.z + g.gateOut[1] };
+      }
+    }
     out.push({
       x: here.x,
       z: here.z,
       facing: Math.atan2(ahead.x - here.x, ahead.z - here.z),
       walking,
-      along: u,
+      along: lap * g.length + u,
+      group,
+      duty,
+      talk: null,
     });
   }
-  // Полосы разводят обход на прямой, но на углу кольца срезаются и просвет
-  // между ними сжимается. Остаток снимает расталкивание — сдвиг там малый,
-  // потому что основную работу уже сделали полосы.
+  // Полосы разводят пары на прямой, но у ворот две смены встречаются близко.
+  // Остаток снимает расталкивание — сдвиг там малый, потому что основную
+  // работу уже сделали посты и полосы.
   keepApart(out);
   return out;
 }
