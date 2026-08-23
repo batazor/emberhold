@@ -19,6 +19,8 @@
  * как стоят могилы и где висят привидения. Одна и та же точка карты
  * собирается одним и тем же кладбищем весь день (§4).
  */
+import { BUSHES, scatterBushes } from './berries';
+import type { Bush } from './berries';
 import { mulberry32, randInt, type Rng } from '../core/rng';
 import { ENEMY_STATS } from './enemies';
 import { FENCE_CELL, FENCE_MATERIALS, buildFence, type FenceMaterial, type FencePiece } from './fence';
@@ -171,6 +173,8 @@ export interface GraveSite {
   readonly marks: readonly GraveMark[];
   /** Клетки леса: рендеру они деревья, симуляции — занятые клетки. */
   readonly trees: readonly Spot[];
+  /** §13.8 — ягодные кусты: единственное, что на прогулке можно взять. */
+  readonly bushes: readonly Bush[];
   /** Пеньки: вырубленный когда-то край, по нему ходят. */
   readonly stumps: readonly Spot[];
   /** Проезд в клетках локации — сюда приходят снаружи. */
@@ -441,5 +445,23 @@ export function generateGraveSite(seed: number): GraveSite {
     enemies,
     backSteps: distanceField(size, blocked, evac),
   };
-  return { loc, material, fence, at, marks, trees, stumps, gate };
+  /**
+   * §13.8 — кусты кладбища, и их тут больше, чем где-либо. До них прогулка
+   * была местом без единого дела (§4): смотреть можно, брать нечего.
+   * Ягоды дают причину задержаться и не делают из кладбища вылазку —
+   * пища не покупает ни построек, ни снаряжения.
+   */
+  const busyCell = new Set<string>([
+    ...trees.map((s) => `${s.x},${s.z}`),
+    ...stumps.map((s) => `${s.x},${s.z}`),
+    ...marks.map((m) => `${m.x},${m.z}`),
+  ]);
+  const bushes = scatterBushes(
+    seed ^ 0x2d17,
+    loc.size,
+    loc.blocked,
+    BUSHES.grave,
+    (x, z) => !busyCell.has(`${x},${z}`),
+  );
+  return { loc, material, fence, at, marks, trees, bushes, stumps, gate };
 }

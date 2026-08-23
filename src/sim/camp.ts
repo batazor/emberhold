@@ -7,6 +7,8 @@ import { deriveBuildCost, modelKitchenFood, roundSeries, START_FOOD, TIER_KITCHE
 import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear } from './gear';
 import type { GearSlot, GearState, Offhand } from './gear';
 import { healPerWound, trainPerLevel } from './heroes';
+import { BUSHES, scatterBushes } from './berries';
+import type { Bush } from './berries';
 import type { Tier } from './types';
 import type { Visit } from './world';
 import { emptyWalls, type CampWalls } from './campWalls';
@@ -461,6 +463,13 @@ export interface CampState {
    */
   stones: Stone[];
   /**
+   * Ягодные кусты (§13.8). Поле необязательное: сохранения, записанные
+   * до кустов, обязаны открываться — и открываются они поляной без кустов,
+   * пока сцена их не рассадит. Обобранный куст из списка не выпадает,
+   * а помнит время: он созревает снова.
+   */
+  bushes?: Bush[];
+  /**
    * Свой клан (§30): имя, под которым лагерь стоит в таблице. Поле
    * необязательное, версия сейва ради него не поднята — сохранение,
    * сделанное до кланов, обязано открываться, и открывается оно лагерем
@@ -504,6 +513,22 @@ const START_LAYOUT: Record<BuildingId, { x: number; z: number }> = {
  * Следы зданий исключены: тап по зданию открывает его карточку, и валун
  * под Жильём был бы камнем, по которому нельзя ударить.
  */
+/**
+ * Кусты стартовой площадки (§13.8) — тем же правилом, что и валуны: своя
+ * рассадка по самой большой площадке, мимо следов зданий. Сид свой, чтобы
+ * куст не встал в ту же клетку, что камень.
+ */
+export function campBushes(): Bush[] {
+  const area = campArea(MAX_LEVEL);
+  const stones = campStones();
+  const under = (x: number, z: number): boolean =>
+    BUILDING_ORDER.some((id) => {
+      const p = START_LAYOUT[id];
+      return x >= p.x && z >= p.z && x < p.x + 2 && z < p.z + 2;
+    }) || stones.some((s) => s.x === x && s.z === z);
+  return scatterBushes(0x7b12, area, new Uint8Array(area * area), BUSHES.camp, (x, z) => !under(x, z));
+}
+
 export function campStones(): Stone[] {
   const area = campArea(MAX_LEVEL);
   const under = (x: number, z: number): boolean =>
@@ -556,6 +581,7 @@ export function createCamp(): CampState {
     visits: [],
     walls: emptyWalls(),
     stones: campStones(),
+    bushes: campBushes(),
   };
 }
 
