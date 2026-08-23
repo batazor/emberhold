@@ -462,6 +462,7 @@ export function generateGraveSite(seed: number): GraveSite {
     loc.blocked,
     BUSHES.grave,
     (x, z) => !busyCell.has(`${x},${z}`),
+    true,
   );
   return { loc, material, fence, at, marks, trees, bushes, stumps, gate };
 }
