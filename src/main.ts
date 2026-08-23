@@ -291,7 +291,7 @@ import {
   tentSpot,
 } from './sim/residents';
 import { payUpkeep, workingAfter } from './sim/upkeep';
-import { PICK_REASON, bushAt, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
+import { PICK_REASON, bushAt, pickKey, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
 import type { Bush } from './sim/berries';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
@@ -442,6 +442,8 @@ let mine: Work | null = null;
 let campMine: { work: Work; stone: Stone } | null = null;
 /** §13.8 — сбор ягод в лагере: та же пара «работа и цель», что у кайла. */
 let campPick: { work: Work; bush: Bush } | null = null;
+/** §13.8 — сбор в местах мира: место, узел и работа по нему. */
+let worldPick: { place: string; bush: Bush; work: Work } | null = null;
 
 /**
  * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
@@ -3380,6 +3382,68 @@ function stepChopping(dt: number): void {
  * работать, когда дойдёт. Отказ здесь бывает один — полный рюкзак:
  * «далеко» не отказ, а дорога.
  */
+/**
+ * §13.8 — сбор ягод в местах мира. Отличий от лагеря два, и оба про место:
+ * пища идёт в кладовую лагеря напрямую (в рюкзак её класть нельзя — это
+ * не добыча вылазки), а сорванное пишется в самоистекающий список
+ * (`camp.picks`), потому что узлы мест не хранятся вовсе.
+ */
+function startWorldPicking(place: string, bush: Bush, hub: { x: number; z: number }, seed: number): void {
+  if (raid === null) return;
+  if (!worldRipe(seed, place, bush, hub, camp.picks ?? {}, clock.now())) {
+    play('deny');
+    say(PICK_REASON['зелёный']);
+    return;
+  }
+  chop = null;
+  mine = null;
+  worldPick = { place, bush, work: startPick(bush) };
+  commandMove(raid, bush);
+  raidView?.showMarker(bush.x, bush.z);
+}
+
+function stepWorldPicking(dt: number): void {
+  if (raid === null || worldPick === null) return;
+  const { place, bush, work } = worldPick;
+  const foodBefore = camp.resources.food;
+  const step = stepPickInto(
+    raid.hero,
+    raid.path.length > 0,
+    [bush],
+    work,
+    dt,
+    camp.resources,
+    clock.now(),
+  );
+  if (step.stopped !== null) {
+    play('deny');
+    say(
+      step.stopped === 'gone' || step.stopped === 'ok'
+        ? PICK_REASON['пусто']
+        : MINE_REASON[step.stopped],
+    );
+    worldPick = null;
+    raidView?.hideWork();
+    return;
+  }
+  if (raid.path.length > 0) {
+    raidView?.hideWork();
+    return;
+  }
+  raidView?.showWork(work.cell.x, work.cell.z, mineProgress(work));
+  if (step.swing) play('build');
+  if (step.taken) {
+    // Узел места не хранится — хранится то, что его тронули (§13.8).
+    camp.picks = { ...(camp.picks ?? {}), [pickKey(place, bush.id)]: clock.now() };
+    say(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
+    play('levelup');
+    worldPick = null;
+    raidView?.hideWork();
+    raidView?.refreshBushes();
+    persist();
+  }
+}
+
 function startMining(cell: Cell): void {
   if (raid === null) return;
   const block = mineBlock(raid.hero, raid.loc.stones, cell, raid.bagTotal < raid.capacity);
@@ -4389,6 +4453,22 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   // Тап по валуну — добыча (§13.5). Спорить с деревом ему не о чем: дерево
   // стоит на занятой клетке, валун лежит на проходимой.
+  /**
+   * §13.8 — тап по кусту места. Спрашивается раньше валуна по тому же
+   * правилу, что в лагере: куст ловится ровно своей клеткой.
+   */
+  const site = castleNow !== null
+    ? { place: 'замок', bushes: castleNow.bushes, hub: castleNow.gate, seed: castleNow.loc.seed }
+    : graveSite !== null
+      ? { place: 'кладбище', bushes: graveSite.bushes, hub: graveSite.gate, seed: graveSite.loc.seed }
+      : null;
+  if (site !== null) {
+    const bush = bushAt(site.bushes, cell);
+    if (bush !== null) {
+      startWorldPicking(site.place, bush, site.hub, site.seed);
+      return;
+    }
+  }
   if (stoneAt(raid.loc.stones, cell) !== null) {
     startMining(cell);
     return;
@@ -5327,6 +5407,7 @@ startLoop({
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).
       stepChopping(dt);
       stepMining(dt);
+      stepWorldPicking(dt);
       // §6.1.17 — у тропы два конца, и дальний тоже выход. Сим знает один
       // `evac` (вход), второй конец сторожит сцена: та же клетка — тот же
       // уход, с тем же лучом над ней.
