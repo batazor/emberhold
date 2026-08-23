@@ -3,7 +3,7 @@ import type { Sortie } from './sortie';
 import type { DailyState } from './daily';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
-import { deriveBuildCost, modelKitchenFood, roundSeries, TIER_KITCHEN_GATE as GATE } from './balance';
+import { deriveBuildCost, modelKitchenFood, roundSeries, START_FOOD, TIER_KITCHEN_GATE as GATE } from './balance';
 import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear } from './gear';
 import type { GearSlot, GearState, Offhand } from './gear';
 import { healPerWound, trainPerLevel } from './heroes';
@@ -96,7 +96,13 @@ export const CHEST_BONUS = 30;
 export const storeCapacity = (camp: CampState): number =>
   STORE_BASE + camp.chests.length * CHEST_BONUS;
 
-/** Занято в кладовой. */
+/**
+ * Занято в кладовой. **Пища (§13.7) не считается**, и это решение, а не
+ * недосмотр: кладовая меряет добытое — то, что герой принёс на спине,
+ * — а пища лежит в закромах и уходит сама. Посчитать её здесь значило бы
+ * молча срезать четверть стартового места (запас 16 при потолке 60)
+ * и наказать игрока за механику, которой он не управляет.
+ */
 export const storeUsed = (camp: CampState): number =>
   camp.resources.stone + camp.resources.wood + camp.resources.iron + camp.resources.crystal;
 
@@ -119,6 +125,9 @@ export const storeFree = (camp: CampState): number =>
 export function stash(camp: CampState, from: Partial<Resources>): number {
   let free = storeFree(camp);
   let lost = 0;
+  // Пища идёт мимо потолка: место в кладовой она не занимает (`storeUsed`),
+  // и терять её на пороге было бы вдвойне странно — она и так убывает сама.
+  camp.resources.food += from.food ?? 0;
   for (const kind of ['crystal', 'iron', 'wood', 'stone'] as (keyof Resources)[]) {
     const amount = from[kind] ?? 0;
     if (amount <= 0) continue;
@@ -518,7 +527,9 @@ export function createCamp(): CampState {
       infirmary: { ...START_LAYOUT.infirmary },
       yard: { ...START_LAYOUT.yard },
     },
-    resources: emptyResources(),
+    // §13.7 — лагерь начинается с запаса пищи: содержание обязано ждать,
+    // пока игрок с ним познакомится, а не встречать его голодом.
+    resources: { ...emptyResources(), food: START_FOOD },
     construction: null,
     gear: emptyGear(),
     residents: [],

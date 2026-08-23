@@ -26,7 +26,15 @@
 import { createCamp } from '../src/sim/camp';
 import { WORK_CAP, WORK_SECONDS, buildTent, workDone } from '../src/sim/residents';
 import type { ResidentJob } from '../src/sim/residents';
-import { FIRE_WOOD, FOOD_PER_MOUTH, payUpkeep, upkeepDue, workingAfter } from '../src/sim/upkeep';
+import {
+  FIRE_WOOD,
+  FOOD_PER_MOUTH,
+  GUEST_FOOD,
+  START_FOOD,
+  payUpkeep,
+  upkeepDue,
+  workingAfter,
+} from '../src/sim/upkeep';
 import { PARITY } from '../src/sim/trade';
 import type { CampState } from '../src/sim/camp';
 
@@ -146,6 +154,27 @@ console.log(
   '\n  Голод не запирает вылазку (§13.1) — он только снимает жильцов с работы.\n' +
     '  Столбец «работает после» и есть вся цена забывчивости.',
 );
+
+/**
+ * Стартовый запас отдельной строкой: он и заведён затем, чтобы игрок успел
+ * познакомиться с содержанием прежде, чем оно возьмёт своё. Считается
+ * на два рта — второй жилец приходит раньше, чем запас кончится.
+ */
+console.log('\n  Стартовый запас против двух ртов:');
+{
+  const camp = campOf(['ходим', 'строим']);
+  camp.resources.food = START_FOOD;
+  let away = 0;
+  while (payUpkeep(camp, WORK_SECONDS * WORK_CAP).hungry === 0 && away < 100) away += 1;
+  const guest = campOf(['ходим']);
+  guest.resources.food = 0;
+  console.log(
+    `  запас ${START_FOOD} держит ${away} отлучек по потолку — это примерно двое суток игры;\n` +
+      `  приглашённый добавляет к нему узелок ${GUEST_FOOD} (ещё ${Math.floor(
+        GUEST_FOOD / (2 * WORK_CAP * FOOD_PER_MOUTH),
+      )} отлучки на двоих).`,
+  );
+}
 
 /* ---------- 4. Лавка как страховка ---------- */
 

@@ -12,11 +12,14 @@ import type { CampState } from './camp';
 import {
   FIRE_WOOD,
   FOOD_PER_MOUTH,
+  GUEST_FOOD,
+  START_FOOD,
   mouths,
   payUpkeep,
   upkeepDue,
   workingAfter,
 } from './upkeep';
+import { admit } from './residents';
 
 /** Лагерь с `n` жильцами под крышами и заданной кладовой. */
 function campWith(n: number, food: number, wood = 0): CampState {
@@ -98,4 +101,22 @@ test('§13.7 — костёр гаснет, но ничего не запира�
 test('§13.7 — рот считается жильцами, а не героем', () => {
   assert.equal(mouths(createCamp()), 0, 'лагерь без жильцов не ест: провиант героя — не пища');
   assert.equal(mouths(campWith(2, 0)), 2);
+});
+
+test('§13.7 — стартового запаса хватает на двое суток при двух ртах', () => {
+  const camp = campWith(2, START_FOOD);
+  // Отлучка на потолок — самая дорогая, какая бывает: считаем ими.
+  let away = 0;
+  while (payUpkeep(camp, WORK_SECONDS * WORK_CAP).hungry === 0 && away < 100) away += 1;
+  assert.ok(
+    away >= 8,
+    `стартовый запас кончился за ${away} отлучек — до знакомства с механикой не доживает`,
+  );
+});
+
+test('§13.7 — приглашённый приходит со своим узелком', () => {
+  const camp = createCamp();
+  const before = camp.resources.food;
+  admit(camp, { name: 'Гость', look: 'поселенец', seed: 1, answer: 'ходим', rest: false });
+  assert.equal(camp.resources.food - before, GUEST_FOOD, 'узелок не дошёл до кладовой');
 });

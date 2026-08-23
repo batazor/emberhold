@@ -43,6 +43,7 @@ import type { CampState } from './camp';
 import type { DwellerLook } from './garrison';
 import type { SelfAnswer } from './settler';
 import { canAfford, spend } from './resources';
+import { GUEST_FOOD } from './balance';
 import type { ResourceKind, Resources } from './resources';
 
 /**
@@ -446,5 +447,9 @@ export function collectWork(
 export function admit(camp: CampState, who: Resident): boolean {
   if (camp.residents.some((r) => r.name === who.name)) return false;
   camp.residents.push(who);
+  // §13.7 — приглашённый приходит со своим узелком. Кладётся он через
+  // кладовую (§13.6): у неё есть дно, и подарок, не влезший в закрома,
+  // пропадает так же, как принесённое жильцом.
+  stash(camp, { food: GUEST_FOOD });
   return true;
 }

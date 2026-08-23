@@ -6,6 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { START_FOOD } from './balance';
 import {
   BUILD_COST,
   craftGear,
@@ -65,7 +66,9 @@ describe('Мастерская', () => {
     assert.equal(startUpgrade(camp, 'forge', 1000), true);
     assert.equal(camp.levels.forge, 1, 'выросла на глазах, без таймера');
     assert.equal(camp.construction, null, 'слот стройки свободен');
-    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 0, crystal: 0, food: 0 });
+    // §13.7 — пища стартового запаса остаётся: стройка её не тратит,
+    // и ноль здесь означал бы, что Мастерская съела обед.
+    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 0, crystal: 0, food: START_FOOD });
   });
 
   /**
