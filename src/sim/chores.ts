@@ -56,6 +56,15 @@
  * разом. Один момент в смене, когда видно, что он проснулся, дороже ровного
  * размазывания выходов по утру, — а разъезжаются жильцы всё равно сразу,
  * потому что тропы у них разной длины.
+ *
+ * **Ходит по этой рутине не только лагерь.** Местные мест мира
+ * (`gatherers.ts`, §13.8) выходят из ворот замка к своим кустам тем же
+ * кругом добытчика — пришёл, поработал, вернулся с ношей, — и второй ходьбы
+ * ради них не заведено. Всё, чем место отличается от поляны, уместилось
+ * в два необязательных поля площадки: `awake` (у места нет неба, и смена
+ * отдана кругам целиком) и `chats` (у местного нет ни карточки, ни имени,
+ * ни настроения, и разговаривать ему нечем). Больше рутина о местах
+ * не знает — и знать не должна.
  */
 import { DWELLER_SPEED } from './garrison';
 import { findPath } from './pathfinding';
@@ -69,7 +78,7 @@ import type { Rng } from '../core/rng';
 import { CHAT_SECONDS } from './talk';
 // Расписание берётся у неба (§24): жилец спит ровно ту фазу смены, которую
 // показывает тёмной `nightAt`. Свои числа тут были бы вторыми сутками.
-import { AWAKE_SEC, SHIFT_SEC, SLEEP_SEC, WAKE_AT } from './world';
+import { AWAKE_SEC, SHIFT_SEC, WAKE_AT } from './world';
 import type { Cell } from './types';
 import type { Resident } from './residents';
 
@@ -120,6 +129,13 @@ export interface Chore {
   readonly circuit: number;
   /** Сколько кругов до сна. Все вместе они и есть бодрствование смены. */
   readonly laps: number;
+  /**
+   * Сколько секунд смены этот маршрут ходят. Лежит в самом маршруте, а не
+   * берётся из `world.ts` при каждом вопросе: `choreAt` обязан оставаться
+   * чистой функцией от `(маршрут, t)`, иначе один и тот же маршрут отвечал бы
+   * по-разному в лагере и в месте мира.
+   */
+  readonly awake: number;
   /** Номер напарника по разговору; null — ходит и молчит. */
   readonly partner: number | null;
   /**
@@ -178,7 +194,34 @@ export interface ChoreSite {
    * к нему подходят вплотную и садятся рядом.
    */
   readonly bushes?: readonly Cell[];
+  /**
+   * Сколько секунд смены на площадке ходят. По умолчанию — светлая часть
+   * (§24): лагерь читает расписание у неба, и жилец ложится, когда темнеет.
+   *
+   * **У места мира неба нет.** Свет ему назначает сцена раз и навсегда
+   * (двор замка — день), и ночь, пришедшая туда по часам, была бы вторыми
+   * сутками в одном кадре: собиратель замирал бы у ворот посреди
+   * нарисованного полудня. Такие площадки передают целую смену — тогда
+   * круги идут без перерыва, и спать в маршруте негде.
+   */
+  readonly awake?: number;
+  /**
+   * Сводить ли работников парами на разговор у дома (§6.1.15). По умолчанию
+   * да — это лагерь, где у каждого есть карточка, настроение и имя.
+   *
+   * У местных мест мира нет ни того, ни другого, ни третьего: пара, вставшая
+   * у ворот молча на шестнадцать секунд, обещала бы разговор, которого игра
+   * для мест не написала. Поэтому там ходят молча и порознь.
+   */
+  readonly chats?: boolean;
 }
+
+/**
+ * Что рутине нужно знать о человеке: сид тропы, занятие и отдых. Имени
+ * и лица она не спрашивает — у местных мест мира (`gatherers.ts`) их нет
+ * вовсе, а тропу проложить это не мешает.
+ */
+export type ChoreFolk = Pick<Resident, 'seed' | 'answer' | 'rest'>;
 
 /**
  * Клетки, с которых достают до леса: проходимая рядом с занятой. Кромка
@@ -248,7 +291,7 @@ function baseSpot(site: ChoreSite, rng: Rng, taken: Cell[], mate?: Cell): Cell |
  * присказками, как ходили все до разговора.
  */
 function pairsOf(
-  residents: readonly Resident[],
+  residents: readonly ChoreFolk[],
   works: (i: number) => boolean,
 ): (number | null)[] {
   const partner: (number | null)[] = residents.map(() => null);
@@ -323,9 +366,10 @@ function bushSpots(site: ChoreSite): { spot: Cell; tree: Cell }[] {
 
 export function choresOf(
   site: ChoreSite,
-  residents: readonly Resident[],
+  residents: readonly ChoreFolk[],
   roofed: (i: number) => boolean,
 ): (Chore | null)[] {
+  const awake = site.awake ?? AWAKE_SEC;
   const spots = treeSpots(site);
   /**
    * §13.8 — добытчик пищи ходит к кусту, а не к кромке леса. Это первое
@@ -343,7 +387,7 @@ export function choresOf(
     const r = residents[i];
     return r !== undefined && !r.rest && roofed(i);
   };
-  const partner = pairsOf(residents, works);
+  const partner = site.chats === false ? residents.map(() => null) : pairsOf(residents, works);
 
   /** Тропа до сведения пар: круг ещё свой, а не общий с напарником. */
   interface Draft {
@@ -504,9 +548,9 @@ export function choresOf(
     const base = longest + (talks ? CHAT_SECONDS : 0);
     // Круг длиннее целой смены не укладывается в неё ни разу: такой жилец
     // остаётся у костра, чем ложился бы спать посреди дороги.
-    if (base <= 0 || base > AWAKE_SEC) return null;
-    const laps = Math.max(1, Math.min(Math.round(AWAKE_SEC / base), Math.floor(AWAKE_SEC / base)));
-    const circuit = AWAKE_SEC / laps;
+    if (base <= 0 || base > awake) return null;
+    const laps = Math.max(1, Math.min(Math.round(awake / base), Math.floor(awake / base)));
+    const circuit = awake / laps;
     // Добавка **личная**, а не общая на пару: у напарников тропы разной
     // длины, и одинаковая добавка оставила бы им разные круги — то есть
     // развела бы по времени ровно тех, кого круг сводит.
@@ -524,6 +568,7 @@ export function choresOf(
       }),
       circuit,
       laps,
+      awake,
       partner: mate,
       bed: d.bed,
     };
@@ -562,6 +607,9 @@ export function choresOf(
 function sleepAt(c: Chore, s: number): ChoreFrame {
   const home = c.path[0]!;
   const bed = c.bed;
+  // Ночь — это остаток смены: маршрут, которому отдали её целиком, сюда
+  // не приходит вовсе (см. `awake`).
+  const night = SHIFT_SEC - c.awake;
   // Пусто — крыши нет. Одна клетка — крыша есть, а идти до неё некуда:
   // место у костра само оказалось порогом палатки, и жилец скрывается
   // не сходя с него. Считать это «крыши нет» значило бы оставить его
@@ -578,7 +626,7 @@ function sleepAt(c: Chore, s: number): ChoreFrame {
   walk /= DWELLER_SPEED;
   // Ночь короче двух концов дороги не бывает при нынешних числах, но если
   // станет — жилец просто спит на пороге: пропасть по дороге хуже.
-  const legs = Math.min(walk, SLEEP_SEC / 2);
+  const legs = Math.min(walk, night / 2);
   const along = (u: number): ChoreFrame => {
     let left = u * walk;
     for (let i = 0; i + 1 < bed.length; i++) {
@@ -606,9 +654,9 @@ function sleepAt(c: Chore, s: number): ChoreFrame {
     return { x: door.x, z: door.z, facing: 0, walking: false, working: false, carrying: false, talk: null, hidden: false };
   };
   if (s < legs) return along(s / legs);
-  if (s >= SLEEP_SEC - legs) {
+  if (s >= night - legs) {
     // Обратно тем же путём: у порога разворачиваются, а не проходят сквозь.
-    const back = along(1 - (s - (SLEEP_SEC - legs)) / legs);
+    const back = along(1 - (s - (night - legs)) / legs);
     return { ...back, facing: back.facing + Math.PI };
   }
   const door = bed[bed.length - 1]!;
@@ -625,7 +673,7 @@ export function choreAt(c: Chore, t: number): ChoreFrame {
   // остальное. Смена и есть сутки (§24), другого расписания у жильца нет.
   const since = t - WAKE_AT;
   const day = ((since % SHIFT_SEC) + SHIFT_SEC) % SHIFT_SEC;
-  if (day >= AWAKE_SEC) return sleepAt(c, day - AWAKE_SEC);
+  if (day >= c.awake) return sleepAt(c, day - c.awake);
   let left = day % c.circuit;
   // Номер круга: по нему разговор каждой встречи звучит своими словами.
   const round = Math.floor(since / c.circuit);

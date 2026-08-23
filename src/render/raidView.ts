@@ -40,6 +40,7 @@ import type { TrailSite } from '../sim/trailSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
 import { Rigged } from './rigged';
+import type { RigClipName } from './rigged';
 import { RIG_CLIPS } from './rig.data';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
@@ -1235,9 +1236,11 @@ export class RaidView {
    * в стороне, и телепорт читался бы сбоем. Ведомому игроком `glide`
    * не ставится: его позиция и есть симуляция, отставать ей не от чего.
    *
-   * Клип труда у рутины — рабочий цикл занятия (`рубит`): «удар»
+   * Клип труда у рутины — рабочий цикл занятия (`RESIDENT_WORK_CLIP`): «удар»
    * синхронизирован со звуком и дрожью цели (§17.3), а у рутины цели нет —
-   * её замах ничего не валит.
+   * её замах ничего не валит. Клип приходит именем, а не выбором из двух:
+   * добытчик у куста **сидит на корточках** (§13.8), и уложить это
+   * в «удар или рубит» значило бы рубить ягоды.
    */
   driveResident(
     i: number,
@@ -1246,7 +1249,7 @@ export class RaidView {
     walking: boolean,
     working: boolean,
     dt: number,
-    opts?: { speed?: number; workClip?: 'удар' | 'рубит'; talking?: boolean; glide?: boolean },
+    opts?: { speed?: number; workClip?: RigClipName; talking?: boolean; glide?: boolean },
   ): void {
     const rig = this.residents[i];
     if (rig === undefined) return;
@@ -1274,8 +1277,11 @@ export class RaidView {
     rig.root.position.set(tx, 0, tz);
     if (walking) rig.play('ходьба', rateFor(speed, rig.root.scale.y));
     else if (working) {
-      if (opts?.workClip === 'рубит') rig.play('рубит');
-      else rig.play('удар', STRIKE / SWING_SECONDS);
+      // «Удар» — единственный клип со своим темпом: он бьёт в такт замаху
+      // работы (§17.3). Остальные играют как записаны.
+      const clip = opts?.workClip ?? 'удар';
+      if (clip === 'удар') rig.play('удар', STRIKE / SWING_SECONDS);
+      else rig.play(clip);
     } else if (opts?.talking === true) rig.play('разговор');
     else rig.play('покой');
   }

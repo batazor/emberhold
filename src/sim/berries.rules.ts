@@ -8,8 +8,10 @@ import { test } from 'node:test';
 import {
   prunePicks,
   pickKey,
+  localsOf,
   takenByLocals,
   wildRipe,
+  worldBlock,
   worldRipe,
   BERRY_FOOD_AVG,
   BERRY_FOOD_MAX,
@@ -163,11 +165,11 @@ test('§13.8 — куст не встаёт на занятую клетку', (
 
 test('§13.8 — узел места считается формулой: сид и часы дают то же самое', () => {
   const bush = { id: 2, x: 5, z: 5 };
-  const hub = { x: 0, z: 0 };
+  const locals = localsOf({ x: 0, z: 0 }, [bush, { id: 9, x: 12, z: 12 }]);
   const now = 5 * RIPEN_SECONDS + 17;
   for (let i = 0; i < 5; i++) {
     assert.equal(wildRipe(77, bush, now), wildRipe(77, bush, now), 'формула нестабильна');
-    assert.equal(takenByLocals(77, bush, hub, now), takenByLocals(77, bush, hub, now));
+    assert.equal(takenByLocals(77, bush, locals, now), takenByLocals(77, bush, locals, now));
   }
   // Другой сид — другое место: иначе все замки мира обираются одинаково.
   const a = [0, 1, 2, 3, 4, 5].map((id) => wildRipe(1, { id, x: 3, z: 3 }, now));
@@ -183,17 +185,81 @@ test('§13.8 — место не мигает целиком: окно посп�
 });
 
 test('§13.8 — местные обирают ближние чаще дальних', () => {
-  const hub = { x: 0, z: 0 };
-  const near = Array.from({ length: 40 }, (_, id) => ({ id, x: 1, z: 1 }));
-  const far = Array.from({ length: 40 }, (_, id) => ({ id, x: 11, z: 11 }));
+  const near = Array.from({ length: 60 }, (_, id) => ({ id, x: 1, z: 1 }));
+  const far = Array.from({ length: 60 }, (_, id) => ({ id, x: 20, z: 20 }));
+  // Размах места один на обе горсти: доля мерится им, и разные размахи
+  // сравнивали бы два разных места, а не ближний куст с дальним.
+  const locals = localsOf({ x: 0, z: 0 }, [{ id: 999, x: 20, z: 20 }]);
   const share = (bs: typeof near): number =>
-    bs.filter((b) => takenByLocals(9, b, hub, RIPEN_SECONDS)).length / bs.length;
+    bs.filter((b) => takenByLocals(9, b, locals, RIPEN_SECONDS * 4)).length / bs.length;
   assert.ok(share(near) > share(far), 'у ворот обирают не чаще, чем на отшибе');
+});
+
+test('§13.8 — размах места мерится по месту, а не назначается', () => {
+  // Одна и та же раскладка, растянутая вдвое, обирается одинаково: мерка
+  // растягивается вместе с полем. Константа в клетках так себя не ведёт —
+  // на большом месте она сажает все узлы на нижний упор, что и случилось
+  // с прежними двенадцатью клетками (`npm run locals`).
+  const small = Array.from({ length: 40 }, (_, id) => ({ id, x: 2 + (id % 4), z: 2 }));
+  const big = small.map((b) => ({ ...b, x: b.x * 3, z: b.z * 3 }));
+  const share = (bs: typeof small): number => {
+    const locals = localsOf({ x: 0, z: 0 }, bs);
+    return bs.filter((b) => takenByLocals(4, b, locals, RIPEN_SECONDS * 3)).length / bs.length;
+  };
+  assert.equal(share(small), share(big), 'растянутое поле обирается иначе — мерка не своя');
+});
+
+test('§13.8 — обирать некому: место без местных отдаёт всё спелое', () => {
+  // Кладбище (§6.1.7.1): живых там не живёт, там привидения. Пока «местные»
+  // были множителем без людей, дичок обирал никто — формула объявляла его
+  // пустым, а показать было некого.
+  const bushes = Array.from({ length: 40 }, (_, id) => ({ id, x: 1, z: 1 }));
+  for (let e = 0; e < 8; e++) {
+    const now = e * RIPEN_SECONDS + 3;
+    for (const b of bushes) {
+      assert.equal(takenByLocals(11, b, null, now), false, 'куст обобрали без единого местного');
+      assert.equal(
+        worldRipe(11, 'кладбище', b, null, {}, now),
+        wildRipe(11, b, now),
+        'полнота держится не на одном созревании',
+      );
+    }
+  }
+});
+
+test('§13.8 — обирают только спелое: зелёный куст местным не достаётся', () => {
+  const bushes = Array.from({ length: 60 }, (_, id) => ({ id, x: 1 + (id % 3), z: 1 }));
+  const locals = localsOf({ x: 0, z: 0 }, bushes);
+  for (let e = 0; e < 6; e++) {
+    const now = e * RIPEN_SECONDS + 5;
+    for (const b of bushes) {
+      if (!takenByLocals(6, b, locals, now)) continue;
+      assert.ok(wildRipe(6, b, now), 'местный обирает зелёный куст — работать там не над чем');
+    }
+  }
+});
+
+test('§13.8 — отказ называет ту же причину, что кадр', () => {
+  const bushes = Array.from({ length: 40 }, (_, id) => ({ id, x: 1 + (id % 5), z: 2 }));
+  const locals = localsOf({ x: 0, z: 0 }, bushes);
+  let taken = 0;
+  for (let e = 0; e < 6; e++) {
+    const now = e * RIPEN_SECONDS + 5;
+    for (const b of bushes) {
+      const block = worldBlock(7, 'замок', b, locals, {}, now);
+      assert.equal(block === 'ok', worldRipe(7, 'замок', b, locals, {}, now), 'причина и полнота врозь');
+      if (block === 'местные') {
+        taken++;
+        assert.ok(takenByLocals(7, b, locals, now), '«здесь собирают местные» без единого местного');
+      }
+    }
+  }
+  assert.ok(taken > 0, 'причина «местные» не встретилась ни разу — проверять нечего');
 });
 
 test('§13.8 — обобранное игроком не возвращается раньше срока', () => {
   const bush = { id: 1, x: 4, z: 4 };
-  const hub = { x: 9, z: 9 };
+  const hub = localsOf({ x: 9, z: 9 }, [bush]);
   // Берём момент, когда куст точно полон, и «обираем» его.
   let now = 0;
   while (!worldRipe(3, 'замок', bush, hub, {}, now) && now < RIPEN_SECONDS * 40) now += RIPEN_SECONDS;
