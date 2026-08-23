@@ -1,0 +1,268 @@
+@media (max-width: 760px) {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow-x: hidden;
+  }
+
+  .wrap {
+    max-width: none;
+    width: 100%;
+    padding:
+      clamp(28px, 8vw, 42px)
+      max(16px, env(safe-area-inset-right))
+      calc(64px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+    gap: 42px;
+  }
+
+  header,
+  .sec,
+  .notes {
+    max-width: 100%;
+  }
+
+  h1 {
+    font-size: clamp(30px, 10vw, 42px);
+    line-height: 1.06;
+  }
+
+  h2 {
+    font-size: clamp(24px, 7vw, 31px);
+    line-height: 1.12;
+  }
+
+  h3 {
+    line-height: 1.2;
+  }
+
+  .lede,
+  .sec > p,
+  .notes > p {
+    max-width: none;
+    font-size: 15px;
+  }
+
+  p,
+  li,
+  td,
+  th,
+  .lede,
+  .note,
+  code {
+    overflow-wrap: anywhere;
+  }
+
+  code {
+    white-space: normal;
+  }
+
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  th,
+  td {
+    padding: 8px 10px;
+  }
+
+  .scroll,
+  .side,
+  .atlas .side {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .bar {
+    margin-right: calc(-1 * max(16px, env(safe-area-inset-right)));
+    margin-left: calc(-1 * max(16px, env(safe-area-inset-left)));
+    padding:
+      10px
+      max(16px, env(safe-area-inset-right))
+      10px
+      max(16px, env(safe-area-inset-left));
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .bar button,
+  .bar .ghost,
+  button {
+    min-height: 40px;
+  }
+
+  input[type="range"] {
+    max-width: 150px;
+  }
+
+  section,
+  .lab,
+  .live,
+  .screen,
+  .stand,
+  .stage,
+  .guard {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  section,
+  .lab,
+  .live,
+  .guard,
+  .atlas,
+  .yardgrid {
+    gap: 22px;
+  }
+
+  .models,
+  .cards,
+  .loops,
+  .sw {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shot {
+    width: min(320px, 100%);
+  }
+
+  .phone {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 320 / 672;
+    border-radius: clamp(22px, 8vw, 30px);
+  }
+
+  .cal {
+    display: none;
+  }
+
+  canvas,
+  svg,
+  img,
+  video,
+  .scene {
+    max-width: 100%;
+  }
+
+  .m .stage,
+  .pair .stage,
+  .cl .stage {
+    overflow: hidden;
+  }
+
+  .m canvas,
+  .scene {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .stage canvas {
+    max-width: 100%;
+  }
+
+  .shell {
+    height: 100dvh;
+  }
+
+  .shell main > .bar {
+    margin-right: 0;
+    margin-left: 0;
+    height: auto;
+    min-height: 53px;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .shell main > .bar .ghost {
+    padding: 7px 9px;
+  }
+
+  .shell main > .bar .crumb {
+    flex: 1 1 44%;
+    min-width: 0;
+  }
+
+  .shell main > .bar .crumb .eyebrow,
+  .shell main > .bar .spacer {
+    display: none;
+  }
+
+  .cover .in {
+    padding:
+      30px
+      max(16px, env(safe-area-inset-right))
+      calc(64px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+    gap: 34px;
+  }
+
+  .cover h1 {
+    font-size: clamp(31px, 10vw, 43px);
+  }
+
+  .cover .cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .cover .card {
+    padding: 16px;
+  }
+
+  .rail {
+    width: min(92vw, 360px);
+    max-width: none;
+  }
+
+  .rail-hd {
+    padding: 18px 16px 12px;
+  }
+
+  .rail-ft .note {
+    display: none;
+  }
+
+  .list {
+    padding-bottom: calc(30px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 520px) {
+  .wrap {
+    gap: 34px;
+  }
+
+  .models {
+    gap: 10px;
+  }
+
+  .bar label {
+    min-width: max-content;
+  }
+
+  .shell main > .bar #drawer,
+  .shell main > .bar #prev,
+  .shell main > .bar #next {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .shell main > .bar .play {
+    display: none;
+  }
+}

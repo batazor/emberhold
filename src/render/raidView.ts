@@ -416,7 +416,7 @@ export class RaidView {
   private site: THREE.Mesh | null = null;
   private ghost: THREE.Mesh | null = null;
   private grass: Grass | null = null;
-  /** Трава заставки вместо клеточной — отладочный кадр `?пух`. */
+  /** Трава заставки вместо клеточной — отладочный кадр `?fluffy`. */
   private meadow: FluffyGrass | null = null;
   /** Клетки, выкошенные постройкой или рубкой, — запрет пересева луга. */
   private readonly mowed = new Set<number>();
@@ -498,7 +498,7 @@ export class RaidView {
     private readonly weapon = 0,
     /** §11.7 — классы остальных бойцов отряда, в порядке цепочки. */
     private readonly mateClasses: readonly HeroClassId[] = [],
-    /** Отладка `?пух`: трава заставки (FluffyGrass) вместо клеточной. */
+    /** Отладка `?fluffy`: трава заставки (FluffyGrass) вместо клеточной. */
     private readonly fluffy = false,
     /** §13.8 — полон ли куст места: формула живёт снаружи (см. `buildBushes`). */
     private readonly ripeBush: ((bush: Bush) => boolean) | undefined = undefined,
@@ -576,8 +576,19 @@ export class RaidView {
     this.group.add(backdrop);
   }
 
+  /**
+   * Трава кадра. Клеточная (`Grass`) — под землёй и на тропе; **у замка тот же
+   * луг, что в лагере** (`FluffyGrass`, набор `grassLODs.glb`).
+   *
+   * Разводится это не вкусом, а тем, что за кадр: вылазка — подземелье
+   * с сеткой клеток, по которой считается всё, от пути до костра, и травинка
+   * там читается разметкой этой сетки. Замок — поверхность, на которую
+   * приходят гулять (§4), и она обязана выглядеть тем же местом, что поляна
+   * лагеря: два зелёных поля из разных наборов в одной игре читались бы
+   * двумя играми.
+   */
   private buildGrass(perTile: number): void {
-    if (this.fluffy) {
+    if (this.fluffy || this.flavor === 'castle') {
       this.buildMeadow();
       return;
     }
@@ -586,7 +597,8 @@ export class RaidView {
   }
 
   /**
-   * Отладочный кадр `?пух`: тот же луг, что на заставке и в лагере.
+   * Луг лагеря и заставки. Кадр замка строит его всегда, вылазка — только
+   * отладочным `?fluffy`.
    * Сэмплеру нужна поверхность — плоскость по полю, запечённая лежащей
    * прямо в геометрии (сэмплер читает локальные координаты и матрицу меша
    * не применяет); в сцену она не добавляется, земля уже нарисована кубами.

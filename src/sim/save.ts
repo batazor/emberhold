@@ -4,6 +4,7 @@ import { adoptChest } from './chests';
 import { DWELLER_LOOKS } from './garrison';
 import type { DwellerLook } from './garrison';
 import { prunePicks } from './berries';
+import { pruneBought } from './trade';
 import type { PickLog } from './berries';
 import { RESIDENT_JOBS } from './residents';
 import type { ResidentJob } from './residents';
@@ -172,6 +173,8 @@ interface SaveV1 {
   fires?: { x: number; z: number }[];
   bushes?: { x: number; z: number; pickedAt?: number }[];
   picks?: Record<string, number>;
+  /** §13.5 — выкупленное с прилавка. Самоистекающий список на сутки. */
+  bought?: Record<string, number>;
   guests?: number[];
 }
 
@@ -239,6 +242,11 @@ export function save(
     // бесконечными на любой кнопке «обновить».
     ...(camp.picks !== undefined && Object.keys(camp.picks).length > 0
       ? { picks: camp.picks }
+      : {}),
+    // §13.5 — выкупленное с прилавка. Пишется по той же причине, что кусты:
+    // иначе суточный запас лавки обновлялся бы кнопкой «обновить».
+    ...(camp.bought !== undefined && Object.keys(camp.bought).length > 0
+      ? { bought: camp.bought }
       : {}),
     ...(camp.bushes !== undefined
       ? {
@@ -517,6 +525,16 @@ export function load(): LoadResult {
       // Чистится по отметке сейва: своих часов у загрузки нет, а водяной
       // знак — то самое время, когда игрок последний раз был здесь.
       camp.picks = prunePicks(log, typeof data.watermark === 'number' ? data.watermark : 0);
+    }
+    // §13.5 — выкупленное у торговца. Чистится тем же водяным знаком:
+    // вчерашние покупки прилавка сегодня не держат.
+    if (data.bought != null && typeof data.bought === 'object') {
+      const raw = data.bought as Record<string, unknown>;
+      const log: Record<string, number> = {};
+      for (const [key, n] of Object.entries(raw)) {
+        if (typeof n === 'number' && Number.isFinite(n) && n > 0) log[key] = n;
+      }
+      camp.bought = pruneBought(log, typeof data.watermark === 'number' ? data.watermark : 0);
     }
     if (Array.isArray(data.bushes)) {
       camp.bushes = data.bushes

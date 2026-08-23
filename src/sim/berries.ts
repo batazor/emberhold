@@ -36,6 +36,7 @@ import { mulberry32, randInt } from '../core/rng';
 import { SWING_SECONDS, inReach, startWork, stepWork } from './work';
 import type { Work, WorkBlock, Worker } from './work';
 import type { Resources } from './resources';
+import { DAY_SEC } from './world';
 
 /**
  * Пищи с одного куста. Вдвое меньше, чем камня с валуна (3–5), и это
@@ -344,8 +345,8 @@ export function takenByLocals(
 
 /**
  * Кусты, которые местные обирают в это окно. Это **единственный** список,
- * по которому расставляются собиратели: кадр выводится из формулы, а не
- * считается рядом с ней.
+ * по которому расставляются собиратели (`gatherers.ts`): кадр выводится
+ * из формулы, а не считается рядом с ней.
  */
 export const takenBushes = (
   seed: number,
@@ -353,6 +354,43 @@ export const takenBushes = (
   locals: Locals | null,
   now: number,
 ): Bush[] => bushes.filter((b) => takenByLocals(seed, b, locals, now));
+
+/**
+ * §13.5 — **сколько пищи местные унесли у этого места за сутки.**
+ *
+ * Та же тройка «сид, узел, окно», что у `takenByLocals`, просуммированная
+ * по всем окнам суток: ягода, которую местные сняли с куста, никуда из мира
+ * не делась — она легла на прилавок торговца, и купить её можно за камень.
+ * Это единственный запас лавки (§13.5), и он не хранится нигде: тот же сид
+ * и тот же день дают то же число.
+ *
+ * Сутки, а не окно созревания, — потому что ягода не лежит дольше дня,
+ * а день игра уже считает (подарок за вход, §29). Замер (`npm run locals`):
+ * за окно местные снимают 0,6 пищи, и прилавок при таком горизонте пуст
+ * в двух случаях из трёх; за сутки — 7,1 пищи, и пуст он каждый двадцатый
+ * день.
+ *
+ * Место без местных отдаёт ноль, и это не край, а правило: обирать некому —
+ * нечему и лечь на прилавок.
+ */
+export function localsTook(
+  seed: number,
+  bushes: readonly Bush[],
+  locals: Locals | null,
+  now: number,
+): number {
+  const day = Math.floor(now / DAY_SEC);
+  let food = 0;
+  for (let e = 0; e < DAY_SEC / RIPEN_SECONDS; e++) {
+    const at = day * DAY_SEC + e * RIPEN_SECONDS;
+    for (const bush of bushes) {
+      // Спелость проверять отдельно не нужно: `takenByLocals` зелёный куст
+      // своим не считает — рвать на нём нечего.
+      if (takenByLocals(seed, bush, locals, at)) food += berryYield(bush);
+    }
+  }
+  return food;
+}
 
 /* ---------- рука игрока: список, который сам себя стирает ---------- */
 

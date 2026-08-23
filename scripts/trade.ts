@@ -1,11 +1,20 @@
 /**
- * Курс лавки (§13.5). Не подбор «на глаз»: три критерия проверяются перебором,
- * и печатается, какие пары чисел их держат.
+ * Лавка (§13.5) под прибором. Две части, и обе меряют, а не назначают:
+ *
+ *  1. **Курс** — три критерия перебором, и печатается, какие пары чисел
+ *     их держат;
+ *  2. **Запас** — течёт ли собранное местными (§13.8) в прилавок торговца,
+ *     сколько его там, как часто прилавок пуст и что запас чинит.
  *
  * Запуск: npm run trade
  */
 import { BUILD_COST } from '../src/sim/camp';
-import { PARITY, feeOf, offerOf } from '../src/sim/trade';
+import { PARITY, STOCKED, feeOf, offerOf } from '../src/sim/trade';
+import { generateCastleSite } from '../src/sim/castleSite';
+import { BERRY_FOOD_AVG, BUSHES, RIPEN_SECONDS, berryYield, localsOf, localsTook, takenByLocals } from '../src/sim/berries';
+import { FOOD_PER_MOUTH } from '../src/sim/balance';
+import { WORK_CAP, WORK_SECONDS } from '../src/sim/residents';
+import { DAY_SEC } from '../src/sim/world';
 import { GEAR_COST } from '../src/sim/gear';
 import { playRaid, POLICIES } from '../src/sim/bot';
 import { mulberry32 } from '../src/core/rng';
@@ -128,3 +137,117 @@ for (let d = 0; d <= 5; d++) {
   const wood = offerOf('iron-wood', d).give.wood;
   console.log(`  сделок ${d}: наценка ${(feeOf(d) * 100).toFixed(0)} на сто · камень ${stone} · дерево ${wood}`);
 }
+
+/* ══════════════════════════════════════════════════════════════════════ */
+/*  Часть 2. Запас прилавка (§13.5 × §13.8)                                */
+/* ══════════════════════════════════════════════════════════════════════ */
+
+console.log('\n\n══ Запас: течёт ли собранное местными в лавку ══\n');
+
+const SEEDS = 300;
+const DAYS = 30;
+
+/** Сколько пищи местные унесли у замка за сутки — по сидам и дням. */
+const daily: number[] = [];
+const perSeed: number[] = [];
+for (let i = 0; i < SEEDS; i++) {
+  const site = generateCastleSite(1000 + i * 7919);
+  let sum = 0;
+  for (let d = 0; d < DAYS; d++) {
+    const food = localsTook(site.loc.seed, site.bushes, localsOf(site.gate, site.bushes), d * DAY_SEC + 60);
+    daily.push(food);
+    sum += food;
+  }
+  perSeed.push(sum / DAYS);
+}
+daily.sort((a, b) => a - b);
+perSeed.sort((a, b) => a - b);
+const mean = (xs: readonly number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+const q = (xs: readonly number[], p: number): number => xs[Math.min(xs.length - 1, Math.floor(p * xs.length))]!;
+const share = (xs: readonly number[], ok: (x: number) => boolean): number =>
+  xs.filter(ok).length / xs.length;
+
+console.log(`кустов у замка: ${BUSHES.castleMin}–${BUSHES.castleMax} · окно созревания ${RIPEN_SECONDS / 3600} ч · сутки ${DAY_SEC / 3600} ч`);
+console.log(`пищи за сутки, ${SEEDS} замков × ${DAYS} суток: среднее ${mean(daily).toFixed(2)} · медиана ${q(daily, 0.5)} · верхняя четверть ${q(daily, 0.75)}`);
+console.log(`прилавок пуст: ${(share(daily, (f) => f === 0) * 100).toFixed(0)}% суток · держит хоть одну пищу: ${(share(daily, (f) => f >= 1) * 100).toFixed(0)}%`);
+console.log(`по замкам (пищи в сутки): худший ${perSeed[0]!.toFixed(2)} · медиана ${q(perSeed, 0.5).toFixed(2)} · лучший ${perSeed.at(-1)!.toFixed(2)}`);
+console.log(`замков, где прилавок пуст всегда (<0,5 в сутки): ${(share(perSeed, (f) => f < 0.5) * 100).toFixed(0)}%`);
+
+/**
+ * Горизонт запаса: почему сутки, а не окно созревания. Окно — родной срок
+ * куста, и первое, что просится; замер его и отменяет.
+ */
+const windowly: number[] = [];
+for (let i = 0; i < SEEDS; i++) {
+  const site = generateCastleSite(1000 + i * 7919);
+  for (let e = 0; e < (DAYS * DAY_SEC) / RIPEN_SECONDS; e++) {
+    const at = e * RIPEN_SECONDS + 60;
+    let food = 0;
+    const locals = localsOf(site.gate, site.bushes);
+    for (const bush of site.bushes) {
+      if (takenByLocals(site.loc.seed, bush, locals, at)) food += berryYield(bush);
+    }
+    windowly.push(food);
+  }
+}
+console.log('\nгоризонт запаса — за какой срок считать принесённое местными:');
+console.log(`  окно созревания (${RIPEN_SECONDS / 3600} ч): ${mean(windowly).toFixed(2)} пищи · прилавок пуст ${(share(windowly, (f) => f === 0) * 100).toFixed(0)}% приходов`);
+console.log(`  сутки (${DAY_SEC / 3600} ч):            ${mean(daily).toFixed(2)} пищи · прилавок пуст ${(share(daily, (f) => f === 0) * 100).toFixed(0)}% приходов`);
+console.log('  ← окно отменено замером: меньше единицы на прилавке — это не запас, а закрытая лавка.');
+console.log('    Сутки взяты не на глаз: ягода не лежит дольше дня, а день игра уже считает (§29).');
+
+/* ---------- зачем запас: требование, которое было записано и не держалось ---------- */
+
+/**
+ * `trade.ts` про пищевую строку: «обмен обязан проигрывать своему добытчику,
+ * иначе жилец с приказом „Добывать пищу“ теряет смысл, а вместе с ним
+ * и выбор между людьми». `npm run upkeep` проверяет это на темпе **жильца**
+ * и получает «проигрывает». Здесь то же требование меряется на темпе
+ * **игрока** — и до запаса оно не держалось.
+ */
+const stonePerFood = (PARITY['food-stone'].give.stone ?? 0) / (PARITY['food-stone'].take.food ?? 1);
+const shopPerHour = ((t0.stone / t0.secs) * 3600) / stonePerFood;
+const gathererPerHour = 3600 / WORK_SECONDS;
+const campBushPerHour = (BUSHES.camp * BERRY_FOOD_AVG) / (RIPEN_SECONDS / 3600);
+const counterPerHour = mean(daily) / (DAY_SEC / 3600);
+
+console.log('\nпищи в час, все источники разом:');
+console.log(`  добытчик (§13.7, идёт сам)          ${gathererPerHour.toFixed(2)}`);
+console.log(`  кусты лагеря (§13.8, за внимание)   ${campBushPerHour.toFixed(2)}`);
+console.log(`  прилавок с запасом                  ${counterPerHour.toFixed(2)}`);
+console.log(`  прилавок без запаса, темп игрока    ${shopPerHour.toFixed(0)}  ← ${(shopPerHour / gathererPerHour).toFixed(0)}× добытчика`);
+console.log(
+  `\nсуточное содержание лагеря окупается вылазками за:` );
+for (const mouthsN of [3, 6, 9]) {
+  const perAbsence = mouthsN * FOOD_PER_MOUTH * WORK_CAP;
+  const secs = ((perAbsence * stonePerFood) / t0.stone) * t0.secs;
+  console.log(`  ${mouthsN} ртов: ${perAbsence.toFixed(1)} пищи за отлучку = ${(perAbsence * stonePerFood).toFixed(0)} камня = ${secs.toFixed(0)} с`);
+}
+console.log(
+  counterPerHour < gathererPerHour
+    ? `✓ С запасом лавка проигрывает добытчику: ${counterPerHour.toFixed(2)} против ${gathererPerHour.toFixed(2)} пищи в час.\n` +
+        '  Приказ «Добывать пищу» снова выбор, а обмен — страховка, как и записано.'
+    : `⚠ Запас не помог: ${counterPerHour.toFixed(2)} против ${gathererPerHour.toFixed(2)} — лавка всё ещё обгоняет добытчика.`,
+);
+
+/* ---------- чего запас не трогает ---------- */
+
+/**
+ * Запас **убавляет сделки, а не цену**, поэтому три критерия он сдвинуть
+ * не может по построению: все три — верхние границы на курс. Печатается это
+ * затем, чтобы довод стоял рядом с числами, а не в памяти автора.
+ */
+const raidsPerTradeStone = (PARITY['iron-stone'].give.stone ?? 8) / t0.stone;
+console.log('\nтри критерия §13.5 до запаса и после — одни и те же числа:');
+console.log('  критерий                                   без запаса   с запасом');
+console.log(`  1. железа в минуту обменом                 ${((1 / (raidsPerTradeStone * t0.secs)) * 60).toFixed(2).padStart(9)}   ${((1 / (raidsPerTradeStone * t0.secs)) * 60).toFixed(2).padStart(9)}`);
+console.log(`  2. заходов за один обмен                   ${raidsPerTradeStone.toFixed(2).padStart(9)}   ${raidsPerTradeStone.toFixed(2).padStart(9)}`);
+console.log(`  3. на сколько заходов отодвинута Кухня 2   ${raidsPerTradeStone.toFixed(2).padStart(9)}   ${raidsPerTradeStone.toFixed(2).padStart(9)}`);
+console.log('\nСовпадение здесь не удача, а построение: все три критерия — границы');
+console.log('на **курс**, а запас убавляет сделки, не трогая цену. Сдвинуть их он');
+console.log('не может ни в какую сторону, и мерить их заново незачем — но напечатать');
+console.log('рядом стоит, чтобы довод жил числом, а не памятью автора.');
+console.log(`\nсчёт стоит только на: ${STOCKED.join(', ')}. Железа счёт не знает: в мире его`);
+console.log('никто для торговца не добывает, всякое число было бы назначенным, а §13.2');
+console.log('требует, чтобы у камня остался безусловный сток. Отсюда и §13.1: пустой');
+console.log('прилавок не отказ после дороги — за железом в замок можно прийти всегда.');

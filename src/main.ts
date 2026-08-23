@@ -225,7 +225,8 @@ import type { CastleGuest, GuestMeet } from './sim/castleGuest';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
-import { askOf, dealBlock, makeDeal, worthOf } from './sim/trade';
+import { DEAL_REASON, askOf, dealBlock, makeDeal, marketKey, pruneBought, stockOf, worthOf } from './sim/trade';
+import type { Stock } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
 import type { GraveSite } from './sim/graveSite';
 import { events, loadTelemetry, setTelemetrySink, track } from './sim/telemetry';
@@ -260,6 +261,7 @@ import { mulberry32 } from './core/rng';
 import { DraftScreen } from './ui/draftScreen';
 import { StartScreen } from './ui/startScreen';
 import { chronicle } from './sim/chronicle';
+import { debugGet, debugHas, debugSceneOpen } from './debug/routes';
 import {
   SORTIE_REASON,
   freeHero,
@@ -293,7 +295,7 @@ import {
   tentSpot,
 } from './sim/residents';
 import { payUpkeep, workingAfter } from './sim/upkeep';
-import { PICK_REASON, bushAt, localsOf, pickKey, ripe, startPick, stepPickInto, worldBlock, worldRipe } from './sim/berries';
+import { PICK_REASON, bushAt, localsOf, localsTook, pickKey, ripe, startPick, stepPickInto, worldBlock, worldRipe } from './sim/berries';
 import type { Locals } from './sim/berries';
 // §13.8 — местные у своих кустов: маршруты им кладёт та же рутина,
 // что водит добытчика поляны (`sim/chores.ts`).
@@ -493,13 +495,13 @@ let placingChest = false;
  */
 const debugParams = new URLSearchParams(location.search);
 /**
- * `?кадры` — цикл на таймере вместо rAF: отладка, а не механика (§6).
+ * `?frames` — цикл на таймере вместо rAF: отладка, а не механика (§6).
  * В скрытой панели браузер не зовёт rAF вовсе, время игры стоит, и ни одну
  * отладочную сцену нельзя проверить инструментом без окна на переднем
  * плане. Таймер медленнее и неровнее rAF — в игре ему делать нечего,
  * поэтому ручка адресная, как все отладочные сцены.
  */
-if (debugParams.has('кадры')) {
+if (debugHas(debugParams, 'frames')) {
   window.requestAnimationFrame = (cb: FrameRequestCallback): number =>
     window.setTimeout(() => cb(performance.now()), 16) as unknown as number;
 }
@@ -507,10 +509,10 @@ let grassPerTile = Number(debugParams.get('grass') ?? 24);
 if (!Number.isFinite(grassPerTile)) grassPerTile = 24;
 grassPerTile = Math.max(0, Math.min(64, Math.round(grassPerTile)));
 /**
- * Отладка `?пух`: на поляне сеется трава заставки (FluffyGrass) вместо
+ * Отладка `?fluffy`: на поляне сеется трава заставки (FluffyGrass) вместо
  * клеточной травы вылазки — примерка, как пролог выглядит с лугом титула.
  */
-const debugFluffy = debugParams.has('пух');
+const debugFluffy = debugHas(debugParams, 'fluffy');
 const seedParam = Number(debugParams.get('seed'));
 const debugSeed = Number.isFinite(seedParam) && debugParams.has('seed') ? seedParam | 0 : null;
 
@@ -530,18 +532,18 @@ const debugNight = debugParams.has('night') && Number.isFinite(nightParam)
  * по часам, и без сдвига часов увидеть отбой можно было только высидев
  * его. §6 требует ровно обратного: «отладочная сцена отматывает часы
  * и получает нужный кадр сразу», — и у гарнизона такая ручка есть
- * (`камень.смена`), а у лагеря не было.
+ * (`debug.watch`), а у лагеря не было.
  *
  * Сдвигаются часы **лагеря целиком**: и небо, и маршруты, и сон. Двигать
  * что-то одно значило бы развести их — то самое, от чего §24 ушёл, переводя
  * границы фаз в секунды.
  *
- * Смена — сорок минут: `?смена=27` ставит кадр на отбой, `?смена=0` —
+ * Смена — сорок минут: `?shift=27` ставит кадр на отбой, `?shift=0` —
  * на подъём. Сейв она не трогает: сдвиг живёт в адресе и умирает вместе
  * с вкладкой.
  */
-const shiftParam = Number(debugParams.get('смена'));
-const debugShift = debugParams.has('смена') && Number.isFinite(shiftParam)
+const shiftParam = Number(debugGet(debugParams, 'shift'));
+const debugShift = debugHas(debugParams, 'shift') && Number.isFinite(shiftParam)
   ? shiftParam * 60 - ((clock.now() - WAKE_AT) % SHIFT_SEC + SHIFT_SEC) % SHIFT_SEC
   : 0;
 
@@ -1382,7 +1384,7 @@ function sitSpotNear(at: Cell, loc: GameLocation, taken?: (x: number, z: number)
 /**
  * Разговор знакомства: кадры листает игрок, приглашение кладёт дар в кошелёк
  * и вписывает человека в жильцы. Общий у настоящей встречи в лагере и
- * отладочного кадра `?встреча`: разговор один, сцен у него две.
+ * отладочного кадра `?meet`: разговор один, сцен у него две.
  */
 function meetCallbacks(): MeetPanelCallbacks {
   const redraw = (): void => {
@@ -1928,7 +1930,7 @@ function syncMeet(): void {
 /**
  * Диалогу — весь низ. На время разговора панели лагеря и веер гаснут:
  * «Назваться» не должен драться с «В мир» за нижнюю кромку. Действует
- * только в лагере на поляне: отладочный кадр `?встреча` живёт в сцене
+ * только в лагере на поляне: отладочный кадр `?meet` живёт в сцене
  * вылазки, где панелей лагеря и так нет.
  */
 function dialogHud(on: boolean): void {
@@ -2023,24 +2025,46 @@ const campPrompt = new CampPrompt(hud.promptSlot, {
  */
 let tradeLeft = false;
 
+/**
+ * Прилавок торговца (§13.5). Ничего не хранит: пища на нём — ровно та, что
+ * местные сняли с кустов этой площадки за сутки (§13.8), минус уже
+ * выкупленное. `null` — торговца рядом нет.
+ */
+function traderStock(): Stock | null {
+  if (castleNow === null) return null;
+  const supply = localsTook(
+    castleNow.loc.seed, castleNow.bushes, localsOf(castleNow.gate, castleNow.bushes), clock.now(),
+  );
+  return stockOf(supply, camp.bought ?? {}, castleNow.loc.seed, clock.now());
+}
+
 const tradePanel = new TradePanel(app, {
   onDeal: (give, take) => {
-    if (!makeDeal(camp, give, take)) {
+    const stock = traderStock();
+    const block = dealBlock(camp, give, take, stock);
+    if (!makeDeal(camp, give, take, stock)) {
       // Отказ обязан быть слышен так же, как виден (§18.3).
       play('deny');
-      // Потолок кладовой (§13.6) — единственный отказ прилавка, которого
-      // не видно по кошельку: про него говорится словами.
-      if (dealBlock(camp, give, take) === 'full' && raid !== null) {
-        raid.events.push('Кладовая полна — обмену нет места');
-      }
+      // Слова у отказа свои (`DEAL_REASON`, §23.3). Молчали прежде все,
+      // кроме потолка кладовой; пустой прилавок молчать не может тем более —
+      // по кошельку его не видно.
+      if (block !== 'ok' && raid !== null) raid.events.push(DEAL_REASON[block]);
       return false;
     }
     play('build');
+    // Унесённое с прилавка пишется в самоистекающий список: сам запас
+    // не хранится, хранится только рука игрока — как у кустов (§13.8).
+    if (castleNow !== null && (take.food ?? 0) > 0) {
+      const log = pruneBought(camp.bought ?? {}, clock.now());
+      const key = marketKey(castleNow.loc.seed, clock.now());
+      log[key] = (log[key] ?? 0) + (take.food ?? 0);
+      camp.bought = log;
+    }
     // Сделка свободная: телеметрии важны обе оценки — по ним видно,
     // сколько переплачивают сверх спроса торговца.
     track({ t: 'trade', at: clock.now(), offer: 'deal', worth: worthOf(give), ask: askOf(take, (camp.trades ?? 0) - 1) });
     if (raid !== null) raid.events.push(TradePanel.gained(give, take));
-    tradePanel.sync(camp);
+    tradePanel.sync(camp, traderStock());
     persist();
     return true;
   },
@@ -2148,8 +2172,7 @@ function buy(id: ConsumableId): boolean {
  * перенесло в чужой лагерь» — второй лагерь существует чисто для тестов
  * и границу сохранения не пересекает.
  */
-const DEBUG_SCENE_PARAMS = ['tier', 'node', 'тест', 'castle', 'grave', 'тропа', 'встреча', 'город', 'бой', 'колесо'] as const;
-const debugScene = DEBUG_SCENE_PARAMS.some((k) => debugParams.has(k));
+const debugScene = debugSceneOpen(debugParams);
 
 function persist(): void {
   if (wiped || debugScene) return;
@@ -2734,6 +2757,7 @@ function applySortie(ticket: Sortie, hero: HeroState, report: Report, now: numbe
     seconds: ticket.endsAt - ticket.startedAt,
   });
   campHud.notify(report.text);
+  campHud.suggestWorld('Отряд вернулся: выберите место');
   // Отчёт пришёл асинхронно — состояние обязано лечь в сейв здесь, а не ждать
   // следующего действия игрока: закрытая вкладка потеряла бы добычу похода.
   persist();
@@ -3017,7 +3041,7 @@ function syncGuestMeet(): void {
 let graveSite: GraveSite | null = null;
 let readStone: string | null = null;
 
-/** Тропа, пока по ней идут: ручка отладочной сцены `?тропа`. */
+/** Тропа, пока по ней идут: ручка отладочной сцены `?trail`. */
 let trailSite: TrailSite | null = null;
 
 /**
@@ -4777,13 +4801,13 @@ if (debugNode !== null) {
 }
 
 /**
- * Отладочный кадр `?бой` (§6: воспроизводимость): пошаговый бой сразу,
+ * Отладочный кадр `?battle` (§6: воспроизводимость): пошаговый бой сразу,
  * не проходя вылазку до драки. Открывает вылазку — ярус можно задать
  * через `?tier=N`, иначе берётся первый боевой узел, — и ставит героя
  * вплотную к противнику: контакт завязывается первым же тиком.
- * Значение выбирает вид: `?бой=маг`, `?бой=воин`, `?бой=скелет`.
+ * Значение выбирает вид: `?battle=mage`, `?battle=warrior`, `?battle=skeleton`.
  */
-const debugBattleKind = debugParams.get('бой');
+const debugBattleKind = debugGet(debugParams, 'battle');
 if (debugBattleKind !== null) {
   if (raid === null) {
     const place = today.find((n) => n.kind === 'вылазка' && n.tier >= 1) ?? today.find((n) => n.kind === 'вылазка');
@@ -4793,7 +4817,11 @@ if (debugBattleKind !== null) {
   // не видит, поэтому ссылка перечитывается явно.
   const fightRaid = raid as RaidState | null;
   if (fightRaid !== null) {
-    const KIND_BY_NAME: Record<string, EnemyKind> = { 'скелет': 'minion', 'воин': 'warrior', 'маг': 'mage' };
+    const KIND_BY_NAME: Record<string, EnemyKind> = {
+      skeleton: 'minion',
+      warrior: 'warrior',
+      mage: 'mage',
+    };
     const want = KIND_BY_NAME[debugBattleKind];
     const foes = fightRaid.loc.enemies.filter((e) => e.hp > 0);
     const target = foes.find((e) => want !== undefined && e.kind === want) ?? foes[0];
@@ -4821,14 +4849,14 @@ if (debugBattleKind !== null) {
         }
       }
     }
-    // Ручка к состоянию — тем же приёмом, что `?tier` (`камень`).
-    (window as unknown as { бой: unknown }).бой = {
-      вылазка: () => raid,
-      поле: () => raid?.battle ?? null,
-      показ: () => raidView?.battleBusy() ?? false,
+    // Ручка к состоянию — тем же приёмом, что `?tier` (`debug`).
+    (window as unknown as { battle: unknown }).battle = {
+      raid: () => raid,
+      field: () => raid?.battle ?? null,
+      busy: () => raidView?.battleBusy() ?? false,
       // Внутренности показа — поля приватные для кода, но не для отладки.
-      ход: () => (raidView as unknown as { playNow: unknown } | null)?.playNow ?? null,
-      хвост: () => (raidView as unknown as { battlePlays: unknown[] } | null)?.battlePlays.length ?? 0,
+      play: () => (raidView as unknown as { playNow: unknown } | null)?.playNow ?? null,
+      queue: () => (raidView as unknown as { battlePlays: unknown[] } | null)?.battlePlays.length ?? 0,
     };
   }
 }
@@ -4837,15 +4865,15 @@ if (debugBattleKind !== null) {
  * Ручка к состоянию вылазки для сцен `?tier=N` и `?node=N`. Без неё сцена
  * показывает кадр, но ответить «взялся ли герой за валун и сколько осталось»
  * может только глаз, а восемь секунд у камня незачем высиживать: работа
- * отдаётся живой, и `работа().left` двигается руками.
+ * отдаётся живой, и `debug.work().left` двигается руками.
  */
 if (debugTier !== null || debugNode !== null) {
-  (window as unknown as { камень: unknown }).камень = {
+  (window as unknown as { debug: unknown }).debug = {
     rig,
-    вылазка: () => raid,
-    камни: () => raid?.loc.stones ?? null,
-    работа: () => mine,
-    рубка: () => chop,
+    raid: () => raid,
+    stones: () => raid?.loc.stones ?? null,
+    work: () => mine,
+    chop: () => chop,
   };
 }
 
@@ -4854,16 +4882,16 @@ if (debugTier !== null || debugNode !== null) {
  * открывается сразу, а не проходом игры до него: чтобы проверить стену
  * в лагере, незачем играть пролог.
  *
- * `?тест` — лагерь как он есть. Имя нарочно не «camp»: лагерь — то, что
+ * `?test` — лагерь как он есть. Имя нарочно не «camp»: лагерь — то, что
  *   игрок разбивает в прологе, а это чисто тестовый кадр.
- * `?тест=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
+ * `?test=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
  *   Ровно та планировка, на которой видно все четыре ответа сразу — ход
  *   поверху, разрыв на башне, проезд под воротами и подъём.
  *
  * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
  * но открыть их можно лишь адресом, которого в игре нет.
  */
-const debugCamp = debugParams.get('тест');
+const debugCamp = debugGet(debugParams, 'test');
 if (debugCamp !== null) {
   if (debugCamp === 'walls') {
     // Площадь по максимуму и полный карман камня: сцена заведена, чтобы
@@ -4933,17 +4961,31 @@ if (debugCamp !== null) {
   // Ручка к состоянию сцены. Без неё отладочная сцена показывает кадр,
   // но ответить на вопрос «а герой-то поднялся?» может только глаз.
   // Живёт только вместе с отладочным адресом.
-  (window as unknown as { камень: unknown }).камень = {
+  const DEBUG_CAMP_LEVEL = { ground: 'земля', top: 'верх' } as const;
+  const DEBUG_RESIDENT_ORDER = {
+    build: 'строим',
+    walk: 'ходим',
+    feed: 'кормим',
+    rest: 'отдых',
+  } as const;
+  const DEBUG_GUEST_ANSWER = {
+    build: 'строим',
+    walk: 'ходим',
+  } as const;
+  type DebugCampLevel = keyof typeof DEBUG_CAMP_LEVEL;
+  type DebugResidentOrder = keyof typeof DEBUG_RESIDENT_ORDER;
+  type DebugGuestAnswer = keyof typeof DEBUG_GUEST_ANSWER;
+  (window as unknown as { debug: unknown }).debug = {
     camp,
     hero: campHero,
     rig,
     nav: () => campNav(camp),
-    tap: (x: number, z: number, level: 'земля' | 'верх' = 'земля') =>
-      commandCampMove(camp, campHero, { x, z }, level),
+    tap: (x: number, z: number, level: DebugCampLevel = 'ground') =>
+      commandCampMove(camp, campHero, { x, z }, DEBUG_CAMP_LEVEL[level] ?? 'земля'),
     // §14 и §6.1.8: уровень оружия меняет клинок в руке. Ковать ради проверки
     // незачем — ручка ставит уровень и пересобирает вид тем же путём,
     // которым он пересобирается после настоящей ковки.
-    оружие: (level: number) => {
+    weapon: (level: number) => {
       camp.gear.weapon = Math.max(0, Math.min(MAX_ITEM_LEVEL, level | 0));
       campView.setCamp(camp);
       return camp.gear.weapon;
@@ -4951,27 +4993,28 @@ if (debugCamp !== null) {
     // Начатая добыча (§13.5). Отдаётся сама работа, а не снимок: отладочной
     // сцене положено не только показывать состояние, но и двигать его —
     // высиживать восемь секунд у камня незачем.
-    работа: () => campMine,
+    work: () => campMine,
     // Жильцы и палатки (`residents.ts`) числами: строка задания говорит,
     // чего не хватает, но не говорит, кто в лагере и кто что ответил.
-    жильцы: () => ({
-      люди: camp.residents.map((r) => `${r.name} (${r.look}, ${residentState(r)})`),
-      крыш: roofs(camp),
-      'без крыши': homeless(camp),
-      палаток: camp.tents.length,
-      палатку: tentReason(camp),
+    residents: () => ({
+      people: camp.residents.map((r) => `${r.name} (${r.look}, ${residentState(r)})`),
+      roofs: roofs(camp),
+      homeless: homeless(camp),
+      tents: camp.tents.length,
+      tent: tentReason(camp),
     }),
     // Приказ из консоли: смотреть, как топор сменяется киркой или ложится
     // на отдых, можно без карточки — тем же `assignWork`, что и кнопка.
-    приказ: (index: number, order: 'строим' | 'ходим' | 'отдых') => {
-      if (!assignWork(camp, index, order)) return 'не приказ';
+    order: (index: number, order: DebugResidentOrder) => {
+      const local = DEBUG_RESIDENT_ORDER[order];
+      if (local === undefined || !assignWork(camp, index, local)) return 'not an order';
       persist();
       const r = camp.residents[index]!;
       return `${r.name}: ${residentState(r)}`;
     },
     // Поставить палатку: цена списывается, место выбирается тем же правилом,
     // что и в игре.
-    палатка: () => {
+    tent: () => {
       const spot = buildTent(camp);
       if (spot === null) return tentReason(camp);
       campView.setCamp(camp);
@@ -4982,21 +5025,21 @@ if (debugCamp !== null) {
     // не получает кадров вовсе (`document.hidden`), а строка задания
     // красится в общем `sync`: без этой ручки её состояние из консоли
     // не проверить, только глазом на переднем окне.
-    кадр: () => campHud.sync(camp, clock.now(), 0),
+    frame: () => campHud.sync(camp, clock.now(), 0),
     /**
      * Часы §6: по серверному времени они идут или по здешнему. Вопрос
      * невидимый — таймеры выглядят одинаково в обоих случаях, — а ответ
      * на него нужен: без сервера лагерь верит системным часам.
      * `расхождение` — насколько врут часы машины, в секундах.
      */
-    часы: () => ({
-      сервер: clock.synced,
-      сейчас: clock.now(),
-      расхождение: clock.now() - Date.now() / 1000,
+    clock: () => ({
+      server: clock.synced,
+      now: clock.now(),
+      drift: clock.now() - Date.now() / 1000,
     }),
     // Отлучка руками: ждать полчаса, чтобы посмотреть на прибавку, —
     // не проверка. Кладёт ровно то же, что положила бы загрузка.
-    отлучка: (seconds: number) => {
+    away: (seconds: number) => {
       const done = collectWork(camp, seconds);
       campHud.sync(camp, clock.now(), 0);
       persist();
@@ -5007,8 +5050,8 @@ if (debugCamp !== null) {
      * посмотреть, как кромка выглядит с соседями, — не проверка. Ручка
      * кладёт ровно то, что положил бы ответ сервера.
      */
-    соседи: (сколько = 3) => {
-      liveCamps = Array.from({ length: сколько }, (_, i) => ({
+    neighbours: (count = 3) => {
+      liveCamps = Array.from({ length: count }, (_, i) => ({
         id: `гость-${i}`,
         clan: i % 2 === 0 ? `Артель ${i + 1}` : null,
         power: 30 + i * 45,
@@ -5028,22 +5071,24 @@ if (debugCamp !== null) {
      * Без номера точки — самая щадящая из сегодняшних (`safestNode`): та же,
      * куда игру пускает первая вылазка, и она есть в любой день.
      */
-    сосед: (node?: number, заходов = 1) => {
+    visit: (node?: number, visits = 1) => {
       const at = shiftAt(clock.now());
       const spot = node ?? safestNode(clock.now());
-      for (let i = 0; i < заходов; i++) neighbours.push({ node: spot, shift: at - i });
+      for (let i = 0; i < visits; i++) neighbours.push({ node: spot, shift: at - i });
       campHud.setNeighbours(neighbours);
       returnScreen.setNeighbours(neighbours);
       return worldAt(clock.now(), camp.visits, neighbours)[spot];
     },
     // Гость из ниоткуда: проверять палатки, каждый раз проходя знакомство,
     // — не проверка. Имя раздаётся по счёту, потому что повтор не принимается.
-    гость: (answer: 'строим' | 'ходим' = 'строим') => {
+    guest: (answer: DebugGuestAnswer = 'build') => {
+      const local = DEBUG_GUEST_ANSWER[answer];
+      if (local === undefined) return 'not an answer';
       admit(camp, {
-        name: `Гость ${camp.residents.length + 1}`,
+        name: `Guest ${camp.residents.length + 1}`,
         look: 'поселенец',
         seed: camp.residents.length + 1,
-        answer,
+        answer: local,
         rest: false,
       });
       persist();
@@ -5057,8 +5102,8 @@ if (debugCamp !== null) {
  * (§6.1.6). Смотреть на отряд и на смену стрелка, проходя до замка игру,
  * нельзя: точка замка одна на день, и ждать её — не проверка.
  *
- * Ручка `камень` даёт то, чего не видно глазом: где отряд будет через
- * минуту и когда стрелок выйдет на стену. `камень.смена(t)` переводит часы
+ * Ручка `debug` даёт то, чего не видно глазом: где отряд будет через
+ * минуту и когда стрелок выйдет на стену. `debug.watch(t)` переводит часы
  * гарнизона — смена длится минуту, и высиживать её незачем.
  *
  * `?castle=СИД` — с назначенным сидом, как у `?grave`: гость у стен
@@ -5075,68 +5120,85 @@ if (debugCastle !== null) {
     leaveTitle();
     toCastle(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
   }
-  (window as unknown as { камень: unknown }).камень = {
+  (window as unknown as { debug: unknown }).debug = {
     site: () => castleNow,
     // Начатая добыча (§13.5) и тот, кто её ведёт. Работы не видно глазом,
     // пока пятно не выросло, а вопрос «взялся ли герой за камень» задаётся
     // первым. Отдаётся сама работа, а не её снимок: отладочной сцене положено
     // не только показывать состояние, но и двигать его.
-    работа: () => mine,
-    герой: () => raid?.hero ?? null,
+    work: () => mine,
+    hero: () => raid?.hero ?? null,
     garrison: () => (castleNow === null ? null : garrisonOf(castleNow)),
     patrol: (t = 0) => (castleNow === null ? null : patrolAt(garrisonOf(castleNow), t)),
     archer: (t = 0) => (castleNow === null ? null : archerAt(garrisonOf(castleNow), t)),
     // Жильцы двора (§6.1.6.1). Печатается то, чего не видно глазом: кто где
     // сейчас, идёт ли и какой длины у него круг — обход в клетках читать
     // по одной клетке бессмысленно.
-    жильцы: (t = 0) => {
+    dwellers: (t = 0) => {
       if (castleNow === null) return null;
       const g = garrisonOf(castleNow);
       return dwellersAt(g, t).map((d, i) => ({
-        кто: d.look,
-        где: [+d.x.toFixed(2), +d.z.toFixed(2)],
-        идёт: d.walking,
-        круг: +(g.yard[i]?.cycle ?? 0).toFixed(1),
+        who: d.look,
+        at: [+d.x.toFixed(2), +d.z.toFixed(2)],
+        walking: d.walking,
+        cycle: +(g.yard[i]?.cycle ?? 0).toFixed(1),
       }));
     },
-    смена: (t: number) => raidView?.setWatch(t),
+    watch: (t: number) => raidView?.setWatch(t),
     /**
      * §13.8 — местные у кустов: кто вышел, к какому узлу и где он сейчас.
      * Печатается вместе с ответом формулы про тот же узел — вопрос
      * «разошлись ли кадр и число» задаётся ровно об этом, и отвечать
      * на него глазом по кадру нечестно.
      */
-    собиратели: (t = clock.now()) =>
+    gatherers: (t = clock.now()) =>
       gatherers.map((g) => {
         const at = choreAt(g.chore, t);
         return {
-          куст: [g.bush.id, g.bush.x, g.bush.z],
-          где: [+at.x.toFixed(2), +at.z.toFixed(2)],
-          идёт: at.walking,
-          работает: at.working,
-          несёт: at.carrying,
-          круг: +g.chore.circuit.toFixed(1),
+          bush: [g.bush.id, g.bush.x, g.bush.z],
+          at: [+at.x.toFixed(2), +at.z.toFixed(2)],
+          walking: at.walking,
+          working: at.working,
+          carrying: at.carrying,
+          cycle: +g.chore.circuit.toFixed(1),
           // Формула про тот же узел: полон ли он для игрока.
-          полон: castleNow === null
+          ripe: castleNow === null
             ? null
             : worldRipe(castleNow.loc.seed, 'замок', g.bush, localsOf(castleNow.gate, castleNow.bushes), camp.picks ?? {}, t),
         };
       }),
+    /**
+     * Прилавок торговца (§13.5). Глазом его видно только у самого прилавка,
+     * а вопрос «сколько сегодня принесли местные» задаётся раньше, чем герой
+     * дойдёт. Ручка отвечает на него сразу — и принимает время, потому что
+     * запас суточный: `counter(86400)` показывает завтрашний.
+     */
+    counter: (shift = 0) => {
+      if (castleNow === null) return null;
+      const at = clock.now() + shift;
+      const supply = localsTook(castleNow.loc.seed, castleNow.bushes, localsOf(castleNow.gate, castleNow.bushes), at);
+      return {
+        brought: supply,
+        bought: (camp.bought ?? {})[marketKey(castleNow.loc.seed, at)] ?? 0,
+        left: stockOf(supply, camp.bought ?? {}, castleNow.loc.seed, at),
+        bushes: castleNow.bushes.length,
+      };
+    },
     // Гость у стен (`castleGuest.ts`): кто, откуда, что ищет и где сидит.
     // Ждать замка с гостем — лотерея, а тут видно и «гостя сегодня нет».
-    гость: () =>
+    guest: () =>
       castleGuest === null
         ? null
         : {
-            он: castleGuest.who,
-            откуда: castleGuest.origin,
-            ищет: castleGuest.seek,
-            уговор: castleGuest.term,
-            отказ: guestBlock(camp, castleGuest),
-            палатка: castleGuest.tent,
-            костёр: castleGuest.fire,
-            сидит: castleGuest.sit,
-            шаг: guestMeet?.step ?? null,
+            who: castleGuest.who,
+            origin: castleGuest.origin,
+            seek: castleGuest.seek,
+            term: castleGuest.term,
+            block: guestBlock(camp, castleGuest),
+            tent: castleGuest.tent,
+            fire: castleGuest.fire,
+            sit: castleGuest.sit,
+            step: guestMeet?.step ?? null,
           },
     // Герой и тап по клетке: прозрачность стен (§6.1.6.1) включается тем,
     // что он вошёл во двор, и без ручки к нему сцена этого не показывает —
@@ -5148,7 +5210,7 @@ if (debugCastle !== null) {
 }
 
 /**
- * `?встреча` — прогалина и сидящий поселенец. Сцена заведена под один
+ * `?meet` — прогалина и сидящий поселенец. Сцена заведена под один
  * вопрос, на который нельзя ответить рассуждением: **читается ли сидящий
  * живым и небоеспособным** — и не дёргается ли он на вставании.
  *
@@ -5175,7 +5237,7 @@ const tentReason = (state: typeof camp): string => {
   return why === 'ok' ? 'можно' : TENT_REASON[why];
 };
 
-if (debugParams.has('встреча')) {
+if (debugHas(debugParams, 'meet')) {
   toGlade();
   const hero = raid!.hero;
   // Клетка ищется свободная, а не назначается смещением: поляна заросшая,
@@ -5225,25 +5287,25 @@ if (debugParams.has('встреча')) {
   // доводить её руками из консоли.
   rig.lookAt(satAt.x, satAt.z, true);
   rig.setZoom(9, true);
-  (window as unknown as { камень: unknown }).камень = {
+  (window as unknown as { debug: unknown }).debug = {
     rig,
     raid: () => raid,
-    поселенец: () => raidView?.settlerAt() ?? null,
+    settler: () => raidView?.settlerAt() ?? null,
     // Зов: встаёт и идёт к герою. Ходьба ждёт конца клипа — оборванное
     // вставание и есть тот рывок, который сцена проверяет.
-    позвать: () => raidView?.callSettler(raid!.hero.x, raid!.hero.z),
-    посадить: (look: DwellerLook = 'поселенец') =>
+    call: () => raidView?.callSettler(raid!.hero.x, raid!.hero.z),
+    place: (look: DwellerLook = 'поселенец') =>
       raidView?.putSettler(look, satAt.x, satAt.z, Math.atan2(raid!.hero.x - satAt.x, raid!.hero.z - satAt.z)),
     // Разговор целиком: кто он, на каком кадре стоим, как назвался игрок
     // и что досталось. Глазом из панели видно только текущую строку.
-    знакомство: () => (meet === null ? null : {
-      он: meetSettler,
-      шаг: meet.step,
-      герой: meet.heroName,
-      ответ: meet.answer,
-      позвал: meet.invited,
-      дар: giftOf(meet),
-      кошелёк: { ...camp.resources },
+    meet: () => (meet === null ? null : {
+      who: meetSettler,
+      step: meet.step,
+      hero: meet.heroName,
+      answer: meet.answer,
+      invited: meet.invited,
+      gift: giftOf(meet),
+      wallet: { ...camp.resources },
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
@@ -5261,83 +5323,83 @@ if (debugGrave !== null) {
   const seed = debugGrave === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(debugGrave);
   leaveTitle();
   toGraveyard(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
-  (window as unknown as { камень: unknown }).камень = {
+  (window as unknown as { debug: unknown }).debug = {
     rig,
     site: () => graveSite,
     // Размер участка и население — те два числа, ради которых сцена и заведена.
-    участок: () => (graveSite === null ? null : {
-      локация: graveSite.loc.size,
-      привидений: graveSite.loc.enemies.length,
-      надгробий: graveSite.marks.length,
-      материал: graveSite.material,
+    plot: () => (graveSite === null ? null : {
+      size: graveSite.loc.size,
+      ghosts: graveSite.loc.enemies.length,
+      graves: graveSite.marks.length,
+      material: graveSite.material,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
 }
 
 /**
- * `?тропа` — лесная тропа сегодняшнего региона сразу, `?тропа=СИД` — с
+ * `?trail` — лесная тропа сегодняшнего региона сразу, `?trail=СИД` — с
  * назначенным сидом (§6.1.17). Длина, виляние спины и грунт выводятся
  * из сида: чтобы посмотреть на длинную тропу, ждать нужной точки
  * на карте — не проверка, а лотерея.
  */
-const debugTrail = debugParams.get('тропа');
+const debugTrail = debugGet(debugParams, 'trail');
 if (debugTrail !== null) {
   const place = today.find((n) => n.kind === 'тропа');
   const seed = debugTrail === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(debugTrail);
   leaveTitle();
   toTrail(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
-  (window as unknown as { камень: unknown }).камень = {
+  (window as unknown as { debug: unknown }).debug = {
     rig,
     site: () => trailSite,
     // Длина, ветвление и обочина — числа, ради которых сцена и заведена:
     // тропа обещает быть длиннее ширины и вести в тупики, и это видно ручкой.
-    тропа: () => (trailSite === null ? null : {
-      локация: trailSite.loc.size,
-      длина: trailSite.length,
-      грунта: trailSite.path.length,
-      отвилков: trailSite.branches.length,
-      валунов: trailSite.loc.stones.length,
+    trail: () => (trailSite === null ? null : {
+      size: trailSite.loc.size,
+      length: trailSite.length,
+      ground: trailSite.path.length,
+      branches: trailSite.branches.length,
+      stones: trailSite.loc.stones.length,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };
 }
 
 /**
- * `?колесо` — колесо призов сразу, `?колесо=СИД` — с назначенным сидом.
+ * `?wheel` — колесо призов сразу, `?wheel=СИД` — с назначенным сидом.
  * Сид решает сектор: проверять, что колесо довозит до каждого из десяти,
  * перебором дней на карте — не проверка, а лотерея про лотерею.
  * Сейв ручка не пишет: `persist()` глушится любым отладочным кадром.
  */
-const debugWheel = debugParams.get('колесо');
+const debugWheel = debugGet(debugParams, 'wheel');
 if (debugWheel !== null) {
   const seed = debugWheel === ''
     ? nodeSeed(dayAt(clock.now()), today.find((n) => n.kind === 'призы')?.id ?? 0)
     : Number(debugWheel);
   leaveTitle();
   toWheel(Number.isFinite(seed) ? seed : 1, 0);
-  (window as unknown as { камень: unknown }).камень = {
+  (window as unknown as { debug: unknown }).debug = {
     // Ответ пересчитан той же формулой: ручка обязана говорить, куда колесо
     // обязано довезти, чтобы расхождение было видно числом, а не на глаз.
-    ответ: () => 1 + Math.floor(mulberry32((Number.isFinite(seed) ? seed : 1) ^ 0x5b1e)() * 10),
+    answer: () => 1 + Math.floor(mulberry32((Number.isFinite(seed) ? seed : 1) ^ 0x5b1e)() * 10),
     // Нутро сцены: скрытая панель превью замораживает rAF, и «застряло»
     // от «крутится» снаружи не отличить — ручка отличает числом.
-    колесо: () => wheelView,
+    wheel: () => wheelView,
   };
 }
 
 /**
- * `?город` — улица генератора домов (§6.1, набор Medieval Village MegaKit),
- * `?город=СИД` — с назначенным сидом. Города в игре ещё нет, и сцена заведена
+ * `?town` — улица генератора домов (§6.1, набор Medieval Village MegaKit),
+ * `?town=СИД` — с назначенным сидом. Города в игре ещё нет, и сцена заведена
  * под один вопрос: читается ли порядок домов — пролёты, этажи, материалы
  * и крыши, собранные планом (`render/village.ts`), — раньше, чем городу
  * появится место на карте. Ждать этого места, чтобы посмотреть на дом,
  * было бы не проверкой, а лотереей.
  *
- * Ручка `камень.город(сид)` пересобирает улицу на месте: сравнивать два сида
+ * Ручка `debug.town(seed)` пересобирает улицу на месте: сравнивать два сида
  * перезагрузкой значило бы терять кадр, на который смотришь.
  */
-const debugTown = debugParams.get('город');
+const debugTown = debugGet(debugParams, 'town');
 if (debugTown !== null) {
   // Площадка напрямую, мимо маршрутизатора, как у прочих отладочных кадров;
   // лагерь прячется целиком — улица приносит свою землю.
@@ -5357,17 +5419,17 @@ if (debugTown !== null) {
   };
   const first = Number(debugTown);
   show(debugTown === '' || !Number.isFinite(first) ? 1 : first);
-  (window as unknown as { камень: unknown }).камень = {
+  (window as unknown as { debug: unknown }).debug = {
     rig,
-    город: (seed: number) => show(seed),
+    town: (seed: number) => show(seed),
     // Спецификации домов улицы: пролёт, глубина, этажи, материал — то,
     // чего не прочитать глазом, если дом загородил соседа.
-    дома: () => town?.street.map((h) => ({ ...h.spec, x: +h.x.toFixed(1), z: +h.z.toFixed(1) })) ?? null,
+    houses: () => town?.street.map((h) => ({ ...h.spec, x: +h.x.toFixed(1), z: +h.z.toFixed(1) })) ?? null,
   };
 }
 
 /**
- * `?веер` — дуга аватаров под большой палец (`features/fan`).
+ * `?fan` — дуга аватаров под большой палец (`features/fan`).
  *
  * Сцена заведена под один вопрос: со скольких человек контрол перестаёт
  * помещаться под палец. Отряд — это трое (§11.8), и трое влезают куда угодно;
@@ -5381,7 +5443,7 @@ if (debugTown !== null) {
  * теми же, что в игре. Имена в пуле не бесконечны, поэтому повтор получает
  * номер: два «Гиты» на дуге сделали бы задание упражнения двусмысленным.
  */
-if (debugParams.has('веер')) {
+if (debugHas(debugParams, 'fan')) {
   // За веером стоит лагерь, а не заставка: размер слота и длина подписи
   // читаются только на настоящем кадре. Сам веер экран забирает — промах
   // по контролу обязан быть промахом по контролу, а не попаданием в лагерь.
@@ -5584,7 +5646,7 @@ startLoop({
         if (!near) tradeLeft = false;
         const show = near && !tradeLeft;
         if (show !== tradePanel.visible) tradePanel.setVisible(show);
-        if (show) tradePanel.sync(camp);
+        if (show) tradePanel.sync(camp, traderStock());
         // Гость у стен: разговор тем же жестом подхода, что лавка выше.
         syncGuestMeet();
       }

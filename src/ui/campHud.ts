@@ -194,7 +194,9 @@ export class CampHud {
   private readonly taskWhy: HTMLElement;
   private readonly taskButton: HTMLButtonElement;
   /** Какое задание сейчас на строке: от него зависит, что делает кнопка. */
-  private taskDoes: 'tent' | 'clan' = 'tent';
+  private taskDoes: 'tent' | 'clan' | 'chest' | 'shop' | 'world' = 'tent';
+  /** Разовая строка после оффлайн-вылазки: отчёт пришёл, дальше решение на карте. */
+  private taskNudge: { kind: 'world'; text: string } | null = null;
 
   private readonly sheet: HTMLElement;
   private readonly sheetTitle: HTMLElement;
@@ -210,7 +212,7 @@ export class CampHud {
    * и это исправление: раньше слот был разделом листа, а лист под отряд.
    * Кнопка «Стены» закрывает лист и показывает панель — то есть показывала её
    * внутри только что закрытого листа, и не показывала вовсе. Отладочная сцена
-   * `?тест=walls` ставит кольцо кодом и мимо этой дыры проходила.
+   * `?test=walls` ставит кольцо кодом и мимо этой дыры проходила.
    */
   readonly slot: HTMLElement;
   /** Полоса ресурсов: верхний край экрана, занятый панелью. */
@@ -295,7 +297,12 @@ export class CampHud {
     // называть одно действие.
     this.taskButton.addEventListener('click', () => {
       if (this.taskDoes === 'clan') this.cb.onClan();
-      else this.cb.onTent();
+      else if (this.taskDoes === 'chest') this.cb.onChest();
+      else if (this.taskDoes === 'shop') this.openSheet('shop');
+      else if (this.taskDoes === 'world') {
+        this.taskNudge = null;
+        this.openSheet('tiers');
+      } else this.cb.onTent();
     });
     this.task.append(this.taskFace, this.taskWhy, this.taskButton);
 
@@ -715,6 +722,7 @@ export class CampHud {
   openSheet(kind: SheetKind): void {
     const was = this.open !== null;
     this.open = kind;
+    if (kind === 'tiers') this.taskNudge = null;
     this.sheet.style.display = kind === null ? 'none' : '';
     for (const [key, el] of this.sections) el.style.display = key === kind ? '' : 'none';
     this.sheetTitle.textContent = this.titleFor(kind);
@@ -822,9 +830,19 @@ export class CampHud {
    */
   private syncTask(camp: CampState): void {
     const need = homeless(camp);
-    this.task.style.display = need === 0 && !clanTaskOpen(camp) ? 'none' : 'flex';
+    if (need === 0 && clanTaskOpen(camp)) {
+      this.syncClanTask();
+      return;
+    }
+    if (need === 0 && this.syncChestTask(camp)) return;
+    if (need === 0 && this.syncArrowTask(camp)) return;
+    if (need === 0 && this.taskNudge !== null) {
+      this.syncWorldTask(this.taskNudge.text);
+      return;
+    }
+    this.task.style.display = need === 0 ? 'none' : 'flex';
     if (need === 0) {
-      if (clanTaskOpen(camp)) this.syncClanTask();
+      this.hideTaskFace();
       return;
     }
     // Имя вместо «гостя»: человек, которого позвали, стоит в лагере
@@ -854,6 +872,13 @@ export class CampHud {
     this.taskDoes = 'tent';
   }
 
+  private hideTaskFace(): void {
+    if (this.taskFace.dataset['who'] === '') return;
+    this.taskFace.dataset['who'] = '';
+    this.taskFace.innerHTML = '';
+    this.taskFace.style.display = 'none';
+  }
+
   /**
    * Задание про клан (§30). Стоит **за** крышей и не рядом с ней: строка
    * задания одна, и порядок в ней решает не важность вообще, а срочность.
@@ -864,14 +889,50 @@ export class CampHud {
    * читалось бы как «этот просит клан».
    */
   private syncClanTask(): void {
+    this.task.style.display = 'flex';
     this.taskDoes = 'clan';
-    if (this.taskFace.dataset['who'] !== '') {
-      this.taskFace.dataset['who'] = '';
-      this.taskFace.innerHTML = '';
-      this.taskFace.style.display = 'none';
-    }
+    this.hideTaskFace();
     this.taskWhy.textContent = 'Лагерь без имени: соседи уже в таблице';
     this.taskButton.textContent = 'Создать клан';
+    this.taskButton.disabled = false;
+  }
+
+  private syncChestTask(camp: CampState): boolean {
+    const used = storeUsed(camp);
+    const cap = storeCapacity(camp);
+    if (used < cap * 0.8) return false;
+    const block = chestBlock(camp);
+    this.task.style.display = 'flex';
+    this.taskDoes = 'chest';
+    this.hideTaskFace();
+    this.taskWhy.textContent =
+      `Кладовая почти полна: ${used}/${cap}` +
+      (block === 'ok' ? '' : ` · ${CHEST_REASON[block]}`);
+    this.taskButton.textContent = `Сундук · ${this.costLine(0, CHEST_COST)}`;
+    this.taskButton.disabled = block !== 'ok';
+    return true;
+  }
+
+  private syncArrowTask(camp: CampState): boolean {
+    const cap = this.ranged ? gearMods(camp.gear, camp.offhand).arrows : 0;
+    if (cap <= 0 || camp.arrows > 0) return false;
+    this.task.style.display = 'flex';
+    this.taskDoes = 'shop';
+    this.hideTaskFace();
+    this.taskWhy.textContent =
+      'Колчан пуст' +
+      (canBuyArrows(camp, cap) ? '' : ` · нужно ${this.costLine(0, ARROW_PACK_COST)}`);
+    this.taskButton.textContent = 'Припасы';
+    this.taskButton.disabled = false;
+    return true;
+  }
+
+  private syncWorldTask(text: string): void {
+    this.task.style.display = 'flex';
+    this.taskDoes = 'world';
+    this.hideTaskFace();
+    this.taskWhy.textContent = text;
+    this.taskButton.textContent = 'В мир';
     this.taskButton.disabled = false;
   }
 
@@ -1186,6 +1247,12 @@ export class CampHud {
   notify(text: string): void {
     this.line.push(text);
     this.banner.textContent = this.line.text;
+  }
+
+  /** Одноразовая мягкая задача после событий, пришедших не от прямого тапа. */
+  suggestWorld(text: string): void {
+    this.taskNudge = { kind: 'world', text };
+    if (this.last !== null) this.syncTask(this.last.camp);
   }
 
   /**

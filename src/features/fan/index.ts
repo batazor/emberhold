@@ -1,5 +1,5 @@
 /**
- * Веер (`?веер`) — отладочная сцена под один вопрос: **со скольких человек
+ * Веер (`?fan`) — отладочная сцена под один вопрос: **со скольких человек
  * дуга перестаёт помещаться под большой палец.**
  *
  * Сам контрол живёт в `control.ts` и стоит в лагере (§11.8): тем же веером
@@ -70,12 +70,12 @@ export interface FanHooks {
 
 /** Строка замера: одна попытка упражнения при одной раскладке. */
 interface Row {
-  людей: number;
-  радиус: number;
-  слот: number;
-  'в обводе': number | string;
-  попаданий: string;
-  медиана: number;
+  people: number;
+  radius: number;
+  size: number;
+  reached: number | string;
+  hits: string;
+  median: number;
 }
 
 const CSS = `
@@ -295,18 +295,18 @@ export function installFan(hooks: FanHooks): void {
     const r = drillResult(drill);
     const shown = fan.slots();
     rows.push({
-      людей: count,
-      радиус: shape().radius,
-      слот: shape().size,
-      'в обводе': calibrated(reach) ? shown.filter((s) => reached(reach, s)).length : 'нет',
-      попаданий: `${r.попаданий}/${r.заданий}`,
-      медиана: r.медиана,
+      people: count,
+      radius: shape().radius,
+      size: shape().size,
+      reached: calibrated(reach) ? shown.filter((s) => reached(reach, s)).length : 'none',
+      hits: `${r.попаданий}/${r.заданий}`,
+      median: r.медиана,
     });
     out.log.innerHTML = rows
       .map(
         (x) =>
-          `<div><b>${x.людей}</b> чел · r${x.радиус} · слот ${x.слот} · ` +
-          `в обводе ${x['в обводе']} · <b>${x.попаданий}</b> · ${x.медиана} мс</div>`,
+          `<div><b>${x.people}</b> чел · r${x.radius} · слот ${x.size} · ` +
+          `в обводе ${x.reached} · <b>${x.hits}</b> · ${x.median} мс</div>`,
       )
       .join('');
     drill = null;
@@ -434,46 +434,55 @@ export function installFan(hooks: FanHooks): void {
   window.addEventListener('resize', sync);
   sync();
 
-  (window as unknown as Record<string, unknown>)['веер'] = {
-    вид: () => ({
-      людей: count,
-      ...shape(),
-      'в дуге': capacity(shape()),
-      видно: fan.slots().length,
-      прокрутка: scrolls(shape(), count),
-      тесно: tight(shape()),
-      обвод: calibrated(reach) ? reach.ring.map((r) => Math.round(r)) : 'не обведено',
-    }),
-    люди: (n: number) => {
+  const publicHand = (hand: Hand): 'left' | 'right' => (hand === 'левая' ? 'left' : 'right');
+  const localHand = (hand: 'left' | 'right'): Hand => (hand === 'left' ? 'левая' : 'правая');
+
+  (window as unknown as Record<string, unknown>)['fan'] = {
+    view: () => {
+      const s = shape();
+      return {
+        people: count,
+        radius: s.radius,
+        size: s.size,
+        span: s.span,
+        hand: publicHand(s.hand),
+        capacity: capacity(s),
+        visible: fan.slots().length,
+        scrolls: scrolls(s, count),
+        tight: tight(s),
+        reach: calibrated(reach) ? reach.ring.map((r) => Math.round(r)) : 'not traced',
+      };
+    },
+    people: (n: number) => {
       count = clampCount(n);
       sync();
       return capacity(shape());
     },
-    радиус: (px: number) => {
+    radius: (px: number) => {
       fan.shape = { ...shape(), radius: px };
       sync();
       return Math.ceil(minRadius(shape()));
     },
-    слот: (px: number) => {
+    size: (px: number) => {
       fan.shape = { ...shape(), size: px };
       sync();
       return Math.ceil(minRadius(shape()));
     },
-    рука: (h: Hand) => {
-      fan.shape = { ...shape(), hand: h };
+    hand: (h: 'left' | 'right') => {
+      fan.shape = { ...shape(), hand: localHand(h) };
       reach = emptyReach(shape().span);
       sync();
     },
     /** Потребный радиус под разные поперечники слота. Пальца не требует. */
-    радиусы: (sizes = [36, 44, 52, 64]) =>
-      sizes.map((size) => ({ слот: size, нужно: Math.ceil(minRadius({ ...shape(), size })) })),
-    упражнение: (rounds = 3) => {
+    radii: (sizes = [36, 44, 52, 64]) =>
+      sizes.map((size) => ({ size, needed: Math.ceil(minRadius({ ...shape(), size })) })),
+    drill: (rounds = 3) => {
       startDrill(rounds);
       return drill?.order.length ?? 0;
     },
-    итоги: () => rows.map((r) => ({ ...r })),
-    обвод: (): Reach => reach,
-    сброс: () => {
+    results: () => rows.map((r) => ({ ...r })),
+    reach: (): Reach => reach,
+    reset: () => {
       rows.length = 0;
       reach = emptyReach(shape().span);
       drill = null;

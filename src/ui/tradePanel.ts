@@ -9,7 +9,8 @@
  * только своё: прилавки (ваше — камень и дерево, его — железо), цену
  * и лицо. Сам обмен кучками — забота экрана, и он один на все обмены.
  */
-import { GIVABLE, SELLABLE, askOf, dealsToParity, feeOf, worthOf } from '../sim/trade';
+import { GIVABLE, SELLABLE, askOf, dealsToParity, feeOf, onCounter, worthOf } from '../sim/trade';
+import type { Stock } from '../sim/trade';
 import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
 import type { CampState } from '../sim/camp';
@@ -39,6 +40,8 @@ export const pilesToResources = (piles: Piles): Partial<Resources> => {
 export class TradePanel {
   private readonly screen: ExchangePanel;
   private camp: CampState | null = null;
+  /** Прилавок торговца (§13.5): пища — сколько принесли местные, железо — без счёта. */
+  private stock: Stock | null = null;
 
   constructor(parent: HTMLElement, cb: TradePanelCallbacks) {
     this.screen = new ExchangePanel({
@@ -53,9 +56,22 @@ export class TradePanel {
           })),
       },
       right: {
-        // Товар торговца не кончается: лимитирует курс, а не прилавок.
+        /**
+         * Счёт стоит не на всём: железо у торговца не кончается (его никто
+         * в мире для него не добывает, и всякий счёт был бы назначенным),
+         * а пища — ровно та, что местные сняли с кустов этого места
+         * за сутки (§13.8). `null` в карточке и значит «без счёта».
+         */
         title: 'Торговца',
-        stock: () => SELLABLE.map((kind) => ({ id: kind, name: RESOURCE_NAME[kind], count: null })),
+        stock: () =>
+          SELLABLE.map((kind) => {
+            const left = onCounter(this.stock, kind);
+            return {
+              id: kind,
+              name: RESOURCE_NAME[kind],
+              count: Number.isFinite(left) ? left : null,
+            };
+          }),
       },
       price: {
         worth: (give) => worthOf(pilesToResources(give)),
@@ -90,8 +106,9 @@ export class TradePanel {
     return this.screen.visible;
   }
 
-  sync(camp: CampState): void {
+  sync(camp: CampState, stock: Stock | null = null): void {
     this.camp = camp;
+    this.stock = stock;
     if (this.screen.visible) this.screen.sync();
   }
 
