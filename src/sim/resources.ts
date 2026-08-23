@@ -1,21 +1,30 @@
 import type { Rng } from '../core/rng';
 import type { Tier } from './types';
 
-/** §13 — четыре ресурса, каждый ради своего решения. */
-export type ResourceKind = 'stone' | 'wood' | 'iron' | 'crystal';
+/**
+ * §13 — пять ресурсов, каждый ради своего решения.
+ *
+ * **Пища (§13.7) добавлена последней и по другому правилу, чем четыре
+ * первых.** Те приходят из вылазки и тратятся на постройки; пища не выпадает
+ * в находках вовсе — её добывает жилец, и тратится она сама, по времени.
+ * Это единственный ресурс, у которого сток идёт без участия игрока, и потому
+ * единственный, который связывает лагерь с часами, а не с решениями.
+ */
+export type ResourceKind = 'stone' | 'wood' | 'iron' | 'crystal' | 'food';
 
 export const RESOURCE_NAME: Record<ResourceKind, string> = {
   stone: 'Камень',
   wood: 'Дерево',
   iron: 'Железо',
   crystal: 'Кристалл',
+  food: 'Пища',
 };
 
 export type Resources = Record<ResourceKind, number>;
 
-export const emptyResources = (): Resources => ({ stone: 0, wood: 0, iron: 0, crystal: 0 });
+export const emptyResources = (): Resources => ({ stone: 0, wood: 0, iron: 0, crystal: 0, food: 0 });
 
-export const totalOf = (r: Resources): number => r.stone + r.wood + r.iron + r.crystal;
+export const totalOf = (r: Resources): number => r.stone + r.wood + r.iron + r.crystal + r.food;
 
 /**
  * §13: камень — со всех ярусов, дерево — 0–2, железо — 1–3,
@@ -56,6 +65,7 @@ export function addResources(into: Resources, from: Resources): void {
   into.wood += from.wood;
   into.iron += from.iron;
   into.crystal += from.crystal;
+  into.food += from.food;
 }
 
 export function canAfford(have: Resources, cost: Partial<Resources>): boolean {

@@ -206,6 +206,7 @@ const share = (r: Resources): Resources => ({
   wood: Math.floor(r.wood * SORTIE_LOOT),
   iron: Math.floor(r.iron * SORTIE_LOOT),
   crystal: Math.floor(r.crystal * SORTIE_LOOT),
+  food: 0,
 });
 
 export function reportOf(sortie: Sortie, hero: HeroState): Report {

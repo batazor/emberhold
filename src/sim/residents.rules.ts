@@ -137,12 +137,14 @@ describe('Жильцы и палатки', () => {
       stone: cost.stone ?? 0,
       iron: cost.iron ?? 0,
       crystal: cost.crystal ?? 0,
+      food: 0,
     };
     const rung: Resources = {
       wood: BUILD_COST[2]?.wood ?? 0,
       stone: BUILD_COST[2]?.stone ?? 0,
       iron: BUILD_COST[2]?.iron ?? 0,
       crystal: BUILD_COST[2]?.crystal ?? 0,
+      food: 0,
     };
     assert.ok(totalOf(full) < totalOf(rung), `палатка ${totalOf(full)} не дешевле ступени ${totalOf(rung)}`);
     assert.ok((full.wood ?? 0) > 0, 'палатка не платится деревом — задание может запереться');

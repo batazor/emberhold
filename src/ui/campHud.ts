@@ -109,7 +109,9 @@ export interface CampCallbacks {
   giftIcon(name: GiftPic): string;
 }
 
-const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
+/** §13.7 — пища пятой и последней: она не добывается в вылазке, и место
+ *  в полосе у неё за четырьмя, что приносит герой. */
+const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal', 'food'];
 
 /*
  * Карта региона открыта всегда, с первой же вылазки.

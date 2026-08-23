@@ -16,7 +16,7 @@ import { toolGeometry } from './tools';
 import type { ToolModelName } from './tools';
 import { RESOURCE_MODEL, resourceGeometry } from './resources';
 import { RESIDENT_WORK } from '../sim/residents';
-import type { SelfAnswer } from '../sim/settler';
+import type { ResidentJob } from '../sim/residents';
 import { C, box, cone, cyl, merge, put, pyr, rod, wedge } from './blocking';
 import type { Piece } from './blocking';
 import type { RigClipName, RiggedParts } from './rigged';
@@ -644,9 +644,13 @@ const DWELLER_MODEL: Record<DwellerLook, FolkModelName> = {
  * камень. Связка та же, что в `RESIDENT_WORK`, и читается она предметом:
  * чем жилец занят, видно по руке, а не только по строке карточки.
  */
-export const RESIDENT_TOOL: Record<SelfAnswer, ToolModelName> = {
+export const RESIDENT_TOOL: Record<ResidentJob, ToolModelName> = {
   строим: 'axe',
   ходим: 'pickaxe',
+  // §13.7 — добытчик пищи ходит с тем же топором: своей модели у него нет,
+  // а пустая рука читалась бы как отдых. Предмет здесь подпись, а не решение
+  // (§0.1), и меняется он в тот день, когда в наборе появится корзина.
+  кормим: 'axe',
 };
 
 /**
@@ -654,9 +658,12 @@ export const RESIDENT_TOOL: Record<SelfAnswer, ToolModelName> = {
  * только работающий жилец: отдыхающий и жилец без крыши стоят в покое —
  * то же правило, каким `workDone` считает прибавку.
  */
-export const RESIDENT_WORK_CLIP: Record<SelfAnswer, RigClipName> = {
+export const RESIDENT_WORK_CLIP: Record<ResidentJob, RigClipName> = {
   строим: 'рубит',
   ходим: 'кайлит',
+  // Собирает так же, как рубит: клипа «собирает» в риге нет, а стоять
+  // столбом добытчику нельзя — рутина §6.1.15 видна движением.
+  кормим: 'рубит',
 };
 
 /**
@@ -675,10 +682,10 @@ export const RESIDENT_WORK_CLIP: Record<SelfAnswer, RigClipName> = {
  * по высоте модели, а не по длине: у набора это единственная мерка,
  * общая с `fitOf`.
  */
-const LOAD_HEIGHT: Record<SelfAnswer, number> = { строим: 0.55, ходим: 0.35 };
+const LOAD_HEIGHT: Record<ResidentJob, number> = { строим: 0.55, ходим: 0.35, кормим: 0.3 };
 
 /** Геометрия ноши: бревно носящему дерево, порода носящему камень. */
-export const residentLoad = (answer: SelfAnswer): THREE.BufferGeometry | null => {
+export const residentLoad = (answer: ResidentJob): THREE.BufferGeometry | null => {
   const name = RESOURCE_MODEL[RESIDENT_WORK[answer]];
   return name === null ? null : resourceGeometry(name, LOAD_HEIGHT[answer]);
 };

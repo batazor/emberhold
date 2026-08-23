@@ -3,8 +3,8 @@ import { BUILDING_ORDER, campArea, campStones, createCamp } from './camp';
 import { adoptChest } from './chests';
 import { DWELLER_LOOKS } from './garrison';
 import type { DwellerLook } from './garrison';
-import { SELF_ANSWERS } from './settler';
-import type { SelfAnswer } from './settler';
+import { RESIDENT_JOBS } from './residents';
+import type { ResidentJob } from './residents';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
 import { CLASS_ORDER, HERO_CLASSES, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
@@ -432,12 +432,15 @@ export function load(): LoadResult {
     // подставить умолчание значило бы придумать за игрока, кого он позвал.
     if (Array.isArray(data.residents)) {
       camp.residents = data.residents
-        .filter((r): r is { name: string; look: DwellerLook; answer: SelfAnswer; seed?: number; rest?: boolean } =>
+        // §13.7 — занятий стало три: к двум ответам знакомства добавился
+        // приказ «добывать пищу». Проверять по `SELF_ANSWERS` теперь нельзя —
+        // сохранение с добытчиком не открылось бы, и жилец пропал бы молча.
+        .filter((r): r is { name: string; look: DwellerLook; answer: ResidentJob; seed?: number; rest?: boolean } =>
           r != null &&
           typeof r.name === 'string' &&
           r.name !== '' &&
           DWELLER_LOOKS.includes(r.look as DwellerLook) &&
-          SELF_ANSWERS.includes(r.answer as SelfAnswer))
+          RESIDENT_JOBS.includes(r.answer as ResidentJob))
         // Сид лица у старых сохранений отсутствует, и выдумывать его случайно
         // нельзя: жилец менял бы лицо при каждой загрузке. Берётся из имени —
         // оно у жильца не меняется, значит и лицо не изменится.
