@@ -13,6 +13,7 @@
     "verify": "tsx scripts/baseline.ts",
     "baseline": "tsx scripts/baseline.ts --write",
     "measure": "tsx scripts/measure.ts",
+    "survive": "tsx scripts/survive.ts",
     "combat": "tsx scripts/combat.ts",
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
@@ -31,7 +32,8 @@
     "shift": "tsx scripts/shift.ts",
     "clans": "tsx scripts/clans.ts",
     "fan": "tsx scripts/fan.ts",
-    "levels": "tsx scripts/levels.ts"
+    "levels": "tsx scripts/levels.ts",
+    "stop": "tsx scripts/stop.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

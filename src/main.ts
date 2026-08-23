@@ -274,7 +274,7 @@ import type { Bubble } from './render/bubbles';
 import { DWELLER_SPEED } from './sim/garrison';
 import { ResidentCard } from './ui/residentCard';
 import { CharacterPage } from './features/character';
-import type { CharacterSubject } from './features/character';
+import type { CharacterSubject, PersonTab } from './features/character';
 import type { DwellerLook } from './sim/garrison';
 import type { MeetState, SelfAnswer, Settler } from './sim/settler';
 import { panelsFor, soundFor } from './features/scene';
@@ -899,6 +899,34 @@ function closeCharacter(): void {
  * не считает (§11.7 — показанное число обязано на что-то влиять). Страница
  * говорит об этом словами, а не подставляет ноль.
  */
+function characterPeople(): PersonTab[] {
+  return [
+    ...roster.heroes.map((hero) => ({
+      key: `герой:${hero.id}`,
+      name: HERO_CLASSES[hero.cls].name,
+      look: hero.cls,
+      seed: hero.id,
+    })),
+    ...camp.residents.map((r) => ({
+      key: `жилец:${r.seed}:${r.name}`,
+      name: r.name,
+      look: r.look,
+      seed: r.seed,
+    })),
+  ];
+}
+
+/** Перелистнуть страницу на другое лицо, не закрывая её. */
+function pickCharacter(key: string): void {
+  const hero = roster.heroes.findIndex((h) => `герой:${h.id}` === key);
+  if (hero >= 0) {
+    openCharacter({ kind: 'герой', index: hero });
+    return;
+  }
+  const resident = camp.residents.findIndex((r) => `жилец:${r.seed}:${r.name}` === key);
+  if (resident >= 0) openCharacter({ kind: 'жилец', index: resident });
+}
+
 function characterSubject(): CharacterSubject | null {
   if (about === null) return null;
   const now = clock.now();
@@ -940,7 +968,9 @@ function characterSubject(): CharacterSubject | null {
       },
       gear: camp.gear,
       offhand: camp.offhand,
+      ranged: def.ranged,
       model: { kind: 'герой', cls: hero.cls, weapon: camp.gear.weapon },
+      people: characterPeople(),
     };
   }
   const r = camp.residents[about.index];
@@ -963,7 +993,11 @@ function characterSubject(): CharacterSubject | null {
     train: null,
     gear: camp.gear,
     offhand: camp.offhand,
-    model: { kind: 'жилец', look: r.look },
+    ranged: false,
+    // Инструмент — тот же, что у жильца в кадре (§6.1.14): занятие видно
+    // по руке, и разбор обязан показывать ту же руку, а не пустую.
+    model: { kind: 'жилец', look: r.look, tool: r.rest ? null : RESIDENT_TOOL[r.answer] },
+    people: characterPeople(),
   };
 }
 
@@ -1009,6 +1043,7 @@ const characterPage = new CharacterPage(app, {
   },
   // §14.2 — тот же выбор, что в «Припасах»: вход второй, рука одна.
   onOffhand: (hand) => swapOffhand(hand),
+  onPick: (key) => pickCharacter(key),
   onClose: () => closeCharacter(),
 });
 

@@ -995,11 +995,27 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* Вещь — то, что берут пальцем. Занятая клетка и занятый слот выглядят
    одинаково: вещь одна и та же, а место у неё разное. */
 .ch-item {
-  background: var(--fill-2); border-radius: var(--r-chip); padding: 6px 4px;
+  background: var(--fill-2); border-radius: var(--r-chip); padding: 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   text-align: center; line-height: 1.2; cursor: grab; touch-action: none; user-select: none;
 }
+/* Значок вещи — кадр модели набора (`render/iconView.ts`), не картинка
+   на диске: вещь на значке и вещь в руке обязаны быть одной геометрией. */
+.ch-item canvas { display: block; width: 34px; height: 34px; }
 .ch-item:active { cursor: grabbing; }
 .ch-lift { opacity: 0.3; }
+/* Лица в шапке: тот же веер, только строкой. Выбранное не тусклое —
+   остальные приглушены, чтобы «на кого смотрю» читалось без подписи. */
+.ch-tabs { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; justify-content: flex-end; }
+.ch-tab { width: 30px; height: 30px; padding: 0; flex: none; opacity: 0.5; }
+.ch-tab.on { opacity: 1; }
+/* Сводка вылазки: слева величина, справа число, третьей колонкой — чем
+   станет то же число, если переложить левую руку (§14.2). */
+.ch-raid {
+  display: grid; grid-template-columns: 1fr auto minmax(0, auto); gap: 2px 8px;
+  align-items: baseline; font-variant-numeric: tabular-nums;
+}
+.ch-raid i { font-style: normal; font-size: 11px; color: var(--dim); }
 /* Двойник под пальцем. Стоит на месте указателя, поэтому положение —
    fixed, а не поток страницы. */
 .ch-ghost {
