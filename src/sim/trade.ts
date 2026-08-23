@@ -27,18 +27,40 @@
  * шагов, а не отменяет вход (§11.6). Лавка работает так же — менять можно
  * всегда, просто невыгодно, и решение остаётся у игрока.
  *
- * **Дневного лимита нет.** Курс ограничивает сам: камень добывается вылазками,
- * и плохая сделка лимитирует себя кошельком. Лимит стоил бы поля в сохранении
- * (`world.html`: «каждая новая механика мира стоит поля в сохранении»), а
- * держал бы то же самое.
+ * **Запас у лавки один — пища, и он не её.** Железо у торговца не кончается:
+ * его в мире никто не добывает для него, и всякий счёт на нём был бы числом
+ * назначенным. Пища же на прилавке — ровно та, что местные сняли с кустов
+ * этого места (§13.8, `localsTook`): ягода, которую игрок не успел сорвать
+ * рукой, лежит здесь и продаётся за камень.
  *
- * Модуль чистый, как `consumables.ts`: ни DOM, ни часов, ни состояния.
+ * Завести этот счёт заставил замер, а не вкус. Файл сам требует от пищевой
+ * строки «проигрывать своему добытчику», и на темпе жильца она проигрывает
+ * (`npm run upkeep`, 1,5 рта против трёх) — а на темпе игрока обгоняет его
+ * **в триста раз**: заход нулевого яруса длиной в двенадцать секунд несёт
+ * 4,1 камня, то есть две пищи, и суточное содержание лагеря из шести ртов
+ * окупается тридцатью пятью секундами вылазок. Требование было записано
+ * и не держалось; прилавок — то, чем оно держится.
+ *
+ * **Счёт при этом не хранится.** Он считается формулой от сида и часов, как
+ * весь мир §4: сколько местные унесли за сутки, столько на прилавке и лежит.
+ * Хранится только выкупленное игроком — самоистекающим списком на день
+ * (`BoughtLog`), тем же приёмом, что `camp.picks` у кустов.
+ *
+ * **Цена решения названа: лавка может оказаться пустой.** Каждый пятый день
+ * местные не приносят ничего, и пищи в тот день не купить. Отказом после
+ * дороги это не становится ровно потому, что счёт стоит **только на пище**:
+ * железо — то, за чем в замок и ходят (§13.2, у камня слабые стоки), — есть
+ * всегда, и §13.1 не задет ни разу.
+ *
+ * Модуль чистый, как `consumables.ts`: ни DOM, ни состояния. Часы он знает
+ * одни — длину суток, и та берётся у мира, а не назначается здесь.
  * Имена — рабочие подписи (§0.1).
  */
 import { canAfford, spend } from './resources';
 import type { ResourceKind, Resources } from './resources';
 import type { CampState } from './camp';
 import { storeCapacity, storeUsed } from './camp';
+import { DAY_SEC } from './world';
 
 export type OfferId = 'iron-stone' | 'iron-wood' | 'food-stone';
 
@@ -164,13 +186,79 @@ export const worthOf = (part: Partial<Resources>): number =>
 export const askOf = (take: Partial<Resources>, deals: number): number =>
   Math.ceil(worthOf(take) * (1 + feeOf(deals)));
 
+/* ---------- прилавок: счёт, которого нет в сохранении ---------- */
+
+/**
+ * Что лежит на прилавке. Вид, которого в счёте нет, **не кончается** —
+ * это не «ноль», а «без счёта»: железо у торговца бесконечно, и отличать
+ * его от распроданной пищи обязан тип, а не соглашение о нуле.
+ */
+export type Stock = Partial<Resources>;
+
+/** Виды, у которых счёт есть. Один — пища; почему только он, см. шапку. */
+export const STOCKED: readonly ResourceKind[] = ['food'];
+
+/**
+ * Что игрок уже выкупил с прилавка. Ключ — место и сутки, значение — сколько
+ * пищи унесено. Список **самоистекающий**, как `camp.picks` у кустов (§13.8):
+ * записи прошлых суток вычищаются первым же обращением, поэтому в покое он
+ * пуст, а при активной игре в нём столько чисел, сколько замков обошли
+ * за день, — то есть не больше трёх (§4, `NODE_KINDS`).
+ */
+export type BoughtLog = Record<string, number>;
+
+/** Сутки торговли: тот же день, что у подарка за вход (§29). */
+export const tradeDay = (now: number): number => Math.floor(now / DAY_SEC);
+
+/** Ключ прилавка: место и сутки. Место — сид площадки, торговцев столько же. */
+export const marketKey = (seed: number, now: number): string => `${seed}:${tradeDay(now)}`;
+
+/** Выбросить вчерашнее. Возвращает новый список — как `prunePicks`. */
+export function pruneBought(log: BoughtLog, now: number): BoughtLog {
+  const day = tradeDay(now);
+  const kept: BoughtLog = {};
+  for (const [key, n] of Object.entries(log)) {
+    if (key.endsWith(`:${day}`)) kept[key] = n;
+  }
+  return kept;
+}
+
+/**
+ * Что осталось на прилавке: принесённое местными минус выкупленное. Ноль
+ * значит «сегодня всё разобрали», а не «лавка закрылась»: завтра местные
+ * принесут снова, и того же считать не надо — считает формула.
+ */
+export function stockOf(supply: number, log: BoughtLog, seed: number, now: number): Stock {
+  const gone = log[marketKey(seed, now)] ?? 0;
+  return { food: Math.max(0, Math.floor(supply) - gone) };
+}
+
+/** Сколько этого вида на прилавке. `Infinity` — счёта нет. */
+export const onCounter = (stock: Stock | null, kind: ResourceKind): number =>
+  stock === null || stock[kind] === undefined ? Infinity : stock[kind];
+
 /**
  * Почему сделка не состоится. 'cheap' — предложено меньше, чем просит
  * торговец: сделка всегда ровно или в его пользу, недоплаты не бывает.
  * 'full' — взятому нет места в кладовой (§13.6): обмен не режется потолком,
  * а отказывает целиком — терять купленное хуже, чем не купить.
+ * 'stock' — на прилавке столько не лежит (§13.5): пищу приносят местные,
+ * и больше принесённого не продаётся.
  */
-export type DealBlock = 'ok' | 'empty' | 'resources' | 'cheap' | 'full';
+export type DealBlock = 'ok' | 'empty' | 'resources' | 'cheap' | 'full' | 'stock';
+
+/**
+ * Отказы прилавка словами. Одна причина — одни слова — один файл (§23.3):
+ * прежде единственная озвученная причина жила строкой в `main.ts`, и второй
+ * её половины не было вовсе.
+ */
+export const DEAL_REASON: Record<Exclude<DealBlock, 'ok'>, string> = {
+  empty: 'С прилавка ничего не взято',
+  resources: 'В кладовой столько не наберётся',
+  cheap: 'Торговцу этого мало',
+  full: 'Кладовая полна — обмену нет места',
+  stock: 'Столько пищи местные не принесли',
+};
 
 /** Кучка одним числом — для сверки с местом кладовой. */
 const countOf = (part: Partial<Resources>): number =>
@@ -180,8 +268,15 @@ export function dealBlock(
   camp: CampState,
   give: Partial<Resources>,
   take: Partial<Resources>,
+  /** Прилавок. `null` — счёта нет вовсе: обмен между жителями, не лавка. */
+  stock: Stock | null = null,
 ): DealBlock {
   if (worthOf(take) <= 0) return 'empty';
+  // Прилавок читается раньше кошелька: пустая лавка — это про мир,
+  // а не про игрока, и узнать о ней он должен до того, как считать камни.
+  for (const [kind, amount] of Object.entries(take) as [ResourceKind, number][]) {
+    if (amount > onCounter(stock, kind)) return 'stock';
+  }
   if (!canAfford(camp.resources, give)) return 'resources';
   if (worthOf(give) < askOf(take, camp.trades ?? 0)) return 'cheap';
   // Отданное освобождает место в тот же миг: сверяется итог сделки.
@@ -198,8 +293,9 @@ export function makeDeal(
   camp: CampState,
   give: Partial<Resources>,
   take: Partial<Resources>,
+  stock: Stock | null = null,
 ): boolean {
-  if (dealBlock(camp, give, take) !== 'ok') return false;
+  if (dealBlock(camp, give, take, stock) !== 'ok') return false;
   spend(camp.resources, give);
   for (const [kind, amount] of Object.entries(take) as [ResourceKind, number][]) {
     camp.resources[kind] += amount;
@@ -209,10 +305,15 @@ export function makeDeal(
 }
 
 /** Почему обменять нельзя. Причина, а не булево, — как везде (§20.3). */
-export type TradeBlock = 'ok' | 'resources' | 'full';
+export type TradeBlock = 'ok' | 'resources' | 'full' | 'stock';
 
-export function tradeBlock(camp: CampState, id: OfferId): TradeBlock {
+export function tradeBlock(camp: CampState, id: OfferId, stock: Stock | null = null): TradeBlock {
   const offer = offerOf(id, camp.trades ?? 0);
+  // Готовая пара считается тем же прилавком, что и свободная сделка:
+  // два входа в одну систему обязаны отказывать одинаково.
+  for (const [kind, amount] of Object.entries(offer.take) as [ResourceKind, number][]) {
+    if (amount > onCounter(stock, kind)) return 'stock';
+  }
   if (!canAfford(camp.resources, offer.give)) return 'resources';
   // То же правило, что у свободной сделки: взятому нужно место (§13.6).
   if (storeUsed(camp) - countOf(offer.give) + countOf(offer.take) > storeCapacity(camp)) {
@@ -233,8 +334,8 @@ export function tradeBlock(camp: CampState, id: OfferId): TradeBlock {
  * Сделка двигает отношения: следующая цена ниже. Считаются только
  * состоявшиеся обмены — отказ по кошельку знакомством не является.
  */
-export function trade(camp: CampState, id: OfferId): boolean {
-  if (tradeBlock(camp, id) !== 'ok') return false;
+export function trade(camp: CampState, id: OfferId, stock: Stock | null = null): boolean {
+  if (tradeBlock(camp, id, stock) !== 'ok') return false;
   const offer = offerOf(id, camp.trades ?? 0);
   spend(camp.resources, offer.give);
   for (const [kind, amount] of Object.entries(offer.take) as [ResourceKind, number][]) {

@@ -9,7 +9,15 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { PARITY, OFFER_ORDER, dealsToParity, feeOf, offerLine, offerOf, trade, tradeBlock } from './trade';
+import {
+  DEAL_REASON, PARITY, OFFER_ORDER, STOCKED, dealBlock, dealsToParity, feeOf, makeDeal,
+  marketKey, offerLine, offerOf, pruneBought, stockOf, trade, tradeBlock,
+} from './trade';
+import { generateCastleSite } from './castleSite';
+import { localsTook } from './berries';
+import { DAY_SEC } from './world';
+import { WORK_SECONDS } from './residents';
+import type { DealBlock } from './trade';
 import { createCamp, BUILD_COST } from './camp';
 import { GEAR_COST } from './gear';
 import { RESOURCE_NAME } from './resources';
@@ -176,5 +184,138 @@ describe('Обмен: операция', () => {
     assert.equal(start.take, 'Железо 1');
     const parity = offerLine('iron-stone', (k) => RESOURCE_NAME[k], 5);
     assert.equal(parity.give, 'Камень 8', 'своя цена — измеренный паритет');
+  });
+});
+
+/* ---------- прилавок (§13.5 × §13.8) ---------- */
+
+/**
+ * Запас лавки. Заведён не потому, что бесконечный кран выглядит некрасиво,
+ * а потому, что `trade.ts` сам требовал от пищевой строки «проигрывать
+ * своему добытчику» — и на темпе игрока требование не держалось в триста
+ * раз (`npm run trade`). Прилавок — то, чем оно держится.
+ *
+ * Мерит запас инструмент; здесь стоят границы, падение которых означает
+ * смену механики.
+ */
+describe('Обмен: прилавок', () => {
+  /** Замер `npm run trade`: 300 замков × 30 суток. Пищи за сутки, в среднем. */
+  const LOCALS_FOOD_PER_DAY = 3.0;
+  /** Доля суток, когда местные не принесли ничего и пищи не купить. */
+  const EMPTY_SHARE = 0.2;
+
+  const camp0 = (): ReturnType<typeof createCamp> => {
+    const camp = createCamp();
+    // Кладовая конечна (§13.6): кошелёк держится заведомо ниже потолка,
+    // иначе правило про прилавок ловило бы отказ места.
+    camp.resources = { stone: 30, wood: 10, iron: 0, crystal: 0, food: 0 };
+    return camp;
+  };
+
+  test('§13.2 и §13.1 — счёт стоит только на пище, железо не кончается', () => {
+    // Железо в мире никто для торговца не добывает: любой счёт на нём был бы
+    // числом назначенным. И он же был бы отказом после дороги — за железом
+    // в замок и ходят. Пустая пища такой ценой не становится.
+    assert.deepEqual([...STOCKED], ['food'], 'счёт завёлся на втором виде — откуда его числа?');
+    const camp = camp0();
+    const empty = { food: 0 };
+    assert.equal(dealBlock(camp, { stone: 10 }, { iron: 1 }, empty), 'ok',
+      'пустой прилавок закрыл железо — камень остался без безусловного стока (§13.2)');
+    assert.equal(tradeBlock(camp, 'iron-stone', empty), 'ok', 'готовая пара на железе тоже не должна знать счёта');
+    assert.equal(tradeBlock(camp, 'iron-wood', empty), 'ok');
+  });
+
+  test('больше принесённого не продаётся, и отказ ничего не трогает', () => {
+    const camp = camp0();
+    const before = { ...camp.resources };
+    assert.equal(dealBlock(camp, { stone: 20 }, { food: 3 }, { food: 2 }), 'stock');
+    assert.equal(makeDeal(camp, { stone: 20 }, { food: 3 }, { food: 2 }), false);
+    assert.deepEqual(camp.resources, before, 'отказ прилавка списал камень');
+    assert.equal(camp.trades ?? 0, 0, 'отказ знакомством не считается');
+    // Ровно по запасу — проходит.
+    assert.equal(makeDeal(camp, { stone: 20 }, { food: 2 }, { food: 2 }), true);
+    assert.equal(camp.resources.food, 2);
+  });
+
+  test('прилавок читается раньше кошелька: пустая лавка — про мир, а не про игрока', () => {
+    const broke = createCamp();
+    broke.resources = { stone: 0, wood: 0, iron: 0, crystal: 0, food: 0 };
+    assert.equal(dealBlock(broke, { stone: 6 }, { food: 3 }, { food: 0 }), 'stock',
+      'нищему сказали про его кошелёк там, где лавка и так пуста');
+  });
+
+  test('запас не трогает цену: три критерия §13.5 сдвинуть нечем', () => {
+    // Все три критерия — границы на курс. Запас убавляет сделки, а цену
+    // не знает вовсе, и это видно из подписи: `offerOf` про прилавок
+    // не спрашивает. Правило сторожит, чтобы так и осталось.
+    for (const id of OFFER_ORDER) {
+      for (let deals = 0; deals <= 6; deals++) {
+        assert.deepEqual(offerOf(id, deals), offerOf(id, deals), 'курс перестал быть функцией одних отношений');
+      }
+    }
+    assert.equal(offerOf.length, 2, 'у курса появился третий довод — не прилавок ли это');
+  });
+
+  test('счёт не хранится: он считается, а список выкупленного истекает', () => {
+    const day = 3;
+    const now = day * DAY_SEC + 100;
+    assert.deepEqual(stockOf(5, {}, 77, now), { food: 5 }, 'нетронутый прилавок — это весь сбор местных');
+    const log = { [marketKey(77, now)]: 2 };
+    assert.deepEqual(stockOf(5, log, 77, now), { food: 3 }, 'выкупленное не убавило прилавок');
+    assert.deepEqual(stockOf(5, log, 78, now), { food: 5 }, 'покупка в одном замке закрыла прилавок в другом');
+    assert.deepEqual(stockOf(1, { [marketKey(77, now)]: 9 }, 77, now), { food: 0 }, 'прилавок ушёл в минус');
+    // Самоистекающий, как `camp.picks`: вчерашнее не держит сегодняшний прилавок.
+    const kept = pruneBought(log, now + DAY_SEC);
+    assert.deepEqual(kept, {}, 'вчерашняя покупка пережила сутки — список растёт от прогулок');
+    assert.deepEqual(pruneBought(log, now + 60), log, 'сегодняшняя покупка вычищена раньше срока');
+  });
+
+  test('§13.8 — на прилавке ровно то, что унесли местные, и это измеримо', () => {
+    // Сорок замков по две недели: числа те же, что печатает `npm run trade`
+    // на трёхстах, — иначе правило мерило бы другую выборку.
+    let sum = 0, empty = 0, n = 0;
+    for (let i = 0; i < 40; i++) {
+      const site = generateCastleSite(1000 + i * 7919);
+      for (let d = 0; d < 14; d++) {
+        const food = localsTook(site.loc.seed, site.bushes, site.gate, d * DAY_SEC + 60);
+        sum += food;
+        if (food === 0) empty++;
+        n++;
+      }
+    }
+    const perDay = sum / n;
+    assert.ok(
+      Math.abs(perDay - LOCALS_FOOD_PER_DAY) < 1,
+      `местные приносят ${perDay.toFixed(2)} пищи в сутки против записанных ${LOCALS_FOOD_PER_DAY} — ` +
+        'сбор §13.8 сдвинулся, и запас лавки вместе с ним',
+    );
+    assert.ok(perDay > 0.5, 'прилавок пуст всегда — это не запас, а закрытая лавка');
+    assert.ok(
+      Math.abs(empty / n - EMPTY_SHARE) < 0.15,
+      `прилавок пуст в ${((empty / n) * 100).toFixed(0)}% суток против записанных ${EMPTY_SHARE * 100}%`,
+    );
+  });
+
+  test('§13.7 — с запасом лавка проигрывает добытчику и на темпе игрока', () => {
+    // Требование записано в `trade.ts` у пищевой строки и до запаса
+    // не держалось: заход нулевого яруса несёт две пищи за двенадцать секунд.
+    // Прилавок сводит суточный поток лавки к сбору местных, и он меньше
+    // одного человека с приказом «Добывать пищу».
+    const shopPerHour = LOCALS_FOOD_PER_DAY / (DAY_SEC / 3600);
+    const gathererPerHour = 3600 / WORK_SECONDS;
+    assert.ok(
+      shopPerHour < gathererPerHour,
+      `лавка даёт ${shopPerHour.toFixed(2)} пищи в час против ${gathererPerHour.toFixed(2)} у добытчика — ` +
+        'приказ «Добывать пищу» снова отменён курсом',
+    );
+  });
+
+  test('у каждой причины прилавка есть свои слова', () => {
+    // §23.3 — одна причина, одни слова, один файл. Прежде озвучен был один
+    // потолок кладовой, и строка жила в `main.ts`.
+    const blocks: Exclude<DealBlock, 'ok'>[] = ['empty', 'resources', 'cheap', 'full', 'stock'];
+    for (const block of blocks) {
+      assert.ok((DEAL_REASON[block] ?? '').length > 0, `у отказа ${block} нет слов`);
+    }
   });
 });
