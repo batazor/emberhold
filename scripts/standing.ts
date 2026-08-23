@@ -101,7 +101,7 @@ for (const day of [1, 3, 7, 30, 100, 365]) {
   console.log(
     `  день ${String(day).padStart(3)}   ` +
       rows
-        .map((r) => `${r.you ? '⟨вы⟩' : r.who.split(' ')[0]} ${r.power}`)
+        .map((r) => `${r.kind === 'вы' ? '⟨вы⟩' : r.who.split(' ')[0]} ${r.power}`)
         .join(' · ') +
       `   место ${place} из ${rows.length}`,
   );

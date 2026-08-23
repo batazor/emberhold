@@ -191,8 +191,13 @@ export const clanPower = (growth: number): number => roundNice(clanRaids(growth)
 export interface Standing {
   /** Кто: имя фракции или имя своего клана, если он заведён (§30). */
   readonly who: string;
-  /** Своя строка. Ровно одна на таблицу. */
-  readonly you: boolean;
+  /**
+   * Чья это строка. Три вида, и путать их нельзя: фракция — часть мира (§4),
+   * сосед — живой игрок (§30.7), «вы» — ровно одна строка на таблицу.
+   * Отдельным полем, а не булевым `you`: у соседа и фракции разное всё —
+   * от цвета до того, что про них вообще известно.
+   */
+  readonly kind: 'фракция' | 'сосед' | 'вы';
   readonly power: number;
   readonly level: number;
   readonly color: string;
@@ -202,6 +207,29 @@ export interface Standing {
 
 /** Цвет своей строки: золото лагеря, тот же, каким карта рисует палатку. */
 export const OWN_COLOR = '#c8a24a';
+
+/**
+ * Цвет живого соседа — один на всех, и это решение, а не заглушка. Цвет
+ * во фракциях значит «какая именно»; у соседей значить ему нечего: они
+ * не четыре знакомых флага, а сколько-то незнакомых людей. Различает их
+ * имя клана, а не оттенок.
+ *
+ * Взят холодный светлый — единственный не занятый ни богатством (красный —
+ * зелёный), ни замком (золото), ни ярмаркой (фиолетовый).
+ */
+export const LIVE_COLOR = '#9fb6d8';
+
+/** Лагерь живого соседа: ровно то, что он показывает другим (§30.7). */
+export interface LiveCamp {
+  readonly id: string;
+  readonly clan: string | null;
+  readonly power: number;
+  readonly level: number;
+  readonly folk: number;
+}
+
+/** Имя лагеря без клана. Не заглушка, а повод его завести (§30.4). */
+export const NO_CLAN = 'Лагерь без имени';
 
 /**
  * Уровень лагеря игрока — Жильё: §20.4 оставляет роль потолка одному ему,
@@ -214,7 +242,12 @@ export const campLevel = (camp: CampState): number => camp.levels.hq;
  * последний слой между моделью и экраном (§20.3.3), и решать порядок оно
  * не имеет права.
  */
-export function standings(camp: CampState, t: number, own: string | null): Standing[] {
+export function standings(
+  camp: CampState,
+  t: number,
+  own: string | null,
+  live: readonly LiveCamp[] = [],
+): Standing[] {
   const rows: { readonly raw: number; readonly row: Standing }[] = CLANS.map((clan, id) => {
     const growth = clanGrowth(id, t);
     const level = clanState(id, t).level;
@@ -222,7 +255,7 @@ export function standings(camp: CampState, t: number, own: string | null): Stand
       raw: clanRaids(growth),
       row: {
         who: clan.name,
-        you: false,
+        kind: 'фракция',
         power: clanPower(growth),
         level,
         color: clan.color,
@@ -234,16 +267,32 @@ export function standings(camp: CampState, t: number, own: string | null): Stand
     raw: rawPower(camp),
     row: {
       who: own ?? 'Ваш лагерь',
-      you: true,
+      kind: 'вы',
       power: campPower(camp),
       level: campLevel(camp),
       color: OWN_COLOR,
       folk: 1 + camp.residents.length,
     },
   });
+  for (const neighbour of live) {
+    rows.push({
+      // Сила соседа приходит уже посчитанной: считал её его лагерь тем же
+      // правилом, что и наш свой. Пересчитать её нечем — состава чужого
+      // лагеря у нас нет и не будет до серверной симуляции (§10.5).
+      raw: neighbour.power,
+      row: {
+        who: neighbour.clan ?? NO_CLAN,
+        kind: 'сосед',
+        power: neighbour.power,
+        level: neighbour.level,
+        color: LIVE_COLOR,
+        folk: neighbour.folk,
+      },
+    });
+  }
   return rows.sort((a, b) => b.raw - a.raw).map((r) => r.row);
 }
 
 /** Место игрока в таблице, считая с единицы. */
 export const yourPlace = (rows: readonly Standing[]): number =>
-  rows.findIndex((r) => r.you) + 1;
+  rows.findIndex((r) => r.kind === 'вы') + 1;

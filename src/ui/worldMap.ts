@@ -40,7 +40,17 @@ import {
   worldAt,
 } from '../sim/world';
 import { neighboursOpen } from '../sim/clan';
-import { campLevel, campPower, clanPower, standings, yourPlace } from '../sim/standing';
+import {
+  LIVE_COLOR,
+  NO_CLAN,
+  campLevel,
+  campPower,
+  clanPower,
+  standings,
+  yourPlace,
+} from '../sim/standing';
+import type { LiveCamp } from '../sim/standing';
+import { LIVE_SHOWN, liveCampSpots } from '../sim/world';
 import { KIND } from '../sim/world';
 import type { NodeKind, NodeState, Region, Visit, WorldNode } from '../sim/world';
 import { drawMapTerrain } from './mapTerrain';
@@ -302,6 +312,15 @@ export function drawCampTent(
   ctx.closePath();
 }
 
+/** Лагерь на карте — свой, фракции или живого соседа. В узлы не входит:
+ *  в лагерь не ходят, и ни яруса, ни богатства у него нет. */
+interface MapCamp {
+  readonly key: string;
+  readonly color: string;
+  readonly x: number;
+  readonly y: number;
+}
+
 export interface WorldMapCallbacks {
   /** Игрок выбрал место и решил идти. */
   onRaid(node: number): void;
@@ -364,13 +383,17 @@ export class WorldMap {
    *  пустая карточка вынуждает тапнуть дважды, чтобы вообще что-то узнать. */
   private focus = 0;
   /**
-   * Выбранный лагерь (§30): `-1` — свой, `0…3` — фракция, `null` — выбран
-   * узел, и карточку рисует он. Второе поле, а не значение в `focus`:
-   * лагерь не узел — в него не ходят, у него нет ни яруса, ни богатства,
-   * и общий номер заставил бы каждую строку карточки спрашивать, кто перед
-   * ней. Ровно на этом §4 уже терял кладбище.
+   * Выбранный лагерь (§30): ключ вида `свой`, `клан:2`, `живой:<id>`;
+   * `null` — выбран узел, и карточку рисует он. Второе поле, а не значение
+   * в `focus`: лагерь не узел — в него не ходят, у него нет ни яруса,
+   * ни богатства, и общий номер заставил бы каждую строку карточки
+   * спрашивать, кто перед ней. Ровно на этом §4 уже терял кладбище.
+   *
+   * Ключ строкой, а не номером: соседей опознаёт идентификатор аккаунта,
+   * и втискивать его в ту же числовую ось, где живут четыре фракции, значит
+   * заводить третью систему нумерации поверх двух.
    */
-  private focusCamp: number | null = null;
+  private focusCamp: string | null = null;
   /** Регион сегодняшнего дня: завтра здесь будут другие точки (§4). */
   private region: Region = regionAt(0);
   private world: NodeState[] = [];
@@ -381,6 +404,11 @@ export class WorldMap {
    * в обоих случаях показывает мир без них, ровно как показывала до облака.
    */
   private others: readonly Visit[] = [];
+  /**
+   * Лагеря живых соседей (§30.7). Как и метки, приходят снаружи и в сейв
+   * не едут: это чужие строки общей таблицы, а сохранение хранит своё.
+   */
+  private live: readonly LiveCamp[] = [];
   private camp: CampState | null = null;
   private roster: Roster | null = null;
   private now = 0;
@@ -485,12 +513,12 @@ export class WorldMap {
     // Лагеря — в том же переборе, а не отдельным: два перебора с разными
     // порогами дали бы точку, которая ловится и тем и другим, и карточка
     // зависела бы от порядка проверок.
-    let bestCamp: number | null = null;
+    let bestCamp: string | null = null;
     for (const spot of this.camps()) {
       const d = near(spot.x, spot.y);
       if (d < bestDist) {
         bestDist = d;
-        bestCamp = spot.id;
+        bestCamp = spot.key;
       }
     }
     // Промах мимо всего ничего не меняет: карточка обязана оставаться
@@ -506,10 +534,29 @@ export class WorldMap {
    * первой точкой карты; соседи зажигаются со вторым жильцом (`clan.ts`),
    * и до того их не видно даже тапом.
    */
-  private camps(): readonly { readonly id: number; readonly x: number; readonly y: number }[] {
-    const own = { id: -1, x: this.region.camp.x, y: this.region.camp.y };
+  private camps(): readonly MapCamp[] {
+    const own: MapCamp = {
+      key: 'свой',
+      color: OWN_CAMP_COLOR,
+      x: this.region.camp.x,
+      y: this.region.camp.y,
+    };
     if (this.camp === null || !neighboursOpen(this.camp)) return [own];
-    return [own, ...CLAN_CAMPS];
+    const clans: MapCamp[] = CLAN_CAMPS.map((c) => ({
+      key: `клан:${c.id}`,
+      color: CLANS[c.id % CLANS.length]!.color,
+      x: c.x,
+      y: c.y,
+    }));
+    // Живые — по кромке и подрезанные по числу (`LIVE_SHOWN`): места там
+    // ровно столько, сколько лагерей на нём различит палец.
+    const live: MapCamp[] = liveCampSpots(this.live.map((c) => c.id)).map((spot) => ({
+      key: `живой:${spot.id}`,
+      color: LIVE_COLOR,
+      x: spot.x,
+      y: spot.y,
+    }));
+    return [own, ...clans, ...live];
   }
 
   private paint(): void {
@@ -565,11 +612,11 @@ export class WorldMap {
     // соседские цветом своей фракции — тем же, каким её флаг стоит
     // на занятой точке, иначе флаг и лагерь читались бы разными людьми.
     for (const spot of this.camps()) {
-      const own = spot.id < 0;
-      const color = own ? OWN_CAMP_COLOR : CLANS[spot.id % CLANS.length]!.color;
+      const own = spot.key === 'свой';
+      const color = spot.color;
       const x = spot.x * w;
       const y = spot.y * h;
-      if (this.focusCamp === spot.id) {
+      if (this.focusCamp === spot.key) {
         ctx.beginPath();
         ctx.arc(x, y, r * 2, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(200, 162, 74, 0.85)';
@@ -699,6 +746,15 @@ export class WorldMap {
     this.others = visits;
     if (this.camp === null) return;
     this.world = worldAt(this.now, this.camp.visits, visits);
+    this.paint();
+  }
+
+  /**
+   * Отдать карте чужие лагеря (§30.7). Тот же случай, что у меток строкой
+   * выше: читает их сеть, а панель про сеть не знает.
+   */
+  setCamps(live: readonly LiveCamp[]): void {
+    this.live = live;
     this.paint();
   }
 
@@ -841,17 +897,46 @@ export class WorldMap {
    * говорит «сюда пока нельзя», а сюда нельзя не «пока»: чужой лагерь —
    * не место входа, и обещать вход было бы враньём.
    */
-  private paintCampCard(id: number): void {
+  private paintCampCard(key: string): void {
     this.go.style.display = 'none';
     this.sendRow.style.display = 'none';
-    if (id < 0) this.paintOwnCard();
-    else this.paintNeighbourCard(id);
+    if (key === 'свой') {
+      this.paintOwnCard();
+      return;
+    }
+    if (key.startsWith('клан:')) {
+      this.paintNeighbourCard(Number(key.slice(5)));
+      return;
+    }
+    const live = this.live.find((c) => `живой:${c.id}` === key);
+    if (live !== undefined) this.paintLiveCard(live);
+  }
+
+  /**
+   * Карточка живого соседа (§30.7). Отличается от фракционной тем, чего
+   * про живого **не** известно: где он сегодня работает, мы не знаем —
+   * метки мира считают заходы, а не хозяев (§30.6), и врать про это
+   * карточка не станет. Зато известно то, чего нет у фракции: сколько
+   * в лагере народу.
+   */
+  private paintLiveCard(live: LiveCamp): void {
+    this.card.innerHTML =
+      `<div class="row t"><b style="color:${LIVE_COLOR}">${live.clan ?? NO_CLAN}</b>` +
+      '<i>сосед</i></div>' +
+      `<div class="row line"><span>Сила</span>` +
+      `<b style="color:${LIVE_COLOR}">${live.power}</b></div>` +
+      `<div class="row line"><span>Жильё</span><b>ур. ${live.level}</b></div>` +
+      `<div class="row line"><span>Народу</span><b>${live.folk}</b></div>`;
+    this.note.textContent =
+      live.clan === null
+        ? 'Живой сосед. Клана у него нет — в таблице он стоит без имени.'
+        : `Живой сосед. Стоит в таблице как «${live.clan}».`;
   }
 
   private paintOwnCard(): void {
     const camp = this.camp;
     if (camp === null) return;
-    const rows = standings(camp, this.now, camp.clan?.name ?? null);
+    const rows = standings(camp, this.now, camp.clan?.name ?? null, this.live);
     const place = yourPlace(rows);
     this.card.innerHTML =
       `<div class="row t"><b>${camp.clan?.name ?? 'Ваш лагерь'}</b><i>лагерь</i></div>` +
@@ -866,7 +951,15 @@ export class WorldMap {
         : `<div class="row line"><span>Клан</span><b>${camp.clan.name}</b></div>`);
     // Сила — число выведенное (`sim/standing.ts`), и строка обязана называть,
     // из чего оно: иначе это цифра без ориентира, то есть повод для спора.
-    this.note.textContent = 'Сила — вылазки, вложенные в лагерь: постройки, снаряжение, палатки и сундуки.';
+    //
+    // Подрезанного списка молча не бывает: если соседей больше, чем влезает
+    // на кромку, строка говорит сколько. Иначе карта читается как «это все
+    // соседи мира», а это не все.
+    const hidden = this.live.length - LIVE_SHOWN;
+    this.note.textContent =
+      hidden > 0
+        ? `Сила — вылазки, вложенные в лагерь. На кромке ${LIVE_SHOWN} лагерей соседей из ${this.live.length}, остальные — в таблице.`
+        : 'Сила — вылазки, вложенные в лагерь: постройки, снаряжение, палатки и сундуки.';
   }
 
   private paintNeighbourCard(id: number): void {

@@ -2,6 +2,7 @@ import { BUILDINGS } from '../sim/camp';
 import type { CampState } from '../sim/camp';
 import { neighboursOpen } from '../sim/clan';
 import { standings } from '../sim/standing';
+import type { LiveCamp } from '../sim/standing';
 import { clearTelemetry, events, summarize } from '../sim/telemetry';
 
 /**
@@ -27,6 +28,8 @@ export class StatsPanel {
    *  про то, как игрок в него ходит. */
   private readonly table: HTMLElement;
   private last: { camp: CampState; now: number } | null = null;
+  /** Лагеря живых соседей (§30.7): читает их сеть, панель только показывает. */
+  private live: readonly LiveCamp[] = [];
 
   constructor(parent: HTMLElement) {
     this.overlay = document.createElement('div');
@@ -62,6 +65,12 @@ export class StatsPanel {
    * Лагерь и часы приходят снаружи: таблица лагерей (§30) считается от них,
    * а телеметрия — от событий, и спрашивать сохранение панель не должна.
    */
+  /** Отдать панели чужие лагеря. Зовётся снаружи — панели про сеть не знают. */
+  setCamps(live: readonly LiveCamp[]): void {
+    this.live = live;
+    if (this.overlay.classList.contains('on')) this.renderTable();
+  }
+
   open(camp: CampState, now: number): void {
     this.last = { camp, now };
     this.renderTable();
@@ -89,17 +98,17 @@ export class StatsPanel {
       this.table.innerHTML = '';
       return;
     }
-    const rows = standings(last.camp, last.now, last.camp.clan?.name ?? null);
+    const rows = standings(last.camp, last.now, last.camp.clan?.name ?? null, this.live);
     this.table.innerHTML =
       '<h3 class="sp-head">Лагеря по силе</h3>' +
       rows
         .map(
           (r, i) =>
-            `<div class="row sp-row${r.you ? ' you' : ''}">` +
+            `<div class="row sp-row${r.kind === 'вы' ? ' you' : ''}">` +
             `<span class="lbl"><i class="sp-place">${i + 1}</i>` +
             `<s class="sp-flag" style="background:${r.color}"></s>${r.who}</span>` +
             `<b>${r.power}</b></div>` +
-            `<div class="sp-note">ур. ${r.level}` +
+            `<div class="sp-note">${r.kind === 'фракция' ? 'фракция · ' : ''}ур. ${r.level}` +
             (r.folk === null ? '' : ` · народу ${r.folk}`) +
             '</div>',
         )
