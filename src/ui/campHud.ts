@@ -36,6 +36,7 @@ import { RESOURCE_NAME } from '../sim/resources';
 import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
 import { avatarSvg } from './avatar';
 import { DailyPanel } from './dailyPanel';
+import type { GiftPic } from './dailyPanel';
 import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
 import type { Roster } from '../sim/heroes';
@@ -98,6 +99,9 @@ export interface CampCallbacks {
    * и строка списка остаётся такой, какой была.
    */
   gearIcon(kind: GearSlot | 'shield', level: number): string;
+  /** §29.4 — картинка вещи на карточке дня. Приходит оттуда же, откуда
+   *  значок снаряжения, и по той же причине: рендер панелям не виден. */
+  giftIcon(name: GiftPic): string;
 }
 
 const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
@@ -428,6 +432,7 @@ export class CampHud {
     this.daily = new DailyPanel({
       onClaim: () => this.cb.onClaimGift(),
       onIcon: () => (this.open === 'daily' ? this.close() : this.openSheet('daily')),
+      giftIcon: (name) => this.cb.giftIcon(name),
     });
     this.sections.set('daily', this.daily.root);
     this.sheet.appendChild(this.daily.root);
@@ -678,7 +683,7 @@ export class CampHud {
     this.line.tick(dt);
 
     this.syncTask(camp);
-    this.daily.sync(camp, dayAt(now));
+    this.daily.sync(camp, now);
 
     this.last = { camp, now };
     this.paintOpen();

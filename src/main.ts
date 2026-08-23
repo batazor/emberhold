@@ -97,6 +97,7 @@ import {
   giftAt,
   giftLoot,
   giftTier,
+  guestSeed,
 } from './sim/daily';
 
 /** Одна строка на все потери у потолка кладовой (§13.6): канал события. */
@@ -225,6 +226,7 @@ import { events, loadTelemetry, track } from './sim/telemetry';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { gearIcon } from './render/gearIcon';
+import { giftIcon } from './render/giftIcon';
 import { CursorWind } from './render/cursorWind';
 import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
@@ -709,6 +711,9 @@ const campHud = new CampHud(app, {
   // Значок вещи §14 рисует запечённая геометрия; панелям слой рендера
   // не виден, поэтому картинка приходит к ним отсюда (`scripts/arch.ts`).
   gearIcon: (kind, level) => gearIcon(kind, level),
+  // §29.4 — та же дорога у картинок подарка: бревно, валун и слиток берутся
+  // из тех же наборов, которыми набран лагерь.
+  giftIcon: (name) => giftIcon(name),
 });
 
 /**
@@ -1813,11 +1818,11 @@ function seatSettler(door: Cell): void {
   const o = campOrigin(camp);
   // У обещанного гостя своё лицо: тот же якорь, но с числом уже живущих.
   // Без этого второй пришедший оказался бы двойником первого — тем же
-  // человеком, с тем же именем, во второй раз.
+  // человеком, с тем же именем, во второй раз. Считает сид `sim/daily.ts`:
+  // то же лицо рисует карточка седьмого дня, и формула у них обязана быть
+  // одна (§29.2).
   meetIsGuest = !first;
-  meetSettler = generateSettler(
-    ((o.x * 73 + o.z * 131) ^ 0x5eed) ^ (meetIsGuest ? camp.residents.length * 977 : 0),
-  );
+  meetSettler = generateSettler(guestSeed(o, meetIsGuest ? camp.residents.length : 0));
   meet = startMeet(meetSettler);
   meetAt = sit;
   raidView.putSettler(
