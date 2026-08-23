@@ -194,6 +194,105 @@ export function scatterBushes(
  *  и «у края» перестаёт читаться, уже — и кустам негде разойтись. */
 const EDGE_BAND = 2;
 
+/* ---------- места мира: формула вместо состояния ---------- */
+
+/**
+ * §13.8 — **узел места считается функцией сида и часов, а не хранится.**
+ *
+ * Мир §4 уже так устроен: кланы, богатство и раскладка выводятся из сида
+ * и часов, и в сохранении их нет. Кусты мест живут тем же правилом, и это
+ * не экономия байтов, а условие масштаба: мест будет много, а сейв,
+ * растущий от прогулок, — это сейв, который однажды перестанет открываться.
+ *
+ * Формула отвечает на два вопроса разом.
+ *
+ * 1. **Созрел ли куст сам по себе.** Время режется на окна длиной `RIPEN`,
+ *    у каждого куста своя фаза от сида: к приходу игрока часть кустов
+ *    полна, часть ещё зелена, и картинка меняется между заходами сама.
+ * 2. **Не обобрали ли его местные.** У замка и кладбища есть свои люди
+ *    (§6.1.6.1), и ближние к воротам кусты они обирают чаще дальних.
+ *    Доля занятого — та же функция, только со своим множителем.
+ *
+ * Чего формула не умеет — помнить руку игрока; для этого есть `PickLog`.
+ */
+const WILD_PHASES = 4;
+
+/** Окно времени: номер отрезка длиной `RIPEN`. */
+const epochOf = (now: number): number => Math.floor(now / RIPEN_SECONDS);
+
+/** Фаза куста: в каком из окон он поспевает. Своя у каждого узла. */
+const phaseOf = (seed: number, id: number): number =>
+  randInt(mulberry32((seed * 2654435761) ^ (id * 40503) ^ 0x9e37), WILD_PHASES);
+
+/**
+ * Полон ли дикий куст к моменту `now`. Каждое окно поспевает своя четверть
+ * кустов места — иначе все они пустели бы и полнели разом, и место мигало бы
+ * целиком вместо того, чтобы жить.
+ */
+export function wildRipe(seed: number, bush: Bush, now: number): boolean {
+  return epochOf(now) % WILD_PHASES === phaseOf(seed, bush.id);
+}
+
+/**
+ * Обобрали ли куст местные. Чем ближе к людному месту, тем чаще: доля
+ * растёт с близостью к `hub` — воротам замка или калитке кладбища.
+ * Считается той же тройкой «сид, узел, окно», поэтому в сохранении
+ * не нуждается и у двух игроков с одним сидом совпадает.
+ */
+export function takenByLocals(
+  seed: number,
+  bush: Bush,
+  hub: { x: number; z: number },
+  now: number,
+): boolean {
+  const near = Math.hypot(bush.x - hub.x, bush.z - hub.z);
+  // Вплотную к воротам обирают почти всегда, за десяток клеток — редко.
+  const share = Math.max(0.05, Math.min(0.85, 1 - near / 12));
+  const roll = mulberry32((seed * 374761393) ^ (bush.id * 668265263) ^ (epochOf(now) * 2246822519))();
+  return roll < share;
+}
+
+/* ---------- рука игрока: список, который сам себя стирает ---------- */
+
+/**
+ * Что игрок обобрал сам. Формула этого знать не может, поэтому запись
+ * всё-таки есть — но **самоистекающая**: она живёт ровно `RIPEN` и
+ * вычищается при первом же обращении. В покое список пуст, при активной игре
+ * в нём десяток чисел, и от прогулок он не растёт.
+ */
+export type PickLog = Record<string, number>;
+
+/** Ключ узла: место и номер. Место — строка мировой карты (§4). */
+export const pickKey = (place: string, id: number): string => `${place}:${id}`;
+
+/** Выбросить всё, что уже созрело обратно. Возвращает новый список. */
+export function prunePicks(log: PickLog, now: number): PickLog {
+  const kept: PickLog = {};
+  for (const [key, at] of Object.entries(log)) {
+    if (now - at < RIPEN_SECONDS) kept[key] = at;
+  }
+  return kept;
+}
+
+/**
+ * Есть ли на кусте ягоды прямо сейчас: и природа созрела, и местные
+ * не успели, и игрок не обобрал. Три условия в одном месте намеренно —
+ * иначе кадр, тап и правила разошлись бы в том, что считать полным.
+ */
+export function worldRipe(
+  seed: number,
+  place: string,
+  bush: Bush,
+  hub: { x: number; z: number },
+  log: PickLog,
+  now: number,
+): boolean {
+  const mine = log[pickKey(place, bush.id)];
+  if (mine !== undefined && now - mine < RIPEN_SECONDS) return false;
+  if (!wildRipe(seed, bush, now)) return false;
+  return !takenByLocals(seed, bush, hub, now);
+}
+
 /** Куст на этой клетке, если он там есть. */
 export function bushAt(bushes: readonly Bush[], cell: { x: number; z: number }): Bush | null {
   return bushes.find((b) => b.x === cell.x && b.z === cell.z) ?? null;
