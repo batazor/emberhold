@@ -298,6 +298,7 @@ export class FarmOnboarding {
 
 interface CampLocationsCallbacks {
   onSelect(location: CampLocation): void;
+  onSign(): void;
 }
 
 /** Переключатель соседних локаций: Ферма расположена слева от Лагеря. */
@@ -306,6 +307,7 @@ export class CampLocations {
   private readonly campButton: HTMLButtonElement;
   private readonly farmButton: HTMLButtonElement;
   private readonly farmState: HTMLElement;
+  private readonly signButton: HTMLButtonElement;
   private sceneVisible = false;
   private camp: CampState | null = null;
   private active: CampLocation = 'camp';
@@ -335,7 +337,12 @@ export class CampLocations {
     this.campButton.append(campName, campState);
     this.campButton.addEventListener('click', () => cb.onSelect('camp'));
 
-    this.root.append(label, this.farmButton, this.campButton);
+    this.signButton = document.createElement('button');
+    this.signButton.className = 'cl-place sign';
+    this.signButton.textContent = '+ Указатель';
+    this.signButton.addEventListener('click', () => cb.onSign());
+
+    this.root.append(label, this.farmButton, this.campButton, this.signButton);
     parent.appendChild(this.root);
   }
 

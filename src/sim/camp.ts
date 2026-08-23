@@ -26,6 +26,8 @@ import { STONES, scatterStones, type Stone } from './stones';
 import type { Resident } from './residents';
 import type { OwnClan } from './clan';
 import type { FarmState } from './farm';
+import type { SignpostDecor } from './signposts';
+import { emptySignpostDecor } from './signposts';
 
 export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge' | 'infirmary' | 'yard';
 
@@ -385,6 +387,8 @@ export interface CampState {
   resources: Resources;
   /** Первая локация хозяйства и её ввод. Необязательна для старых сейвов. */
   farm?: FarmState;
+  /** Пользовательские указатели отдельно для двора и огорода. */
+  signposts?: SignpostDecor;
   /** §20.1 — один слот. Это и делает вопрос «что дальше» настоящим выбором. */
   construction: Construction | null;
   /** §14 — снаряжение живёт в лагере, а не в вылазке: при провале не теряется. */
@@ -620,6 +624,7 @@ export function createCamp(): CampState {
     tierRaids: { 0: 0, 1: 0, 2: 0, 3: 0 },
     visits: [],
     walls: emptyWalls(),
+    signposts: emptySignpostDecor(),
     stones: campStones(),
     bushes: campBushes(),
   };

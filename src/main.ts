@@ -234,6 +234,7 @@ import { analyticsIdentify, startAnalytics } from './core/analytics';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { FarmView } from './render/farmView';
+import { SignpostLayer } from './render/signposts';
 import { gearIcon } from './render/gearIcon';
 import { giftIcon } from './render/giftIcon';
 import { CursorWind } from './render/cursorWind';
@@ -247,6 +248,13 @@ import { CampHud } from './ui/campHud';
 import type { FlyTarget } from './ui/campHud';
 import { CampLocations, FarmOnboarding } from './ui/farmOnboarding';
 import type { CampLocation } from './ui/farmOnboarding';
+import { SignEditor } from './ui/signEditor';
+import {
+  SIGN_COST,
+  SIGN_MAX_PER_LOCATION,
+  emptySignpostDecor,
+  type SignLocation,
+} from './sim/signposts';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
@@ -510,6 +518,8 @@ let selected: BuildingId | null = null;
 let placingTent = false;
 /** Кнопка «Сундук» (`chests.ts`) вооружила выбор места — тем же жестом. */
 let placingChest = false;
+/** Кнопка декора вооружает следующий тап по земле в лагере или на ферме. */
+let placingSign: SignLocation | null = null;
 
 /**
  * Отладка, а не механика — как ползунок «Ночь». Плотность травы меряется
@@ -614,6 +624,8 @@ const campView = new CampView(camp);
 rig.world.add(campView.group);
 const farmView = new FarmView();
 rig.world.add(farmView.group);
+const signpostLayer = new SignpostLayer();
+rig.world.add(signpostLayer.group);
 
 /* ---------- HUD ---------- */
 const hud = new Hud(app, {
@@ -845,9 +857,85 @@ const farmOnboarding = new FarmOnboarding(app, {
   },
 });
 
+const signEditor = new SignEditor(app);
+
 const campLocations = new CampLocations(app, {
   onSelect: (location) => switchCampLocation(location),
+  onSign: () => armSignpost(),
 });
+
+const signDecor = () => (camp.signposts ??= emptySignpostDecor());
+
+function syncSignposts(): void {
+  if (mode === 'camp') {
+    if (campLocation === 'farm') signpostLayer.setPlayers(signDecor().farm);
+    else signpostLayer.setPlayers(signDecor().camp, campOrigin(camp));
+    return;
+  }
+  if (mode === 'raid' && raid !== null && !inGlade) {
+    const region = regionAt(dayAt(clock.now()));
+    const node = region.nodes[raidNode];
+    if (node !== undefined) {
+      signpostLayer.setWorldNode(region, node, raid.loc.evac);
+      return;
+    }
+  }
+  signpostLayer.clear();
+}
+
+function armSignpost(): void {
+  if (mode !== 'camp') return;
+  if (camp.resources.wood < SIGN_COST) {
+    play('deny');
+    campHud.notify(`Указатель: нужно ${SIGN_COST} дерево`);
+    return;
+  }
+  buildPanel.setVisible(false);
+  buildTool = null;
+  placingSign = campLocation;
+  campHud.close();
+  campHud.notify('Указатель: коснитесь места, затем напишите текст');
+}
+
+function placeSignpostAt(ground: { x: number; z: number }): void {
+  const location = placingSign;
+  placingSign = null;
+  if (location === null) return;
+  const local = location === 'camp' ? campLocal(ground) : ground;
+  const x = Math.round(local.x);
+  const z = Math.round(local.z);
+  const size = location === 'camp' ? campArea(camp.levels.hq) : 10;
+  if (x < 0 || z < 0 || x >= size || z >= size) {
+    play('deny');
+    campHud.notify('Указатель: выберите место внутри локации');
+    return;
+  }
+  const signs = signDecor()[location];
+  const existing = signs.findIndex((s) => s.x === x && s.z === z);
+  if (existing < 0 && signs.length >= SIGN_MAX_PER_LOCATION) {
+    play('deny');
+    campHud.notify(`Указателей уже ${SIGN_MAX_PER_LOCATION} — отредактируйте один из них`);
+    return;
+  }
+  const before = existing < 0 ? '' : signs[existing]!.text;
+  signEditor.open(before, (text) => {
+    if (text === null) return;
+    // Камера лагеря и фермы начинает с юго-востока: лицевая сторона доски
+    // встречает первый кадр, а не стоит к нему ребром. Поворот камеры позже
+    // всё равно покажет обратную подпись — рендер рисует её с двух сторон.
+    const sign = { x, z, text, turn: Math.PI / 4 };
+    if (existing >= 0) signs[existing] = sign;
+    else {
+      spend(camp.resources, { wood: SIGN_COST });
+      signs.push(sign);
+    }
+    play('build');
+    campHud.notify(existing >= 0 ? `Указатель изменён: «${text}»` : `Указатель построен: «${text}»`);
+    campHud.sync(camp, clock.now(), 0);
+    syncSignposts();
+    persist();
+  });
+}
 
 /**
  * Забрать сегодняшний подарок (§29).
@@ -2650,6 +2738,7 @@ function switchCampLocation(next: CampLocation): void {
     return;
   }
   campLocation = next;
+  placingSign = null;
   const onFarm = next === 'farm';
   if (onFarm) {
     buildPanel.setVisible(false);
@@ -2683,6 +2772,7 @@ function switchCampLocation(next: CampLocation): void {
     rig.setZoom(campArea(camp.levels.hq) * 2.8, true);
   }
   idleSeconds = 0;
+  syncSignposts();
   syncFarmUi();
 }
 
@@ -2738,6 +2828,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   else stopPulse();
 
   mode = scene;
+  syncSignposts();
 }
 
 /**
@@ -4243,7 +4334,8 @@ const campInput = bindCampInput({
   // Пока выбрана карточка стройки, камера не двигается: палец рисует стену.
   // На поляне панорамы нет: жест лагеря-на-поляне — прологовый, тап-ходьба,
   // и камера ходит за героем.
-  active: () => mode === 'camp' && campLocation === 'camp' && buildTool === null && !inGladeCamp,
+  active: () =>
+    mode === 'camp' && campLocation === 'camp' && buildTool === null && placingSign === null && !inGladeCamp,
   center: () => campView.center,
   area: () => campArea(camp.levels.hq),
   onTap: (clientX, clientY) => campTap(clientX, clientY),
@@ -4690,6 +4782,11 @@ canvas.addEventListener('pointerdown', (e) => {
   play('tap');
   askTilt();
   idleSeconds = 0;
+  if (mode === 'camp' && placingSign !== null) {
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    if (hit !== null) placeSignpostAt(hit);
+    return;
+  }
   // Ферма пока сцена-награда: у неё нет жестов лагеря, и тап по грядке не
   // должен двигать героя на скрытой площадке.
   if (mode === 'camp' && campLocation === 'farm') return;

@@ -20,6 +20,7 @@ import { liveVisits } from './world';
 import type { Resources } from './resources';
 import type { Tier } from './types';
 import { FARM_FOOD_GOAL } from './farm';
+import { validSignposts } from './signposts';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -169,6 +170,8 @@ interface SaveV1 {
     step: 'intro' | 'goal' | 'reward' | 'done';
     unlocked: boolean;
   };
+  /** Декор моложе версии сохранения: отсутствие означает пустые локации. */
+  signposts?: CampState['signposts'];
   /**
    * Свой клан (§30) — имя и час основания. Поле необязательное и по той же
    * причине, что все соседние: сейв, записанный до кланов, обязан
@@ -262,6 +265,9 @@ export function save(
             unlocked: camp.farm.unlocked,
           },
         }
+      : {}),
+    ...(camp.signposts !== undefined
+      ? { signposts: { camp: camp.signposts.camp, farm: camp.signposts.farm } }
       : {}),
     chests: camp.chests.map((c) => ({ x: c.x, z: c.z })),
     // exactOptionalPropertyTypes: у лагеря без клана ключа нет вовсе.
@@ -444,6 +450,13 @@ export function load(): LoadResult {
         gatheredFood,
         step: unlocked && (farm.step === 'intro' || farm.step === 'goal') ? 'reward' : farm.step,
         unlocked,
+      };
+    }
+    const signs = data.signposts;
+    if (signs != null && typeof signs === 'object') {
+      camp.signposts = {
+        camp: validSignposts(signs.camp),
+        farm: validSignposts(signs.farm),
       };
     }
     if (typeof data.raids === 'number') camp.raids = data.raids;

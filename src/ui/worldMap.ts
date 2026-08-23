@@ -36,6 +36,7 @@ import {
   clanState,
   dayAt,
   lootMul,
+  roadGraph,
   regionAt,
   worldAt,
 } from '../sim/world';
@@ -595,16 +596,14 @@ export class WorldMap {
     // в хвое и оставляла точки без связей.
     ctx.strokeStyle = 'rgba(232, 226, 212, 0.16)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < spots.length; i++) {
-      for (let j = i + 1; j < spots.length; j++) {
-        const a = spots[i]!;
-        const b = spots[j]!;
-        if (Math.hypot((a.x - b.x) * w, (a.y - b.y) * h) > w * 0.24) continue;
-        ctx.beginPath();
-        ctx.moveTo(a.x * w, a.y * h);
-        ctx.lineTo(b.x * w, b.y * h);
-        ctx.stroke();
-      }
+    for (const edge of roadGraph(this.region)) {
+      const a = edge.a < 0 ? this.region.camp : this.region.nodes[edge.a];
+      const b = edge.b < 0 ? this.region.camp : this.region.nodes[edge.b];
+      if (a === undefined || b === undefined) continue;
+      ctx.beginPath();
+      ctx.moveTo(a.x * w, a.y * h);
+      ctx.lineTo(b.x * w, b.y * h);
+      ctx.stroke();
     }
 
     const r = Math.max(5, w * 0.026);
