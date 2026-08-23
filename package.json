@@ -15,6 +15,7 @@
     "measure": "tsx scripts/measure.ts",
     "survive": "tsx scripts/survive.ts",
     "combat": "tsx scripts/combat.ts",
+    "power": "tsx scripts/power.ts",
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
     "hands": "tsx scripts/hands.ts",
@@ -22,6 +23,7 @@
     "classes": "tsx scripts/classes.ts",
     "trade": "tsx scripts/trade.ts",
     "fence": "tsx scripts/fence.ts",
+    "gift": "tsx scripts/gift.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
     "resample": "tsx scripts/resample.ts",
@@ -35,7 +37,8 @@
     "fan": "tsx scripts/fan.ts",
     "levels": "tsx scripts/levels.ts",
     "stop": "tsx scripts/stop.ts",
-    "edge": "tsx scripts/edge.ts"
+    "edge": "tsx scripts/edge.ts",
+    "edge:deploy": "npm run edge && npx supabase functions deploy sortie wheel --project-ref ynprsyzjdaheivhfcuel --use-api"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

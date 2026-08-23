@@ -322,7 +322,41 @@ button:active { filter: brightness(1.25); }
 /* Лагерь: сцена первая. Постоянно на экране только ресурсы и нижняя строка,
    всё остальное выезжает листом по тапу. На 360×780 прежние списки закрывали
    поселение целиком — игрок видел набор карточек, а не свой лагерь. */
-.camp-space { flex: 1 1 auto; pointer-events: none; }
+/* Середина экрана принадлежит сцене. Значок подарка (§29) — единственное,
+   что в ней стоит: он прижат к правому краю под полосой ресурсов, там же,
+   где такие значки стоят во всех играх с ежедневным входом, и нажатия берёт
+   он один — остальная середина по-прежнему прозрачна для пальца. */
+.camp-space { flex: 1 1 auto; pointer-events: none; display: flex;
+  align-self: stretch; justify-content: flex-end; align-items: flex-start; }
+
+/* ---------- подарок за вход (§29) ---------- */
+
+/* Значок — метка словаря с квадратной колодкой под силуэт. Своей коробки
+   не заводит: край, стекло и скругление приходят от `.chip`. */
+.gift-icon {
+  pointer-events: auto; display: flex; align-items: center; justify-content: center;
+  position: relative; width: 46px; height: 46px; padding: 0; color: var(--ink);
+}
+/* Точка «сегодня не брали». Не счётчик и не восклицательный знак: значку
+   нечего считать, а звать он обязан ровно один раз в сутки. */
+.gift-mark {
+  position: absolute; top: -3px; right: -3px; width: 9px; height: 9px;
+  border-radius: var(--r-pill); background: var(--warn);
+}
+.gift-icon.ready { border-color: var(--pick-line); }
+.gift-icon .glyph { width: 26px; height: 26px; }
+
+/* Семь дней в два ряда: четыре и три. В один ряд карточка ужимается
+   до полутора слов, в столбец — неделя перестаёт читаться неделей. */
+.gift-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.gift-day { gap: 2px; padding: 7px 8px; }
+.gift-day b { font-size: 12px; }
+.gift-what { font-size: 11px; }
+/* Взятый день гаснет, а не вычёркивается: вычеркнутое читается потерей. */
+.gift-done { opacity: 0.45; }
+.gift-note { font-size: 12px; min-height: 15px; }
+#camp .gift { gap: 8px; }
+#camp .gift .cta { align-self: stretch; }
 #camp .sheet {
   display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
   align-self: stretch;

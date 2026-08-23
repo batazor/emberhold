@@ -38,13 +38,17 @@ const json = (body: unknown, status = 200): Response =>
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
-  // Клиент со своим токеном: RLS остаётся включённой, и функция не может
-  // тронуть чужую строку, даже если её об этом попросят.
+  /*
+   * Клиент служебный, без заголовка игрока (см. тот же разбор в `wheel.ts`):
+   * с заголовком PostgREST включает RLS, а политики на запись у `sorties`
+   * нет — писать туда может только эта функция. Личность проверяется явно
+   * ниже, и каждый запрос фильтруется по `user.id`: служебный ключ снимает
+   * защиту, значит фильтр обязателен, а не желателен.
+   */
   const auth = req.headers.get('Authorization') ?? '';
   const db = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    { global: { headers: { Authorization: auth } } },
   );
   const { data: got } = await db.auth.getUser(auth.replace('Bearer ', ''));
   const user = got?.user;
