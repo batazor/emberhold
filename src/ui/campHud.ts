@@ -87,6 +87,13 @@ export interface CampCallbacks {
    * слоем и иначе стоит на карточке места, споря с ней за палец и за глаз.
    */
   onSheet(open: boolean): void;
+  /**
+   * Значок вещи §14 как `data:`-URL. Приходит снаружи, а не берётся здесь:
+   * рисует его запечённая геометрия из `render/gearIcon.ts`, а панелям слой
+   * рендера не виден (`scripts/arch.ts`). Пустая строка — значка нет,
+   * и строка списка остаётся такой, какой была.
+   */
+  gearIcon(kind: GearSlot | 'shield', level: number): string;
 }
 
 const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
@@ -121,6 +128,9 @@ interface Row {
   readonly barWrap: HTMLElement;
   readonly bar: HTMLElement;
   readonly button: HTMLButtonElement;
+  /** Значок вещи §14. Есть только у строк Мастерской: у зданий своя модель
+   *  стоит в сцене, и второй её портрет в списке не нужен. */
+  readonly pic?: HTMLImageElement;
 }
 
 /**
@@ -503,7 +513,26 @@ export class CampHud {
     const def = GEAR[slot];
     const box = document.createElement('div');
     // Пять предметов подряд — список, и коробка ему нужна общая: `.card`.
-    box.className = 'card b';
+    box.className = 'card b gear-row';
+
+    /*
+     * Вещь видна вещью. Пять строк с одними подписями читались списком
+     * свойств, а куются в них предметы: значок отвечает на «что это»
+     * раньше, чем игрок дочитает строку эффекта. Рисуется он из той же
+     * запечённой геометрии, что и сцена (`render/gearIcon.ts`), — картинок
+     * в игру по-прежнему не едет ни одной (§6.1).
+     */
+    const pic = document.createElement('img');
+    // `.chip` — подложка из словаря (`style.css`): своя коробка с краем
+    // здесь запрещена, и правильно — плашек в игре ровно три.
+    pic.className = 'chip gear-pic';
+    // Пустой alt намеренно: имя вещи стоит рядом строкой, и повторять его
+    // в озвучке значило бы называть предмет дважды.
+    pic.alt = '';
+    pic.decoding = 'async';
+
+    const col = document.createElement('div');
+    col.className = 'gear-col';
 
     const top = document.createElement('div');
     top.className = 'row b-top';
@@ -531,8 +560,9 @@ export class CampHud {
     bottom.append(status, button);
     button.addEventListener('click', () => this.cb.onCraft(slot));
 
-    box.append(top, effect, bottom);
-    this.gearRows.set(slot, { box, level, effect, status, barWrap, bar, button });
+    col.append(top, effect, bottom);
+    box.append(pic, col);
+    this.gearRows.set(slot, { box, level, effect, status, barWrap, bar, button, pic });
     return box;
   }
 
@@ -830,6 +860,19 @@ export class CampHud {
       if (row === undefined) continue;
       const level = camp.gear[slot];
       const block = gearBlock(camp, slot);
+      // Левая рука показывает то, что в ней сейчас: слот кован один, а вещи
+      // в нём две (§14.2), и значок обязан спрашивать у руки, а не у слота.
+      const kind = slot === 'torch' ? camp.offhand : slot;
+      if (row.pic !== undefined) {
+        const src = this.cb.gearIcon(kind, level);
+        // Присваивание сравнивается: одинаковый `data:`-URL, положенный
+        // заново, заставляет браузер перерисовывать картинку каждый тик.
+        if (src !== '' && row.pic.getAttribute('src') !== src) row.pic.src = src;
+        row.pic.style.display = src === '' ? 'none' : '';
+        // Не выкованное показано тем же силуэтом, но погашенным: слот,
+        // у которого нет картинки вовсе, читается сломанным, а не пустым.
+        row.pic.classList.toggle('empty', level === 0);
+      }
       row.level.textContent = level > 0 ? `ур. ${level} / ${itemCap(camp.levels.forge)}` : '—';
       row.effect.textContent = `${gearLine(slot, level)} · ${GEAR[slot].tradeoff}`;
       row.button.textContent = level > 0 ? 'Улучшить' : 'Выковать';

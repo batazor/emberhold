@@ -195,6 +195,7 @@ import type { GraveSite } from './sim/graveSite';
 import { events, loadTelemetry, track } from './sim/telemetry';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
+import { gearIcon } from './render/gearIcon';
 import { CursorWind } from './render/cursorWind';
 import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
@@ -654,6 +655,9 @@ const campHud = new CampHud(app, {
     if (!campHud.visible) return;
     heroFan.setVisible(!open && !quietFrame());
   },
+  // Значок вещи §14 рисует запечённая геометрия; панелям слой рендера
+  // не виден, поэтому картинка приходит к ним отсюда (`scripts/arch.ts`).
+  gearIcon: (kind, level) => gearIcon(kind, level),
 });
 
 /* ---------- стройка стен (§6.1.6) ---------- */

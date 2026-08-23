@@ -282,7 +282,10 @@ const DUNGEON: Pack = {
    * золотой — редкая находка яруса 3. Остальные модели набора по-прежнему
    * не едут: предмет заводится вместе с механикой, которая его показывает.
    */
-  adopted: ['chest', 'chest_gold'],
+  // Связка колец — значок кольца §14: своей модели у кольца нет ни в одном
+  // наборе, а на игровой камере оно мельче пикселя. В списке Мастерской
+  // оно живёт значком, и берётся ради него одного.
+  adopted: ['chest', 'chest_gold', 'keyring'],
   data: { file: 'src/render/dungeon.data.ts', prefix: 'DUNGEON', type: 'Dungeon' },
 };
 
@@ -566,6 +569,10 @@ const ADVENTURERS: Pack = {
     'Knight', 'sword_1handed', 'shield_round',
     'Ranger', 'bow_withString', 'arrow_bow',
     'Rogue', 'dagger',
+    // Колчан — значок сумки §14 в Мастерской. На герое он не появляется
+    // (узла на спине в риге нет, `inventory.html`), и берётся ровно затем,
+    // чтобы слот было видно вещью, а не строкой.
+    'quiver',
   ],
   data: { file: 'src/render/adventurers.data.ts', prefix: 'ADVENTURERS', type: 'Adventurer' },
 };
