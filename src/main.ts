@@ -125,8 +125,11 @@ import {
   cloudOnSignIn,
   cloudPull,
   cloudPush,
+  cloudSortieClaim,
+  cloudSortieStart,
   cloudTime,
   cloudUser,
+  cloudWheel,
   cloudVisits,
   cloudWipe,
 } from './core/cloud';
@@ -239,6 +242,7 @@ import {
   sortieDue,
   ticketOf,
 } from './sim/sortie';
+import type { Report, Sortie } from './sim/sortie';
 import { installBench } from './features/bench';
 import { FanControl, installFan } from './features/fan';
 import type { FanPerson } from './features/fan';
@@ -2359,6 +2363,18 @@ function sendSortie(node: number): void {
     },
     now,
   );
+  // Билет уезжает на сервер: там он и полежит до возвращения, и там же
+  // назначается срок. Отправка при этом не ждёт сети — отряд уходит сразу,
+  // а серверный срок, если он придёт, поправит местный. Без сессии всё
+  // остаётся как было: поход считает клиент (см. collectSortie).
+  const ticket = camp.sortie;
+  void cloudSortieStart(ticket, hero).then((answer) => {
+    if (answer === null || camp.sortie !== ticket) return;
+    camp.sortie = { ...ticket, endsAt: answer.endsAt };
+    const same = roster.heroes.find((h) => h.id === ticket.hero);
+    if (same !== undefined && same.status === 'raid') same.busyUntil = answer.endsAt;
+    persist();
+  });
   hero.status = 'raid';
   hero.busyUntil = camp.sortie.endsAt;
   // Заход тратит богатство места — чужой заход и свой, ручной и нет (§4).
@@ -2378,7 +2394,22 @@ function collectSortie(now: number): boolean {
   camp.sortie = null;
   const hero = roster.heroes.find((h) => h.id === ticket.hero) ?? null;
   if (hero === null) return true;
-  const report = reportOf(ticket, hero);
+  /*
+   * Добычу называет сервер (§26): он хранил билет и считал по нему тем же
+   * кодом. Отказ — не беда и не обман: без сессии, без сети и в отладочном
+   * кадре поход досчитывается здесь, ровно как считался до облака.
+   *
+   * Билет закрыт выше, до ответа: вкладка, закрытая посреди запроса, обязана
+   * потерять отчёт, а не выдать его дважды.
+   */
+  void cloudSortieClaim<Report>().then((answer) =>
+    applySortie(ticket, hero, answer?.report ?? reportOf(ticket, hero), clock.now()),
+  );
+  return true;
+}
+
+/** Что лагерь делает с отчётом — свой он или серверный, безразлично. */
+function applySortie(ticket: Sortie, hero: HeroState, report: Report, now: number): void {
   if (stash(camp, report.carried) > 0) campHud.notify(STORE_FULL);
   // §14.3 — выстреленное уходит из лагеря, донесённое возвращается.
   camp.arrows = Math.max(0, camp.arrows - report.arrowsSpent);
@@ -2404,7 +2435,9 @@ function collectSortie(now: number): boolean {
     seconds: ticket.endsAt - ticket.startedAt,
   });
   campHud.notify(report.text);
-  return true;
+  // Отчёт пришёл асинхронно — состояние обязано лечь в сейв здесь, а не ждать
+  // следующего действия игрока: закрытая вкладка потеряла бы добычу похода.
+  persist();
 }
 
 /**
@@ -2416,7 +2449,7 @@ function collectSortie(now: number): boolean {
  * Замок суточный: карточка карты запирает кнопку той же проверкой,
  * а эта — на случай входа мимо карточки (отладка, гонка смены дня).
  */
-function toWheel(seed: number): boolean {
+function toWheel(seed: number, node: number): boolean {
   const day = dayAt(clock.now());
   if (camp.wheelDay === day) {
     campHud.notify('Колесо уже крутили сегодня — новая прокрутка завтра');
@@ -2429,6 +2462,17 @@ function toWheel(seed: number): boolean {
   wheelView?.dispose();
   wheelView = new WheelView(answer, {
     onClaim: (crystals) => {
+      // Замок — серверный (§6): «крутили сегодня» лежало в сейве игрока,
+      // то есть игрок сам был себе судьёй. Спрашивается на выдаче, а не
+      // на открытии: колесо крутится и без сети, а вот приз без ответа
+      // сервера не начисляется дважды за сутки.
+      void cloudWheel(node).then((got) => {
+        if (got?.repeat !== true) return;
+        // Сервер помнит сегодняшнюю прокрутку — значит эта вторая.
+        // Приз не выдаётся, а замок чинится: сейв разошёлся с сервером.
+        camp.wheelDay = got.day;
+        persist();
+      });
       // Приз — приток извне, и потолок кладовой (§13.6) для него не
       // исключение: что не влезло, о том говорится.
       if (stash(camp, { crystal: crystals }) > 0) campHud.notify(STORE_FULL);
@@ -2473,7 +2517,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // а не рассматривают. Добычи и противников нет — пока.
   if (place.kind === 'тропа') return toTrail(node, nodeSeed(day, node));
   // Колесо призов — аттракцион: одна прокрутка в день, кристаллы по сектору.
-  if (place.kind === 'призы') return toWheel(nodeSeed(day, node));
+  if (place.kind === 'призы') return toWheel(nodeSeed(day, node), node);
   const tier = place.tier;
   // §3 — в вылазку идёт один герой, и он обязан быть свободен.
   const hero = heroForRaid();
@@ -4588,7 +4632,7 @@ if (debugWheel !== null) {
     ? nodeSeed(dayAt(clock.now()), today.find((n) => n.kind === 'призы')?.id ?? 0)
     : Number(debugWheel);
   leaveTitle();
-  toWheel(Number.isFinite(seed) ? seed : 1);
+  toWheel(Number.isFinite(seed) ? seed : 1, 0);
   (window as unknown as { камень: unknown }).камень = {
     // Ответ пересчитан той же формулой: ручка обязана говорить, куда колесо
     // обязано довезти, чтобы расхождение было видно числом, а не на глаз.

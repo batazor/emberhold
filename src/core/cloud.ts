@@ -176,6 +176,41 @@ export async function cloudNeighbours(): Promise<{ user: string; node: number; s
   }
 }
 
+/**
+ * Серверные функции (§6). Отвечают `null`, когда сети или сессии нет, —
+ * и это не ошибка, а ответ: игра доигрывает сама, ровно как играла до облака.
+ */
+async function callFunction<T>(name: string, body: Record<string, unknown>): Promise<T | null> {
+  try {
+    const { data, error } = await client.functions.invoke(name, { body });
+    if (error !== null) return null;
+    return data as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * §26 — билет уходит на сервер, и срок назначает он же. Клиент отвечает
+ * временем возвращения: своё, посчитанное его часами, он не навязывает.
+ */
+export const cloudSortieStart = (ticket: unknown, hero: unknown): Promise<{ endsAt: number } | null> =>
+  callFunction<{ endsAt: number }>('sortie', { action: 'start', ticket, hero });
+
+/**
+ * Отчёт о походе. Считает сервер тем же кодом, что лежит в `sim/sortie.ts`,
+ * — расхождение здесь означало бы разные версии правил, а не обман.
+ */
+export const cloudSortieClaim = <T>(): Promise<{ report: T } | null> =>
+  callFunction<{ report: T }>('sortie', { action: 'claim' });
+
+/**
+ * Колесо призов. Сервер владеет суточным замком: день считается его часами,
+ * а отметка о прокрутке лежит там, куда клиенту не писать.
+ */
+export const cloudWheel = (node: number): Promise<{ crystals: number; day: number; repeat?: boolean } | null> =>
+  callFunction<{ crystals: number; day: number; repeat?: boolean }>('wheel', { node });
+
 /** «Новая игра» стирает и облачные следы — иначе сейв воскреснет при входе. */
 export async function cloudWipe(): Promise<void> {
   const uid = await userId();
