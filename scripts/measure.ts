@@ -14,7 +14,7 @@ import { POLICIES, playRaid } from '../src/sim/bot';
 import { createRaid } from '../src/sim/raid';
 import { referenceLoadout } from '../src/sim/heroes';
 import { findPath } from '../src/sim/pathfinding';
-import { TIER_HERO_LEVEL, TIER_KITCHEN_GATE, tierEnemyLevel } from '../src/sim/balance';
+import { TIER_HAUL, TIER_HERO_LEVEL, TIER_KITCHEN_GATE, tierEnemyLevel } from '../src/sim/balance';
 import { ENEMY_STATS } from '../src/sim/enemies';
 import { emptyResources, RESOURCE_NAME } from '../src/sim/resources';
 import type { ResourceKind, Resources } from '../src/sim/resources';
@@ -295,6 +295,25 @@ console.log('─'.repeat(74));
    * пока растёт и доля провалов, и тогда игрок платит за глубину больше,
    * чем она стоит.
    */
+  /*
+   * §20.3 — `TIER_HAUL` кормит стоимость всех построек, и это измеренная
+   * константа: она протухает молча. Прибор, снявший её, обязан и сторожить —
+   * иначе цены остаются выведенными из добычи, которой в игре больше нет.
+   */
+  for (const s of stats) {
+    if (s.success === 0) continue;
+    const measured = s.carriedTotal / s.success;
+    const stored = TIER_HAUL[s.tier];
+    const drift = Math.abs(measured - stored) / Math.max(1, stored);
+    if (drift > 0.15) {
+      console.log(
+        `  ⚠ ЯРУС ${s.tier}: TIER_HAUL ${stored.toFixed(1)} против замеренных ` +
+          `${measured.toFixed(1)} (${(drift * 100).toFixed(0)}%).\n` +
+          '    Цены построек выведены из добычи, которой больше нет: обнови TIER_HAUL.',
+      );
+    }
+  }
+
   const worth = stats
     .filter((s) => s.runs > 0)
     .map((s) => ({ tier: s.tier, avg: s.haulAll / s.runs }));
