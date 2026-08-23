@@ -286,6 +286,7 @@ import {
   tentFits,
   tentSpot,
 } from './sim/residents';
+import { payUpkeep, workingAfter } from './sim/upkeep';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
 import type { Chore } from './sim/chores';
@@ -351,7 +352,13 @@ track({
  * не видел, — то есть не меняет ничего.
  */
 const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark) : 0;
-const worked = collectWork(camp, awaySec);
+/**
+ * §13.7 — сперва лагерь съел и сжёг, потом наработал. Порядок обязателен:
+ * голодный не работает, и посчитать работу до раздачи еды значило бы
+ * заплатить за смену, которой не было.
+ */
+const upkeep = payUpkeep(camp, awaySec);
+const worked = collectWork(camp, awaySec, workingAfter(camp, upkeep.hungry));
 /** Сказать о наработанном один раз за сессию, а не на каждый вход в лагерь. */
 let workShown = false;
 
@@ -3543,9 +3550,21 @@ let inGladeCamp = false;
 
 /** Наработанное за отлучку — первым и один раз, общий у обеих сцен лагеря. */
 function notifyWorked(): void {
-  if (worked.length === 0 || workShown) return;
+  if (workShown) return;
+  /**
+   * §13.7 — содержание говорит первым, и говорит только когда есть что
+   * сказать. Строка молчит про съеденное в срок: расход, идущий как надо,
+   * событием не является (§23.1), а вот голод и погасший костёр — являются.
+   */
+  const trouble: string[] = [];
+  if (upkeep.hungry > 0) trouble.push(`голодных ${upkeep.hungry}`);
+  if (upkeep.dark) trouble.push('костёр погас');
+  if (worked.length === 0 && trouble.length === 0) return;
   workShown = true;
-  campHud.notify(`Пока вас не было: ${worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · ')}`);
+  if (worked.length > 0) {
+    campHud.notify(`Пока вас не было: ${worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · ')}`);
+  }
+  if (trouble.length > 0) campHud.notify(`В лагере кончилась пища: ${trouble.join(', ')}`);
 }
 
 /**

@@ -68,6 +68,7 @@ export const POWER_VALUE: Record<ResourceKind, number> = {
   wood: VALUE.wood ?? 0,
   iron: VALUE.iron ?? 0,
   crystal: CRYSTAL_VALUE,
+  food: 0,
 };
 
 /** Ценность кучки ресурсов по этой линейке. */

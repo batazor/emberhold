@@ -128,15 +128,15 @@ describe('Обмен: операция', () => {
   test('меняет ровно по текущему курсу и не даёт залезть в долг', () => {
     const camp = createCamp();
     const price = offerOf('iron-stone', 0).give.stone ?? 0;
-    camp.resources = { stone: price, wood: 0, iron: 0, crystal: 0 };
+    camp.resources = { stone: price, wood: 0, iron: 0, crystal: 0, food: 0 };
     assert.equal(tradeBlock(camp, 'iron-stone'), 'ok');
     assert.equal(trade(camp, 'iron-stone'), true);
-    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 1, crystal: 0 });
+    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 1, crystal: 0, food: 0 });
     assert.equal(camp.trades, 1, 'сделка записана в отношения');
 
     assert.equal(tradeBlock(camp, 'iron-stone'), 'resources', 'причина, а не молчание');
     assert.equal(trade(camp, 'iron-stone'), false);
-    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 1, crystal: 0 }, 'отказ ничего не тронул');
+    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 1, crystal: 0, food: 0 }, 'отказ ничего не тронул');
     assert.equal(camp.trades, 1, 'отказ знакомством не считается');
   });
 

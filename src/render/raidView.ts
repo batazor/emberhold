@@ -13,7 +13,7 @@ import {
 } from './models';
 import { toolGeometry } from './tools';
 import type { ToolModelName } from './tools';
-import type { SelfAnswer } from '../sim/settler';
+import type { ResidentJob } from '../sim/residents';
 import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
@@ -1131,7 +1131,7 @@ export class RaidView {
    * в кэше набора, но пересобирать меш шестьдесят раз в секунду ради
    * предмета, который меняется дважды за минуту, незачем.
    */
-  setResidentLoad(i: number, answer: SelfAnswer | null): void {
+  setResidentLoad(i: number, answer: ResidentJob | null): void {
     this.residents[i]?.setHeld('handslot.l', answer === null ? null : residentLoad(answer));
   }
 

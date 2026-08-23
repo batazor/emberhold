@@ -35,7 +35,7 @@ const RUNS = 150;
 const TIERS: readonly Tier[] = [0, 1, 2, 3];
 
 const sum = (r: Partial<Resources>): number =>
-  totalOf({ stone: 0, wood: 0, iron: 0, crystal: 0, ...r });
+  totalOf({ stone: 0, wood: 0, iron: 0, crystal: 0, food: 0, ...r });
 
 /**
  * Две добычи одного яруса. `success` — средняя удачной вылазки, та самая,

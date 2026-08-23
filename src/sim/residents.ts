@@ -45,14 +45,24 @@ import type { SelfAnswer } from './settler';
 import { canAfford, spend } from './resources';
 import type { ResourceKind, Resources } from './resources';
 
+/**
+ * Чем жилец занят. Двух первых он приносит с собой — это ответ на вопрос
+ * о себе (§16.1); третье назначает игрок, и оно появилось вместе с пищей
+ * (§13.7). Тип шире `SelfAnswer` намеренно: вопрос знакомства остаётся
+ * из двух кнопок, а занятий в лагере три.
+ */
+export type ResidentJob = SelfAnswer | 'кормим';
+
+export const RESIDENT_JOBS: readonly ResidentJob[] = ['строим', 'ходим', 'кормим'];
+
 export interface Resident {
   readonly name: string;
   readonly look: DwellerLook;
   /** Сид лица (`ui/avatar.ts`): с каким пришёл, с таким и живёт. */
   readonly seed: number;
-  /** Что он о себе сказал при знакомстве: этим выбрано, чем он занят
-   *  в лагере (`RESIDENT_WORK`). */
-  readonly answer: SelfAnswer;
+  /** Что он о себе сказал при знакомстве или на что его перевели:
+   *  этим выбрано, чем он занят в лагере (`RESIDENT_WORK`). */
+  readonly answer: ResidentJob;
   /**
    * Отдыхает: приказ «отдыхать» откладывает инструмент и останавливает
    * работу. Занятие (`answer`) при этом не стирается — отдых кончается
@@ -283,15 +293,20 @@ export function buildTent(camp: CampState, at?: { x: number; z: number }): { x: 
  * что первое бесконечно по кромке леса, а второму §13.4 избыток прямо
  * разрешает.
  */
-export const RESIDENT_WORK: Record<SelfAnswer, ResourceKind> = {
+export const RESIDENT_WORK: Record<ResidentJob, ResourceKind> = {
   строим: 'wood',
   ходим: 'stone',
+  // §13.7 — пища не выпадает в находках вовсе: её приносит только этот
+  // жилец. Так у лагеря появляется первый настоящий выбор между людьми:
+  // добытчик не носит ни дерева, ни камня, а без него не работает никто.
+  кормим: 'food',
 };
 
 /** Занятие словами — для веера и карточки жильца: что он делает сейчас. */
-export const RESIDENT_STATE: Record<SelfAnswer, string> = {
+export const RESIDENT_STATE: Record<ResidentJob, string> = {
   строим: 'носит дерево',
   ходим: 'носит камень',
+  кормим: 'добывает пищу',
 };
 
 /** Состояние жильца одним словом: отдых виден раньше занятия. */
@@ -304,15 +319,16 @@ export const residentState = (r: Resident): string =>
  * Ресурсов он не приносит и приносить не может — иначе отдых стал бы
  * работой, у которой §20.3 потребовал бы замера.
  */
-export type ResidentOrder = SelfAnswer | 'отдых';
+export type ResidentOrder = ResidentJob | 'отдых';
 
 /** Порядок кнопок карточки: сперва занятия, отдых последним. */
-export const RESIDENT_ORDERS: readonly ResidentOrder[] = ['строим', 'ходим', 'отдых'];
+export const RESIDENT_ORDERS: readonly ResidentOrder[] = ['строим', 'ходим', 'кормим', 'отдых'];
 
 /** Приказ словами — кнопки карточки жильца: на что его можно перевести. */
 export const RESIDENT_ORDER: Record<ResidentOrder, string> = {
   строим: 'Носить дерево',
   ходим: 'Носить камень',
+  кормим: 'Добывать пищу',
   отдых: 'Отдыхать',
 };
 
@@ -375,13 +391,25 @@ export const WORK_CAP = 3;
  * бы хранить долю у каждого жильца, и «сколько там накапало» стало бы
  * вопросом к сохранению, а не к экрану.
  */
-export function workDone(camp: CampState, awaySec: number): { kind: ResourceKind; n: number }[] {
+export function workDone(
+  camp: CampState,
+  awaySec: number,
+  /**
+   * §13.7 — сколько жильцов вышло на работу. Голодные не работают, и считает
+   * их `upkeep.ts`; по умолчанию работают все, у кого есть крыша, — иначе
+   * все прежние прогоны и золотой мастер сдвинулись бы молча.
+   */
+  working?: number,
+): { kind: ResourceKind; n: number }[] {
   const each = Math.min(WORK_CAP, Math.floor(Math.max(0, awaySec) / WORK_SECONDS));
   if (each === 0) return [];
   // Работает только тот, у кого есть крыша. Это не наказание, а то же
   // задание, сказанное третий раз: человек, ночующий у костра, за работу
   // не берётся, и видно это прибавкой, которой не случилось.
-  const roofed = Math.min(camp.residents.length, Math.max(0, roofs(camp) - 1));
+  const roofed = Math.min(
+    working ?? camp.residents.length,
+    Math.min(camp.residents.length, Math.max(0, roofs(camp) - 1)),
+  );
   const sum = new Map<ResourceKind, number>();
   for (const r of camp.residents.slice(0, roofed)) {
     // Отдыхающий не приносит ничего: отдых — это и есть отложенный
@@ -399,8 +427,12 @@ export function workDone(camp: CampState, awaySec: number): { kind: ResourceKind
  * жилец складывает в закрома, а не мимо них, и строка «принёс N» обязана
  * называть вошедшее, а не заработанное.
  */
-export function collectWork(camp: CampState, awaySec: number): { kind: ResourceKind; n: number }[] {
-  const done = workDone(camp, awaySec);
+export function collectWork(
+  camp: CampState,
+  awaySec: number,
+  working?: number,
+): { kind: ResourceKind; n: number }[] {
+  const done = workDone(camp, awaySec, working);
   return done
     .map(({ kind, n }) => ({ kind, n: n - stash(camp, { [kind]: n }) }))
     .filter(({ n }) => n > 0);

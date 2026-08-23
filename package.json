@@ -20,6 +20,7 @@
     "optimal": "tsx scripts/optimal.ts",
     "elites": "tsx scripts/elites.ts",
     "depth": "tsx scripts/depth.ts",
+    "upkeep": "tsx scripts/upkeep.ts",
     "encounter": "tsx scripts/encounter.ts",
     "ammo": "tsx scripts/ammo.ts",
     "hands": "tsx scripts/hands.ts",
