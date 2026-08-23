@@ -53,6 +53,14 @@ interface SaveV1 {
   /** Колесо призов: день последней прокрутки. Необязательно: без поля —
    *  не крутили. */
   wheelDay?: number;
+  /**
+   * Подарок за вход (§29): день последнего взятого и сколько взято всего.
+   * Необязательно — сейв, записанный до подарков, открывается с непочатой
+   * первой неделей.
+   */
+  daily?: { day: number; taken: number };
+  /** Обещанный гость (§29.2): сажает его сцена лагеря, а не панель. */
+  guest?: boolean;
   loadout?: CampState['loadout'];
   raids: number;
   /** §22.6б — заходы по ярусам. Необязательное: старый сейв открывается
@@ -175,6 +183,8 @@ export function save(
     ...(camp.glade !== undefined ? { glade: camp.glade } : {}),
     ...(camp.trades !== undefined ? { trades: camp.trades } : {}),
     ...(camp.wheelDay !== undefined ? { wheelDay: camp.wheelDay } : {}),
+    ...(camp.daily !== undefined ? { daily: { day: camp.daily.day, taken: camp.daily.taken } } : {}),
+    ...(camp.guestPromised === true ? { guest: true } : {}),
     resources: camp.resources,
     construction: camp.construction,
     loadout: camp.loadout,
@@ -306,6 +316,16 @@ export function load(): LoadResult {
     }
     if (typeof data.trades === 'number' && data.trades >= 0) camp.trades = Math.floor(data.trades);
     if (typeof data.wheelDay === 'number') camp.wheelDay = Math.floor(data.wheelDay);
+    // §29 — подарки. Оба числа разбираются по одному и чинятся порознь:
+    // сейв с испорченным счётом подарков не должен стоить игроку недели.
+    const d = data.daily;
+    if (d !== undefined && typeof d.taken === 'number' && d.taken >= 0) {
+      camp.daily = {
+        day: typeof d.day === 'number' && Number.isFinite(d.day) ? Math.floor(d.day) : -1,
+        taken: Math.floor(d.taken),
+      };
+    }
+    if (data.guest === true) camp.guestPromised = true;
 
     const area = campArea(camp.levels.hq);
     const fallback = createCamp().layout;

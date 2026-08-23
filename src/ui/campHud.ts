@@ -35,6 +35,7 @@ import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
 import { avatarSvg } from './avatar';
+import { DailyPanel } from './dailyPanel';
 import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
 import type { Roster } from '../sim/heroes';
@@ -76,6 +77,9 @@ export interface CampCallbacks {
   onOffhand(offhand: Offhand): void;
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
+  /** §29 — забрать сегодняшний подарок. Считает и зачисляет лагерь, а не
+   *  панель: подарок проходит через кладовую наравне с добычей. */
+  onClaimGift(): void;
   /** Поставить сундук-хранилище (`sim/chests.ts`): карточка вооружает
    *  режим, дальше тап по клетке — тем же жестом, что палатка. */
   onChest(): void;
@@ -114,8 +118,9 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'cryst
  */
 
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь.
- *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене. */
-type SheetKind = BuildingId | 'tiers' | 'shop' | 'store' | null;
+ *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене.
+ *  'daily' — подарок за вход (§29): открывается тапом по значку над сценой. */
+type SheetKind = BuildingId | 'tiers' | 'shop' | 'store' | 'daily' | null;
 
 const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
@@ -158,6 +163,8 @@ export class CampHud {
   private chestButton!: HTMLButtonElement;
   /** Карта региона (§4). Живёт в том же листе, где раньше был список ярусов. */
   private readonly map: WorldMap;
+  /** Подарок за вход (§29): значок над сценой и семь карточек в листе. */
+  private readonly daily: DailyPanel;
   /** Отряд, отданный лагерю снаружи (§26): карте он нужен, чтобы знать,
    *  есть ли кого отправить. */
   private roster: Roster | null = null;
@@ -416,6 +423,15 @@ export class CampHud {
     this.sections.set('tiers', tiers);
     this.sheet.appendChild(tiers);
 
+    // §29 — подарок за вход. Раздел листа, как карта: панель приносит свою
+    // разметку целиком, лагерь даёт ей место и день.
+    this.daily = new DailyPanel({
+      onClaim: () => this.cb.onClaimGift(),
+      onIcon: () => (this.open === 'daily' ? this.close() : this.openSheet('daily')),
+    });
+    this.sections.set('daily', this.daily.root);
+    this.sheet.appendChild(this.daily.root);
+
     this.slot = document.createElement('div');
     this.slot.className = 'sec camp-slot';
 
@@ -441,6 +457,11 @@ export class CampHud {
       this.makeBarButton('Припасы', 'shop'),
       this.makeBarButton('В мир', 'tiers', true),
     );
+
+    // Значок стоит в пустом месте между полосами — там же, где сцена.
+    // Отдельным слоем поверх всего он не нужен: `camp-space` и есть та
+    // середина экрана, которая принадлежит лагерю (§6.2.6).
+    space.appendChild(this.daily.icon);
 
     this.root.append(res, this.banner, this.task, space, this.sheet, this.slot, this.bar);
     parent.appendChild(this.root);
@@ -621,6 +642,7 @@ export class CampHud {
     // называло кнопку, которой больше нет.
     if (kind === 'shop') return 'Припасы';
     if (kind === 'store') return 'Кладовая';
+    if (kind === 'daily') return 'Подарок за вход';
     return BUILDINGS[kind].name;
   }
 
@@ -656,6 +678,7 @@ export class CampHud {
     this.line.tick(dt);
 
     this.syncTask(camp);
+    this.daily.sync(camp, dayAt(now));
 
     this.last = { camp, now };
     this.paintOpen();
@@ -950,6 +973,10 @@ export class CampHud {
     this.banner.textContent = this.line.text;
 
     this.bar.style.display = quiet ? 'none' : '';
+    // Значок подарка (§29) уходит вместе с нижней строкой и по той же
+    // причине: тихий кадр оставляет на экране ровно одно действие, и второе,
+    // сколь угодно бесплатное, отменяет весь кадр.
+    this.daily.icon.style.display = quiet ? 'none' : '';
     this.sheetClose.style.display = quiet ? 'none' : '';
     if (quiet) this.moveButton.style.display = 'none';
 
