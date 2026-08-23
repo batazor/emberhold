@@ -33,7 +33,7 @@ export type RaidEnemyKind = 'minion' | 'warrior' | 'mage';
  * он привязан к месту, как привидение, и появляется одним способом —
  * засадой вскрытого сундука (`Container.ambush`).
  */
-export type EnemyKind = RaidEnemyKind | 'ghost' | 'guard';
+export type EnemyKind = RaidEnemyKind | 'ghost' | 'guard' | 'minotaur' | 'stone-golem';
 
 /** §15 — три типа, по одному на диапазон ярусов, различимы силуэтом. */
 export interface EnemyStats {
@@ -119,6 +119,8 @@ export interface Enemy {
    * это два шага в сторону.
    */
   readonly relentless?: boolean;
+  /** Мирный собеседник не просыпается от близости. Снимается выбором «Сразиться». */
+  peaceful?: boolean;
 }
 
 export interface Container {
@@ -142,6 +144,8 @@ export interface Container {
    * после генерации.
    */
   readonly ambush?: { readonly kind: EnemyKind; readonly count: number; readonly at?: readonly Cell[] };
+  /** Сундук не откроется, пока жив хотя бы один такой страж. */
+  readonly lockedBy?: EnemyKind | readonly EnemyKind[];
 }
 
 export interface GameLocation {
@@ -354,6 +358,8 @@ export interface RaidState {
   joined: number;
   /** Противников, упавших за вылазку. */
   kills: number;
+  /** Опыт за побеждённых противников; добыча и выход добавятся в лагере. */
+  combatXp: number;
   /**
    * Открыт ли выход. Обычно да с первой секунды — «выход всегда доступен
    * одним касанием» (`onboarding.html`, кадр 7). Закрывается он ровно в одном

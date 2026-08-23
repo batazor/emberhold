@@ -135,6 +135,11 @@ describe('Мир: карта локаций', () => {
         assert.ok(count >= 1, `день ${day}: ${kind} не выпал вовсе`);
         assert.ok(count <= 3, `день ${day}: ${kind} выпал ${count} раз`);
       }
+      assert.equal(
+        nodes.filter((n) => n.kind === 'замок минотавра').length,
+        1,
+        `день ${day}: замок минотавра должен быть ровно один`,
+      );
       // Раздача вылазок не тронута особыми точками: их число прежнее.
       const raids = nodes.filter((n) => n.kind === 'вылазка').length;
       assert.ok(raids >= 16 && raids <= 22, `день ${day}: вылазок ${raids}`);

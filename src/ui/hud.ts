@@ -1,6 +1,6 @@
 import { TIER_NAME, TIER_RISK } from '../sim/config';
 import { CONSUMABLES } from '../sim/consumables';
-import { SKILLS } from '../sim/heroes';
+import { SKILLS, skillEffect } from '../sim/heroes';
 import { atRisk, backLeft } from '../sim/raid';
 import type { RaidState } from '../sim/raid';
 import type { Reveal } from '../sim/onboarding';
@@ -192,6 +192,7 @@ export class Hud {
     // Кнопка не исчезает после применения, а гаснет: исчезнувшая читается
     // как поломка, а гаснущая — как «уже потратил» (§11.7 — отката нет).
     const skill = SKILLS[state.loadout.skill];
+    this.skill.title = `${skill.name} · ур. ${state.loadout.skillLevel}: ${skillEffect(skill.id, state.loadout.skillLevel)}`;
     this.skill.disabled = state.skillUsed || state.status !== 'running';
     this.skill.textContent =
       state.skillLeft > 0

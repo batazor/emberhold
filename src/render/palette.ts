@@ -303,3 +303,22 @@ export const DUNGEON_SLOT_ORDER = [
 export const DUNGEON_PALETTE = paletteOf(
   DUNGEON_SLOT_ORDER.map((name) => (name === 'золото' ? 'латунь' : name)),
 );
+
+/** Минотавр Zero: шкура, рога и алая набедренная ткань. */
+export const MINOTAUR_SLOT_ORDER = [
+  'сукно-тень', 'краска-алая',
+  'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+  'соль-тень', 'соль', 'соль-свет', 'иней',
+] as const;
+
+export const MINOTAUR_PALETTE = paletteOf(MINOTAUR_SLOT_ORDER);
+
+/** Каменный голем Zero: скалы, земляные швы и холодное свечение. */
+export const STONE_GOLEM_SLOT_ORDER = [
+  'мрак', 'камень', 'камень-свет', 'скол',
+  'земля', 'дерево-тень', 'дерево',
+  'хвоя-тень', 'мох', 'трава',
+  'металл-тень', 'краска-синяя', 'стекло',
+] as const;
+
+export const STONE_GOLEM_PALETTE = paletteOf(STONE_GOLEM_SLOT_ORDER);

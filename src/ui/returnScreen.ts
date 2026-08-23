@@ -50,6 +50,13 @@ export interface ReturnCallbacks {
   onCamp(): void;
 }
 
+/** Прогресс конкретного героя, начисленный вместе с этим возвращением. */
+export interface ReturnProgress {
+  readonly xp: number;
+  readonly levels: number;
+  readonly level: number;
+}
+
 /**
  * Место для следующей вылазки: то же самое, пока в нём осталось хотя бы два
  * захода, иначе самое богатое из открытых. Автовыбора «лучшей локации» на
@@ -83,6 +90,9 @@ export class ReturnScreen {
   private readonly title: HTMLElement;
   private readonly subtitle: HTMLElement;
   private readonly lootBox: HTMLElement;
+  private readonly combatBox: HTMLElement;
+  private readonly combatGrid: HTMLElement;
+  private readonly levelLine: HTMLElement;
   private readonly lostLine: HTMLElement;
   private readonly progressLabel: HTMLElement;
   private readonly progressBar: HTMLElement;
@@ -134,6 +144,11 @@ export class ReturnScreen {
         <p class="dim" id="r-sub"></p>
         <div class="loot" id="r-loot"></div>
         <p class="bad" id="r-lost"></p>
+        <section class="card r-combat" id="r-combat">
+          <h3>Итог боя</h3>
+          <div class="r-combat-grid" id="r-combat-grid"></div>
+          <p class="good" id="r-level"></p>
+        </section>
         <div class="progress">
           <div class="lbl" id="r-plabel"></div>
           <div class="bar"><i id="r-pbar"></i></div>
@@ -150,6 +165,9 @@ export class ReturnScreen {
     this.title = q('r-title');
     this.subtitle = q('r-sub');
     this.lootBox = q('r-loot');
+    this.combatBox = q('r-combat');
+    this.combatGrid = q('r-combat-grid');
+    this.levelLine = q('r-level');
     this.lostLine = q('r-lost');
     this.progressLabel = q('r-plabel');
     this.progressBar = q('r-pbar');
@@ -222,6 +240,7 @@ export class ReturnScreen {
     onlyCamp = false,
     node = 0,
     now = 0,
+    progression: ReturnProgress | null = null,
   ): void {
     this.onChoice = onChoice;
     this.onlyCamp = onlyCamp;
@@ -279,6 +298,24 @@ export class ReturnScreen {
 
     this.lostLine.textContent =
       result.lost > 0 ? `Потеряно ${result.lost} из ${result.bagTotal}` : '';
+
+    const showCombat = result.fights > 0 || result.kills > 0 || result.damageTaken > 0;
+    this.combatBox.style.display = showCombat ? '' : 'none';
+    if (showCombat) {
+      const stats: readonly [string, number | string][] = [
+        ['Стычки', result.fights],
+        ['Побеждено', result.kills],
+        ['Получено урона', result.damageTaken],
+        ['Опыт за бой', `+${result.combatXp}`],
+        ['Всего опыта', progression === null ? '—' : `+${progression.xp}`],
+      ];
+      this.combatGrid.innerHTML = stats.map(([label, value]) =>
+        `<span>${label}</span><b>${value}</b>`,
+      ).join('');
+      this.levelLine.textContent = progression !== null && progression.levels > 0
+        ? `Новый уровень: ${progression.level} · +${progression.levels * 2} очк. характеристик · +${progression.levels} очк. умений`
+        : '';
+    }
 
     // §20.1 — главная кнопка это трата. Если тратить нечего, честно
     // предлагаем повтор, а не серую кнопку.

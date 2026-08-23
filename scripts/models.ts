@@ -1616,8 +1616,66 @@ const VILLAGE: Pack = {
   data: { file: 'src/render/village.data.ts', prefix: 'VILLAGE', type: 'VillagePart' },
 };
 
+/**
+ * Минотавр Zero с itch.io. Исходник приходит одним .blend без рига;
+ * `assets/minotaur/glb/Minotaur.glb` — механическая конверсия Blender, а
+ * в клиент, как и у прочих наборов, едет только запечённая геометрия.
+ */
+const MINOTAUR: Pack = {
+  id: 'minotaur',
+  title: 'Minotauro Low Poly by Zero',
+  dir: 'assets/minotaur',
+  sources: ['glb'],
+  atlas: 'Atlas.png',
+  ramps: [
+    { id: 'red', title: 'алая ткань', slots: ['сукно-тень', 'краска-алая'], hue: [330, 15], sat: [0.45, 1] },
+    { id: 'hide', title: 'шкура и кожа', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [5, 65], sat: [0.2, 1] },
+    { id: 'bone', title: 'рога', slots: ['соль-тень', 'соль', 'соль-свет', 'иней'], hue: [0, 70], sat: [0, 0.2] },
+  ],
+  slots: [
+    'сукно-тень', 'краска-алая',
+    'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+    'соль-тень', 'соль', 'соль-свет', 'иней',
+  ],
+  range: 'used',
+  fallback: 'red',
+  grey: 0.01,
+  categoryOf: () => 'Персонажи',
+  adopted: ['Minotaur'],
+  data: { file: 'src/render/minotaur.data.ts', prefix: 'MINOTAUR', type: 'Minotaur' },
+  license: 'license not stated on the asset page; attribution retained in assets/LICENSES.md',
+};
+
+/** Каменный голем Zero: бесплатная статичная версия, без рига. */
+const STONE_GOLEM: Pack = {
+  id: 'stone-golem',
+  title: 'Golem de Piedra by Zero',
+  dir: 'assets/stone-golem',
+  sources: ['glb'],
+  atlas: 'Atlas.png',
+  ramps: [
+    { id: 'stone', title: 'камень', slots: ['мрак', 'камень', 'камень-свет', 'скол'], hue: [0, 360], sat: [0, 0.2] },
+    { id: 'earth', title: 'земляные сколы', slots: ['земля', 'дерево-тень', 'дерево'], hue: [5, 60], sat: [0.18, 1] },
+    { id: 'moss', title: 'мох', slots: ['хвоя-тень', 'мох', 'трава'], hue: [60, 165], sat: [0.2, 1] },
+    { id: 'glow', title: 'жила', slots: ['металл-тень', 'краска-синяя', 'стекло'], hue: [165, 265], sat: [0.2, 1] },
+  ],
+  slots: [
+    'мрак', 'камень', 'камень-свет', 'скол',
+    'земля', 'дерево-тень', 'дерево',
+    'хвоя-тень', 'мох', 'трава',
+    'металл-тень', 'краска-синяя', 'стекло',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  grey: 0.01,
+  categoryOf: () => 'Персонажи',
+  adopted: ['StoneGolem'],
+  data: { file: 'src/render/stoneGolem.data.ts', prefix: 'STONE_GOLEM', type: 'StoneGolem' },
+  license: 'license not stated on the asset page; attribution retained in assets/LICENSES.md',
+};
+
 const PACKS: readonly Pack[] =
-  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, TOOLS, BUILDER, FOLK, CAMP, PROPS, VILLAGER, VILLAGE];
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, TOOLS, BUILDER, FOLK, CAMP, PROPS, VILLAGER, VILLAGE, MINOTAUR, STONE_GOLEM];
 
 /* ---------- png ---------- */
 

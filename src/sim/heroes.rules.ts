@@ -12,9 +12,15 @@ import { createCamp } from './camp';
 import { visionRadius } from './config';
 import {
   CACHE_LOOT,
+  MAX_SKILL_LEVEL,
+  SKILL_POINTS_PER_LEVEL,
   STAT_POINTS_PER_LEVEL,
   autoSpend,
+  cacheLoot,
+  enemyXp,
+  haulCapacity,
   spendStat,
+  spendSkill,
   stats,
   HAUL_CAPACITY,
   HERO_CLASSES,
@@ -36,6 +42,7 @@ import {
   trainBlock,
   trainCap,
   trainPerLevel,
+  trailDiscount,
   xpToNext,
 } from './heroes';
 import type { HeroState } from './heroes';
@@ -285,6 +292,27 @@ describe('Отряд', () => {
     assert.equal(addXp(hero, xpToNext(1) - 1), 0, 'до порога уровня нет');
     assert.equal(addXp(hero, 1), 1, 'порог поднимает уровень');
     assert.equal(hero.level, 2);
+    assert.equal(hero.skillPoints, SKILL_POINTS_PER_LEVEL, 'уровень выдал очко умения');
+  });
+
+  test('боевой опыт зависит от противника и его уровня', () => {
+    assert.ok(enemyXp('minotaur', 1) > enemyXp('stone-golem', 1), 'босс ценнее помощника');
+    assert.ok(enemyXp('stone-golem', 1) > enemyXp('minion', 1), 'голем ценнее рядового');
+    assert.ok(enemyXp('warrior', 3) > enemyXp('warrior', 1), 'сильный враг даёт больше');
+  });
+
+  test('очко умения усиливает эффект и не тратится сверх максимума', () => {
+    const hero = createHero('archer', 0);
+    hero.skillPoints = MAX_SKILL_LEVEL;
+    const before = trailDiscount(hero.skillLevel);
+    assert.ok(spendSkill(hero), 'первое улучшение куплено');
+    assert.ok(trailDiscount(hero.skillLevel) > before, 'эффект вырос');
+    while (hero.skillLevel < MAX_SKILL_LEVEL) assert.ok(spendSkill(hero));
+    const points = hero.skillPoints;
+    assert.equal(spendSkill(hero), false, 'выше потолка купить нельзя');
+    assert.equal(hero.skillPoints, points, 'очко на потолке не пропало');
+    assert.ok(haulCapacity(MAX_SKILL_LEVEL) > HAUL_CAPACITY, 'Заплечье тоже растёт');
+    assert.ok(cacheLoot(MAX_SKILL_LEVEL) > CACHE_LOOT, 'Схрон тоже растёт');
   });
 
   test('§11.7 — уровень выдаёт очки характеристик, и тратит их игрок', () => {
@@ -309,6 +337,7 @@ describe('Отряд', () => {
     refreshHeroes(roster, TRAIN_PER_LEVEL + 1);
     assert.equal(knight.level, 2);
     assert.equal(knight.statPoints, STAT_POINTS_PER_LEVEL);
+    assert.equal(knight.skillPoints, SKILL_POINTS_PER_LEVEL);
   });
 
   test('§11.7 — авто-трата детерминирована и ходит по весам класса', () => {

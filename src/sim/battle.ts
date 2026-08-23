@@ -49,6 +49,10 @@ export const ROUND_SECONDS = 2;
  */
 export const FOOD_PER_ROUND = 1;
 
+/** Уникальные приёмы обитателей замка; числа принадлежат правилам, не анимации. */
+export const MINOTAUR_CHARGE_BONUS = 3;
+export const STONE_ARMOR = 2;
+
 /**
  * §11.3 — уворот. Модель взята из Wasteland Punk: уворот — не вечная лотерея,
  * а **плавающий ресурс**. База считается из Ловкости; каждый промах сжигает
@@ -186,6 +190,8 @@ export type BattlePlay =
       readonly killed: boolean;
       /** Стойкость цели после удара — полоска тикает по протоколу. */
       readonly hpAfter: number;
+      /** Визуальный слой читает приём, но его эффект уже полностью решён здесь. */
+      readonly technique?: 'minotaur-charge' | 'stone-armor' | undefined;
     }
   | { readonly kind: 'guard'; readonly unit: number };
 
@@ -520,6 +526,11 @@ export function apply(
       const target = state.units.find((u) => u.id === action.target && u.hp > 0);
       if (target === undefined) return false;
       if (!targets(state, size, blocked, unit).includes(target)) return false;
+      const technique = unit.kind === 'minotaur' && unit.moved
+        ? 'minotaur-charge'
+        : target.kind === 'stone-golem'
+          ? 'stone-armor'
+          : undefined;
       // Уворот (§11.3). Бросок детерминирован сидом и номером удара; блок
       // уворота не даёт — держащий стоит, а не уходит с линии. Промах
       // сжигает часть уворота цели, но не ниже трети базы: увёртливого
@@ -541,12 +552,18 @@ export function apply(
           blocked: false,
           killed: false,
           hpAfter: target.hp,
+          technique,
         });
         state.events.push(`${name(unit)} бьёт — ${name(target)} уходит от удара`);
         unit.acted = true;
         return true;
       }
-      const raw = damageOf(unit, target);
+      const base = damageOf(unit, target);
+      const raw = technique === 'minotaur-charge'
+        ? base + MINOTAUR_CHARGE_BONUS
+        : technique === 'stone-armor'
+          ? Math.max(1, base - STONE_ARMOR)
+          : base;
       const dealt = target.guarding ? Math.max(1, Math.round(raw * GUARD_SHARE)) : raw;
       target.hp -= dealt;
       plays?.push({
@@ -560,7 +577,10 @@ export function apply(
         blocked: target.guarding,
         killed: target.hp <= 0,
         hpAfter: Math.max(0, target.hp),
+        technique,
       });
+      if (technique === 'minotaur-charge') state.events.push('Минотавр идёт на таран');
+      if (technique === 'stone-armor') state.events.push('Каменная броня смягчает удар');
       state.events.push(
         target.guarding
           ? `${name(unit)} бьёт — ${name(target)} держит`

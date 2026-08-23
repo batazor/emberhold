@@ -36,6 +36,8 @@ import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
 import type { GearSlot, Offhand } from './sim/gear';
 import {
   HERO_CLASSES,
+  MAX_HERO_LEVEL,
+  MAX_SKILL_LEVEL,
   SKILLS,
   activeHero,
   applyRaidOutcome,
@@ -44,6 +46,8 @@ import {
   raidBlock,
   refreshHeroes,
   selectHero,
+  skillEffect,
+  spendSkill,
   spendStat,
   startTraining,
   syncRoster,
@@ -212,6 +216,16 @@ import type { Spot } from './sim/castle';
 import { FENCE } from './sim/fence';
 import { atTrader, generateCastleSite, type CastleSite } from './sim/castleSite';
 import {
+  acceptMinotaurQuest,
+  claimMinotaurRelic,
+  completeMinotaurQuest,
+  generateMinotaurCastle,
+  makeMinotaurTrade,
+  minotaurResourceText,
+  minotaurTradeRewardText,
+  type MinotaurCastleSite,
+} from './sim/minotaurCastle';
+import {
   GUEST_REASON,
   GUEST_TERM_COST,
   GUEST_WORK,
@@ -228,6 +242,7 @@ import { generateTrailSite, type TrailSite } from './sim/trailSite';
 import { DEAL_REASON, askOf, dealBlock, makeDeal, marketKey, pruneBought, stockOf, worthOf } from './sim/trade';
 import type { Stock } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
+import { MinotaurPanel } from './ui/minotaurPanel';
 import type { GraveSite } from './sim/graveSite';
 import { events, loadTelemetry, setTelemetrySink, track } from './sim/telemetry';
 import { analyticsIdentify, startAnalytics } from './core/analytics';
@@ -249,6 +264,7 @@ import { CampLocations, FarmOnboarding } from './ui/farmOnboarding';
 import type { CampLocation } from './ui/farmOnboarding';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
+import type { ReturnProgress } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
 import { ClanPanel } from './ui/clanPanel';
 import { MailButton } from './ui/mail';
@@ -1142,6 +1158,7 @@ function characterSubject(): CharacterSubject | null {
       good: hero.status === 'ready' && hero.wounds === 0,
       level: hero.level,
       xp: hero.xp / xpToNext(hero.level),
+      xpText: hero.level >= MAX_HERO_LEVEL ? 'максимум' : `${hero.xp} / ${xpToNext(hero.level)} опыта`,
       // «Сила» не показывается: её не читает ни бой, ни обзор, ни генератор
       // (§11.7), и строка о ней была бы враньём на целый экран.
       stats: [
@@ -1151,7 +1168,14 @@ function characterSubject(): CharacterSubject | null {
         { name: 'Ловкость', key: 'agility', value: s.agility },
       ],
       points: hero.statPoints,
-      note: `${skill.name} — ${skill.effect} · ${def.strong}, ${def.weak}`,
+      note: `${def.strong}, ${def.weak}`,
+      skill: {
+        name: skill.name,
+        level: hero.skillLevel,
+        max: MAX_SKILL_LEVEL,
+        points: hero.skillPoints,
+        effect: skillEffect(skill.id, hero.skillLevel),
+      },
       train: {
         text:
           hero.status === 'training'
@@ -1182,9 +1206,11 @@ function characterSubject(): CharacterSubject | null {
     good: roofed,
     level: null,
     xp: -1,
+    xpText: null,
     stats: [],
     points: 0,
     note: `Занятие: носит ${carry} — прибавка в кладовую, пока есть крыша`,
+    skill: null,
     train: null,
     gear: camp.gear,
     offhand: camp.offhand,
@@ -1221,6 +1247,13 @@ const characterPage = new CharacterPage(app, {
   onSpend: (key) => {
     const hero = about?.kind === 'герой' ? roster.heroes[about.index] : undefined;
     if (hero === undefined || !spendStat(hero, key)) return;
+    syncCharacter();
+    persist();
+  },
+  onSkill: () => {
+    const hero = about?.kind === 'герой' ? roster.heroes[about.index] : undefined;
+    if (hero === undefined || !spendSkill(hero)) return;
+    campHud.notify(`${SKILLS[HERO_CLASSES[hero.cls].skill].name}: уровень ${hero.skillLevel}`);
     syncCharacter();
     persist();
   },
@@ -2107,6 +2140,59 @@ const tradePanel = new TradePanel(app, {
   },
 });
 
+let minotaurLeft = false;
+const minotaurPanel = new MinotaurPanel(app, {
+  onFight: () => {
+    const enemy = minotaurNow?.minotaur;
+    if (enemy === null || enemy === undefined || enemy.hp <= 0) return;
+    for (const defender of minotaurNow?.loc.enemies ?? []) {
+      defender.peaceful = false;
+      defender.awake = true;
+    }
+    minotaurPanel.hide();
+    if (raid !== null) raid.events.push('Минотавр и два каменных голема принимают вызов');
+  },
+  onTrade: (id) => {
+    const deal = makeMinotaurTrade(camp, id);
+    if (deal === null) {
+      play('deny');
+      raid?.events.push('Не хватает ресурсов для обмена');
+      return;
+    }
+    play('build');
+    const tradeBonus = Object.values(camp.minotaurRelics ?? {}).includes('golem-heart') ? 1 : 0;
+    const tradeReward = minotaurTradeRewardText(deal, tradeBonus);
+    raid?.events.push(
+      `${RESOURCE_NAME[deal.costKind]} −${deal.costAmount}, получено: ${tradeReward}`,
+    );
+    minotaurPanel.sync(camp);
+    persist();
+  },
+  onQuest: (id) => {
+    if (minotaurNow === null) return;
+    const seed = minotaurNow.loc.seed;
+    const key = String(seed >>> 0);
+    const existing = camp.minotaurQuests?.[key];
+    if (existing === undefined || existing.completed) {
+      const quest = acceptMinotaurQuest(camp, seed, id);
+      raid?.events.push(`Заказ принят: ${quest.title} · ${minotaurResourceText(quest.kind, quest.amount)}`);
+    } else if (completeMinotaurQuest(camp, seed)) {
+      const bonus = Object.values(camp.minotaurRelics ?? {}).includes('golden-horn') ? 1.2 : 1;
+      raid?.events.push(`Заказ выполнен: монеты +${Math.round(existing.reward * bonus)}, репутация +${existing.reputation ?? 1}`);
+      play('build');
+    } else if (!existing.completed) {
+      raid?.events.push('Для выполнения заказа ресурсов пока не хватает');
+      play('deny');
+    }
+    minotaurPanel.sync(camp);
+    persist();
+  },
+  onLeave: () => {
+    minotaurLeft = true;
+    minotaurPanel.hide();
+  },
+});
+
 /**
  * Подсказка гаснет, пока идёт разговор. Две строки внизу разом — это
  * не тесная вёрстка, а два указания сразу, чего раскадровка не разрешает
@@ -2501,18 +2587,18 @@ function beginUpgrade(id: BuildingId): boolean {
 
 /**
  * Вернувшийся герой ранен и занят лечением (§3) — на этом и держится
- * потребность в ротации. Опыт начисляется от вынесенного, а не от времени
- * в локации: иначе выгодно бродить, а не решать.
+ * потребность в ротации. Опыт начисляется за побеждённых врагов и итог
+ * вылазки, а не за время в локации: иначе выгодно бродить, а не решать.
  */
 function finishRaidForHero(
   state: RaidState,
   carried: number,
   evacuated: boolean,
   now: number,
-): void {
+): ReturnProgress | null {
   const hero = raidHero;
   raidHero = null;
-  if (hero === null) return;
+  if (hero === null) return null;
 
   const name = HERO_CLASSES[hero.cls].name;
   const outcome = applyRaidOutcome(
@@ -2525,8 +2611,12 @@ function finishRaidForHero(
     // §11.8 — Лазарет сокращает простой. Уровень читается здесь, а не внутри
     // отряда: расписание героя — его дело, а цена времени — дело лагеря.
     camp.levels.infirmary,
+    state.combatXp,
   );
-  if (outcome.levels > 0) campHud.notify(`${name}: уровень ${hero.level}`);
+  if (outcome.xp > 0) campHud.notify(`${name}: +${outcome.xp} опыта`);
+  if (outcome.levels > 0) {
+    campHud.notify(`${name}: уровень ${hero.level} · +${outcome.levels} очк. навыка`);
+  }
   if (outcome.healSec > 0) {
     track({ t: 'heal_start', at: now, cls: hero.cls, wounds: outcome.wounds, seconds: outcome.healSec });
     // Здание называется только построенное. Прежде строка звала в Лазарет,
@@ -2537,6 +2627,7 @@ function finishRaidForHero(
       `${name} ранен — ${where}${HeroCard.healText(outcome.wounds, camp.levels.infirmary)}`,
     );
   }
+  return { xp: outcome.xp, levels: outcome.levels, level: hero.level };
 }
 
 /* ---------- звук (§18) ---------- */
@@ -2923,6 +3014,7 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   // Замок (§6.1.6) — не вылазка: там нечего добывать и не с кем драться,
   // и заход в него не тратит ни богатство места, ни героя.
   if (place.kind === 'замок') return toCastle(node, nodeSeed(day, node));
+  if (place.kind === 'замок минотавра') return toMinotaurCastle(node, nodeSeed(day, node));
   // Кладбище (§6.1.7) — та же прогулка, но населённая: добычи нет,
   // а привидения есть.
   if (place.kind === 'кладбище') return toGraveyard(node, nodeSeed(day, node));
@@ -3017,6 +3109,8 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
 
 /** Площадка последнего замка: ручка отладочной сцены `?castle`. */
 let castleNow: CastleSite | null = null;
+/** Особый замок: хозяин, сундук и разговор живут одной сценой. */
+let minotaurNow: MinotaurCastleSite | null = null;
 
 /**
  * Гость у стен замка (`sim/castleGuest.ts`) и его разговор. Состояние живёт
@@ -3262,6 +3356,9 @@ function stepGatherers(dt: number): void {
  */
 function leaveWalkSites(): void {
   castleNow = null;
+  minotaurNow = null;
+  minotaurLeft = false;
+  minotaurPanel.hide();
   graveSite = null;
   // §13.8 — местные живут при сцене места: сцены нет, и ходить некому.
   gatherers = [];
@@ -3274,6 +3371,46 @@ function leaveWalkSites(): void {
   guestMeet = null;
   if (guestShown) meetPanel.hide();
   guestShown = false;
+}
+
+function toMinotaurCastle(node: number, seed: number): boolean {
+  const hero = heroForRaid();
+  if (hero === null) {
+    campHud.notify('Для встречи с минотавром нужен свободный герой');
+    return false;
+  }
+  const defeated = (camp.minotaurVictories ?? []).includes(seed >>> 0);
+  const claimed = (camp.minotaurClaims ?? []).includes(seed >>> 0);
+  const site = generateMinotaurCastle(seed, defeated, claimed);
+  leaveWalkSites();
+  minotaurNow = site;
+  raidNode = node;
+  hero.status = 'raid';
+  raidHero = hero;
+  chop = null;
+  raidView?.dispose();
+  raid = createRaid({
+    seed, tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero), followers: followersOf(hero),
+    loc: site.loc, evacOpen: true, containerFood: 0, hunger: false,
+    gear: camp.gear, offhand: camp.offhand,
+  });
+  raidView = new RaidView(
+    raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null,
+    camp.gear.weapon, mateClasses(raid), false,
+  );
+  hud.setGrass(grassPerTile);
+  rig.world.add(raidView.group);
+  campView.group.visible = false;
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  rig.setZoom(24, true);
+  setNight(0.25);
+  resultShown = false;
+  ear.reset(raid);
+  showScene('raid', 0);
+  return true;
 }
 
 function toGraveyard(node: number, seed: number): boolean {
@@ -4993,6 +5130,8 @@ if (debugTier !== null || debugNode !== null) {
  *   поверху, разрыв на башне, проезд под воротами и подъём.
  * `?test=farm-intro|farm-goal|farm-reward` — три состояния карточек пищи.
  *   Текст и адаптивную раскладку можно проверять без прохождения пролога.
+ * `?test=character` — экран героя с опытом и свободным очком умения.
+ * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
  *
  * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
  * но открыть их можно лишь адресом, которого в игре нет.
@@ -5073,6 +5212,37 @@ if (debugCamp !== null) {
   // Площадка напрямую, мимо маршрутизатора: второй лагерь существует
   // чисто для тестов, и сейв с поляной не должен уводить кадр отладки.
   toPadCamp();
+  if (debugCamp === 'character') {
+    const hero = roster.heroes[0]!;
+    hero.level = 2;
+    hero.xp = 90;
+    hero.statPoints = 2;
+    hero.skillPoints = 1;
+    openCharacter({ kind: 'герой', index: 0 });
+  }
+  if (debugCamp === 'return') {
+    const sample = createRaid({ seed: 73, tier: 2, kitchenLevel: 3, storageLevel: 2 });
+    sample.status = 'evacuated';
+    sample.bag.stone = 12;
+    sample.bag.iron = 5;
+    sample.bag.crystal = 2;
+    sample.bagTotal = 19;
+    sample.maxBack = 18;
+    sample.elapsed = 154;
+    sample.fights = 3;
+    sample.kills = 4;
+    sample.damageTaken = 7;
+    sample.combatXp = 118;
+    returnScreen.show(
+      raidResult(sample),
+      camp,
+      () => {},
+      false,
+      0,
+      clock.now(),
+      { xp: 166, levels: 1, level: 3 },
+    );
+  }
   // Ручка к состоянию сцены. Без неё отладочная сцена показывает кадр,
   // но ответить на вопрос «а герой-то поднялся?» может только глаз.
   // Живёт только вместе с отладочным адресом.
@@ -5321,6 +5491,36 @@ if (debugCastle !== null) {
     // что он вошёл во двор, и без ручки к нему сцена этого не показывает —
     // до ворот пришлось бы идти пешком.
     raid: () => raid,
+    tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
+    rig,
+  };
+}
+
+/** `?minotaur=СИД` — прямая сцена особого замка для проверки разговора и боя. */
+const debugMinotaur = debugParams.get('minotaur');
+if (debugMinotaur !== null) {
+  const place = today.find((n) => n.kind === 'замок минотавра');
+  const seed = debugMinotaur === '' ? null : Number(debugMinotaur);
+  leaveTitle();
+  toMinotaurCastle(
+    place?.id ?? 0,
+    seed !== null && Number.isFinite(seed) ? seed : nodeSeed(dayAt(clock.now()), place?.id ?? 0),
+  );
+  // Разговор проверяется сразу: пеший путь через ворота уже стережёт замок.
+  const localRaid = raid as RaidState | null;
+  const localSite = minotaurNow as MinotaurCastleSite | null;
+  if (localRaid !== null && localSite?.minotaur != null) {
+    localRaid.hero.x = localSite.minotaur.x + 1;
+    localRaid.hero.z = localSite.minotaur.z;
+    localRaid.hero.prevX = localRaid.hero.x;
+    localRaid.hero.prevZ = localRaid.hero.z;
+    rig.lookAt(localRaid.hero.x, localRaid.hero.z, true);
+  }
+  (window as unknown as { debug: unknown }).debug = {
+    site: () => minotaurNow,
+    raid: () => raid,
+    hero: () => raid?.hero ?? null,
+    talk: () => minotaurNow?.minotaur ?? null,
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
     rig,
   };
@@ -5737,6 +5937,7 @@ startLoop({
       // решает раунд мгновенно, и тряска раньше видимого удара читалась бы
       // как сбой. Здесь остаются раны вне боя — голод.
       if (raidView !== null) raidView.onHeroHit = shake;
+      if (raidView !== null) raidView.onHeavyImpact = shake;
       if (raid.hero.hp < woundsBefore && raid.battle === null) shake();
       if (sayNext !== null) {
         raid.events.push(sayNext);
@@ -5766,6 +5967,32 @@ startLoop({
         if (show) tradePanel.sync(camp, traderStock());
         // Гость у стен: разговор тем же жестом подхода, что лавка выше.
         syncGuestMeet();
+      }
+      if (minotaurNow !== null) {
+        const enemy = minotaurNow.minotaur;
+        const alive = enemy !== null && enemy.hp > 0;
+        const near = alive && Math.hypot(raid.hero.x - enemy.x, raid.hero.z - enemy.z) <= 3;
+        if (!near) minotaurLeft = false;
+        const talking = near && enemy.peaceful === true && !minotaurLeft;
+        if (talking) {
+          if (!minotaurPanel.visible) minotaurPanel.show(camp, minotaurNow.loc.seed);
+        } else if (minotaurPanel.visible) {
+          minotaurPanel.hide();
+        }
+
+        const seed = minotaurNow.loc.seed >>> 0;
+        const defendersDown = minotaurNow.loc.enemies.every((defender) => defender.hp <= 0);
+        if (enemy !== null && defendersDown && !(camp.minotaurVictories ?? []).includes(seed)) {
+          (camp.minotaurVictories ??= []).push(seed);
+          raid.events.push('Минотавр повержен — золотой сундук теперь можно открыть');
+          persist();
+        }
+        if (minotaurNow.goldenChest.opened && !(camp.minotaurClaims ?? []).includes(seed)) {
+          (camp.minotaurClaims ??= []).push(seed);
+          const relic = claimMinotaurRelic(camp, seed);
+          raid.events.push(`Золотой сундук: редкий предмет «${relic.name}» · ${relic.effect}`);
+          persist();
+        }
       }
       // §13.8 — местные ходят к своим кустам на тех же часах, что кусты
       // считаются: одно место — одно время.
@@ -5840,7 +6067,7 @@ startLoop({
          * остальных» (§11.11) — считалась вместе с ними, а у прогулки глубина
          * бессмысленна: ходить там некуда и не за чем.
          */
-        const counts = raidHero !== null;
+        const counts = raidHero !== null && minotaurNow === null;
         // §14.3 — невыстреленное и подобранное возвращается вместе с героем.
         // Провалившийся не возвращает ничего: он и добычу теряет по §11.2,
         // и колчан у него отняли там же.
@@ -5853,7 +6080,12 @@ startLoop({
           // §22.6б — ярус взрослеет заходами: смягчение входа кончается.
           camp.tierRaids[result.tier] += 1;
         }
-        finishRaidForHero(raid, result.carriedTotal, result.status === 'evacuated', now);
+        const progression = finishRaidForHero(
+          raid,
+          result.carriedTotal,
+          result.status === 'evacuated',
+          now,
+        );
         for (const id of result.fired) {
           track({ t: 'consumable', at: now, id, phase: 'fire' });
         }
@@ -5890,6 +6122,7 @@ startLoop({
           firstReturn,
           raidNode,
           clock.now(),
+          progression,
         );
       }
       return;

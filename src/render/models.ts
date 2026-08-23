@@ -4,6 +4,8 @@ import { CRAFT_LOOKS } from '../sim/garrison';
 import type { DwellerLook } from '../sim/garrison';
 import type { HeroClassId } from '../sim/heroes';
 import type { EnemyKind, RaidEnemyKind } from '../sim/types';
+import { minotaurGeometry } from './minotaur';
+import { stoneGolemGeometry } from './stoneGolem';
 import { adventurerGeometry, adventurerHeld, adventurerParts } from './adventurers';
 import type { Held } from './adventurers';
 import { WEAPONS_MODELS } from './weapons.data';
@@ -450,6 +452,8 @@ const ENEMY_MODELS: Record<EnemyKind, () => THREE.BufferGeometry> = {
   // Стражник замка — тот же рыцарь с мечом, что ходит дозором (§6.1.6):
   // засада сундука поднимает гарнизон, а не третью породу людей.
   guard: () => adventurerGeometry('Knight', heroHeight('knight'), adventurerHeld('sword_1handed')),
+  minotaur: () => minotaurGeometry(2.05),
+  'stone-golem': () => stoneGolemGeometry(1.55),
   // Те же числа, что в ENEMY_HEIGHT ниже: неподвижная версия обязана стоять
   // ровно там же, где стоит подвижная.
 };
@@ -602,6 +606,8 @@ export const ENEMY_HEIGHT: Record<EnemyKind, number> = {
   // Стражник — рост героя, той же меркой, что дозор (§6.1.6): гарнизон
   // и герой — люди одного мира.
   guard: heroHeight('knight'),
+  minotaur: 2.05,
+  'stone-golem': 1.55,
 };
 
 const ENEMY_PARTS: Record<RaidEnemyKind, () => RiggedParts> = {
