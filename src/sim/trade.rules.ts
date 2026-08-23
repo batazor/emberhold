@@ -14,7 +14,7 @@ import {
   marketKey, offerLine, offerOf, pruneBought, stockOf, trade, tradeBlock,
 } from './trade';
 import { generateCastleSite } from './castleSite';
-import { localsTook } from './berries';
+import { localsOf, localsTook } from './berries';
 import { DAY_SEC } from './world';
 import { WORK_SECONDS } from './residents';
 import type { DealBlock } from './trade';
@@ -200,9 +200,15 @@ describe('Обмен: операция', () => {
  */
 describe('Обмен: прилавок', () => {
   /** Замер `npm run trade`: 300 замков × 30 суток. Пищи за сутки, в среднем. */
-  const LOCALS_FOOD_PER_DAY = 3.0;
-  /** Доля суток, когда местные не принесли ничего и пищи не купить. */
-  const EMPTY_SHARE = 0.2;
+  const LOCALS_FOOD_PER_DAY = 7.7;
+  /**
+   * Доля суток, когда местные не принесли ничего и пищи не купить. Была
+   * пятой частью, стала сотой в тот день, когда у местных появились ноги
+   * (§13.8): собиратель, дошедший до куста, кладёт снятое на тот же прилавок.
+   * Отказ от этого не отменяется — он становится редким, а слова ему всё
+   * равно положены.
+   */
+  const EMPTY_SHARE = 0.01;
 
   const camp0 = (): ReturnType<typeof createCamp> => {
     const camp = createCamp();
@@ -277,7 +283,7 @@ describe('Обмен: прилавок', () => {
     for (let i = 0; i < 40; i++) {
       const site = generateCastleSite(1000 + i * 7919);
       for (let d = 0; d < 14; d++) {
-        const food = localsTook(site.loc.seed, site.bushes, site.gate, d * DAY_SEC + 60);
+        const food = localsTook(site.loc.seed, site.bushes, localsOf(site.gate, site.bushes), d * DAY_SEC + 60);
         sum += food;
         if (food === 0) empty++;
         n++;
@@ -291,7 +297,7 @@ describe('Обмен: прилавок', () => {
     );
     assert.ok(perDay > 0.5, 'прилавок пуст всегда — это не запас, а закрытая лавка');
     assert.ok(
-      Math.abs(empty / n - EMPTY_SHARE) < 0.15,
+      Math.abs(empty / n - EMPTY_SHARE) < 0.05,
       `прилавок пуст в ${((empty / n) * 100).toFixed(0)}% суток против записанных ${EMPTY_SHARE * 100}%`,
     );
   });

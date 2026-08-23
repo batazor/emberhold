@@ -11,7 +11,7 @@
 import { BUILD_COST } from '../src/sim/camp';
 import { PARITY, STOCKED, feeOf, offerOf } from '../src/sim/trade';
 import { generateCastleSite } from '../src/sim/castleSite';
-import { BERRY_FOOD_AVG, BUSHES, RIPEN_SECONDS, berryYield, localsTook, takenByLocals, wildRipe } from '../src/sim/berries';
+import { BERRY_FOOD_AVG, BUSHES, RIPEN_SECONDS, berryYield, localsOf, localsTook, takenByLocals } from '../src/sim/berries';
 import { FOOD_PER_MOUTH } from '../src/sim/balance';
 import { WORK_CAP, WORK_SECONDS } from '../src/sim/residents';
 import { DAY_SEC } from '../src/sim/world';
@@ -154,7 +154,7 @@ for (let i = 0; i < SEEDS; i++) {
   const site = generateCastleSite(1000 + i * 7919);
   let sum = 0;
   for (let d = 0; d < DAYS; d++) {
-    const food = localsTook(site.loc.seed, site.bushes, site.gate, d * DAY_SEC + 60);
+    const food = localsTook(site.loc.seed, site.bushes, localsOf(site.gate, site.bushes), d * DAY_SEC + 60);
     daily.push(food);
     sum += food;
   }
@@ -183,9 +183,9 @@ for (let i = 0; i < SEEDS; i++) {
   for (let e = 0; e < (DAYS * DAY_SEC) / RIPEN_SECONDS; e++) {
     const at = e * RIPEN_SECONDS + 60;
     let food = 0;
+    const locals = localsOf(site.gate, site.bushes);
     for (const bush of site.bushes) {
-      if (!wildRipe(site.loc.seed, bush, at)) continue;
-      if (takenByLocals(site.loc.seed, bush, site.gate, at)) food += berryYield(bush);
+      if (takenByLocals(site.loc.seed, bush, locals, at)) food += berryYield(bush);
     }
     windowly.push(food);
   }

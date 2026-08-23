@@ -295,9 +295,14 @@ import {
   tentSpot,
 } from './sim/residents';
 import { payUpkeep, workingAfter } from './sim/upkeep';
-import { PICK_REASON, bushAt, localsTook, pickKey, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
+import { PICK_REASON, bushAt, localsOf, localsTook, pickKey, ripe, startPick, stepPickInto, worldBlock, worldRipe } from './sim/berries';
+import type { Locals } from './sim/berries';
+// §13.8 — местные у своих кустов: маршруты им кладёт та же рутина,
+// что водит добытчика поляны (`sim/chores.ts`).
+import { gatherersOf } from './sim/gatherers';
+import type { Gatherer } from './sim/gatherers';
 import type { Bush } from './sim/berries';
-import { RESIDENT_TOOL, guardHeight } from './render/models';
+import { RESIDENT_TOOL, RESIDENT_WORK_CLIP, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
 import type { Chore } from './sim/chores';
 import { chatAt, phraseAt } from './sim/talk';
@@ -1814,7 +1819,11 @@ function stepChores(dt: number): void {
     const talking = !f.walking && !f.working && speech[i] !== null;
     raidView!.driveResident(i, f.x, f.z, f.walking, f.working, dt, {
       speed: DWELLER_SPEED,
-      workClip: 'рубит',
+      // Клип занятия, а не один на всех: §13.8 записал, что добытчик у куста
+      // сидит на корточках, а поляна до сих пор заставляла его рубить ягоды.
+      // Веер лагеря (`campView`) играл правильный клип, кадр поляны — нет,
+      // и это было два ответа на один вопрос.
+      workClip: RESIDENT_WORK_CLIP[camp.residents[i]?.answer ?? 'строим'],
       talking,
       glide: true,
     });
@@ -2024,7 +2033,7 @@ let tradeLeft = false;
 function traderStock(): Stock | null {
   if (castleNow === null) return null;
   const supply = localsTook(
-    castleNow.loc.seed, castleNow.bushes, castleNow.gate, clock.now(),
+    castleNow.loc.seed, castleNow.bushes, localsOf(castleNow.gate, castleNow.bushes), clock.now(),
   );
   return stockOf(supply, camp.bought ?? {}, castleNow.loc.seed, clock.now());
 }
@@ -3036,6 +3045,118 @@ let readStone: string | null = null;
 let trailSite: TrailSite | null = null;
 
 /**
+ * §13.8 — куст места под пальцем: чем сцена отвечает на тап и по чему считает
+ * полноту узла. Одна функция на все три ответа (кадр, тап, отказ) намеренно:
+ * три копии этой четвёрки разошлись бы молча, и первым разошёлся бы тот,
+ * кто решает, есть ли на кусте ягоды.
+ *
+ * `locals` — люди места. У замка это ворота и размах поля; **у кладбища
+ * их нет вовсе**, и это не пропуск: живых там не живёт, там привидения
+ * (§6.1.7.1), а привидение ягод не собирает. Пока «местные» были безымянным
+ * множителем формулы, кладбищенский дичок обирал никто — формула объявляла
+ * его пустым, а показать было некого.
+ */
+function walkSite(): {
+  place: string;
+  bushes: readonly Bush[];
+  locals: Locals | null;
+  seed: number;
+} | null {
+  if (castleNow !== null) {
+    return {
+      place: 'замок',
+      bushes: castleNow.bushes,
+      locals: localsOf(castleNow.gate, castleNow.bushes),
+      seed: castleNow.loc.seed,
+    };
+  }
+  if (graveSite !== null) {
+    return { place: 'кладбище', bushes: graveSite.bushes, locals: null, seed: graveSite.loc.seed };
+  }
+  return null;
+}
+
+/**
+ * §13.8 — местные у своих кустов: круги и то, что у них в руках. Живут при
+ * сцене места, как гарнизон: заход считает их один раз, уход выбрасывает.
+ */
+let gatherers: Gatherer[] = [];
+let gatherLoad: (boolean | undefined)[] = [];
+
+/**
+ * Расставить местных. Кого выпустить, решает формула (`takenBushes`), а не
+ * эта функция: она только переводит её ответ в тела.
+ *
+ * Тела берутся у жильцов сцены (`setResidents`) — тех самых, которыми
+ * поляна показывает рутину лагеря. В замке и на кладбище список пуст,
+ * и второй набор скелетов ради тех же людей был бы вторым способом
+ * поставить человека на клетку.
+ */
+function seatGatherers(site: CastleSite, locals: Locals | null): void {
+  gatherers = [];
+  gatherLoad = [];
+  if (raidView === null || locals === null) return;
+  const now = clock.now();
+  gatherers = gatherersOf(
+    {
+      seed: site.loc.seed,
+      size: site.loc.size,
+      blocked: site.loc.blocked,
+      bushes: site.bushes,
+      locals,
+    },
+    now,
+  );
+  raidView.setResidents(
+    gatherers.map((g) => {
+      const at = choreAt(g.chore, now);
+      // Инструмента нет: ягоды рвут руками (§13.8), и топор в руке
+      // собирателя обещал бы дровосека.
+      return { look: 'поселенец' as DwellerLook, x: at.x, z: at.z, facing: at.facing, seated: false };
+    }),
+  );
+}
+
+/**
+ * Тик местных. Устройство — `stepChores` поляны до буквы, и это то же самое
+ * устройство: маршрут — чистая функция часов, тела разведены вокруг героя.
+ * Разница ровно в двух вещах: сидящих у места нет (расталкивать некого),
+ * и ночи у места нет (§24 читается по небу, а неба тут нет).
+ */
+function stepGatherers(dt: number): void {
+  if (raid === null || raidView === null || gatherers.length === 0) return;
+  const size = raid.loc.size;
+  const free = (x: number, z: number): boolean => {
+    const cx = Math.round(x);
+    const cz = Math.round(z);
+    if (cx < 0 || cz < 0 || cx >= size || cz >= size) return false;
+    return raid!.loc.blocked[idx(size, cx, cz)] === 0;
+  };
+  const frames = choresAt(
+    gatherers.map((g) => g.chore),
+    clock.now(),
+    [{ x: raid.hero.x, z: raid.hero.z }],
+    free,
+  );
+  frames.forEach((f, i) => {
+    if (f === null) return;
+    raidView!.driveResident(i, f.x, f.z, f.walking, f.working, dt, {
+      speed: DWELLER_SPEED,
+      // Сидит на корточках: у куста не рубят и не кайлят (§13.8).
+      workClip: RESIDENT_WORK_CLIP['кормим'],
+      glide: true,
+    });
+    if (!f.walking) raidView!.faceResident(i, f.facing, dt);
+    // Домой с горстью, обратно налегке — та же половина круга, что у рутины
+    // поляны, и то же объяснение, зачем он ходил.
+    if (f.carrying !== gatherLoad[i]) {
+      gatherLoad[i] = f.carrying;
+      raidView!.setResidentLoad(i, f.carrying ? 'кормим' : null);
+    }
+  });
+}
+
+/**
  * Снять прогулочную сцену перед входом в любую другую.
  *
  * Флаг сцены живёт дольше самой сцены, и снимать его обязан **каждый вход,
@@ -3051,6 +3172,9 @@ let trailSite: TrailSite | null = null;
 function leaveWalkSites(): void {
   castleNow = null;
   graveSite = null;
+  // §13.8 — местные живут при сцене места: сцены нет, и ходить некому.
+  gatherers = [];
+  gatherLoad = [];
   readStone = null;
   trailSite = null;
   tradePanel.setVisible(false);
@@ -3089,7 +3213,9 @@ function toGraveyard(node: number, seed: number): boolean {
   raidView = new RaidView(
     raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, null,
     camp.gear.weapon, mateClasses(raid), false,
-    (bush) => worldRipe(site.loc.seed, 'кладбище', bush, site.gate, camp.picks ?? {}, clock.now()),
+    // §13.8 — на кладбище обирать некому: живых там не живёт (§6.1.7.1),
+    // и полнота дичка держится на одном созревании.
+    (bush) => worldRipe(site.loc.seed, 'кладбище', bush, null, camp.picks ?? {}, clock.now()),
   );
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
@@ -3131,11 +3257,18 @@ function toCastle(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
+  // §13.8 — люди замка: ворота, от которых они ходят, и размах поля, которым
+  // мерится «далеко». Считается один раз на заход: кусты за прогулку
+  // не переезжают.
+  const locals = localsOf(site.gate, site.bushes);
   raidView = new RaidView(
     raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null,
     camp.gear.weapon, mateClasses(raid), false,
-    (bush) => worldRipe(site.loc.seed, 'замок', bush, site.gate, camp.picks ?? {}, clock.now()),
+    (bush) => worldRipe(site.loc.seed, 'замок', bush, locals, camp.picks ?? {}, clock.now()),
   );
+  // Обираемые узлы получают тех, кто их обирает: формула сказала, кадр
+  // показал, и второго мнения о том же кусте не заведено.
+  seatGatherers(site, locals);
   // Гость у стен (`sim/castleGuest.ts`): выводится из сида площадки, а живёт
   // ли ещё здесь — решает лагерь. Позванный не сидит у стен второй раз,
   // и тёзка живущего не садится вовсе: `admit` различает людей именем,
@@ -3430,11 +3563,18 @@ function stepChopping(dt: number): void {
  * не добыча вылазки), а сорванное пишется в самоистекающий список
  * (`camp.picks`), потому что узлы мест не хранятся вовсе.
  */
-function startWorldPicking(place: string, bush: Bush, hub: { x: number; z: number }, seed: number): void {
+function startWorldPicking(place: string, bush: Bush, locals: Locals | null, seed: number): void {
   if (raid === null) return;
-  if (!worldRipe(seed, place, bush, hub, camp.picks ?? {}, clock.now())) {
+  /**
+   * §13.8 — отказ называет ту же причину, что кадр. «Ягоды ещё не поспели»,
+   * сказанное над кустом, от которого местный уносит горсть, было бы третьим
+   * мнением о том же узле: формула считает, собиратель показывает, а строка
+   * говорила бы своё.
+   */
+  const block = worldBlock(seed, place, bush, locals, camp.picks ?? {}, clock.now());
+  if (block !== 'ok') {
     play('deny');
-    say(PICK_REASON['зелёный']);
+    say(PICK_REASON[block]);
     return;
   }
   chop = null;
@@ -4508,15 +4648,11 @@ canvas.addEventListener('pointerdown', (e) => {
    * §13.8 — тап по кусту места. Спрашивается раньше валуна по тому же
    * правилу, что в лагере: куст ловится ровно своей клеткой.
    */
-  const site = castleNow !== null
-    ? { place: 'замок', bushes: castleNow.bushes, hub: castleNow.gate, seed: castleNow.loc.seed }
-    : graveSite !== null
-      ? { place: 'кладбище', bushes: graveSite.bushes, hub: graveSite.gate, seed: graveSite.loc.seed }
-      : null;
+  const site = walkSite();
   if (site !== null) {
     const bush = bushAt(site.bushes, cell);
     if (bush !== null) {
-      startWorldPicking(site.place, bush, site.hub, site.seed);
+      startWorldPicking(site.place, bush, site.locals, site.seed);
       return;
     }
   }
@@ -5010,6 +5146,28 @@ if (debugCastle !== null) {
     },
     watch: (t: number) => raidView?.setWatch(t),
     /**
+     * §13.8 — местные у кустов: кто вышел, к какому узлу и где он сейчас.
+     * Печатается вместе с ответом формулы про тот же узел — вопрос
+     * «разошлись ли кадр и число» задаётся ровно об этом, и отвечать
+     * на него глазом по кадру нечестно.
+     */
+    gatherers: (t = clock.now()) =>
+      gatherers.map((g) => {
+        const at = choreAt(g.chore, t);
+        return {
+          bush: [g.bush.id, g.bush.x, g.bush.z],
+          at: [+at.x.toFixed(2), +at.z.toFixed(2)],
+          walking: at.walking,
+          working: at.working,
+          carrying: at.carrying,
+          cycle: +g.chore.circuit.toFixed(1),
+          // Формула про тот же узел: полон ли он для игрока.
+          ripe: castleNow === null
+            ? null
+            : worldRipe(castleNow.loc.seed, 'замок', g.bush, localsOf(castleNow.gate, castleNow.bushes), camp.picks ?? {}, t),
+        };
+      }),
+    /**
      * Прилавок торговца (§13.5). Глазом его видно только у самого прилавка,
      * а вопрос «сколько сегодня принесли местные» задаётся раньше, чем герой
      * дойдёт. Ручка отвечает на него сразу — и принимает время, потому что
@@ -5018,7 +5176,7 @@ if (debugCastle !== null) {
     counter: (shift = 0) => {
       if (castleNow === null) return null;
       const at = clock.now() + shift;
-      const supply = localsTook(castleNow.loc.seed, castleNow.bushes, castleNow.gate, at);
+      const supply = localsTook(castleNow.loc.seed, castleNow.bushes, localsOf(castleNow.gate, castleNow.bushes), at);
       return {
         brought: supply,
         bought: (camp.bought ?? {})[marketKey(castleNow.loc.seed, at)] ?? 0,
@@ -5492,6 +5650,9 @@ startLoop({
         // Гость у стен: разговор тем же жестом подхода, что лавка выше.
         syncGuestMeet();
       }
+      // §13.8 — местные ходят к своим кустам на тех же часах, что кусты
+      // считаются: одно место — одно время.
+      stepGatherers(dt);
       // Рубка идёт после шага и до уха: упавшее дерево ложится в рюкзак,
       // а прибавку в рюкзаке ухо озвучивает само (§18.1).
       stepChopping(dt);

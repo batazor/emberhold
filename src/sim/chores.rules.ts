@@ -313,6 +313,47 @@ describe('Сон жильцов (§24)', () => {
   });
 });
 
+describe('Площадка без неба (§13.8 — места мира)', () => {
+  test('смена отдана кругам целиком: никто не спит и не замирает', () => {
+    // У места мира свет назначен сценой раз и навсегда, и ночь по часам
+    // была бы вторыми сутками в одном кадре: собиратель замирал бы у ворот
+    // посреди нарисованного полудня.
+    const s: ChoreSite = { ...site(), awake: SHIFT_SEC, chats: false, tents: [] };
+    const c = choresOf(s, folk([{ answer: 'строим' }]), () => true)[0] as Chore;
+    assert.ok(c !== null, 'рутина не выдана');
+    assert.equal(c.awake, SHIFT_SEC, 'маршрут держит чужое расписание');
+    const seen = new Set<string>();
+    for (let t = 0; t < SHIFT_SEC; t += 7) {
+      const f = choreAt(c, dawn(t));
+      assert.equal(f.hidden, false, `на ${t} с собиратель пропал из кадра`);
+      seen.add(`${f.x.toFixed(1)}:${f.z.toFixed(1)}`);
+    }
+    assert.ok(seen.size > 4, 'круг встал: за смену собиратель не сдвинулся');
+  });
+
+  test('по умолчанию небо на месте: лагерь ложится спать', () => {
+    // Поле необязательное, и умолчание обязано остаться лагерным — иначе
+    // §24 отменялся бы тем, что кто-то забыл его написать.
+    const c = choresOf(site(), folk([{ answer: 'строим' }]), () => true)[0] as Chore;
+    assert.equal(c.awake, AWAKE_SEC, 'умолчание увело лагерь из-под §24');
+  });
+
+  test('без разговора у дома пар не сводят', () => {
+    // Пара, вставшая молча на шестнадцать секунд, обещала бы разговор,
+    // которого игра для мест не написала: карточек, имён и настроений
+    // у местных нет.
+    const s: ChoreSite = { ...site(), awake: SHIFT_SEC, chats: false, tents: [] };
+    const chores = choresOf(s, folk([{}, {}, {}]), () => true);
+    for (const c of chores) {
+      if (c === null) continue;
+      assert.equal(c.partner, null, 'местным назначили напарника');
+      for (let t = 0; t < c.circuit * 2; t += 3) {
+        assert.equal(choreAt(c, dawn(t)).talk, null, 'местные заговорили');
+      }
+    }
+  });
+});
+
 test('§13.8 — добытчик ходит к кусту, а не к кромке леса', () => {
   const s = site();
   // Куст ставится в середину поляны: кромка далеко, и если добытчик всё же
