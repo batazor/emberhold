@@ -20,6 +20,8 @@
  * никому. Список сплошных ролей — единственное, что здесь объявлено.
  */
 import { distanceField, idx } from './grid';
+import { BUSHES, scatterBushes } from './berries';
+import type { Bush } from './berries';
 import { STONES, scatterStones } from './stones';
 import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
 import type { Cell, Container, GameLocation } from './types';
@@ -50,6 +52,8 @@ export interface CastleSite {
   readonly at: Spot;
   /** Клетки леса: рендеру они деревья, симуляции — просто занятые клетки. */
   readonly trees: readonly Spot[];
+  /** §13.8 — ягодные кусты на поле перед стеной. */
+  readonly bushes: readonly Bush[];
   /** Ворота в клетках локации — сюда приходят снаружи. */
   readonly gate: Cell;
   /**
@@ -389,5 +393,22 @@ export function generateCastleSite(seed: number): CastleSite {
     enemies: [],
     backSteps: distanceField(size, blocked, evac),
   };
-  return { loc, castle, at, trees, gate, trader, roads, lamps };
+  /**
+   * §13.8 — кусты по полю. Своим сидом и мимо занятого: дерево, дорога
+   * и лампа читаются раньше куста, и куст под ними был бы кустом,
+   * по которому нельзя постучать.
+   */
+  const busyCell = new Set<string>([
+    ...trees.map((s) => `${s.x},${s.z}`),
+    ...roads.map((r) => `${r.x},${r.z}`),
+    ...lamps.map((l) => `${l.x},${l.z}`),
+  ]);
+  const bushes = scatterBushes(
+    seed ^ 0x1c05,
+    loc.size,
+    loc.blocked,
+    BUSHES.castle,
+    (x, z) => !busyCell.has(`${x},${z}`),
+  );
+  return { loc, castle, at, trees, bushes, gate, trader, roads, lamps };
 }
