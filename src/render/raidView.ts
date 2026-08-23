@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Bush } from '../sim/berries';
 import { blockingMaterial } from './blocking';
 import {
   ENEMY_HEIGHT,
@@ -13,7 +14,7 @@ import {
 } from './models';
 import { toolGeometry } from './tools';
 import type { ToolModelName } from './tools';
-import type { SelfAnswer } from '../sim/settler';
+import type { ResidentJob } from '../sim/residents';
 import { Drifting } from './drifting';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
@@ -93,6 +94,9 @@ const GLADE_TREES = WOODS;
  * и точкой выхода: правила ходьбы, камера и трава у них общие.
  */
 export type RaidFlavor = 'mine' | 'glade' | 'castle' | 'grave' | 'trail';
+
+/** §13.8 — те же три куста, что на поляне лагеря: место разное, дичок один. */
+const BUSH_MODELS: readonly ForestModelName[] = ['Bush_1_A_Color1', 'Bush_2_B_Color1', 'Bush_4_C_Color1'];
 
 /**
  * Деревья кладбища — хвоя и осенняя хвоя набора (§6.1.7). Список свой,
@@ -495,6 +499,8 @@ export class RaidView {
     private readonly mateClasses: readonly HeroClassId[] = [],
     /** Отладка `?пух`: трава заставки (FluffyGrass) вместо клеточной. */
     private readonly fluffy = false,
+    /** §13.8 — полон ли куст места: формула живёт снаружи (см. `buildBushes`). */
+    private readonly ripeBush: ((bush: Bush) => boolean) | undefined = undefined,
   ) {
     this.buildGround();
     this.buildGrass(grassPerTile);
@@ -502,6 +508,12 @@ export class RaidView {
     if (this.keep !== null) this.buildCastle(this.keep);
     if (this.keep !== null) this.buildGarrison(this.keep);
     if (this.grave !== null) this.buildGraveyard(this.grave);
+    // §13.8 — дички у края места: и у замка, и на кладбище рисуются одним
+    // кодом, потому что и там и там это один и тот же куст из одного набора.
+    this.buildBushes(
+      [...(this.keep?.bushes ?? []), ...(this.grave?.bushes ?? [])],
+      this.ripeBush,
+    );
     if (flavor !== 'glade') this.buildEvac(this.loc.evac);
     // §6.1.17 — у дороги два конца, и дальний тоже выход: над ним тот же луч.
     if (this.trail !== null) this.buildEvac(this.trail.exit);
@@ -1131,7 +1143,53 @@ export class RaidView {
    * в кэше набора, но пересобирать меш шестьдесят раз в секунду ради
    * предмета, который меняется дважды за минуту, незачем.
    */
-  setResidentLoad(i: number, answer: SelfAnswer | null): void {
+  /**
+   * §13.8 — ягодные кусты места. Геометрия из набора леса, ягоды — свои
+   * зёрна инстансами: красного в палитре набора нет (то же решение, что
+   * в лагере, `campView.ts`).
+   *
+   * Обобранный куст остаётся стоять без ягод: пустая ветка и есть «приходи
+   * позже», сказанное кадром.
+   */
+  /**
+   * §13.8 — полон ли куст. Сцена сама этого не считает: полнота узла места
+   * выводится формулой от сида и часов (`berries.ts`), а знает её тот, кто
+   * держит мир, — поэтому ответ приходит функцией снаружи. Без неё все кусты
+   * рисуются полными, и это честное поведение отладочных кадров.
+   */
+  private buildBushes(bushes: readonly Bush[], ripeOf?: (bush: Bush) => boolean): void {
+    if (bushes.length === 0) return;
+    const mat = this.track(forestMaterial());
+    const berryMat = this.track(new THREE.MeshLambertMaterial({ color: 0xb1233a }));
+    const berryGeo = new THREE.SphereGeometry(0.045, 6, 4);
+    for (const bush of bushes) {
+      const n = ((bush.x * 7 + bush.z * 13) % 97) / 97;
+      const model = BUSH_MODELS[Math.floor(n * BUSH_MODELS.length) % BUSH_MODELS.length]!;
+      const node = new THREE.Group();
+      const mesh = new THREE.Mesh(treeGeometry({ set: 'forest', model }, 0.5 * (0.85 + n * 0.35)), mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.rotation.y = n * 6.28;
+      node.add(mesh);
+      if (ripeOf === undefined ? bush.pickedAt === undefined : ripeOf(bush)) {
+        const berries = new THREE.InstancedMesh(berryGeo, berryMat, 5);
+        const m = new THREE.Matrix4();
+        for (let i = 0; i < 5; i++) {
+          const a = (((bush.x * 11 + i * 29) % 71) / 71) * Math.PI * 2;
+          const r = 0.12 + (((bush.z * 17 + i * 13) % 53) / 53) * 0.1;
+          m.setPosition(Math.cos(a) * r, 0.5 * (0.35 + (i / 5) * 0.45), Math.sin(a) * r);
+          berries.setMatrixAt(i, m);
+        }
+        berries.instanceMatrix.needsUpdate = true;
+        berries.castShadow = true;
+        node.add(berries);
+      }
+      node.position.set(bush.x, 0, bush.z);
+      this.group.add(node);
+    }
+  }
+
+  setResidentLoad(i: number, answer: ResidentJob | null): void {
     this.residents[i]?.setHeld('handslot.l', answer === null ? null : residentLoad(answer));
   }
 

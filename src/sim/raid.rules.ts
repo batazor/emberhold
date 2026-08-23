@@ -4,6 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { START_FOOD } from './balance';
 import { TICK } from '../core/loop';
 import { createCamp, kitchenFood, storageCapacity } from './camp';
 import { bowQuiver, emptyGear } from './gear';
@@ -149,7 +150,7 @@ describe('Вылазка', () => {
 
   test('провал теряет долю рюкзака, возвращение — ничего', () => {
     const raid = createRaid({ seed: 3, tier: 3, kitchenLevel: 3, storageLevel: 2 });
-    raid.bag = { stone: 6, wood: 0, iron: 3, crystal: 1 };
+    raid.bag = { stone: 6, wood: 0, iron: 3, crystal: 1, food: 0 };
     raid.bagTotal = 10;
 
     raid.status = 'failed';
@@ -160,12 +161,12 @@ describe('Вылазка', () => {
     raid.status = 'evacuated';
     const saved = raidResult(raid);
     assert.equal(saved.lost, 0);
-    assert.deepEqual(saved.carried, { stone: 6, wood: 0, iron: 3, crystal: 1 });
+    assert.deepEqual(saved.carried, { stone: 6, wood: 0, iron: 3, crystal: 1, food: 0 });
   });
 
   test('потери распределяются по составу рюкзака, а не по одному виду', () => {
     const raid = createRaid({ seed: 3, tier: 2, kitchenLevel: 3, storageLevel: 2 });
-    raid.bag = { stone: 10, wood: 0, iron: 10, crystal: 0 };
+    raid.bag = { stone: 10, wood: 0, iron: 10, crystal: 0, food: 0 };
     raid.bagTotal = 20;
     raid.status = 'failed';
     const r = raidResult(raid);
@@ -238,10 +239,12 @@ describe('Вылазка', () => {
   test('добыча доезжает до лагеря', () => {
     const camp = createCamp();
     const raid = createRaid({ seed: 11, tier: 1, kitchenLevel: 3, storageLevel: 2 });
-    raid.bag = { stone: 4, wood: 3, iron: 1, crystal: 0 };
+    raid.bag = { stone: 4, wood: 3, iron: 1, crystal: 0, food: 0 };
     raid.bagTotal = 8;
     raid.status = 'evacuated';
     addResources(camp.resources, raidResult(raid).carried);
-    assert.deepEqual(camp.resources, { stone: 4, wood: 3, iron: 1, crystal: 0 });
+    // §13.7 — пища стартового запаса лежит нетронутой: вылазка её не приносит
+    // (в находках пищи нет) и не тратит (содержание считается в лагере).
+    assert.deepEqual(camp.resources, { stone: 4, wood: 3, iron: 1, crystal: 0, food: START_FOOD });
   });
 });

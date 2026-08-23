@@ -33,6 +33,7 @@ import type { ConsumableId } from '../sim/consumables';
 import { ONB_HINT } from '../sim/onboarding';
 import { dayAt, firstRaidNode } from '../sim/world';
 import type { Visit } from '../sim/world';
+import type { LiveCamp } from '../sim/standing';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
 import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
@@ -109,7 +110,9 @@ export interface CampCallbacks {
   giftIcon(name: GiftPic): string;
 }
 
-const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal'];
+/** §13.7 — пища пятой и последней: она не добывается в вылазке, и место
+ *  в полосе у неё за четырьмя, что приносит герой. */
+const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal', 'food'];
 
 /*
  * Карта региона открыта всегда, с первой же вылазки.
@@ -130,6 +133,13 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'cryst
  *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене.
  *  'daily' — подарок за вход (§29): открывается тапом по значку над сценой. */
 type SheetKind = BuildingId | 'tiers' | 'shop' | 'store' | 'daily' | null;
+
+/**
+ * Куда летит подарок (§29.4): к числу ресурса, к счёту кладовой или
+ * к «Припасам». Человека в списке нет — он приходит сам и ниоткуда
+ * не прилетает.
+ */
+export type FlyTarget = ResourceKind | 'store' | 'quiver';
 
 const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
@@ -470,9 +480,11 @@ export class CampHud {
     // пальца (`features/fan`) и стоит на экране постоянно. Лист открывался
     // ради одного вопроса — кем идти, — и на него теперь отвечает лицо
     // под пальцем, без листа и без второго касания.
+    const supplies = this.makeBarButton('Припасы', 'shop');
+    this.suppliesButton = supplies;
     this.bar.append(
       walls,
-      this.makeBarButton('Припасы', 'shop'),
+      supplies,
       this.makeBarButton('В мир', 'tiers', true),
     );
 
@@ -487,6 +499,8 @@ export class CampHud {
   }
 
   private wallsButton!: HTMLButtonElement;
+  /** «Припасы» — дом колчана (§14.3) и цель полёта подаренных стрел. */
+  private suppliesButton!: HTMLButtonElement;
 
   /**
    * Показ кнопки «Стены». В лагере на поляне (§16.1) стены пока не строятся:
@@ -495,6 +509,97 @@ export class CampHud {
    */
   showWalls(show: boolean): void {
     this.wallsButton.style.display = show ? '' : 'none';
+  }
+
+  /**
+   * Куда летит подарок (§29.4). Ресурс — к своему числу в полосе, сундук —
+   * к счёту кладовой, стрелы — к «Припасам», где живёт колчан.
+   */
+  private landing(target: FlyTarget): HTMLElement | undefined {
+    if (target === 'store') return this.storeMeter;
+    if (target === 'quiver') return this.suppliesButton;
+    return this.resValues.get(target);
+  }
+
+  /**
+   * Подарок долетает до места, где он теперь лежит (§29.4).
+   *
+   * Механика от этого не меняется ничем: ресурсы зачислены до полёта, и полёт
+   * — единственное в подарке, что можно выключить, ничего не сломав. Нужен он
+   * затем, что до сих пор подарок превращался в строку баннера: игра говорила
+   * «дали», а показать, куда именно, было нечем — и число в полосе менялось
+   * само по себе, в стороне от нажатой кнопки.
+   *
+   * Летит картинка карточки, а не абстрактная искра: игрок только что видел
+   * бревно на карточке, и в полосу «дерево» обязано прилететь оно же.
+   *
+   * `prefers-reduced-motion` отменяет полёт, но не отменяет ответ: число
+   * вспыхивает на месте. Событие обязано быть заметно и тому, кто выключил
+   * движение, — это то же правило, по которому §18.1 не оставляет звук
+   * единственным носителем.
+   */
+  flyGift(targets: readonly FlyTarget[]): void {
+    if (this.last === null || targets.length === 0) return;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const from = this.daily.origin(this.last.camp);
+    targets.forEach((target, i) => {
+      const to = this.landing(target);
+      if (to === undefined || to.offsetParent === null) return;
+      const flash = (): void => {
+        to.classList.remove('gift-land');
+        // Перезапуск анимации: без чтения раскладки браузер склеивает снятие
+        // и возврат класса в один кадр, и вторая вспышка не случается вовсе.
+        void to.offsetWidth;
+        to.classList.add('gift-land');
+        const off = (): void => to.classList.remove('gift-land');
+        // Снимается по концу самой анимации, а не по таймеру: в спрятанной
+        // вкладке таймеры растягиваются до секунды и класс переживал бы
+        // вспышку. Таймер остаётся страховкой на случай, когда анимации
+        // не случилось вовсе (движение выключено настройкой).
+        to.addEventListener('animationend', off, { once: true });
+        window.setTimeout(off, 800);
+      };
+      if (still || from.url === '') {
+        window.setTimeout(flash, i * 90);
+        return;
+      }
+      const fly = document.createElement('img');
+      fly.className = 'gift-fly';
+      fly.alt = '';
+      fly.src = from.url;
+      fly.style.left = `${from.rect.left}px`;
+      fly.style.top = `${from.rect.top}px`;
+      fly.style.width = `${from.rect.width}px`;
+      fly.style.height = `${from.rect.height}px`;
+      fly.style.transitionDelay = `${i * 90}ms`;
+      document.body.appendChild(fly);
+      const box = to.getBoundingClientRect();
+      // Раскладку надо прокачать между вставкой и сдвигом: начало и конец,
+      // заданные без неё, браузер считает одним состоянием, и перехода нет.
+      //
+      // Прокачка чтением, а не кадром `requestAnimationFrame`, и это не вкус:
+      // спрятанной вкладке кадров не дают вовсе, и полёт, начатый из кадра,
+      // там не начинался никогда — значок оставался лежать на карточке
+      // навсегда. Чтение `offsetWidth` работает всегда и синхронно.
+      void fly.offsetWidth;
+      fly.style.transform =
+        `translate(${box.left + box.width / 2 - from.rect.left - from.rect.width / 2}px, ` +
+        `${box.top + box.height / 2 - from.rect.top - from.rect.height / 2}px) scale(0.42)`;
+      fly.style.opacity = '0.15';
+      let landed = false;
+      const land = (): void => {
+        if (landed) return;
+        landed = true;
+        fly.remove();
+        flash();
+      };
+      fly.addEventListener('transitionend', land, { once: true });
+      // Страховка на случай, когда перехода не случилось вовсе: вкладку
+      // спрятали посреди полёта, движение выключено настройкой, переход
+      // прервали. Значок обязан исчезнуть в любом из этих случаев —
+      // висящая поверх игры картинка хуже, чем не случившийся полёт.
+      window.setTimeout(land, 900 + i * 90);
+    });
   }
 
   private makeBarButton(text: string, kind: SheetKind, primary = false): HTMLButtonElement {
@@ -621,6 +726,10 @@ export class CampHud {
         this.map.setOnly(firstRaidNode(dayAt(this.last.now), this.last.now));
       }
     }
+    // Неделя подарков выкладывается на открытии листа (§29.4). Красить
+    // её перед этим не нужно: `sync` идёт каждый кадр и для закрытого
+    // раздела тоже — карточки уже знают, что на них написано.
+    if (kind === 'daily') this.daily.appear();
     this.paintOpen();
     // Кнопка перестановки принадлежит карточке здания и переезжает в неё:
     // здание всегда одно, а разделов много.
@@ -801,6 +910,11 @@ export class CampHud {
    */
   setNeighbours(visits: readonly Visit[]): void {
     this.map.setNeighbours(visits);
+  }
+
+  /** §30.7 — то же для чужих лагерей: карта показывает их по кромке. */
+  setCamps(live: readonly LiveCamp[]): void {
+    this.map.setCamps(live);
   }
 
   private syncShop(camp: CampState): void {

@@ -6,6 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { START_FOOD } from './balance';
 import {
   BUILD_COST,
   craftGear,
@@ -41,7 +42,7 @@ describe('Мастерская', () => {
 
   test('§16 — закрыта до Жилья ур. 2 и говорит, чем закрыта', () => {
     const camp = createCamp();
-    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999, food: 0 };
     assert.equal(camp.levels.forge, 0, 'в новом лагере Мастерской нет');
     assert.equal(upgradeBlock(camp, 'forge'), 'locked');
     assert.equal(gearBlock(camp, 'weapon'), 'no-forge', 'ковать негде');
@@ -65,7 +66,9 @@ describe('Мастерская', () => {
     assert.equal(startUpgrade(camp, 'forge', 1000), true);
     assert.equal(camp.levels.forge, 1, 'выросла на глазах, без таймера');
     assert.equal(camp.construction, null, 'слот стройки свободен');
-    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 0, crystal: 0 });
+    // §13.7 — пища стартового запаса остаётся: стройка её не тратит,
+    // и ноль здесь означал бы, что Мастерская съела обед.
+    assert.deepEqual(camp.resources, { stone: 0, wood: 0, iron: 0, crystal: 0, food: START_FOOD });
   });
 
   /**
@@ -76,7 +79,7 @@ describe('Мастерская', () => {
   test('§20.1 — ковка работает, пока слот стройки занят', () => {
     const camp = createCamp();
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 , infirmary: 0, yard: 0};
-    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999 };
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999, food: 0 };
     assert.equal(startUpgrade(camp, 'kitchen', 0), true);
     assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy', 'стройка встала в очередь');
     assert.equal(suggestUpgrade(camp), null, 'постройки предложить нечего');
@@ -89,7 +92,7 @@ describe('Мастерская', () => {
   test('§14 — предмет не может быть лучше своей Мастерской', () => {
     const camp = createCamp();
     camp.levels = { hq: 2, kitchen: 1, storage: 1, forge: 1 , infirmary: 0, yard: 0};
-    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
+    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999, food: 0 };
     assert.equal(craftGear(camp, 'bag'), true, 'ур. 1 доступен');
     assert.equal(gearBlock(camp, 'bag'), 'forge-cap', 'ур. 2 требует Мастерскую ур. 2');
     camp.levels.forge = 6;
@@ -103,7 +106,7 @@ describe('Мастерская', () => {
     const b = createCamp();
     for (const camp of [a, b]) {
       camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 , infirmary: 0, yard: 0};
-      camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
+      camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999, food: 0 };
       craftGear(camp, 'ring');
       craftGear(camp, 'ring');
     }
@@ -210,14 +213,14 @@ describe('Снаряжение в вылазке', () => {
   test('§14 — снаряжение не теряется при провале', () => {
     const camp = createCamp();
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 3 , infirmary: 0, yard: 0};
-    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
+    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999, food: 0 };
     craftGear(camp, 'weapon');
     craftGear(camp, 'armor');
     const before = { ...camp.gear };
 
     const raid = createRaid({ seed: 11, tier: 2, kitchenLevel: 2, storageLevel: 2, gear: camp.gear });
     raid.bagTotal = 8;
-    raid.bag = { stone: 8, wood: 0, iron: 0, crystal: 0 };
+    raid.bag = { stone: 8, wood: 0, iron: 0, crystal: 0, food: 0 };
     raid.status = 'failed';
     const result = raidResult(raid);
 
@@ -237,7 +240,7 @@ describe('Снаряжение в вылазке', () => {
     wipe();
     const camp = createCamp();
     camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 2 , infirmary: 0, yard: 0};
-    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999 };
+    camp.resources = { stone: 0, wood: 0, iron: 999, crystal: 999, food: 0 };
     craftGear(camp, 'torch');
     craftGear(camp, 'torch');
     save(camp, createRoster(), 5);

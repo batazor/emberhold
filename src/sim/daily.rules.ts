@@ -44,7 +44,7 @@ function weekTotal(from: number, tier: Tier): number {
   for (let day = 0; day < WEEK; day++) {
     const taken = from + day;
     const loot = giftLoot(giftAt(taken), tier, taken);
-    sum += totalOf({ stone: 0, wood: 0, iron: 0, crystal: 0, ...loot });
+    sum += totalOf({ stone: 0, wood: 0, iron: 0, crystal: 0, food: 0, ...loot });
   }
   return sum;
 }
@@ -91,7 +91,7 @@ describe('подарок за вход', () => {
     for (const tier of TIERS) {
       for (let day = 0; day < WEEK; day++) {
         const loot = giftLoot(giftAt(WEEK + day), tier, day);
-        const sum = totalOf({ stone: 0, wood: 0, iron: 0, crystal: 0, ...loot });
+        const sum = totalOf({ stone: 0, wood: 0, iron: 0, crystal: 0, food: 0, ...loot });
         assert.ok(
           sum <= TIER_HAUL[tier],
           `ярус ${tier}, день ${day + 1}: ${sum} против добычи вылазки ${TIER_HAUL[tier]}`,

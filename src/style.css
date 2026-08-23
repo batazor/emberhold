@@ -355,6 +355,20 @@ button:active { filter: brightness(1.25); }
    Седьмой день занимает две клетки — второй ряд от этого сходится ровно,
    а неделя читается подъёмом к концу, как её и считают веса (§29.1). */
 .gift-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+/* Неделя выкладывается по одной карточке слева направо — тем же порядком,
+   которым её и читают, и с той же задержкой между днями, что даёт глазу
+   дойти до сегодняшнего. Идёт раскладка только на открытии листа: карточка,
+   заново въезжающая на каждой перерисовке, — это мигание, а не появление. */
+@keyframes gift-appear {
+  from { opacity: 0; transform: translateY(7px) scale(0.97); }
+}
+.gift-days.appear > .gift-day {
+  animation: gift-appear 200ms ease-out both;
+  animation-delay: var(--in);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gift-days.appear > .gift-day { animation: none; }
+}
 .gift-day { gap: 4px; padding: 7px 8px;
   /* Смена состояния — не мигание: карточка гаснет и загорается за те же
      140 мс, что и прочие переходы интерфейса. */
@@ -364,6 +378,21 @@ button:active { filter: brightness(1.25); }
 .gift-what { font-size: 11px; }
 .gift-what:empty { display: none; }
 @keyframes gift-breathe { 50% { opacity: 0.35; } }
+/* Полёт подарка (§29.4): картинка карточки едет к числу, которое от неё
+   изменилось. Слой поверх листа — лететь она обязана над панелью, из которой
+   вылетела, — и пальца не берёт: под ней всё та же кнопка. */
+.gift-fly {
+  position: fixed; z-index: 70; pointer-events: none;
+  transition: transform 480ms cubic-bezier(0.32, 0.8, 0.4, 1), opacity 480ms ease-in;
+}
+/* Прилетело. Вспышка золотом — тем же цветом, которым игра метит добычу. */
+@keyframes gift-land {
+  40% { color: var(--gold); transform: scale(1.22); }
+}
+.gift-land { animation: gift-land 460ms ease-out; display: inline-block; }
+@media (prefers-reduced-motion: reduce) {
+  .gift-fly { transition: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .gift-mark { animation: none; }
 }

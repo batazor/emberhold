@@ -312,3 +312,32 @@ describe('Сон жильцов (§24)', () => {
     }
   });
 });
+
+test('§13.8 — добытчик ходит к кусту, а не к кромке леса', () => {
+  const s = site();
+  // Куст ставится в середину поляны: кромка далеко, и если добытчик всё же
+  // окажется у рамки, значит занятие маршрут не выбирает.
+  // Куст — в стороне и от костра (8,8), и от занятых клеток: если добытчик
+  // всё же встанет у рамки, значит занятие маршрут не выбирает.
+  const bush = { x: 6, z: 6 };
+  const withBush = { ...s, bushes: [bush] };
+  const [picker, logger] = choresOf(
+    withBush,
+    folk([{ answer: 'кормим' }, { answer: 'строим' }]),
+    () => true,
+  );
+  assert.ok(picker !== null && logger !== null, 'рутина не выдана');
+  // Рабочая стоянка — та, где рендер играет труд; её клетка и есть место,
+  // к которому жилец ходит.
+  const workCell = (c: Chore): { x: number; z: number } => {
+    const stop = c.stops.find((s) => s.working);
+    return stop === undefined ? c.path[0]! : c.path[stop.at]!;
+  };
+  const near = (c: Chore): boolean => {
+    const w = workCell(c);
+    return Math.abs(w.x - bush.x) + Math.abs(w.z - bush.z) <= 1;
+  };
+  const w = workCell(picker as Chore);
+  assert.ok(near(picker as Chore), `добытчик встал в (${w.x},${w.z}) вместо куста`);
+  assert.ok(!near(logger as Chore), 'дровосек ушёл к ягодам');
+});

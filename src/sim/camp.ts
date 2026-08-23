@@ -3,10 +3,12 @@ import type { Sortie } from './sortie';
 import type { DailyState } from './daily';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
-import { deriveBuildCost, modelKitchenFood, roundSeries, TIER_KITCHEN_GATE as GATE } from './balance';
+import { deriveBuildCost, modelKitchenFood, roundSeries, START_FOOD, TIER_KITCHEN_GATE as GATE } from './balance';
 import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear } from './gear';
 import type { GearSlot, GearState, Offhand } from './gear';
 import { healPerWound, trainPerLevel } from './heroes';
+import { BUSHES, scatterBushes } from './berries';
+import type { Bush, PickLog } from './berries';
 import type { Tier } from './types';
 import type { Visit } from './world';
 import { emptyWalls, type CampWalls } from './campWalls';
@@ -96,7 +98,13 @@ export const CHEST_BONUS = 30;
 export const storeCapacity = (camp: CampState): number =>
   STORE_BASE + camp.chests.length * CHEST_BONUS;
 
-/** Занято в кладовой. */
+/**
+ * Занято в кладовой. **Пища (§13.7) не считается**, и это решение, а не
+ * недосмотр: кладовая меряет добытое — то, что герой принёс на спине,
+ * — а пища лежит в закромах и уходит сама. Посчитать её здесь значило бы
+ * молча срезать четверть стартового места (запас 16 при потолке 60)
+ * и наказать игрока за механику, которой он не управляет.
+ */
 export const storeUsed = (camp: CampState): number =>
   camp.resources.stone + camp.resources.wood + camp.resources.iron + camp.resources.crystal;
 
@@ -119,6 +127,9 @@ export const storeFree = (camp: CampState): number =>
 export function stash(camp: CampState, from: Partial<Resources>): number {
   let free = storeFree(camp);
   let lost = 0;
+  // Пища идёт мимо потолка: место в кладовой она не занимает (`storeUsed`),
+  // и терять её на пороге было бы вдвойне странно — она и так убывает сама.
+  camp.resources.food += from.food ?? 0;
   for (const kind of ['crystal', 'iron', 'wood', 'stone'] as (keyof Resources)[]) {
     const amount = from[kind] ?? 0;
     if (amount <= 0) continue;
@@ -128,6 +139,24 @@ export function stash(camp: CampState, from: Partial<Resources>): number {
     lost += amount - taken;
   }
   return lost;
+}
+
+/**
+ * Сколько из этого не влезет в кладовую. Тот же счёт, что делает `stash`,
+ * но **до** зачисления: панели обязаны называть потерю заранее, а не сообщать
+ * о ней после нажатия (§29.4).
+ *
+ * Считается суммой, а не по видам, ровно потому, что счёт кладовой один
+ * (§13.6): что именно пропадёт при нехватке места, решает порядок `stash` —
+ * от дорогого к дешёвому, — а сколько пропадёт, от порядка не зависит.
+ *
+ * Держит эти две функции вместе правило `chests.rules.ts`: предупреждение
+ * обязано совпасть с потерей на любом наборе. Разойдись они — игра соврала бы
+ * не в мелочи, а ровно в том, ради чего предупреждение и заведено.
+ */
+export function overflowOf(camp: CampState, from: Partial<Resources>): number {
+  const asked = (Object.values(from) as number[]).reduce((sum, n) => sum + Math.max(0, n), 0);
+  return Math.max(0, asked - storeFree(camp));
 }
 
 /** §20.4 — площадь растёт с Жильём: 6×6 на ур. 1 … 10×10 на ур. 5. */
@@ -454,6 +483,20 @@ export interface CampState {
    */
   stones: Stone[];
   /**
+   * Ягодные кусты (§13.8). Поле необязательное: сохранения, записанные
+   * до кустов, обязаны открываться — и открываются они поляной без кустов,
+   * пока сцена их не рассадит. Обобранный куст из списка не выпадает,
+   * а помнит время: он созревает снова.
+   */
+  bushes?: Bush[];
+  /**
+   * §13.8 — что игрок обобрал в местах мира. Самоистекающий список:
+   * запись живёт ровно созревание и вычищается при загрузке, поэтому
+   * от прогулок сохранение не растёт. Узлы мест при этом не хранятся
+   * вовсе — их считает формула от сида и часов.
+   */
+  picks?: PickLog;
+  /**
    * Свой клан (§30): имя, под которым лагерь стоит в таблице. Поле
    * необязательное, версия сейва ради него не поднята — сохранение,
    * сделанное до кланов, обязано открываться, и открывается оно лагерем
@@ -497,6 +540,22 @@ const START_LAYOUT: Record<BuildingId, { x: number; z: number }> = {
  * Следы зданий исключены: тап по зданию открывает его карточку, и валун
  * под Жильём был бы камнем, по которому нельзя ударить.
  */
+/**
+ * Кусты стартовой площадки (§13.8) — тем же правилом, что и валуны: своя
+ * рассадка по самой большой площадке, мимо следов зданий. Сид свой, чтобы
+ * куст не встал в ту же клетку, что камень.
+ */
+export function campBushes(): Bush[] {
+  const area = campArea(MAX_LEVEL);
+  const stones = campStones();
+  const under = (x: number, z: number): boolean =>
+    BUILDING_ORDER.some((id) => {
+      const p = START_LAYOUT[id];
+      return x >= p.x && z >= p.z && x < p.x + 2 && z < p.z + 2;
+    }) || stones.some((s) => s.x === x && s.z === z);
+  return scatterBushes(0x7b12, area, new Uint8Array(area * area), BUSHES.camp, (x, z) => !under(x, z));
+}
+
 export function campStones(): Stone[] {
   const area = campArea(MAX_LEVEL);
   const under = (x: number, z: number): boolean =>
@@ -520,7 +579,9 @@ export function createCamp(): CampState {
       infirmary: { ...START_LAYOUT.infirmary },
       yard: { ...START_LAYOUT.yard },
     },
-    resources: emptyResources(),
+    // §13.7 — лагерь начинается с запаса пищи: содержание обязано ждать,
+    // пока игрок с ним познакомится, а не встречать его голодом.
+    resources: { ...emptyResources(), food: START_FOOD },
     construction: null,
     gear: emptyGear(),
     residents: [],
@@ -547,6 +608,7 @@ export function createCamp(): CampState {
     visits: [],
     walls: emptyWalls(),
     stones: campStones(),
+    bushes: campBushes(),
   };
 }
 

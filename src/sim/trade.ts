@@ -40,9 +40,9 @@ import type { ResourceKind, Resources } from './resources';
 import type { CampState } from './camp';
 import { storeCapacity, storeUsed } from './camp';
 
-export type OfferId = 'iron-stone' | 'iron-wood';
+export type OfferId = 'iron-stone' | 'iron-wood' | 'food-stone';
 
-export const OFFER_ORDER: readonly OfferId[] = ['iron-stone', 'iron-wood'];
+export const OFFER_ORDER: readonly OfferId[] = ['iron-stone', 'iron-wood', 'food-stone'];
 
 export interface Offer {
   readonly id: OfferId;
@@ -98,6 +98,21 @@ export interface Offer {
 export const PARITY: Record<OfferId, Offer> = {
   'iron-stone': { id: 'iron-stone', give: { stone: 8 }, take: { iron: 1 } },
   'iron-wood': { id: 'iron-wood', give: { wood: 3 }, take: { iron: 1 } },
+  /**
+   * §13.7 — пища за камень. Третий обмен появился вместе с содержанием
+   * и решает ровно одну задачу: **у камня наконец есть постоянный сток.**
+   * §13.2 прямо называет его слабым местом — камень копится и обесценивается;
+   * теперь его можно проесть.
+   *
+   * Курс выведен по той же линейке, что и два первых: единица пищи стоит
+   * как две единицы камня (`VALUE`). Дороже делать нельзя — обмен обязан
+   * проигрывать своему добытчику, иначе жилец с приказом «Добывать пищу»
+   * теряет смысл, а вместе с ним и выбор между людьми.
+   */
+  // Пайком, а не поштучно: единица пищи стоит двух камней по линейке
+  // `VALUE`, но обмен обязан стоить заходов, а не мелочи (`trade.rules.ts`),
+  // иначе лавка раздаёт подарки. Тройка — суточный паёк трёх жильцов.
+  'food-stone': { id: 'food-stone', give: { stone: 6 }, take: { food: 3 } },
 };
 
 /**
@@ -132,13 +147,13 @@ export function offerOf(id: OfferId, deals: number): Offer {
  * Кристалл линейки не имеет намеренно: он не продаётся и не принимается
  * (§13 — «нельзя получить иначе, кроме как рискнув»).
  */
-export const VALUE: Partial<Record<ResourceKind, number>> = { stone: 3, wood: 8, iron: 24 };
+export const VALUE: Partial<Record<ResourceKind, number>> = { stone: 3, wood: 8, iron: 24, food: 6 };
 
 /** Что игрок может класть на прилавок. Железа здесь нет: обратного курса нет. */
 export const GIVABLE: readonly ResourceKind[] = ['stone', 'wood'];
 
 /** Чем торгует торговец. */
-export const SELLABLE: readonly ResourceKind[] = ['iron'];
+export const SELLABLE: readonly ResourceKind[] = ['iron', 'food'];
 
 /** Ценность кучки — по линейке; чего нет в линейке, то не считается. */
 export const worthOf = (part: Partial<Resources>): number =>

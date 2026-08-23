@@ -3,8 +3,10 @@ import { BUILDING_ORDER, campArea, campStones, createCamp } from './camp';
 import { adoptChest } from './chests';
 import { DWELLER_LOOKS } from './garrison';
 import type { DwellerLook } from './garrison';
-import { SELF_ANSWERS } from './settler';
-import type { SelfAnswer } from './settler';
+import { prunePicks } from './berries';
+import type { PickLog } from './berries';
+import { RESIDENT_JOBS } from './residents';
+import type { ResidentJob } from './residents';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
 import { CLASS_ORDER, HERO_CLASSES, LEGACY_CLASS, MAX_HERO_LEVEL, createRoster, syncRoster } from './heroes';
@@ -168,6 +170,8 @@ interface SaveV1 {
    * открываться. Отсутствие читается «гостей не звали».
    */
   fires?: { x: number; z: number }[];
+  bushes?: { x: number; z: number; pickedAt?: number }[];
+  picks?: Record<string, number>;
   guests?: number[];
 }
 
@@ -230,6 +234,21 @@ export function save(
     ...(camp.clan != null ? { clan: { name: camp.clan.name, at: camp.clan.at } } : {}),
     // exactOptionalPropertyTypes: у лагеря без гостей этих ключей нет вовсе.
     ...(camp.fires !== undefined ? { fires: camp.fires.map((f) => ({ x: f.x, z: f.z })) } : {}),
+    // §13.8 — кусты: клетка и время сбора. Обобранный обязан пережить
+    // перезагрузку так же, как разбитый валун, иначе ягоды становятся
+    // бесконечными на любой кнопке «обновить».
+    ...(camp.picks !== undefined && Object.keys(camp.picks).length > 0
+      ? { picks: camp.picks }
+      : {}),
+    ...(camp.bushes !== undefined
+      ? {
+          bushes: camp.bushes.map((b) => ({
+            x: b.x,
+            z: b.z,
+            ...(b.pickedAt !== undefined ? { pickedAt: b.pickedAt } : {}),
+          })),
+        }
+      : {}),
     ...(camp.guests !== undefined ? { guests: [...camp.guests] } : {}),
     onb: onboarding,
     heroes: {
@@ -442,12 +461,15 @@ export function load(): LoadResult {
     // подставить умолчание значило бы придумать за игрока, кого он позвал.
     if (Array.isArray(data.residents)) {
       camp.residents = data.residents
-        .filter((r): r is { name: string; look: DwellerLook; answer: SelfAnswer; seed?: number; rest?: boolean } =>
+        // §13.7 — занятий стало три: к двум ответам знакомства добавился
+        // приказ «добывать пищу». Проверять по `SELF_ANSWERS` теперь нельзя —
+        // сохранение с добытчиком не открылось бы, и жилец пропал бы молча.
+        .filter((r): r is { name: string; look: DwellerLook; answer: ResidentJob; seed?: number; rest?: boolean } =>
           r != null &&
           typeof r.name === 'string' &&
           r.name !== '' &&
           DWELLER_LOOKS.includes(r.look as DwellerLook) &&
-          SELF_ANSWERS.includes(r.answer as SelfAnswer))
+          RESIDENT_JOBS.includes(r.answer as ResidentJob))
         // Сид лица у старых сохранений отсутствует, и выдумывать его случайно
         // нельзя: жилец менял бы лицо при каждой загрузке. Берётся из имени —
         // оно у жильца не меняется, значит и лицо не изменится.
@@ -483,6 +505,29 @@ export function load(): LoadResult {
       // к Жилью, как у пролога; места нет — сундук подождёт перестановки:
       // прибавка считается от списка, и пустой список честнее фантомного.
       adoptChest(camp, { x: -1, z: -1 });
+    }
+    // §13.8 — тронутое игроком в местах мира. Чистится здесь же: список
+    // самоистекающий, и держать в памяти созревшее незачем.
+    if (data.picks != null && typeof data.picks === 'object') {
+      const raw = data.picks as Record<string, unknown>;
+      const log: PickLog = {};
+      for (const [key, at] of Object.entries(raw)) {
+        if (typeof at === 'number' && Number.isFinite(at)) log[key] = at;
+      }
+      // Чистится по отметке сейва: своих часов у загрузки нет, а водяной
+      // знак — то самое время, когда игрок последний раз был здесь.
+      camp.picks = prunePicks(log, typeof data.watermark === 'number' ? data.watermark : 0);
+    }
+    if (Array.isArray(data.bushes)) {
+      camp.bushes = data.bushes
+        .filter((b): b is { x: number; z: number; pickedAt?: number } =>
+          b != null && typeof b.x === 'number' && typeof b.z === 'number')
+        .map((b, id) => ({
+          id,
+          x: b.x,
+          z: b.z,
+          ...(typeof b.pickedAt === 'number' ? { pickedAt: b.pickedAt } : {}),
+        }));
     }
     if (Array.isArray(data.fires)) {
       camp.fires = data.fires

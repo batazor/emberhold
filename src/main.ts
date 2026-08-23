@@ -137,6 +137,8 @@ import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import type { ResourceKind } from './sim/resources';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
+  cloudCamp,
+  cloudCamps,
   cloudNeighbours,
   cloudOnSignIn,
   cloudPull,
@@ -164,6 +166,8 @@ import {
   worldAt,
 } from './sim/world';
 import type { Visit, WorldNode } from './sim/world';
+import { campLevel, campPower } from './sim/standing';
+import type { LiveCamp } from './sim/standing';
 import { BuildPanel } from './ui/buildPanel';
 import {
   campNav,
@@ -238,6 +242,7 @@ import { TitleView } from './render/titleView';
 import { WheelView } from './render/wheelView';
 import { streetScene } from './render/village';
 import { CampHud } from './ui/campHud';
+import type { FlyTarget } from './ui/campHud';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
@@ -287,6 +292,9 @@ import {
   tentFits,
   tentSpot,
 } from './sim/residents';
+import { payUpkeep, workingAfter } from './sim/upkeep';
+import { PICK_REASON, bushAt, ripe, startPick, stepPickInto, worldRipe } from './sim/berries';
+import type { Bush } from './sim/berries';
 import { RESIDENT_TOOL, guardHeight } from './render/models';
 import { choreAt, choresAt, choresOf } from './sim/chores';
 import type { Chore } from './sim/chores';
@@ -362,7 +370,13 @@ track({
  * не видел, — то есть не меняет ничего.
  */
 const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark) : 0;
-const worked = collectWork(camp, awaySec);
+/**
+ * §13.7 — сперва лагерь съел и сжёг, потом наработал. Порядок обязателен:
+ * голодный не работает, и посчитать работу до раздачи еды значило бы
+ * заплатить за смену, которой не было.
+ */
+const upkeep = payUpkeep(camp, awaySec);
+const worked = collectWork(camp, awaySec, workingAfter(camp, upkeep.hungry));
 /** Сказать о наработанном один раз за сессию, а не на каждый вход в лагерь. */
 let workShown = false;
 
@@ -438,6 +452,8 @@ let chop: Chop | null = null;
 let mine: Work | null = null;
 /** То же в лагере: там рюкзака нет, и камень идёт прямо в кладовую. */
 let campMine: { work: Work; stone: Stone } | null = null;
+/** §13.8 — сбор ягод в лагере: та же пара «работа и цель», что у кайла. */
+let campPick: { work: Work; bush: Bush } | null = null;
 
 /**
  * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
@@ -761,19 +777,32 @@ function claimGift(): void {
   }
   const gift = giftAt(state.taken);
   let said = '';
+  // Куда подарок долетит на глазах (§29.4). Пусто у встречи: человек
+  // приходит сам, и его прилёт — это он сам, а не значок над полосой.
+  const flight: FlyTarget[] = [];
   switch (gift.id) {
     case 'ресурсы': {
       const loot = giftLoot(gift, giftTier(camp.levels.kitchen), state.taken);
+      // Летит только то, что вправду легло. Полная кладовая (§13.6) режет
+      // приток, и значок, долетевший до числа, которое не изменилось, —
+      // это обещание вместо ответа.
+      const before = { ...camp.resources };
       if (stash(camp, loot) > 0) campHud.notify(STORE_FULL);
       said = (Object.entries(loot) as [ResourceKind, number][])
         .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
         .join(', ');
+      flight.push(
+        ...(Object.keys(loot) as ResourceKind[]).filter((k) => camp.resources[k] > before[k]),
+      );
       break;
     }
     case 'стрелы': {
       const cap = gearMods(camp.gear, camp.offhand).arrows;
+      const before = camp.arrows;
       camp.arrows = Math.min(cap, camp.arrows + GIFT_ARROWS);
       said = `стрелы ${camp.arrows} / ${cap}`;
+      // Полный колчан — тот же случай, что полная кладовая: лететь незачем.
+      if (camp.arrows > before) flight.push('quiver');
       break;
     }
     case 'сундук': {
@@ -791,6 +820,7 @@ function claimGift(): void {
       }
       adoptChest(camp, spot);
       said = `сундук, кладовая ${storeCapacity(camp)}`;
+      flight.push('store');
       break;
     }
     case 'встреча': {
@@ -805,9 +835,15 @@ function claimGift(): void {
     }
   }
   camp.daily = claimed(state, day);
-  play('build');
+  play('gift');
   persist();
   campHud.notify(`Подарок ${dayOf(state.taken) + 1}-го дня: ${said}`);
+  // Полёт идёт последним и ничего не решает: подарок уже в лагере, а панель
+  // уже знает об этом. Он показывает, **куда** тот лёг, — и потому считается
+  // от карточки, которую игрок только что нажал, к числу, которое от этого
+  // изменилось.
+  campHud.sync(camp, clock.now(), 0);
+  campHud.flyGift(flight);
 }
 
 /* ---------- стройка стен (§6.1.6) ---------- */
@@ -1634,6 +1670,8 @@ function planChores(): void {
       // Палатки в клетках локации: жилец спит в своей, а какая его —
       // говорит номер, тот же, что у `hasRoof` и в веере.
       tents: camp.tents.map((t) => ({ x: o.x + t.x, z: o.z + t.z })),
+      // §13.8 — кусты в клетках локации: к ним ходит добытчик пищи.
+      bushes: (camp.bushes ?? []).map((b) => ({ x: o.x + b.x, z: o.z + b.z })),
     },
     camp.residents,
     (i) => hasRoof(camp, i),
@@ -2141,6 +2179,7 @@ function pushCloud(): void {
       sentVisits = key;
       void cloudVisits(live);
     }
+    pushCamp();
   }, 3000);
 }
 
@@ -2151,8 +2190,12 @@ function pushCloud(): void {
  * показывался до облака.
  */
 let neighbours: Visit[] = [];
+/** Лагеря живых соседей (§30.7) — та же память и тот же срок жизни. */
+let liveCamps: LiveCamp[] = [];
 /** Когда спрашивали в последний раз. Ноль — не спрашивали ни разу. */
 let neighboursAt = 0;
+/** Что уже отдано в общую таблицу: гонять строку без изменений — пустая сеть. */
+let sentCamp = '';
 
 /**
  * Спросить сервер о чужих заходах. Обновляется **сменами, а не секундами**:
@@ -2178,6 +2221,35 @@ function refreshNeighbours(now: number, force = false): void {
     campHud.setNeighbours(neighbours);
     returnScreen.setNeighbours(neighbours);
   });
+  // Лагеря — тем же вопросом и тем же сроком: обе половины соседского слоя
+  // отвечают на один вопрос «кто ещё есть», и спрашивать их врозь значило бы
+  // показать заходы соседа раньше, чем самого соседа.
+  void cloudCamps().then((rows) => {
+    liveCamps = rows;
+    campHud.setCamps(liveCamps);
+    statsPanel.setCamps(liveCamps);
+  });
+}
+
+/**
+ * Отдать свою строку в общую таблицу (§30.7). Считается на месте тем же
+ * правилом, каким читается чужая: таблица, в которой своё число считается
+ * иначе, чем чужое, ничего не сравнивает.
+ *
+ * Отправляется вместе с сейвом и только при изменении: сила меняется
+ * постройкой и ковкой, то есть редко, а строка без изменений — пустая сеть.
+ */
+function pushCamp(): void {
+  const row = {
+    clan: camp.clan?.name ?? null,
+    power: campPower(camp),
+    level: campLevel(camp),
+    folk: 1 + camp.residents.length,
+  };
+  const key = JSON.stringify(row);
+  if (key === sentCamp) return;
+  sentCamp = key;
+  void cloudCamp(row);
 }
 
 // Свёрнутая вкладка — последний шанс дожать отложенное: таймеры там не идут.
@@ -2986,7 +3058,13 @@ function toGraveyard(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, null, camp.gear.weapon, mateClasses(raid));
+  // §13.8 — полнота кустов места считается формулой от сида и часов;
+  // сцена её не знает и получает готовый ответ.
+  raidView = new RaidView(
+    raid.loc, raid.loadout.cls, grassPerTile, 'grave', null, site, null,
+    camp.gear.weapon, mateClasses(raid), false,
+    (bush) => worldRipe(site.loc.seed, 'кладбище', bush, site.gate, camp.picks ?? {}, clock.now()),
+  );
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -3027,7 +3105,11 @@ function toCastle(node: number, seed: number): boolean {
     containerFood: 0,
     hunger: false,
   });
-  raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null, camp.gear.weapon, mateClasses(raid));
+  raidView = new RaidView(
+    raid.loc, raid.loadout.cls, grassPerTile, 'castle', site, null, null,
+    camp.gear.weapon, mateClasses(raid), false,
+    (bush) => worldRipe(site.loc.seed, 'замок', bush, site.gate, camp.picks ?? {}, clock.now()),
+  );
   // Гость у стен (`sim/castleGuest.ts`): выводится из сида площадки, а живёт
   // ли ещё здесь — решает лагерь. Позванный не сидит у стен второй раз,
   // и тёзка живущего не садится вовсе: `admit` различает людей именем,
@@ -3547,14 +3629,23 @@ let inGladeCamp = false;
  */
 function notifyWorked(): void {
   if (workShown) return;
+  /**
+   * §13.7 — содержание говорит первым, и говорит только когда есть что
+   * сказать. Строка молчит про съеденное в срок: расход, идущий как надо,
+   * событием не является (§23.1), а вот голод и погасший костёр — являются.
+   */
+  const trouble: string[] = [];
+  if (upkeep.hungry > 0) trouble.push(`голодных ${upkeep.hungry}`);
+  if (upkeep.dark) trouble.push('костёр погас');
   const parts: string[] = [];
   if (worked.length > 0) {
     parts.push(worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · '));
   }
   if (gotCoins > 0) parts.push(`монеты ${gotCoins}`);
-  if (parts.length === 0) return;
+  if (parts.length === 0 && trouble.length === 0) return;
   workShown = true;
-  campHud.notify(`Пока вас не было: ${parts.join(' · ')}`);
+  if (parts.length > 0) campHud.notify(`Пока вас не было: ${parts.join(' · ')}`);
+  if (trouble.length > 0) campHud.notify(`В лагере кончилась пища: ${trouble.join(', ')}`);
 }
 
 /**
@@ -3582,6 +3673,7 @@ function toGladeCamp(): void {
   leaveWalkSites();
   chop = null;
   campMine = null;
+  campPick = null;
   raidView?.dispose();
   const glade = camp.glade!;
   const blocked = unpackGlade(glade);
@@ -3687,6 +3779,7 @@ function toPadCamp(): void {
   leaveWalkSites();
   chop = null;
   campMine = null;
+  campPick = null;
   // §18.4 — подложка вылазки обрывается на выходе, и пульс вместе с ней:
   // в лагере провиант ничего не отсчитывает. Взамен — единственная
   // мелодия игры, и звучит она только здесь: всё это в таблице сцены.
@@ -3839,6 +3932,23 @@ function campTap(clientX: number, clientY: number): void {
   const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
   const free = cell.x >= 0 && cell.z >= 0 && cell.x < nav.area && cell.z < nav.area
     && nav.ground[idx(nav.area, cell.x, cell.z)] === 0;
+  /**
+   * §13.8 — тап по кусту. Спрашивается раньше валуна и здания по тому же
+   * правилу, что валун: куст ловится ровно своей клеткой, а здание — с запасом,
+   * и иначе куст у Склада был бы нетапаемым.
+   */
+  const bush = bushAt(camp.bushes ?? [], cell);
+  if (bush !== null && free && campHero.level === 'земля') {
+    if (!ripe(bush, clock.now())) {
+      campHud.notify(PICK_REASON['зелёный']);
+      return;
+    }
+    campHud.close();
+    campView.highlight(null);
+    startCampPicking(bush, nav);
+    return;
+  }
+
   const stone = stoneAt(camp.stones, cell);
   if (stone !== null && free && campHero.level === 'земля') {
     campHud.close();
@@ -3892,6 +4002,77 @@ function campTap(clientX: number, clientY: number): void {
 /* ---------- добыча камня в лагере (§13.5) ---------- */
 
 /** Взяться за валун: дойти до него или встать, если кайло уже достаёт. */
+/**
+ * §13.8 — сбор ягод в лагере. Всё, кроме награды и клипа, — тот же аппарат,
+ * что у кайла: работа по клетке, замахи, остановка по причине. Второй копии
+ * этих восьми секунд заводить нельзя (`work.ts` про это и написан).
+ */
+function startCampPicking(bush: Bush, nav: CampNav): void {
+  campPick = { work: startPick(bush), bush };
+  if (inReach(campHero, bush)) {
+    campHero.path.length = 0;
+    return;
+  }
+  const spot = standNear(campHero, bush, (x, z) =>
+    x >= 0 && z >= 0 && x < nav.area && z < nav.area && nav.ground[idx(nav.area, x, z)] === 0);
+  commandCampMove(camp, campHero, spot);
+}
+
+function stopCampPicking(): void {
+  campPick = null;
+  campView.hideWork();
+}
+
+/**
+ * Тик сбора. Отличий от кайла три, и все три — про пищу: она идёт в кладовую
+ * мимо потолка (§13.7, места не занимает), куст не исчезает, а созревает,
+ * и время сбора пишется в сохранение — обобранный куст обязан пережить
+ * перезагрузку так же, как разбитый валун.
+ */
+function stepCampPicking(dt: number): void {
+  if (campPick === null) return;
+  const { work, bush } = campPick;
+  const foodBefore = camp.resources.food;
+  const step = stepPickInto(
+    campHero,
+    campHero.path.length > 0,
+    camp.bushes ?? [],
+    work,
+    dt,
+    camp.resources,
+    clock.now(),
+  );
+  if (step.stopped !== null) {
+    play('deny');
+    // «Пусто» — свой отказ куста (обобрали, пока шли); остальные причины
+    // общие с кайлом, и слова у них те же.
+    campHud.notify(
+      step.stopped === 'gone' || step.stopped === 'ok'
+        ? PICK_REASON['пусто']
+        : MINE_REASON[step.stopped],
+    );
+    stopCampPicking();
+    return;
+  }
+  if (campHero.path.length > 0) {
+    campView.hideWork();
+    return;
+  }
+  campView.showWork(work.cell.x, work.cell.z, mineProgress(work));
+  if (step.swing) play('build');
+  if (step.taken) {
+    // Куст остаётся стоять — гаснут только ягоды (§13.8): пустая ветка
+    // и есть «приходи позже», сказанное кадром.
+    campView.pickBush(clock.now());
+    campHud.notify(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
+    campHud.sync(camp, clock.now(), 0);
+    play('levelup');
+    stopCampPicking();
+    persist();
+  }
+  void bush;
+}
+
 function startCampMining(stone: Stone, nav: CampNav): void {
   campMine = { work: startMine(stone), stone };
   if (inReach(campHero, stone)) {
@@ -3905,6 +4086,7 @@ function startCampMining(stone: Stone, nav: CampNav): void {
 
 function stopCampMining(): void {
   campMine = null;
+  campPick = null;
   campView.hideWork();
 }
 
@@ -4603,6 +4785,23 @@ if (debugCamp !== null) {
       campHud.sync(camp, clock.now(), 0);
       persist();
       return done.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`);
+    },
+    /**
+     * Чужие лагеря из ниоткуда (§30.7). Завести шесть аккаунтов, чтобы
+     * посмотреть, как кромка выглядит с соседями, — не проверка. Ручка
+     * кладёт ровно то, что положил бы ответ сервера.
+     */
+    соседи: (сколько = 3) => {
+      liveCamps = Array.from({ length: сколько }, (_, i) => ({
+        id: `гость-${i}`,
+        clan: i % 2 === 0 ? `Артель ${i + 1}` : null,
+        power: 30 + i * 45,
+        level: 2 + (i % 4),
+        folk: 1 + (i % 5),
+      }));
+      campHud.setCamps(liveCamps);
+      statsPanel.setCamps(liveCamps);
+      return liveCamps.length;
     },
     /**
      * Чужие метки из ниоткуда (§30.6). Заводить второй аккаунт, чтобы
@@ -5363,6 +5562,7 @@ startLoop({
       // симуляцией, потом ставится в сцену.
       stepCampHero(camp, campHero, campDt);
       stepCampMining(campDt);
+      stepCampPicking(campDt);
       // На площадке стоит тот, кем сейчас ведут отряд (§11.8): его же лицо
       // отмечено кольцом в веере. Смена ведущего обязана быть видна в лагере,
       // а не только в карточке.
