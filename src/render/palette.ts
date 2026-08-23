@@ -124,6 +124,12 @@ export const RESOURCES_SLOT_ORDER = [
 
 export const RESOURCES_PALETTE = paletteOf(RESOURCES_SLOT_ORDER);
 
+/** Low Poly Fox Model: рыжий, тёмный и светлый мех в общей палитре мира. */
+export const FOX_SLOT_ORDER = [
+  'дерево-тень', 'дерево', 'пламя', 'уголь', 'земля', 'соль-тень', 'соль', 'соль-свет',
+] as const;
+export const FOX_PALETTE = paletteOf(FOX_SLOT_ORDER);
+
 /**
  * Набор Kenney Castle Kit (§6.1.6) — стены, башни и ворота. Двадцать слотов,
  * и ни одного нового: шестой набор — первый, который не потребовал от артбука

@@ -74,10 +74,12 @@ for (let i = 0; i < RUNS; i++) {
   if (run.status !== 'evacuated') continue;
   success++;
   seconds += run.durationSec;
-  for (const kind of Object.keys(carried) as ResourceKind[]) carried[kind] += run.carried[kind];
+  for (const kind of Object.keys(carried) as ResourceKind[]) {
+    carried[kind] = (carried[kind] ?? 0) + (run.carried[kind] ?? 0);
+  }
 }
 
-const perRaid = (kind: ResourceKind): number => carried[kind] / Math.max(1, success);
+const perRaid = (kind: ResourceKind): number => (carried[kind] ?? 0) / Math.max(1, success);
 const raidSeconds = seconds / Math.max(1, success);
 const unitsPerRaid = (Object.keys(carried) as ResourceKind[]).reduce((s, k) => s + perRaid(k), 0);
 /** Секунда за одну вскрытую находку — что бы из неё ни выпало. */

@@ -45,6 +45,7 @@ import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
 import type { Roster } from '../sim/heroes';
 import { WorldMap } from './worldMap';
+import { resourceIcon } from './resourceIcons';
 
 /**
  * Лагерь: сцена первая, карточка по тапу.
@@ -176,6 +177,7 @@ export class CampHud {
   private storeBar!: HTMLElement;
   /** Счёт кладовой в полосе ресурсов: «занято/вместимость». */
   private storeMeter!: HTMLElement;
+  private readonly commodityValues = new Map<ResourceKind, HTMLElement>();
   private chestName!: HTMLElement;
   private chestEffect!: HTMLElement;
   private chestStatus!: HTMLElement;
@@ -360,6 +362,24 @@ export class CampHud {
     // взгляд обязан сверить одно и то же.
     storeBox.append(storeTop, this.storeBarWrap);
     store.appendChild(storeBox);
+    const commodities = document.createElement('div');
+    commodities.className = 'commodity-grid';
+    for (const kind of ['meat', 'pelt'] as const) {
+      const item = document.createElement('div');
+      item.className = 'commodity card';
+      const pic = document.createElement('img');
+      pic.className = 'resource-pic';
+      pic.src = resourceIcon(kind)!;
+      pic.alt = '';
+      const label = document.createElement('span');
+      label.textContent = RESOURCE_NAME[kind];
+      const value = document.createElement('b');
+      value.textContent = '0';
+      item.append(pic, label, value);
+      commodities.appendChild(item);
+      this.commodityValues.set(kind, value);
+    }
+    store.appendChild(commodities);
     this.sections.set('store', store);
     this.sheet.appendChild(store);
 
@@ -990,7 +1010,7 @@ export class CampHud {
       button.title = `${def.trigger} → ${def.effect}`;
       const full = camp.loadout.length >= CONSUMABLE_SLOTS;
       const afford = (Object.entries(def.price) as [ResourceKind, number][]).every(
-        ([kind, amount]) => camp.resources[kind] >= amount,
+        ([kind, amount]) => (camp.resources[kind] ?? 0) >= amount,
       );
       button.disabled = full || !afford;
     }
@@ -1088,6 +1108,9 @@ export class CampHud {
     // жёлтая с четырёх пятых — «пора строить сундук» говорится до потери
     // добычи, красная — приток стоит (в том числе перебор старого сейва).
     this.storeBar.className = used >= cap ? 'bad' : used >= cap * 0.8 ? 'warn' : 'good';
+    for (const [kind, value] of this.commodityValues) {
+      value.textContent = String(camp.resources[kind] ?? 0);
+    }
 
     const block = chestBlock(camp);
     this.chestName.textContent = camp.chests.length > 0 ? `Сундук ×${camp.chests.length}` : 'Сундук';
@@ -1296,8 +1319,9 @@ export class CampHud {
 
   /** Итог вылазки: что зачислено на склад. */
   static resourceSummary(res: Resources): string {
-    const parts = RESOURCE_ORDER.filter((k) => res[k] > 0).map(
-      (k) => `${RESOURCE_NAME[k]} ${res[k]}`,
+    const order: readonly ResourceKind[] = [...RESOURCE_ORDER, 'meat', 'pelt'];
+    const parts = order.filter((k) => (res[k] ?? 0) > 0).map(
+      (k) => `${RESOURCE_NAME[k]} ${res[k] ?? 0}`,
     );
     return parts.length > 0 ? parts.join(' · ') : 'пусто';
   }

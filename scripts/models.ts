@@ -1616,8 +1616,34 @@ const VILLAGE: Pack = {
   data: { file: 'src/render/village.data.ts', prefix: 'VILLAGE', type: 'VillagePart' },
 };
 
+/**
+ * Лиса GabrielPedroLeal: один ригованный зверь с циклом ходьбы. В рантайм
+ * едет один запечённый кадр; движение тела поверх него ведёт `FoxRig`.
+ * Лицензия на странице не объявлена — это записано здесь и в реестре,
+ * чтобы прототип не превратил неизвестное условие в молчаливое разрешение.
+ */
+const FOX: Pack = {
+  id: 'fox',
+  title: 'Low Poly Fox Model',
+  dir: 'assets/low-poly-fox',
+  atlas: 'source/fox_texture.png',
+  sources: ['glb'],
+  ramps: [
+    { id: 'fur', title: 'рыжий мех', slots: ['дерево-тень', 'дерево', 'пламя'], hue: [5, 45], sat: [0.35, 1] },
+    { id: 'dark', title: 'тёмный мех', slots: ['уголь', 'земля'], hue: [0, 360], sat: [0, 0.45], lum: [0, 0.38] },
+    { id: 'light', title: 'светлый мех', slots: ['соль-тень', 'соль', 'соль-свет'], hue: [0, 360], sat: [0, 0.45], lum: [0.38, 1.01] },
+  ],
+  slots: ['дерево-тень', 'дерево', 'пламя', 'уголь', 'земля', 'соль-тень', 'соль', 'соль-свет'],
+  range: 'used',
+  fallback: 'dark',
+  categoryOf: () => 'Животные',
+  adopted: ['fox'],
+  data: { file: 'src/render/fox.data.ts', prefix: 'FOX', type: 'Fox' },
+  license: 'не объявлена; только прототип до подтверждения автора',
+};
+
 const PACKS: readonly Pack[] =
-  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, TOOLS, BUILDER, FOLK, CAMP, PROPS, VILLAGER, VILLAGE];
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, TOOLS, BUILDER, FOLK, CAMP, PROPS, VILLAGER, VILLAGE, FOX];
 
 /* ---------- png ---------- */
 

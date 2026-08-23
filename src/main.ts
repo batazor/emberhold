@@ -833,7 +833,7 @@ function claimGift(): void {
         .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
         .join(', ');
       flight.push(
-        ...(Object.keys(loot) as ResourceKind[]).filter((k) => camp.resources[k] > before[k]),
+        ...(Object.keys(loot) as ResourceKind[]).filter((k) => (camp.resources[k] ?? 0) > (before[k] ?? 0)),
       );
       break;
     }
@@ -3401,8 +3401,8 @@ function toCastle(node: number, seed: number): boolean {
  * Тропа (§6.1.17). Собирается тем же `createRaid`, что все прогулки: ходьба,
  * шаг и камера обязаны считаться одинаково везде.
  *
- * Как у замка — ни добычи, ни противников, ни голода, и выход открыт сразу:
- * уйти можно с любого шага, потому что уходить не от чего. Герой не занимается
+ * В отличие от прежней прогулки, в тупиках живут лисы и с них снимают добычу;
+ * голода всё ещё нет, а выход открыт сразу: охота здесь добровольна. Герой не занимается
  * той же причиной, что на прогулках-участках: заход не обязан снимать
  * с ротации того, кто просто прошёлся.
  */
@@ -5478,6 +5478,7 @@ if (debugTrail !== null) {
       ground: trailSite.path.length,
       branches: trailSite.branches.length,
       stones: trailSite.loc.stones.length,
+      foxes: trailSite.loc.enemies.filter((e) => e.kind === 'fox').length,
     }),
     tap: (x: number, z: number) => (raid === null ? null : commandMove(raid, { x, z })),
   };

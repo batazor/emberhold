@@ -178,6 +178,10 @@
 #return p { margin: 4px 0; font-size: 13px; }
 #return .loot { margin: 12px 0 6px; display: flex; flex-direction: column; gap: 4px; }
 .loot-row b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.resource-pic { width: 34px; height: 34px; object-fit: contain; flex: 0 0 auto; }
+#exchange .pile .resource-pic { width: 30px; height: 30px; margin: -3px 5px -3px -5px; vertical-align: middle; }
+.commodity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.commodity { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 7px; padding: 7px; }
 /* «Полосы важнее добычи»: прогресс занимает больше места, чем ресурсы. */
 #return .progress { margin: 14px 0 16px; display: flex; flex-direction: column; gap: 6px; }
 #return .progress .bar { height: 10px; }

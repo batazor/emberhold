@@ -20,6 +20,7 @@ export interface ExchangeItem {
   readonly name: string;
   /** null — счёта нет: у торговца товар не кончается. */
   readonly count: number | null;
+  readonly icon?: string;
 }
 
 export interface ExchangeSide {
@@ -171,6 +172,7 @@ export class ExchangePanel {
                   pile[item.id] = inDeal + 1;
                   this.sync();
                 },
+            item.icon,
           );
         }),
       );
@@ -178,13 +180,14 @@ export class ExchangePanel {
         ...Object.entries(pile)
           .filter(([, n]) => n > 0)
           .map(([id, n]) => {
-            const name = side.stock().find((i) => i.id === id)?.name ?? id;
+            const item = side.stock().find((i) => i.id === id);
+            const name = item?.name ?? id;
             // Жест обратный переносу: штука возвращается на прилавок.
             return this.card(name, n, () => {
               pile[id] = n - 1;
               if (pile[id] === 0) delete pile[id];
               this.sync();
-            });
+            }, item?.icon);
           }),
       );
     };
@@ -217,10 +220,17 @@ export class ExchangePanel {
    * у кучки одна и зона одна, поэтому куда тянули — неважно: жест
    * выбирает штуку, а не маршрут.
    */
-  private card(name: string, count: number | null, move: (() => void) | null): HTMLElement {
+  private card(name: string, count: number | null, move: (() => void) | null, icon?: string): HTMLElement {
     const card = document.createElement('button');
     card.className = 'pile';
-    card.textContent = count === null ? name : `${name} ×${count}`;
+    if (icon !== undefined) {
+      const pic = document.createElement('img');
+      pic.className = 'resource-pic';
+      pic.src = icon;
+      pic.alt = '';
+      card.appendChild(pic);
+    }
+    card.append(count === null ? name : `${name} ×${count}`);
     if (move === null) {
       card.disabled = true;
       return card;

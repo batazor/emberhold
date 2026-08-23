@@ -107,7 +107,8 @@ export const storeCapacity = (camp: CampState): number =>
  * и наказать игрока за механику, которой он не управляет.
  */
 export const storeUsed = (camp: CampState): number =>
-  camp.resources.stone + camp.resources.wood + camp.resources.iron + camp.resources.crystal;
+  camp.resources.stone + camp.resources.wood + camp.resources.iron + camp.resources.crystal +
+  (camp.resources.meat ?? 0) + (camp.resources.pelt ?? 0);
 
 /** Свободно. Ноль и у переполненного старого сейва: перебор не отнимается. */
 export const storeFree = (camp: CampState): number =>
@@ -131,11 +132,11 @@ export function stash(camp: CampState, from: Partial<Resources>): number {
   // Пища идёт мимо потолка: место в кладовой она не занимает (`storeUsed`),
   // и терять её на пороге было бы вдвойне странно — она и так убывает сама.
   camp.resources.food += from.food ?? 0;
-  for (const kind of ['crystal', 'iron', 'wood', 'stone'] as (keyof Resources)[]) {
+  for (const kind of ['pelt', 'meat', 'crystal', 'iron', 'wood', 'stone'] as (keyof Resources)[]) {
     const amount = from[kind] ?? 0;
     if (amount <= 0) continue;
     const taken = Math.min(amount, free);
-    camp.resources[kind] += taken;
+    camp.resources[kind] = (camp.resources[kind] ?? 0) + taken;
     free -= taken;
     lost += amount - taken;
   }
@@ -930,7 +931,7 @@ export function gearProgress(camp: CampState, slot: GearSlot): number {
   let worst = 1;
   for (const [kind, amount] of Object.entries(cost) as [keyof Resources, number][]) {
     if (amount <= 0) continue;
-    worst = Math.min(worst, camp.resources[kind] / amount);
+    worst = Math.min(worst, (camp.resources[kind] ?? 0) / amount);
   }
   return Math.max(0, Math.min(1, worst));
 }
@@ -946,7 +947,7 @@ export function upgradeProgress(camp: CampState, id: BuildingId): number {
   let worst = 1;
   for (const [kind, amount] of Object.entries(cost) as [keyof Resources, number][]) {
     if (amount <= 0) continue;
-    worst = Math.min(worst, camp.resources[kind] / amount);
+    worst = Math.min(worst, (camp.resources[kind] ?? 0) / amount);
   }
   return Math.max(0, Math.min(1, worst));
 }

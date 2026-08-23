@@ -37,6 +37,8 @@ export const RESOURCE_MODEL: Record<ResourceKind, ResourceModelName | null> = {
   // Пища (§13.7) в кладовой не рисуется: её сток идёт по часам, а не через
   // руки игрока, и кучка на площадке показывала бы то, чего никто не носит.
   food: null,
+  meat: null,
+  pelt: null,
 };
 
 const cache = new Map<string, THREE.BufferGeometry>();

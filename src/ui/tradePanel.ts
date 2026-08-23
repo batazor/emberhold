@@ -17,6 +17,7 @@ import type { CampState } from '../sim/camp';
 import { ExchangePanel } from './exchangePanel';
 import type { Piles } from './exchangePanel';
 import { avatarSvg } from './avatar';
+import { resourceIcon } from './resourceIcons';
 
 /** Сид лица торговца. Он один на игру, и лицо у него одно. */
 export const TRADER_FACE = 41;
@@ -49,11 +50,15 @@ export class TradePanel {
       left: {
         title: 'Ваше',
         stock: () =>
-          GIVABLE.map((kind) => ({
-            id: kind,
-            name: RESOURCE_NAME[kind],
-            count: this.camp?.resources[kind] ?? 0,
-          })),
+          GIVABLE.map((kind) => {
+            const icon = resourceIcon(kind);
+            return {
+              id: kind,
+              name: RESOURCE_NAME[kind],
+              count: this.camp?.resources[kind] ?? 0,
+              ...(icon === undefined ? {} : { icon }),
+            };
+          }),
       },
       right: {
         /**
@@ -66,10 +71,12 @@ export class TradePanel {
         stock: () =>
           SELLABLE.map((kind) => {
             const left = onCounter(this.stock, kind);
+            const icon = resourceIcon(kind);
             return {
               id: kind,
               name: RESOURCE_NAME[kind],
               count: Number.isFinite(left) ? left : null,
+              ...(icon === undefined ? {} : { icon }),
             };
           }),
       },

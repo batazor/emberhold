@@ -17,6 +17,7 @@ import { toolGeometry } from './tools';
 import type { ToolModelName } from './tools';
 import type { ResidentJob } from '../sim/residents';
 import { Drifting } from './drifting';
+import { FoxRig } from './fox';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
 import { roadPieces } from '../sim/roads';
@@ -188,6 +189,7 @@ const ATTACK_RATE: Record<EnemyKind, number> = {
   // и длится ровно столько, сколько назначено телеграфу. Растягивать нечего.
   ghost: 1,
   guard: STRIKE / ENEMY_STATS.guard.telegraph,
+  fox: 1,
 };
 
 /**
@@ -290,7 +292,7 @@ interface EnemyView {
    * без костей (`drifting.ts`): вылазка ведёт обоих одним кодом и не знает,
    * кто из них чем анимирован.
    */
-  readonly rig: Rigged | Drifting;
+  readonly rig: Rigged | Drifting | FoxRig;
   readonly base: THREE.MeshLambertMaterial;
   readonly hot: THREE.MeshLambertMaterial;
   /** Полоска жизни: заполнение отдельным спрайтом, чтобы расти слева. */
@@ -2035,7 +2037,9 @@ export class RaidView {
   private addEnemyView(e: Enemy): void {
     // Геометрия и материал общие на вид, скелет — свой: пятеро с одним
     // скелетом махали бы одновременно.
-    const rig = e.kind === 'ghost'
+    const rig = e.kind === 'fox'
+      ? new FoxRig(this.blocking)
+      : e.kind === 'ghost'
       ? new Drifting(enemyGeometry('ghost'), this.blocking, ENEMY_HEIGHT.ghost)
       // Стражник — рыцарь дозора (§6.1.6): засада поднимает гарнизон,
       // а не третью породу людей.
@@ -2272,7 +2276,7 @@ export class RaidView {
   private battleRigOf(
     state: RaidState,
     id: number,
-  ): { rig: Rigged | Drifting | null; enemy?: EnemyView } | null {
+  ): { rig: Rigged | Drifting | FoxRig | null; enemy?: EnemyView } | null {
     if (id >= 0) {
       const view = this.enemyViews.get(id);
       return view === undefined ? null : { rig: view.rig, enemy: view };
@@ -2399,7 +2403,7 @@ export class RaidView {
   }
 
   /** Стоящий в бою: покой или держимый блок. Ходящих ведёт `beginPlay`. */
-  private battleIdle(rig: Rigged | Drifting, guarding: boolean): void {
+  private battleIdle(rig: Rigged | Drifting | FoxRig, guarding: boolean): void {
     const st = rig.state;
     if (st === 'падение') return;
     if (guarding) {
