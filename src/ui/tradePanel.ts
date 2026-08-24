@@ -88,10 +88,10 @@ export class TradePanel {
           const deals = this.camp?.trades ?? 0;
           const fee = feeOf(deals);
           return fee > 0
-            ? gameText(gameMessage('Наценка {fee} на сто · до своей цены {deals} сделок', 'Markup {fee} percent · {deals} deals until fair pricing'), {
+            ? gameText(gameMessage('Наценка {fee}% · сделок до честной цены: {deals}', '{fee}% markup · deals until fair price: {deals}'), {
                 fee: Math.round(fee * 100), deals: dealsToParity(deals),
               })
-            : gameText(gameMessage('Своя цена: наценки нет', 'Fair price: no markup'));
+            : gameText(gameMessage('Честная цена: без наценки', 'Fair price: no markup'));
         },
       },
       confirmLabel: gameMessage('Обменять', 'Trade'),
@@ -128,7 +128,7 @@ export class TradePanel {
       (Object.entries(part) as [ResourceKind, number][])
         .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
         .join(' · ');
-    return gameText(gameMessage('{received} · отдано {given}', '{received} · given {given}'), {
+    return gameText(gameMessage('{received} · вы отдали {given}', '{received} · you gave {given}'), {
       received: side(take), given: side(give),
     });
   }

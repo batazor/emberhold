@@ -49,7 +49,7 @@ export const consumableMessage: Record<ConsumableId, {
   bandage: {
     name: gameMessage('Повязка', 'Bandage'),
     trigger: gameMessage('осталась одна рана', 'one wound remains'),
-    effect: gameMessage('возвращает одну рану', 'restores one wound'),
+    effect: gameMessage('залечивает одну рану', 'heals one wound'),
   },
   ration: {
     name: gameMessage('Дорожный паёк', 'Travel ration'),
@@ -96,18 +96,18 @@ export const enemyMessage: Record<EnemyKind, GameMessage> = {
 export const eventMessage: Record<EventId, { readonly name: GameMessage; readonly line: GameMessage }> = {
   storm: {
     name: gameMessage('Соляная буря', 'Salt storm'),
-    line: gameMessage('Добыча в полтора раза, ставка выше на четверть', 'Loot ×1.5, risk increased by 25%'),
+    line: gameMessage('Добыча ×1,5, риск +25%', 'Loot ×1.5; risk +25%'),
   },
   collapse: {
     name: gameMessage('Обвал', 'Collapse'),
-    line: gameMessage('Шаг дороже на треть, обзор короче', 'Steps cost one third more, visibility is shorter'),
+    line: gameMessage('Шаги требуют на треть больше провианта, обзор сокращён', 'Steps consume 33% more provisions; vision is reduced'),
   },
   quiet: {
     name: gameMessage('Тихая ночь', 'Quiet night'),
-    line: gameMessage('Противников меньше, добычи тоже', 'Fewer enemies and less loot'),
+    line: gameMessage('Меньше противников, но и меньше добычи', 'Fewer enemies, but less loot as well'),
   },
   vein: {
     name: gameMessage('Жила', 'Rich vein'),
-    line: gameMessage('Добычи больше, и противников тоже', 'More loot and more enemies'),
+    line: gameMessage('Больше добычи, но и больше противников', 'More loot, but more enemies as well'),
   },
 };

@@ -29,28 +29,28 @@ import type { GameMessage } from '../i18n/gameMessages';
 const selfCopy: Record<SelfAnswer, { label: GameMessage; hint: GameMessage }> = {
   строим: {
     label: gameMessage('Строим лагерь', 'We are building a camp'),
-    hint: gameMessage('Гость возьмётся за дерево: прибавка в кладовую, пока у него есть крыша', 'The guest will gather wood, adding to storage while they have a roof'),
+    hint: gameMessage('Под крышей гость будет рубить дерево и пополнять кладовую', 'With shelter, the guest will gather wood for storage'),
   },
   ходим: {
     label: gameMessage('Ходим в вылазки', 'We go on raids'),
-    hint: gameMessage('Гость возьмётся за камень: прибавка в кладовую, пока у него есть крыша', 'The guest will gather stone, adding to storage while they have a roof'),
+    hint: gameMessage('Под крышей гость будет добывать камень и пополнять кладовую', 'With shelter, the guest will gather stone for storage'),
   },
 };
 
 const guestFromCopy: Record<GuestOrigin, GameMessage> = {
-  хутор: gameMessage('— С хутора за лесом. Хутора больше нет, вот и хожу.', '— From the farmstead beyond the forest. It is gone now, so I wander.'),
-  застава: gameMessage('— Со сторожевой заставы. Смена кончилась, а возвращаться некуда.', '— From the watch post. My shift ended, but there is nowhere to return to.'),
-  обоз: gameMessage('— Шёл с обозом. Обоз ушёл, я остался.', '— I traveled with a caravan. It moved on; I stayed.'),
-  берег: gameMessage('— С берега за холмами. Вода поднялась выше дома.', '— From the shore beyond the hills. The water rose above the house.'),
+  хутор: gameMessage('— С хутора за лесом. Хутора больше нет, вот и скитаюсь.', '— From the farmstead beyond the woods. It is gone now, so I wander.'),
+  застава: gameMessage('— Со сторожевой заставы. Смена кончилась, а возвращаться некуда.', '— From the watch post. My shift ended, but I have nowhere to return.'),
+  обоз: gameMessage('— Шёл с обозом. Обоз ушёл дальше, а я остался.', '— I traveled with a caravan. It moved on; I stayed behind.'),
+  берег: gameMessage('— С берега за холмами. Вода поднялась выше крыши.', '— From the shore beyond the hills. The water rose above our roof.'),
 };
 const guestSeekCopy: Record<GuestSeek, GameMessage> = {
-  дело: gameMessage('— Ищу, где строятся. Руки помнят дерево.', '— I seek a place where people build. My hands remember wood.'),
-  дорога: gameMessage('— Ищу спуск под землю. Мне бы к камню поближе.', '— I seek a way underground. I want to be closer to the stone.'),
+  дело: gameMessage('— Ищу место, где строят. Руки помнят дерево.', '— I seek a place where people build. My hands know timber.'),
+  дорога: gameMessage('— Ищу спуск под землю. Камень — работа мне знакомая.', '— I seek a way underground. I know how to work stone.'),
 };
 const guestTermCopy: Record<GuestTerm, GameMessage> = {
   даром: gameMessage('— Ничего не возьму. Место у огня — и по рукам.', '— I ask for nothing. A place by the fire, and we have a deal.'),
-  долг: gameMessage('— Задолжал я страже. Покроешь камнем — пойду.', '— I owe the guard. Cover it with stone and I will come.'),
-  родня: gameMessage('— Родне собрать надо в дорогу. С тебя дерево — и я твой.', '— My family needs supplies for the road. Give them wood and I am with you.'),
+  долг: gameMessage('— Я задолжал страже. Погасишь долг камнем — пойду.', '— I owe the guard. Pay my debt in stone, and I will come.'),
+  родня: gameMessage('— Родным надо собраться в дорогу. Дашь дерева — я с тобой.', '— My family needs supplies for the road. Give them timber, and I am with you.'),
   изба: gameMessage('— Хватит с меня палаток. Встанет изба — перееду.', '— I have had enough of tents. Build a house and I will move in.'),
 };
 
@@ -136,13 +136,13 @@ export class MeetPanel {
     }
 
     if (state.step === 'он') {
-      setGameText(this.line, gameMessage('— Я {name}.', '— I am {name}.'), { name: settler.name });
+      setGameText(this.line, gameMessage('— Я {name}.', '— I’m {name}.'), { name: settler.name });
       this.act(gameMessage('Назваться', 'Introduce yourself'), () => this.cb.onAdvance());
       return;
     }
 
     if (state.step === 'ты') {
-      setGameText(this.line, gameMessage('— А тебя как звать?', '— What is your name?'));
+      setGameText(this.line, gameMessage('— А тебя как звать?', '— And what should I call you?'));
       this.field.style.display = 'block';
       // Значение ставится только на входе в кадр: перетирать его на каждой
       // перерисовке значило бы стирать то, что игрок печатает.
@@ -150,13 +150,13 @@ export class MeetPanel {
         this.field.value = state.heroName;
         this.field.dataset.step = 'ты';
       }
-      this.act(gameMessage('Так и звать', 'That is my name'), () => this.cb.onName(this.field.value));
+      this.act(gameMessage('Так и звать', 'That’s right'), () => this.cb.onName(this.field.value));
       return;
     }
 
     if (state.step === 'вопрос') {
       this.field.dataset.step = '';
-      setGameText(this.line, gameMessage('— {name}. Чем у вас там живут?', '— {name}. How do you make a living there?'), { name: state.heroName });
+      setGameText(this.line, gameMessage('— {name}. А чем у вас в лагере промышляют?', '— {name}. What keeps your camp going?'), { name: state.heroName });
       for (const answer of SELF_ANSWERS) {
         this.act(selfCopy[answer].label, () => this.cb.onAnswer(answer), selfCopy[answer].hint);
       }
@@ -166,7 +166,7 @@ export class MeetPanel {
     const gift = giftOf(state);
     setGameText(this.line, gift === null
       ? gameMessage('— Возьми, что есть.', '— Take what I have.')
-      : gameMessage('— Возьми, что было.', '— Take what I had.'));
+      : gameMessage('— Возьми, что осталось.', '— Take what I had left.'));
     // Дар отдельной строкой, а не внутри реплики: это перечень с числами,
     // и в кавычках прямой речи он читался бы репликой, которую человек
     // произносит вслух.
@@ -196,7 +196,7 @@ export class MeetPanel {
     }
 
     if (state.step === 'кто') {
-      setGameText(this.line, gameMessage('— Я {name}. Сижу у огня, жду попутчиков.', '— I am {name}. I sit by the fire and wait for companions.'), { name: guest.who.name });
+      setGameText(this.line, gameMessage('— Я {name}. Жду у огня попутчиков.', '— I’m {name}. Waiting by the fire for someone headed my way.'), { name: guest.who.name });
       this.act(gameMessage('Спросить, откуда', 'Ask where they are from'), () => this.cb.onAdvance());
       return;
     }
@@ -253,7 +253,7 @@ export class MeetPanel {
     if (state.step === 'кто') {
       setGameText(
         this.line,
-        gameMessage('— Я {name}. Лес мой, топор мой.', '— I am {name}. The forest is mine, the axe is mine.'),
+        gameMessage('— Я {name}. Лес мой, топор мой.', '— I’m {name}. My forest, my axe.'),
         { name: post.who.name },
       );
       this.act(gameMessage('Спросить о цене', 'Ask about the price'), () => this.cb.onAdvance());
@@ -261,17 +261,17 @@ export class MeetPanel {
     }
 
     setGameText(this.line, gameMessage(
-      '— Найми — буду валить твой лес. Кормить будешь ты.',
-      '— Hire me and I will fell your forest. Feeding me is on you.',
+      '— Найми меня — буду валить для тебя лес. Кормить будешь ты.',
+      '— Hire me and I will fell timber for you. You provide the food.',
     ));
     // Цена и то, чего не хватает, — одной строкой: игрок должен видеть
     // и сколько просят, и почему нельзя, а не гадать по погасшей кнопке.
     if (block === 'ok') {
-      setGameText(this.goods, gameMessage('Наём: монеты {price}', 'Hire: coins {price}'), { price });
+      setGameText(this.goods, gameMessage('Плата за наём: {price} монет', 'Hiring fee: {price} coins'), { price });
     } else {
       setGameText(
         this.goods,
-        gameMessage('Наём: монеты {price} · {reason}', 'Hire: coins {price} · {reason}'),
+        gameMessage('Плата за наём: {price} монет · {reason}', 'Hiring fee: {price} coins · {reason}'),
         { price, reason: gameText(HIRE_REASON_MESSAGE[block]) },
       );
     }
@@ -281,10 +281,10 @@ export class MeetPanel {
       () => this.cb.onInvite(),
       block === 'ok'
         ? gameMessage(
-            'Вдвое быстрее на дереве; ест и работает, только пока есть крыша',
-            'Twice as fast on wood; eats like everyone and works only while he has a roof',
+            'Рубит дерево вдвое быстрее; ест как все и работает, пока есть крыша',
+            'Gathers wood twice as fast; eats like everyone else and works while sheltered',
           )
-        : gameMessage('Нанять не на что — приходи с монетами', 'Nothing to hire with — come back with coins'),
+        : gameMessage('Монет не хватает — возвращайся с платой', 'Not enough coins — return when you can pay'),
     );
     // Кнопка гаснет, а не отказывает нажатием: цена названа рядом, и жать
     // на «нанять» с пустым кошельком незачем.

@@ -291,7 +291,7 @@ export class DailyPanel {
     setGameText(this.weekName, first
       ? gameMessage('Первая неделя', 'First week')
       : gameMessage('Неделя {week}', 'Week {week}'), { week: weekOf(state.taken) });
-    setGameText(this.weekCount, first ? gameMessage('даётся один раз', 'awarded once') : gameMessage('круг повторяется', 'cycle repeats'));
+    setGameText(this.weekCount, first ? gameMessage('награды выдаются один раз', 'one-time rewards') : gameMessage('повторяется каждую неделю', 'repeats every week'));
 
     week.forEach((gift, at) => {
       const card = this.cards[at]!;

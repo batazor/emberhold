@@ -74,7 +74,7 @@ export class MinotaurPanel {
     const accepted = camp.minotaurQuests?.[String(this.seed >>> 0)];
     const reputation = camp.minotaurReputation ?? 0;
     const rotation = minotaurQuestRotation(this.seed, camp.minotaurQuestCycle ?? 0);
-    setGameText(this.say, gameMessage('— В моём доме берут не тайком. За моей спиной два каменных стража. Есть три пути: испытание, честный обмен или работа.', '— Nothing is taken from my house in secret. Two stone guards stand behind me. There are three paths: a trial, an honest trade, or work.'));
+    setGameText(this.say, gameMessage('— В моём доме не крадут. За моей спиной два каменных стража. Выбирай: испытание, честный обмен или работа.', '— No one steals from my house. Two stone sentinels stand behind me. Choose: a trial, an honest trade, or honest work.'));
     setGameText(this.goods, gameMessage('Репутация: {reputation} · Монеты: {coins} · {stone}: {stoneCount} · {wood}: {woodCount} · {iron}: {ironCount}', 'Reputation: {reputation} · Coins: {coins} · {stone}: {stoneCount} · {wood}: {woodCount} · {iron}: {ironCount}'), {
       reputation, coins: coinsOf(camp), stone: gameText(resourceMessage.stone), stoneCount: camp.resources.stone,
       wood: gameText(resourceMessage.wood), woodCount: camp.resources.wood,

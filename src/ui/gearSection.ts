@@ -4,7 +4,7 @@ import { gearMessage, offhandMessage } from '../i18n/gameData';
 import { gameMessage, gameText, setGameAttribute, setGameText } from '../i18n/game';
 
 function gearEffectText(source: string): string {
-  if (source === 'не выковано') return gameText(gameMessage('не выковано', 'not forged'));
+  if (source === 'не выковано') return gameText(gameMessage('без ковки', 'unforged'));
   const match = /^ур\. (\d+) · (.+)$/.exec(source);
   if (match === null) return window.EmberholdLanguage?.translate(source) ?? source;
   const level = Number(match[1]);

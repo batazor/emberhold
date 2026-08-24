@@ -29,17 +29,17 @@ import { raidSummary } from './summary';
 import { gameMarkup, gameMessage, gameText, setGameAttribute, setGameText } from '../../i18n/game';
 
 const itemCopy: Record<string, { name: ReturnType<typeof gameMessage>; effect: ReturnType<typeof gameMessage>; cost: ReturnType<typeof gameMessage> }> = {
-  'каска': { name: gameMessage('Каска', 'Helmet'), effect: gameMessage('HP +1', 'HP +1'), cost: gameMessage('Обзор −1: край поля закрыт', 'Vision −1: the edge of the field is obscured') },
-  'куртка': { name: gameMessage('Стёганая куртка', 'Quilted jacket'), effect: gameMessage('HP +1', 'HP +1'), cost: gameMessage('Шаг дороже на 15%', 'Steps cost 15% more') },
+  'каска': { name: gameMessage('Каска', 'Helmet'), effect: gameMessage('Здоровье +1', 'Health +1'), cost: gameMessage('Обзор −1: край поля закрыт', 'Vision −1: the edge of the field is obscured') },
+  'куртка': { name: gameMessage('Стёганая куртка', 'Quilted jacket'), effect: gameMessage('Здоровье +1', 'Health +1'), cost: gameMessage('Шаг дороже на 15%', 'Steps cost 15% more') },
   'кайло': { name: gameMessage('Кайло', 'Pickaxe'), effect: gameMessage('Атака +3', 'Attack +3'), cost: gameMessage('Тяжёлое: рюкзак −1', 'Heavy: backpack −1') },
   'топор': { name: gameMessage('Топор', 'Axe'), effect: gameMessage('Атака +2', 'Attack +2'), cost: gameMessage('Рубит, но не долбит камень', 'Chops wood but cannot break stone') },
   'клинок': { name: gameMessage('Клинок', 'Blade'), effect: gameMessage('Атака +4', 'Attack +4'), cost: gameMessage('Тяжёлый: рюкзак −1', 'Heavy: backpack −1') },
-  'щит': { name: gameMessage('Щит', 'Shield'), effect: gameMessage('Заслон · Защита +4.8', 'Intercept · Defense +4.8'), cost: gameMessage('Левая рука занята: фонаря не будет', 'Occupies the left hand: no lantern') },
+  'щит': { name: gameMessage('Щит', 'Shield'), effect: gameMessage('Заслон · Защита +4,8', 'Intercept · Defense +4.8'), cost: gameMessage('Левая рука занята: фонаря не будет', 'Occupies the left hand: no lantern') },
   'сапоги': { name: gameMessage('Сапоги', 'Boots'), effect: gameMessage('Шаг дешевле на 10%', 'Steps cost 10% less'), cost: gameMessage('Шумные: угроза быстрее', 'Noisy: threat rises faster') },
   'фонарь': { name: gameMessage('Рудничный фонарь', 'Mining lantern'), effect: gameMessage('Обзор +1', 'Vision +1'), cost: gameMessage('Занимает левую руку', 'Occupies the left hand') },
   'короб': { name: gameMessage('Заплечный короб', 'Backpack'), effect: gameMessage('Рюкзак +2', 'Backpack +2'), cost: gameMessage('В бою не даёт ничего', 'Provides no combat benefit') },
-  'кольцо': { name: gameMessage('Спокойная рука', 'Steady hand'), effect: gameMessage('Под угрозой меньше на 20%', '20% less loot at risk'), cost: gameMessage('Аффикс задан ковкой', 'The affix is set when forged') },
-  'настой': { name: gameMessage('Настой', 'Tincture'), effect: gameMessage('Снимает одну рану', 'Removes one wound'), cost: gameMessage('Одноразовый', 'Single use') },
+  'кольцо': { name: gameMessage('Спокойная рука', 'Steady hand'), effect: gameMessage('Под угрозой меньше на 20%', '20% less loot at risk'), cost: gameMessage('Свойство определяется при ковке', 'Its bonus is chosen when forged') },
+  'настой': { name: gameMessage('Настой', 'Tincture'), effect: gameMessage('Залечивает одну рану', 'Heals one wound'), cost: gameMessage('Одноразовый', 'Single use') },
 };
 
 const statCopy: Record<string, ReturnType<typeof gameMessage>> = {
@@ -69,6 +69,7 @@ const characterText = (text: string): string => {
     'Тренировочный слот занят': gameMessage('Тренировочный слот занят', 'The training slot is occupied'),
     'Максимальный уровень': gameMessage('Максимальный уровень', 'Maximum level'),
     'Атака': gameMessage('Атака', 'Attack'),
+    'HP': gameMessage('Здоровье', 'Health'),
     'Обзор': gameMessage('Обзор', 'Vision'),
     'Защита': gameMessage('Защита', 'Defense'),
     'Рюкзак': gameMessage('Рюкзак', 'Backpack'),
@@ -86,7 +87,7 @@ const characterText = (text: string): string => {
   let match = /^\+(\d+) вместимости до конца вылазки$/.exec(text);
   if (match !== null) return gameText(gameMessage('+{capacity} вместимости до конца вылазки', '+{capacity} capacity until the raid ends'), { capacity: match[1]! });
   match = /^путь назад −(\d+)% на (\d+) с$/.exec(text);
-  if (match !== null) return gameText(gameMessage('путь назад −{percent}% на {seconds} с', 'way back −{percent}% for {seconds} sec'), { percent: match[1]!, seconds: match[2]! });
+  if (match !== null) return gameText(gameMessage('путь назад −{percent}% на {seconds} с', 'return distance −{percent}% for {seconds} sec'), { percent: match[1]!, seconds: match[2]! });
   match = /^находки ×([^ ]+) на (\d+) с$/.exec(text);
   if (match !== null) return gameText(gameMessage('находки ×{multiplier} на {seconds} с', 'loot ×{multiplier} for {seconds} sec'), { multiplier: match[1]!, seconds: match[2]! });
   return legacyText(text);
@@ -227,6 +228,8 @@ export class CharacterPage {
   private pack: PackState = startPack();
   /** Чья раскладка сейчас разложена: у другого человека она своя. */
   private packKey = '';
+  /** Вложенные подписи title получают уже переведённые значения и требуют перерисовки при смене языка. */
+  private packLanguage = '';
   private faceKey = '';
   private tabsKey = '';
   private skillKey = '';
@@ -346,10 +349,15 @@ export class CharacterPage {
     }
     // Раскладка макета своя у каждого человека: чужие вещи на новом лице
     // читались бы как «снаряжение перешло», а перехода никакого нет.
+    const language = document.documentElement.lang;
     if (s.key !== this.packKey) {
       this.packKey = s.key;
+      this.packLanguage = language;
       this.pack = startPack();
       setGameText(this.hint, gameMessage('Тащите вещь из сумки на слот — или коротко тапните по ней.', 'Drag an item from the bag to a slot, or tap it briefly.'));
+      this.drawPack();
+    } else if (language !== this.packLanguage) {
+      this.packLanguage = language;
       this.drawPack();
     }
     const tabsKey = s.people.map((p) => p.key).join(',') + `|${s.key}`;
@@ -501,7 +509,7 @@ export class CharacterPage {
     // игрок обязан видеть, что их будет больше и от чего (`items.ts`).
     const note = document.createElement('p');
     note.className = 'ch-free-note dim';
-    setGameText(note, gameMessage('Свободных слотов {free} из {max} — остальные откроют навыки', '{free} of {max} free slots—the rest are unlocked by skills'), {
+    setGameText(note, gameMessage('Свободно {free} из {max} слотов — остальные откроют навыки', 'Free slots: {free} of {max} · skills unlock the rest'), {
       free: FREE_SLOTS, max: MAX_FREE_SLOTS,
     });
     this.wornEl.appendChild(note);

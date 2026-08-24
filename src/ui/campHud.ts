@@ -196,15 +196,15 @@ const CHEST_REASON_MESSAGE = {
 const UPGRADE_REASON_MESSAGE = {
   max: gameMessage('Максимальный уровень', 'Maximum level'),
   locked: gameMessage('Нужно Жильё ур. 2', 'Requires Housing lvl 2'),
-  'hq-cap': gameMessage('Жильё не пускает выше', 'Housing level is too low'),
-  'slot-busy': gameMessage('Слот занят другой стройкой', 'The slot is occupied by another build'),
+  'hq-cap': gameMessage('Сначала улучшите Жильё', 'Upgrade Housing first'),
+  'slot-busy': gameMessage('Уже идёт другая стройка', 'Another construction job is underway'),
   resources: gameMessage('Не хватает ресурсов', 'Not enough resources'),
 } as const;
 
 const GEAR_REASON_MESSAGE = {
   'no-forge': gameMessage('Нужна Мастерская', 'Requires a Workshop'),
-  max: gameMessage('Лучше не бывает', 'Maximum level'),
-  'forge-cap': gameMessage('Мастерская не тянет выше', 'Upgrade the Workshop first'),
+  max: gameMessage('Улучшено до предела', 'Fully upgraded'),
+  'forge-cap': gameMessage('Сначала улучшите Мастерскую', 'Upgrade the Workshop first'),
   resources: gameMessage('Не хватает железа', 'Not enough iron'),
 } as const;
 
@@ -1040,7 +1040,7 @@ export class CampHud {
     this.task.style.display = 'flex';
     this.taskDoes = 'clan';
     this.hideTaskFace();
-    setGameText(this.taskWhy, gameMessage('Лагерь без имени: соседи уже в таблице', 'Your camp has no name, while neighbors are already in the standings'));
+    setGameText(this.taskWhy, gameMessage('У лагеря нет имени, а соседи уже в таблице', 'Your camp is still unnamed; your neighbors are already in the standings'));
     setGameText(this.taskButton, gameMessage('Создать клан', 'Create clan'));
     this.taskButton.disabled = false;
   }
@@ -1173,8 +1173,8 @@ export class CampHud {
         'Arrows {arrows} / {capacity} · +{pack} · {price}',
       ), { arrows: camp.arrows, capacity: cap, pack: ARROW_PACK, price });
       setGameAttribute(this.quiver, 'title', gameMessage(
-        'Колчан пустеет за вылазку — донесённое возвращается в лагерь',
-        'The quiver is consumed during a run — unused arrows return to camp',
+        'Стрелы тратятся в вылазке; неиспользованные возвращаются в лагерь',
+        'Arrows are spent during a raid; unused arrows return to camp',
       ));
       this.quiver.disabled = !canBuyArrows(camp, cap);
     }

@@ -107,7 +107,7 @@ export class Hud {
           <div class="bar" data-row="bag"><i id="h-bag-bar"></i></div>
           <span class="num" id="h-bag" data-row="bag">0 / 0</span>
 
-          <span class="lbl" data-row="back">${gameMarkup(gameMessage('Путь назад', 'Way back'))}</span>
+          <span class="lbl" data-row="back">${gameMarkup(gameMessage('Путь назад', 'Return distance'))}</span>
           <div class="bar back" data-row="back"><i id="h-back-bar"></i></div>
           <span class="num" id="h-back" data-row="back">0 ш.</span>
         </div>
@@ -197,7 +197,7 @@ export class Hud {
     const skill = skillMessage[state.loadout.skill];
     const level = state.loadout.skillLevel;
     const effect = state.loadout.skill === 'trail'
-      ? gameText(gameMessage('путь назад −{percent}% на {seconds} с', 'way back −{percent}% for {seconds} sec'), {
+      ? gameText(gameMessage('путь назад −{percent}% на {seconds} с', 'return distance −{percent}% for {seconds} sec'), {
           percent: Math.round(trailDiscount(level) * 100), seconds: skillSeconds('trail', level),
         })
       : state.loadout.skill === 'haul'
@@ -257,7 +257,7 @@ export class Hud {
     setGameText(this.back, gameMessage('{steps} ш.', '{steps} steps'), { steps: back });
 
     this.risk.innerHTML = `${gameMarkup(gameMessage('Под угрозой', 'At risk'))} <b>${atRisk(state)}</b> ${gameMarkup(gameMessage('из {total}', 'of {total}'), { total: state.bagTotal })}`;
-    setGameText(this.tier, gameMessage('{tier} · ставка {risk}%', '{tier} · stake {risk}%'), {
+    setGameText(this.tier, gameMessage('{tier} · ставка {risk}%', '{tier} · risk {risk}%'), {
       tier: gameText(tierMessage[tier]), risk: Math.round(TIER_RISK[tier] * 100),
     });
     this.tier.className = tier >= 3 ? 'bad' : tier === 2 ? 'warn' : 'dim';

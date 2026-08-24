@@ -207,11 +207,11 @@ export class ExchangePanel {
     } else {
       const worth = price.worth(this.give);
       const ask = price.ask(this.take);
-      if (!took) setGameText(this.balance, gameMessage('Возьмите товар с его прилавка', 'Take an item from their counter'));
+      if (!took) setGameText(this.balance, gameMessage('Выберите товар на прилавке торговца', 'Choose an item from the trader’s counter'));
       else if (worth >= ask) {
-        setGameText(this.balance, gameMessage('Ваше {worth} против его {ask} — сделка его устраивает', 'Yours {worth} against theirs {ask}—they accept the deal'), { worth, ask });
+        setGameText(this.balance, gameMessage('Ваше предложение: {worth} · цена торговца: {ask} · по рукам', 'Your offer: {worth} · trader’s price: {ask} · deal accepted'), { worth, ask });
       } else {
-        setGameText(this.balance, gameMessage('Ваше {worth} против его {ask} — не хватает {missing}', 'Yours {worth} against theirs {ask}—short by {missing}'), { worth, ask, missing: ask - worth });
+        setGameText(this.balance, gameMessage('Ваше предложение: {worth} · цена торговца: {ask} · не хватает {missing}', 'Your offer: {worth} · trader’s price: {ask} · short by {missing}'), { worth, ask, missing: ask - worth });
       }
       this.note.textContent = window.EmberholdLanguage?.translate(price.note()) ?? price.note();
       this.confirm.disabled = !took || worth < ask;

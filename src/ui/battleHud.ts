@@ -127,10 +127,10 @@ export class BattleHud {
         ? gameMessage('Бой идёт…', 'Battle in progress…')
         : mine
           ? gameMessage('Ваш ход', 'Your turn')
-          : gameMessage('Ходит {unit}', '{unit} acts'),
+          : gameMessage('Ход: {unit}', 'Turn: {unit}'),
       busy || mine ? undefined : { unit: nameOf(unit) });
     this.turn.className = mine ? 'good' : 'dim';
-    setGameText(this.q('b-round'), gameMessage('раунд {round} · противников {enemies}', 'round {round} · enemies {enemies}'), {
+    setGameText(this.q('b-round'), gameMessage('Раунд {round} · противников: {enemies}', 'Round {round} · Enemies: {enemies}'), {
       round: state.round, enemies: alive(state, 'enemy').length,
     });
 
@@ -159,8 +159,8 @@ export class BattleHud {
       const guardedAttacks = forecast.guardedThreats.filter((t) => t.target === unit.id).length;
       const attackLabel = attacks === guardedAttacks ? String(attacks) : `${attacks}→${guardedAttacks}`;
       setGameText(this.threat,
-        gameMessage('Угроза: {damage} · {guard} {damage}→{guarded} · ударов {attacks}',
-          'Threat: {damage} · {guard} {damage}→{guarded} · attacks {attacks}'), {
+        gameMessage('Угроза: {damage} · {guard}: {damage}→{guarded} · ударов: {attacks}',
+          'Threat: {damage} · {guard}: {damage}→{guarded} · hits: {attacks}'), {
           damage: num(forecast.damage),
           guard: gameText(unit.hasShield ? gameMessage('Заслон', 'Intercept') : gameMessage('Блок', 'Block')),
           guarded: num(forecast.guardedDamage), attacks: attackLabel,
@@ -168,14 +168,14 @@ export class BattleHud {
       this.counter.textContent = counterText(state, forecast);
     } else {
       setGameText(this.threat, forecast.canBreakContact
-        ? gameMessage('Угрозы нет · к следующему кругу отрыв', 'No threat · contact breaks next round')
+        ? gameMessage('Угрозы нет · в следующем раунде контакт прервётся', 'No threat · disengaging next round')
         : gameMessage('Удара в этом круге нет', 'No attack this round'));
       this.counter.textContent = counterText(state, forecast);
     }
     if (mine) {
       setGameText(this.defense,
         unit.hasShield
-          ? gameMessage('Уворот {dodge}% · щит: первый ближний удар оттолкнёт', 'Dodge {dodge}% · shield: the first melee hit will push the attacker back')
+          ? gameMessage('Уворот {dodge}% · щит оттолкнёт первого ближнего противника', 'Dodge {dodge}% · shield pushes back the first melee attacker')
           : gameMessage('Уворот {dodge}%', 'Dodge {dodge}%'),
         { dodge: Math.round(unit.dodge) });
     } else this.defense.textContent = '';
@@ -194,9 +194,9 @@ const num = (value: number): string =>
 function counterText(state: BattleState, forecast: BattleForecast): string {
   const intents = new Set(forecast.guardedThreats.map((t) => t.intent).filter((x) => x !== undefined));
   const lines: string[] = [];
-  if (intents.has('brace-burn')) lines.push(gameText(gameMessage('Воин целит щит: первое отбрасывание сгорит', 'The warrior targets the shield: the first knockback will be spent')));
-  if (intents.has('draw-intercept')) lines.push(gameText(gameMessage('Маг целит соседа: Заслон примет болт', 'The mage targets an ally: Intercept will take the bolt')));
-  if (intents.has('charge')) lines.push(gameText(gameMessage('Таран усилен и не отбрасывается', 'The charge is empowered and cannot be knocked back')));
+  if (intents.has('brace-burn')) lines.push(gameText(gameMessage('Воин целит щит: первое отбрасывание не сработает', 'The warrior braces against the shield: the first knockback will fail')));
+  if (intents.has('draw-intercept')) lines.push(gameText(gameMessage('Маг целит союзника: Заслон примет болт', 'The mage targets an ally: Intercept will absorb the bolt')));
+  if (intents.has('charge')) lines.push(gameText(gameMessage('Разогнавшегося противника нельзя оттолкнуть', 'A charging enemy cannot be pushed back')));
   if (intents.has('immovable')) {
     const minotaur = forecast.guardedThreats.some((t) =>
       t.intent === 'immovable' && state.units.find((u) => u.id === t.attacker)?.kind === 'minotaur');
@@ -204,6 +204,6 @@ function counterText(state: BattleState, forecast: BattleForecast): string {
       ? gameMessage('Минотавр слишком тяжёл для толчка', 'The minotaur is too heavy to push')
       : gameMessage('Голем удержит позицию', 'The golem will hold its position')));
   }
-  if (intents.has('swarm')) lines.push(gameText(gameMessage('Стая: оттолкнётся только первый', 'Swarm: only the first attacker will be pushed back')));
+  if (intents.has('swarm')) lines.push(gameText(gameMessage('Из стаи оттолкнётся только первый', 'Only the first attacker in the swarm will be pushed back')));
   return lines.join(' · ');
 }

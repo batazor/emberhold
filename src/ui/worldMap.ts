@@ -52,10 +52,25 @@ import { LIVE_SHOWN, liveCampSpots } from '../sim/world';
 import { KIND } from '../sim/world';
 import type { NodeKind, NodeState, Region, Visit, WorldNode } from '../sim/world';
 import { drawMapTerrain } from './mapTerrain';
-import { gameDuration, gameMarkup, gameMessage, setGameText } from '../i18n/game';
-
-const worldText = (source: string): string => window.EmberholdLanguage?.translate(source) ?? source;
+import { gameDuration, gameMarkup, gameMessage, gameText, setGameText } from '../i18n/game';
 import { eventMessage, resourceMessage, tierMessage } from '../i18n/gameData';
+
+const WORLD_PLACE_PREFIX: Readonly<Record<string, ReturnType<typeof gameMessage>>> = {
+  'Замок': gameMessage('Замок', 'Castle'),
+  'Замок минотавра': gameMessage('Замок минотавра', 'Minotaur Castle'),
+  'Кладбище': gameMessage('Кладбище', 'Graveyard'),
+  'Тропа': gameMessage('Тропа', 'Trail'),
+  'Колесо': gameMessage('Колесо', 'Prize Wheel'),
+};
+
+function worldText(source: string): string {
+  const place = /^(.+) «(.+)»$/.exec(source);
+  if (place !== null) {
+    const prefix = WORLD_PLACE_PREFIX[place[1]!];
+    if (prefix !== undefined) return `${gameText(prefix)} “${worldText(place[2]!)}”`;
+  }
+  return window.EmberholdLanguage?.translate(source) ?? source;
+}
 
 /**
  * Цвет кольца у прогулочных мест. Богатства у них нет, и шкала им ни к чему —
@@ -892,7 +907,7 @@ export class WorldMap {
       // до сих пор не называл никто: железо идёт с первого, кристалл со
       // второго, и узнать это можно было только сходив. Ставку игрок читает
       // до входа — награда обязана читаться там же.
-      `<div class="row line"><span>${gameMarkup(gameMessage('Падает', 'Yields'))}</span><b>${lootLine(node.tier)}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Можно добыть', 'Available loot'))}</span><b>${lootLine(node.tier)}</b></div>` +
       // §30.6 — кто ещё сюда ходил. Строка появляется только тогда, когда
       // соседи были: «заходов 0» — это не сведение, а шум, и стоять
       // на карточке ему незачем. Имён нет: решение здесь одно — идти или
@@ -902,10 +917,10 @@ export class WorldMap {
       // «2 захода» против «5 заходов» — три формы ради одной цифры,
       // и падеж здесь взялся бы ниоткуда ровно так же, как у имён (§0.1).
       (state.others > 0
-        ? `<div class="row line"><span>${gameMarkup(gameMessage('Заходы соседей', 'Neighbor runs'))}</span>` +
+        ? `<div class="row line"><span>${gameMarkup(gameMessage('Вылазки соседей', 'Neighboring raids'))}</span>` +
           `<b class="bad">${state.others}</b></div>`
         : '') +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who’s here'))}</span>` +
       // §4 — кланы «растут», и до этой строки рост считался, но не показывался
       // нигде. Уровень — та самая таблица развития, свёрнутая до одного
       // числа: имя рабочее (§0.1), а «ур.» читается без легенды.
@@ -924,7 +939,7 @@ export class WorldMap {
       'Ещё один заход вернётся через {duration}',
       'Another run becomes available in {duration}',
     ), { duration: gameDuration(state.restShifts * SHIFT_SEC) });
-    else setGameText(this.note, gameMessage('Полная жила: три захода', 'Full vein: three runs'));
+    else setGameText(this.note, gameMessage('Нетронутая жила: три вылазки', 'Untapped vein: three raids'));
 
     // Кнопка называется действием, а не местом: имя локации склоняется,
     // а имена в прототипе рабочие (§0.1) и меняются без предупреждения.
@@ -1028,12 +1043,12 @@ export class WorldMap {
     // соседи мира», а это не все.
     const hidden = this.live.length - LIVE_SHOWN;
     if (hidden > 0) setGameText(this.note, gameMessage(
-      'Сила — вылазки, вложенные в лагерь. На кромке {shown} лагерей соседей из {total}, остальные — в таблице.',
-      'Power is the value of runs invested in camp. The edge shows {shown} of {total} neighboring camps; the rest are in the standings.',
+      'Сила — стоимость добычи, вложенной в лагерь. На кромке видно {shown} лагерей соседей из {total}; остальные — в таблице.',
+      'Power is the value of loot invested in the camp. The edge shows {shown} of {total} neighboring camps; the rest are in the standings.',
     ), { shown: LIVE_SHOWN, total: this.live.length });
     else setGameText(this.note, gameMessage(
-      'Сила — вылазки, вложенные в лагерь: постройки, снаряжение, палатки и сундуки.',
-      'Power is the value of runs invested in camp: buildings, equipment, tents, and chests.',
+      'Сила — стоимость добычи, вложенной в лагерь: в постройки, снаряжение, палатки и сундуки.',
+      'Power is the value of loot invested in the camp: buildings, equipment, tents, and chests.',
     ));
   }
 
@@ -1058,7 +1073,7 @@ export class WorldMap {
     // богатство (§4), и читается строка выше именно так.
     setGameText(this.note, where === null
       ? gameMessage('Фракция мира. Сегодня её людей на точках не видно.', 'A world faction. None of its people are visible at locations today.')
-      : gameMessage('Пока они там, точка тратит богатство — заход туда обойдётся дешевле по добыче.', 'While they are there, the location loses richness, so your run will yield less loot.'));
+      : gameMessage('Пока они там, запас точки истощается — вам достанется меньше добычи.', 'While they are there, the site is being depleted—your raid will yield less loot.'));
   }
 
   /**
@@ -1099,10 +1114,10 @@ export class WorldMap {
   private paintGraveCard(node: WorldNode): void {
     this.card.innerHTML =
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка', 'exploration'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('ограда, могилы, склеп', 'fence, graves, crypt'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Добыча', 'Loot'))}</span><b>${gameMarkup(gameMessage('нет', 'none'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who’s here'))}</span>` +
       `<b class="bad">${gameMarkup(gameMessage('привидения', 'ghosts'))}</b></div>`;
     setGameText(this.note, gameMessage(
       'Прогулка: добычи нет. Привидение медленнее вас — от него можно уйти.',
@@ -1123,9 +1138,9 @@ export class WorldMap {
   private paintKeepCard(node: WorldNode): void {
     this.card.innerHTML =
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('постройка', 'structure'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('стены, башни, двор', 'walls, towers, courtyard'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who’s here'))}</span>` +
       `<b class="good">${gameMarkup(gameMessage('торговец', 'trader'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Меняет на', 'Trades for'))}</span>` +
       `<b>${gameMarkup(gameMessage('железо', 'iron'))}</b></div>`;
@@ -1139,15 +1154,15 @@ export class WorldMap {
   private paintMinotaurKeepCard(node: WorldNode): void {
     this.card.innerHTML =
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('испытание', 'trial'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('замок и золотой сундук', 'castle and golden chest'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Охрана', 'Guards'))}</span>` +
       `<b class="bad">${gameMarkup(gameMessage('минотавр и два голема', 'minotaur and two golems'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Выбор', 'Choice'))}</span>` +
       `<b>${gameMarkup(gameMessage('бой, обмен или заказ', 'fight, trade, or order'))}</b></div>`;
     setGameText(this.note, gameMessage(
-      'Поговорите с хозяином. За сундук придётся сразиться; торговля и заказ безопаснее, но награда меньше.',
-      'Talk to the owner. You must fight for the chest; trading and a commission are safer, but pay less.',
+      'Поговорите с хозяином. За сундук придётся сразиться; торг или заказ безопаснее, но принесут меньшую награду.',
+      'Talk to the owner. You must fight for the chest; trading or taking a contract is safer, but less rewarding.',
     ));
     this.walkButton(node);
   }
@@ -1163,11 +1178,11 @@ export class WorldMap {
   private paintTrailCard(node: WorldNode): void {
     this.card.innerHTML =
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка', 'exploration'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('тропа, развилки, тупики', 'trail, forks, dead ends'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Добыча', 'Loot'))}</span>` +
       `<b>${gameMarkup(gameMessage('дерево и камень', 'wood and stone'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who’s here'))}</span>` +
       `<b class="good">${gameMarkup(gameMessage('никого', 'no one'))}</b></div>`;
     setGameText(this.note, gameMessage(
       'Прогулка: тропа виляет и раздваивается, выходы на обоих концах. Лес рубят, валуны бьют — противников нет.',
@@ -1188,7 +1203,7 @@ export class WorldMap {
     const spun = this.camp?.wheelDay === dayAt(this.now);
     this.card.innerHTML =
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('аттракцион', 'attraction'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('колесо призов', 'prize wheel'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Добыча', 'Loot'))}</span>` +
       `<b>${gameMarkup(gameMessage('кристаллы', 'crystals'))}</b></div>` +

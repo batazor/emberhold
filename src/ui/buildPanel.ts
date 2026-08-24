@@ -122,10 +122,10 @@ const CARD: Record<WallTool, {
 };
 
 const FENCE_TITLE: Record<FenceMaterial, GameMessage> = {
-  'дерево': gameMessage('Ограда: дощатая', 'Fence: plank'),
-  'ковка': gameMessage('Ограда: кованая', 'Fence: wrought iron'),
-  'кирпич': gameMessage('Ограда: кирпичная', 'Fence: brick'),
-  'камень': gameMessage('Ограда: каменная', 'Fence: stone'),
+  'дерево': gameMessage('Дощатая ограда', 'Plank fence'),
+  'ковка': gameMessage('Кованая ограда', 'Wrought-iron fence'),
+  'кирпич': gameMessage('Кирпичная ограда', 'Brick fence'),
+  'камень': gameMessage('Каменная ограда', 'Stone fence'),
 };
 
 /**
@@ -246,16 +246,16 @@ export class BuildPanel {
     // (§6.1.7): карточка называет, за сколько клеток берут единицу.
     if (tool === 'снос') setGameText(price, gameMessage('вернёт ресурс', 'refunds resources'));
     else if (tool === 'дорога') setGameText(price, gameMessage(
-      '1 дерева за {cells} кл. · {seconds} с/кл.',
-      '1 wood per {cells} tiles · {seconds} sec/tile',
+      'Дерево: 1 за {cells} кл. · {seconds} с/кл.',
+      'Wood: 1 per {cells} tiles · {seconds} sec/tile',
     ), { cells: Math.round(1 / ROAD_COST.perCell), seconds: WALL_SECONDS[tool] });
     else if (tool === 'фонарь') setGameText(price, gameMessage(
-      '{cost} дерева · {seconds} с',
-      '{cost} wood · {seconds} sec',
+      'Дерево: {cost} · {seconds} с',
+      'Wood: {cost} · {seconds} sec',
     ), { cost: WALL_COST[tool], seconds: WALL_SECONDS[tool] });
     else setGameText(price, gameMessage(
-      '{cost} камня · {seconds} с',
-      '{cost} stone · {seconds} sec',
+      'Камень: {cost} · {seconds} с',
+      'Stone: {cost} · {seconds} sec',
     ), { cost: WALL_COST[tool], seconds: WALL_SECONDS[tool] });
 
     button.append(icon, name, gesture, count, price);
@@ -333,8 +333,8 @@ export class BuildPanel {
       // сколько выйдет за этот мазок, считается под карточками по ходу пальца.
       const per = Math.round(1 / FENCE_COST[material].perCell);
       setGameText(fence.price, back === 'дерева'
-        ? gameMessage('1 дерева за {cells} кл. · {seconds} с/кл.', '1 wood per {cells} tiles · {seconds} sec/tile')
-        : gameMessage('1 камня за {cells} кл. · {seconds} с/кл.', '1 stone per {cells} tiles · {seconds} sec/tile'), {
+        ? gameMessage('Дерево: 1 за {cells} кл. · {seconds} с/кл.', 'Wood: 1 per {cells} tiles · {seconds} sec/tile')
+        : gameMessage('Камень: 1 за {cells} кл. · {seconds} с/кл.', 'Stone: 1 per {cells} tiles · {seconds} sec/tile'), {
         cells: per,
         seconds: WALL_SECONDS['ограда'],
       });
@@ -348,7 +348,7 @@ export class BuildPanel {
       card.count.textContent = n === 0 ? '' : String(n);
       // Читалке одного числа мало: в углу оно понятно только глазом.
       if (n === 0) clearGameAttribute(card.count, 'aria-label');
-      else setGameAttribute(card.count, 'aria-label', gameMessage('{count} построено', '{count} built'), { count: n });
+      else setGameAttribute(card.count, 'aria-label', gameMessage('Построено: {count}', 'Built: {count}'), { count: n });
     }
     const raze = this.cards.get('снос');
     if (raze !== undefined) raze.count.textContent = '';

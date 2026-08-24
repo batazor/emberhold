@@ -265,7 +265,7 @@ export class ReturnScreen {
     const ok = result.status === 'evacuated';
     setGameText(this.title, ok
       ? gameMessage('Вылазка завершена', 'Raid completed')
-      : gameMessage('Провал', 'Failed'));
+      : gameMessage('Вылазка провалена', 'Raid failed'));
     this.title.className = ok ? 'ok' : 'bad';
 
     const depth =
@@ -332,8 +332,8 @@ export class ReturnScreen {
       }
       if (progression !== null && progression.levels > 0) {
         setGameText(this.levelLine,
-          gameMessage('Новый уровень: {level} · +{stats} очк. характеристик · +{skills} очк. умений',
-            'New level: {level} · +{stats} stat points · +{skills} skill points'),
+          gameMessage('Новый уровень: {level} · очки характеристик +{stats} · очки умений +{skills}',
+            'New level: {level} · Stat points +{stats} · Skill points +{skills}'),
           { level: progression.level, stats: progression.levels * 2, skills: progression.levels });
       } else this.levelLine.textContent = '';
     }
@@ -455,8 +455,8 @@ export class ReturnScreen {
       }
     }
     if (block === 'max') return gameText(gameMessage('Максимальный уровень', 'Maximum level'));
-    if (block === 'hq-cap') return gameText(gameMessage('Жильё не пускает выше', 'Housing level is too low'));
-    return gameText(gameMessage('Слот занят другой стройкой', 'The slot is occupied by another build'));
+    if (block === 'hq-cap') return gameText(gameMessage('Сначала улучшите Жильё', 'Upgrade Housing first'));
+    return gameText(gameMessage('Уже идёт другая стройка', 'Another construction job is underway'));
   }
 
   private cheapestLocked(camp: CampState): BuildingId | null {
