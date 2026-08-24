@@ -24,9 +24,12 @@ import { DWELLER_LOOKS, type DwellerLook } from '../sim/garrison';
 import { FOLK_MODELS, FOLK_SLOTS } from './folk.data';
 import { FOREST_SLOTS } from './forest.data';
 import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
+import { BUILDER_MODELS, BUILDER_SLOTS } from './builder.data';
 import { CASTLE_SCALE, castleGeometry } from './castle';
 import {
+  CASTLE_OUTBUILDINGS,
   CASTLE_SURROUNDINGS,
+  COURTYARD_BUILDINGS,
   FIXED_BRIDGES,
   FREE_STAIRS,
   GATE_LEAVES,
@@ -43,6 +46,7 @@ import {
 } from '../sim/castle';
 import { ELEVATION } from './scene';
 import {
+  BUILDER_SLOT_ORDER,
   CASTLE_SLOT_ORDER,
   DUNGEON_SLOT_ORDER,
   FOREST_SLOT_ORDER,
@@ -500,9 +504,29 @@ describe('Артбук: замок', () => {
     }
   });
 
+  test('каждое здание двора запечено в бандл Builder', () => {
+    const named = Object.values(COURTYARD_BUILDINGS).flat();
+    for (const model of named) {
+      assert.ok(model in BUILDER_MODELS, `здание «${model}» названо генератором, но в бандл не поехало`);
+    }
+  });
+
+  test('каждая хозяйственная постройка запечена в бандл Builder', () => {
+    for (const model of CASTLE_OUTBUILDINGS) {
+      assert.ok(model in BUILDER_MODELS, `постройка «${model}» названа площадкой, но в бандл не поехала`);
+    }
+  });
+
   test('слоты замка не разошлись с палитрой артбука', () => {
     assert.deepEqual([...CASTLE_SLOTS], [...CASTLE_SLOT_ORDER]);
     for (const name of CASTLE_SLOTS) {
+      assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  test('слоты зданий не разошлись с палитрой артбука', () => {
+    assert.deepEqual([...BUILDER_SLOTS], [...BUILDER_SLOT_ORDER]);
+    for (const name of BUILDER_SLOTS) {
       assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
     }
   });
@@ -692,6 +716,15 @@ describe('Артбук: замок', () => {
     assert.ok(kb <= 70, `набор замка: ${kb} КБ gzip > 70 КБ`);
   });
 
+  test('здания замка укладываются в свой потолок — килобайты', () => {
+    const source = readFileSync(new URL('./builder.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    // Одиннадцать принятых зданий занимают 166 КБ gzip; округление оставляет
+    // запас на переквантование, но не разрешает незаметно принять весь набор.
+    assert.ok(kb <= 170, `здания замка: ${kb} КБ gzip > 170 КБ`);
+  });
+
   test('геометрия детали приходит в клетку локации, а не в единицы набора', () => {
     const geo = castleGeometry('wall');
     geo.computeBoundingBox();
@@ -701,6 +734,20 @@ describe('Артбук: замок', () => {
       `стена шириной ${(box.max.x - box.min.x).toFixed(2)} при клетке ${CASTLE_SCALE}`,
     );
     assert.ok(Math.abs(box.min.y) < 0.02, 'основание стены не на нуле');
+  });
+
+  test('каждое здание входит в одну клетку плана замка', () => {
+    for (const model of [...Object.values(COURTYARD_BUILDINGS).flat(), ...CASTLE_OUTBUILDINGS]) {
+      const geo = castleGeometry(model as Parameters<typeof castleGeometry>[0]);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(box.max.x - box.min.x <= CASTLE_SCALE * 1.02, `${model}: шире клетки`);
+      assert.ok(box.max.z - box.min.z <= CASTLE_SCALE * 1.08, `${model}: глубже клетки`);
+      // Колесо водяной мельницы намеренно уходит ниже берега в воду.
+      if (model !== 'watermill') {
+        assert.ok(Math.abs(box.min.y) < 0.05, `${model}: основание висит на ${box.min.y.toFixed(2)}`);
+      }
+    }
   });
 });
 

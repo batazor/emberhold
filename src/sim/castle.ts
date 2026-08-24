@@ -179,6 +179,30 @@ export const FIXED_BRIDGES = ['bridge-straight', 'bridge-straight-pillar'] as co
 /** Модели окружения выбирает площадка мира, но рисует общий набор замка. */
 export const CASTLE_SURROUNDINGS = ['rocks-large', 'rocks-small', 'tree-large', 'tree-small'] as const;
 
+/**
+ * Готовые здания KayKit Medieval Builder для двора. Их след примерно две
+ * мировые клетки, то есть ровно одна клетка плана замка.
+ */
+export const COURTYARD_BUILDINGS = {
+  military: ['barracks', 'archeryrange'],
+  civic: ['house', 'market'],
+  service: ['well'],
+} as const;
+
+/**
+ * Хозяйственный пояс KayKit Medieval Builder стоит уже снаружи стен. Эти
+ * постройки не заменяют замок: они объясняют, чем он живёт и откуда берёт
+ * дерево, зерно, камень и воду.
+ */
+export const CASTLE_OUTBUILDINGS = [
+  'watermill',
+  'watchtower',
+  'farm_plot',
+  'mill',
+  'lumbermill',
+  'mine',
+] as const;
+
 /** Высота зубцов над последним этажом. Измерена, как и всё остальное. */
 export const CAP = 0.3;
 
@@ -405,6 +429,9 @@ export const WALL_TOP = 1.31;
  */
 export const CASTLE_CELL = 2;
 
+/** Сухой пояс между рвом и прямоугольным обходом гарнизона. */
+export const CASTLE_PATROL_GAP = CASTLE_CELL + 1;
+
 /* ---------- поставленная деталь ---------- */
 
 export interface Piece {
@@ -428,6 +455,7 @@ export type Role =
   | 'лестница'
   | 'знамя'
   | 'укрепление'
+  | 'здание'
   | 'окружение'
   | 'двор';
 
@@ -1078,6 +1106,128 @@ export function generateCastle(seed: number): Castle {
     void keepStep;
   }
 
+  /* ---------- здания двора ---------- */
+
+  // Застройка идёт раньше второй линии обороны: в тесной крепости казарма
+  // важнее декоративного внутреннего забора. В большом дворе помещаются
+  // квартал из четырёх функций и укрепление, в малом остаётся одно здание.
+  const buildingOrder: readonly string[] = towerStyle === 'шестигранные'
+    ? [
+        ...COURTYARD_BUILDINGS.military,
+        ...COURTYARD_BUILDINGS.service,
+        COURTYARD_BUILDINGS.civic[0],
+      ]
+    : [
+        ...COURTYARD_BUILDINGS.civic,
+        ...COURTYARD_BUILDINGS.service,
+        COURTYARD_BUILDINGS.military[0],
+      ];
+  const freeBeforeBuildings = yard.length - taken.length;
+  const buildingTarget = freeBeforeBuildings >= 18 ? 4
+    : freeBeforeBuildings >= 11 ? 3
+      : freeBeforeBuildings >= 6 ? 2 : 1;
+  const minimumBuildings = yard.length >= 18 ? 3 : 1;
+  const yardKeys = new Set(yard.map(keyOf));
+  const builtBuildings: Spot[] = [];
+  const gateAnchor = gateInside ?? gate;
+  const keepAnchor = keep ?? { x: (width - 1) / 2, z: (depth - 1) / 2 };
+  const middleAnchor = {
+    x: (gateAnchor.x + keepAnchor.x) / 2,
+    z: (gateAnchor.z + keepAnchor.z) / 2,
+  };
+  const approachX = keepAnchor.x - gateAnchor.x;
+  const approachZ = keepAnchor.z - gateAnchor.z;
+  const approachLength = approachX * approachX + approachZ * approachZ;
+  const desiredInnerDir = Math.abs(approachX) >= Math.abs(approachZ) ? 3 : 1;
+
+  const distance = (a: Spot, b: Spot): number => Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+  const nearestWall = (spot: Spot): number => Math.min(...ring.map((wallSpot) => distance(spot, wallSpot)));
+  const onApproach = (spot: Spot): boolean => {
+    if (approachLength === 0) return false;
+    const x = spot.x - gateAnchor.x;
+    const z = spot.z - gateAnchor.z;
+    const cross = Math.abs(x * approachZ - z * approachX);
+    const dot = x * approachX + z * approachZ;
+    return cross * cross <= approachLength / 2 && dot > 0 && dot < approachLength;
+  };
+
+  for (const model of buildingOrder.slice(0, buildingTarget)) {
+    const baseCandidates = yard
+      .filter((spot) => !taken.some((busy) => keyOf(busy) === keyOf(spot)))
+      .filter((spot) => keyOf(spot) !== keyOf(gateAnchor))
+      .filter((spot) => yardPassable(width, yard, [...taken, spot]))
+      .filter((spot) => DIRS.some(([dx, dz]) => {
+        const next = { x: spot.x + dx, z: spot.z + dz };
+        return yardKeys.has(keyOf(next))
+          && !taken.some((busy) => keyOf(busy) === keyOf(next));
+      }));
+    const preservesInnerWall = (spot: Spot, directions: readonly number[]): boolean => {
+      const nextTaken = [...taken, spot];
+      const nextBusy = new Set(nextTaken.map(keyOf));
+      const remaining = yard.filter((candidate) =>
+        !nextBusy.has(keyOf(candidate))
+        && keyOf(candidate) !== keyOf(gateAnchor));
+      const remainingKeys = new Set(remaining.map(keyOf));
+      return remaining.some((start) => directions.some((dir) => {
+        const end = { x: start.x + DIRS[dir]![0], z: start.z + DIRS[dir]![1] };
+        if (!remainingKeys.has(keyOf(end))) return false;
+        const withLine = [...nextTaken, start, end];
+        if (!yardPassable(width, yard, withLine)) return false;
+        const busyWithLine = new Set(withLine.map(keyOf));
+        return [...builtBuildings, spot].every((building) => DIRS.some(([dx, dz]) => {
+          const door = { x: building.x + dx, z: building.z + dz };
+          return yardKeys.has(keyOf(door)) && !busyWithLine.has(keyOf(door));
+        }));
+      }));
+    };
+    // Сначала сохраняем поперечную линию обороны. Если даже первое здание
+    // с ней несовместимо, компактный двор всё равно получает дом, а стенка
+    // выбирает второе направление — это редкое исключение, не пустой замок.
+    let candidates = baseCandidates.filter((spot) => preservesInnerWall(spot, [desiredInnerDir]));
+    if (candidates.length === 0 && builtBuildings.length < minimumBuildings) {
+      candidates = baseCandidates.filter((spot) => preservesInnerWall(spot, [1, 3]));
+    }
+    const scored = candidates.map((spot) => {
+      const wall = nearestWall(spot);
+      const gateDistance = distance(spot, gateAnchor);
+      const keepDistance = distance(spot, keepAnchor);
+      const centreDistance = distance(spot, middleAnchor);
+      const adjacent = builtBuildings.filter((other) => distance(spot, other) === 1).length;
+      let roleScore: number;
+      if (model === 'well') {
+        roleScore = centreDistance * 8 + Math.max(0, 2 - wall) * 10;
+      } else if (model === 'market') {
+        roleScore = gateDistance * 5 + keepDistance + wall * 2;
+      } else if (model === 'house') {
+        roleScore = keepDistance * 5 + wall;
+      } else {
+        // Казарма и стрельбище держатся у стены, но не забивают сам въезд.
+        roleScore = wall * 10 + Math.abs(gateDistance - keepDistance);
+      }
+      const route = onApproach(spot) ? 80 : 0;
+      const tie = ((spot.x * 17 + spot.z * 31 + seed * 7 + model.length) >>> 0) % 7;
+      return { spot, score: roleScore + route + adjacent * 6 + tie };
+    }).sort((a, b) => a.score - b.score || keyOf(a.spot).localeCompare(keyOf(b.spot)));
+    const chosen = scored[0]?.spot;
+    if (chosen === undefined) continue;
+
+    const busy = new Set([...taken, chosen].map(keyOf));
+    const faceTarget = model === 'house' ? keepAnchor : model === 'well' ? middleAnchor : gateAnchor;
+    const face = DIRS
+      .map(([dx, dz], dir) => ({
+        dir,
+        spot: { x: chosen.x + dx, z: chosen.z + dz },
+      }))
+      .filter((candidate) => yardKeys.has(keyOf(candidate.spot)) && !busy.has(keyOf(candidate.spot)))
+      .sort((a, b) => distance(a.spot, faceTarget) - distance(b.spot, faceTarget) || a.dir - b.dir)[0]?.dir ?? 2;
+    // У моделей Builder фасад смотрит в −z. Поворачиваем его к свободной
+    // клетке двора, чтобы дверь не упиралась в стену или соседнее здание.
+    const turn = [0, 1, 2, 3].find((candidate) => turnDir(2, candidate) === face) ?? 0;
+    pieces.push({ model, x: chosen.x, z: chosen.z, y: 0, turn, role: 'здание' });
+    taken.push(chosen);
+    builtBuildings.push(chosen);
+  }
+
   /* ---------- внутреннее укрепление ---------- */
 
   // Две соседние клетки дают маленькую поперечную стену, а не второе кольцо.
@@ -1114,6 +1264,11 @@ export function generateCastle(seed: number): Castle {
   });
   for (const line of orderedLines) {
     if (!yardPassable(width, yard, [...taken, ...line.spots])) continue;
+    const afterLine = new Set([...taken, ...line.spots].map(keyOf));
+    if (!builtBuildings.every((building) => DIRS.some(([dx, dz]) => {
+      const door = { x: building.x + dx, z: building.z + dz };
+      return yardKeys.has(keyOf(door)) && !afterLine.has(keyOf(door));
+    }))) continue;
     const family = towerStyle === 'квадратные' ? INNER_WALLS.stone : INNER_WALLS.wood;
     const turn = line.dir === 1 ? 1 : 0;
     const offset = (seed + line.spots[0].x * 3 + line.spots[0].z * 5) % family.length;
@@ -1127,6 +1282,27 @@ export function generateCastle(seed: number): Castle {
     }));
     taken.push(...line.spots);
     break;
+  }
+
+  // Внутренняя стена выбиралась после домов и могла занять первоначальную
+  // клетку перед дверью. Финальный поворот считается уже по готовому двору:
+  // фасад всегда смотрит в оставшийся связный проход.
+  const finalBusy = new Set(taken.map(keyOf));
+  for (let i = 0; i < pieces.length; i++) {
+    const piece = pieces[i]!;
+    if (piece.role !== 'здание') continue;
+    const target = piece.model === 'house' ? keepAnchor
+      : piece.model === 'well' ? middleAnchor : gateAnchor;
+    const face = DIRS
+      .map(([dx, dz], dir) => ({
+        dir,
+        spot: { x: piece.x + dx, z: piece.z + dz },
+      }))
+      .filter((candidate) => yardKeys.has(keyOf(candidate.spot)) && !finalBusy.has(keyOf(candidate.spot)))
+      .sort((a, b) => distance(a.spot, target) - distance(b.spot, target) || a.dir - b.dir)[0]?.dir;
+    if (face === undefined) continue;
+    const turn = [0, 1, 2, 3].find((candidate) => turnDir(2, candidate) === face) ?? piece.turn;
+    pieces[i] = { ...piece, turn };
   }
 
   // Знамёна на угловых башенках — на высоте верха стены, а не крыши: у угла

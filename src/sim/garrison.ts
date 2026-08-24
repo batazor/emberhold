@@ -38,6 +38,7 @@
 import { mulberry32, randInt, type Rng } from '../core/rng';
 import {
   CASTLE_CELL,
+  CASTLE_PATROL_GAP,
   DIRS,
   deckOf,
   keyOf,
@@ -58,7 +59,7 @@ import type { Cell, GameLocation } from './types';
  * ров, третья выносит дозор на сухой внешний берег. Дальше лежит пояс
  * скал и деревьев, поэтому маршрут остаётся между водой и окружением.
  */
-export const PATROL_GAP = CASTLE_CELL + 1;
+export const PATROL_GAP = CASTLE_PATROL_GAP;
 
 /**
  * Скорость обхода, клеток в секунду. Медленнее героя (2,6): он идёт по делу,
