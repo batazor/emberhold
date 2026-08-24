@@ -1,8 +1,8 @@
 /**
  * Площадка замка — локация мировой карты (§4), собранная конструктором стен
- * (§6.1.6). Пока по ней только ходят: ни добычи, ни противников здесь нет,
- * и это состояние объявлено, а не забыто — локация показывает постройку,
- * а чем её наполнить, решается отдельно.
+ * (§6.1.6). Внутри живут и торгуют, снаружи работает хозяйственный пояс:
+ * площадка показывает уже не один силуэт стены, а место, которое снабжает
+ * себя зерном, деревом, камнем и водой.
  *
  * Устройство простое и всё выводится из сида:
  *
@@ -10,8 +10,9 @@
  * 2. План раскладывается по клеткам локации с шагом `CASTLE_CELL`: клетка
  *    набора — четыре клетки локации, потому что стена обязана быть выше
  *    героя вдвое, а не вровень с ним.
- * 3. Вокруг — поле, вокруг поля — лес. Лес держит границу локации: рамка
- *    и так не вскрывается никогда, и честнее, когда её видно деревьями.
+ * 3. Вокруг — поле с постройками и ручьём, вокруг поля — лес. Лес держит
+ *    границу локации: рамка и так не вскрывается никогда, и честнее, когда
+ *    её видно деревьями.
  * 4. Выход — снаружи, перед воротами. Войти в замок можно только через
  *    них, и это не декорация: проверяется волной по проходимым клеткам.
  *
@@ -26,9 +27,13 @@ import type { Bush } from './berries';
 import { STONES, scatterStones } from './stones';
 import {
   CASTLE_CELL,
+  CASTLE_OUTBUILDINGS,
+  CASTLE_PATROL_GAP,
   CASTLE_SURROUNDINGS,
+  DIRS,
   FIXED_BRIDGES,
   generateCastle,
+  turnDir,
   type Castle,
   type Piece,
   type Role,
@@ -46,10 +51,10 @@ export const GUARD_AMBUSH = 3;
 
 /**
  * Поле между лесом и стеной: место для общего силуэта, патруля и подхода.
- * Десять клеток вместо шести дают по четыре дополнительные клетки с каждой
- * стороны; размер самого замка и толщина леса при этом не раздуваются.
+ * Двенадцать клеток дают место не только силуэту замка, но и хозяйственному
+ * поясу с ручьём; размер самого замка и толщина леса при этом не раздуваются.
  */
-export const FIELD = 10;
+export const FIELD = 12;
 /** Толщина леса по краю локации. */
 export const WOOD = 3;
 
@@ -75,6 +80,10 @@ export interface CastleSite {
   readonly trees: readonly Spot[];
   /** Kenney-скалы и деревья во внешнем поле, за маршрутом патруля. */
   readonly surroundings: readonly Piece[];
+  /** Хозяйственные постройки Builder между рвом и лесом. */
+  readonly outbuildings: readonly Piece[];
+  /** Связный ручей в клетках локации. Вода занимает клетку. */
+  readonly water: readonly Cell[];
   /** §13.8 — ягодные кусты на поле перед стеной. */
   readonly bushes: readonly Bush[];
   /** Ворота в клетках локации — сюда приходят снаружи. */
@@ -226,6 +235,192 @@ export function generateCastleSite(seed: number): CastleSite {
   // Точка выхода обязана быть свободной: она же место, куда игрок приходит.
   blocked[idx(size, evac.x, evac.z)] = 0;
 
+  const bridgeApproach = Array.from({ length: approachSteps }, (_, i) => i + 1).map((step) => ({
+    x: castle.gate.x + out[0]! * step,
+    z: castle.gate.z + out[1]! * step,
+  }));
+  const cellKey = (cell: Cell): string => `${cell.x}:${cell.z}`;
+  const footprint = (base: Cell): Cell[] => {
+    const cells: Cell[] = [];
+    for (let dz = 0; dz < CASTLE_CELL; dz++) {
+      for (let dx = 0; dx < CASTLE_CELL; dx++) cells.push({ x: base.x + dx, z: base.z + dz });
+    }
+    return cells;
+  };
+  const approachCells = new Set<string>();
+  for (const planSpot of [castle.gate, ...bridgeApproach]) {
+    for (const cell of footprint(spotAt({ at }, planSpot))) approachCells.add(cellKey(cell));
+  }
+  const castleWorld = {
+    x0: at.x,
+    z0: at.z,
+    x1: at.x + castle.width * CASTLE_CELL - 1,
+    z1: at.z + castle.depth * CASTLE_CELL - 1,
+  };
+  // Гарнизон обходит прямоугольник на сухом берегу рва и иногда делает
+  // короткий вынос наружу. Две клетки запаса держат свободными обе полосы
+  // пары и сидовую неровность маршрута.
+  const patrolCells = new Set<string>();
+  const patrolX0 = castleWorld.x0 - CASTLE_PATROL_GAP;
+  const patrolZ0 = castleWorld.z0 - CASTLE_PATROL_GAP;
+  const patrolX1 = castleWorld.x1 + CASTLE_PATROL_GAP;
+  const patrolZ1 = castleWorld.z1 + CASTLE_PATROL_GAP;
+  for (let z = patrolZ0 - 2; z <= patrolZ1 + 2; z++) {
+    for (let x = patrolX0 - 2; x <= patrolX1 + 2; x++) {
+      const nearSide = ((Math.abs(x - patrolX0) <= 2 || Math.abs(x - patrolX1) <= 2)
+        && z >= patrolZ0 - 2 && z <= patrolZ1 + 2)
+        || ((Math.abs(z - patrolZ0) <= 2 || Math.abs(z - patrolZ1) <= 2)
+          && x >= patrolX0 - 2 && x <= patrolX1 + 2);
+      if (nearSide) patrolCells.add(cellKey({ x, z }));
+    }
+  }
+
+  /*
+   * Ручей приходит из леса и заканчивается небольшим плёсом у мельницы.
+   * Сторона выбирается из трёх без главного въезда: вода не перечёркивает
+   * дорогу, а свободный конец русла позволяет обойти её без второго моста.
+   */
+  const waterRng = mulberry32(seed ^ 0x71a7e2);
+  const waterSides = DIRS.filter(([dx, dz]) => dx !== out[0] || dz !== out[1]);
+  const waterSide = waterSides[randInt(waterRng, waterSides.length)] ?? DIRS[0]!;
+  const [waterOutX, waterOutZ] = waterSide;
+  const tangent = { x: -waterOutZ, z: waterOutX };
+  const streamOffset = CASTLE_CELL + 5;
+  const streamLine = waterOutX < 0 ? castleWorld.x0 - streamOffset
+    : waterOutX > 0 ? castleWorld.x1 + streamOffset
+      : waterOutZ < 0 ? castleWorld.z0 - streamOffset
+        : castleWorld.z1 + streamOffset;
+  const crossCentre = waterOutX !== 0
+    ? Math.round((castleWorld.z0 + castleWorld.z1) / 2)
+    : Math.round((castleWorld.x0 + castleWorld.x1) / 2);
+  const crossJitter = randInt(waterRng, 5) - 2;
+  const poolCross = Math.max(
+    WOOD + 3,
+    Math.min(size - WOOD - 4, crossCentre + crossJitter),
+  );
+  const fromLow = randInt(waterRng, 2) === 0;
+  const sourceCross = fromLow ? WOOD : size - WOOD - 1;
+  const crossStep = sourceCross <= poolCross ? 1 : -1;
+  const water: Cell[] = [];
+  const waterKeys = new Set<string>();
+  const addWater = (cell: Cell): void => {
+    if (cell.x < WOOD || cell.z < WOOD || cell.x >= size - WOOD || cell.z >= size - WOOD) return;
+    const key = cellKey(cell);
+    if (waterKeys.has(key) || blocked[idx(size, cell.x, cell.z)]) return;
+    waterKeys.add(key);
+    water.push(cell);
+  };
+  for (let cross = sourceCross; cross !== poolCross + crossStep; cross += crossStep) {
+    addWater(waterOutX !== 0 ? { x: streamLine, z: cross } : { x: cross, z: streamLine });
+  }
+  const streamEnd = waterOutX !== 0
+    ? { x: streamLine, z: poolCross }
+    : { x: poolCross, z: streamLine };
+  const pool = { x: streamEnd.x + waterOutX, z: streamEnd.z + waterOutZ };
+  addWater(pool);
+  addWater({ x: pool.x + tangent.x, z: pool.z + tangent.z });
+  for (const cell of water) blocked[idx(size, cell.x, cell.z)] = 1;
+
+  /*
+   * Хозяйственный пояс. Все модели занимают один квадрат плана (2×2 клетки
+   * локации), но выбираются уже в координатах мира: так мельница может встать
+   * ровно у воды, а башня — у дороги, не подменяя собой клетку стены.
+   */
+  const outbuildings: Piece[] = [];
+  const buildingBases = new Map<string, Cell>();
+  const freeConnected = (mask: Uint8Array): boolean => {
+    const reach = distanceField(size, mask, evac);
+    for (let i = 0; i < mask.length; i++) if (!mask[i] && reach[i]! < 0) return false;
+    return true;
+  };
+  const nearWater = (base: Cell): boolean => footprint(base).some((cell) => DIRS.some(([dx, dz]) =>
+    waterKeys.has(cellKey({ x: cell.x + dx, z: cell.z + dz }))));
+  const centreOf = (base: Cell): Cell => ({
+    x: base.x + (CASTLE_CELL >> 1),
+    z: base.z + (CASTLE_CELL >> 1),
+  });
+  const gateCentre = { x: gate.x + (CASTLE_CELL >> 1), z: gate.z + (CASTLE_CELL >> 1) };
+  const buildingCandidates: Cell[] = [];
+  for (let z = WOOD + 1; z <= size - WOOD - CASTLE_CELL - 1; z += 2) {
+    for (let x = WOOD + 1; x <= size - WOOD - CASTLE_CELL - 1; x += 2) {
+      const base = { x, z };
+      if (!(x + CASTLE_CELL - 1 < castleWorld.x0 || z + CASTLE_CELL - 1 < castleWorld.z0
+        || x > castleWorld.x1 || z > castleWorld.z1)) continue;
+      buildingCandidates.push(base);
+    }
+  }
+  const facadeTurn = (from: Cell, target: Cell): number => {
+    const dx = target.x - from.x;
+    const dz = target.z - from.z;
+    const dir = Math.abs(dx) > Math.abs(dz) ? (dx < 0 ? 0 : 1) : (dz < 0 ? 2 : 3);
+    return [0, 1, 2, 3].find((turn) => turnDir(2, turn) === dir) ?? 0;
+  };
+
+  for (const model of CASTLE_OUTBUILDINGS) {
+    const scored: { base: Cell; score: number }[] = [];
+    for (const base of buildingCandidates) {
+      const cells = footprint(base);
+      if (cells.some((cell) => blocked[idx(size, cell.x, cell.z)]
+        || approachCells.has(cellKey(cell)) || patrolCells.has(cellKey(cell)))) continue;
+      const wet = nearWater(base);
+      if (model === 'watermill' && !wet) continue;
+      const centre = centreOf(base);
+      const edgeDistances = [
+        base.x - WOOD,
+        base.z - WOOD,
+        size - WOOD - (base.x + CASTLE_CELL),
+        size - WOOD - (base.z + CASTLE_CELL),
+      ].sort((a, b) => a - b);
+      const edge = edgeDistances[0]!;
+      const secondEdge = edgeDistances[1]!;
+      const gateDistance = Math.abs(centre.x - gateCentre.x) + Math.abs(centre.z - gateCentre.z);
+      const farm = buildingBases.get('farm_plot');
+      const farmDistance = farm === undefined ? 0
+        : Math.abs(centre.x - centreOf(farm).x) + Math.abs(centre.z - centreOf(farm).z);
+      const nearestBuilding = outbuildings.length === 0 ? 12 : Math.min(...[...buildingBases.values()].map((other) =>
+        Math.abs(centre.x - centreOf(other).x) + Math.abs(centre.z - centreOf(other).z)));
+      let roleScore = 0;
+      if (model === 'watermill') roleScore = gateDistance + edge * 2;
+      else if (model === 'watchtower') roleScore = gateDistance * 5 + edge;
+      else if (model === 'farm_plot') roleScore = -edge * 8 + gateDistance;
+      else if (model === 'mill') roleScore = farmDistance * 7 - edge * 2;
+      else if (model === 'lumbermill') roleScore = edge * 9 + gateDistance;
+      else roleScore = edge * 7 - secondEdge * 4;
+      const crowded = model === 'mill' ? 0 : Math.max(0, 7 - nearestBuilding) * 12;
+      const tie = ((base.x * 31 + base.z * 17 + seed * 13 + model.length) >>> 0) % 11;
+      scored.push({ base, score: roleScore + crowded + tie });
+    }
+    scored.sort((a, b) => a.score - b.score || cellKey(a.base).localeCompare(cellKey(b.base)));
+    let chosen: Cell | undefined;
+    for (const candidate of scored) {
+      const trial = Uint8Array.from(blocked);
+      for (const cell of footprint(candidate.base)) trial[idx(size, cell.x, cell.z)] = 1;
+      if (!freeConnected(trial)) continue;
+      chosen = candidate.base;
+      break;
+    }
+    if (chosen === undefined) continue;
+    for (const cell of footprint(chosen)) blocked[idx(size, cell.x, cell.z)] = 1;
+    buildingBases.set(model, chosen);
+    const centre = centreOf(chosen);
+    let target = gateCentre;
+    if (model === 'watermill') {
+      target = water.reduce((best, cell) =>
+        Math.abs(cell.x - centre.x) + Math.abs(cell.z - centre.z)
+          < Math.abs(best.x - centre.x) + Math.abs(best.z - centre.z) ? cell : best, water[0] ?? gateCentre);
+    } else if (model === 'mill' && buildingBases.has('farm_plot')) {
+      target = centreOf(buildingBases.get('farm_plot')!);
+    }
+    outbuildings.push({
+      model,
+      x: (chosen.x - at.x) / CASTLE_CELL,
+      z: (chosen.z - at.z) / CASTLE_CELL,
+      y: 0,
+      turn: facadeTurn(centre, target),
+      role: 'здание',
+    });
+  }
+
   /*
    * Окружение выбирает площадка мира, а не план здания. Между слоями есть
    * строгий порядок: стена, ров, маршрут дозора, затем этот пояс и лес.
@@ -235,47 +430,71 @@ export function generateCastleSite(seed: number): CastleSite {
   const surroundings: Piece[] = [];
   const sceneryRng = mulberry32(seed ^ 0x5ce91a);
   const candidates: Spot[] = [];
-  const sceneryReach = FIELD / CASTLE_CELL + 0.5;
+  const sceneryReach = FIELD / CASTLE_CELL;
   for (let z = 0.5; z < castle.depth - 0.5; z += 2) {
     candidates.push({ x: -sceneryReach, z }, { x: castle.width + sceneryReach - 1, z });
   }
   for (let x = 0.5; x < castle.width - 0.5; x += 2) {
     candidates.push({ x, z: -sceneryReach }, { x, z: castle.depth + sceneryReach - 1 });
   }
-  const bridgeApproach = Array.from({ length: approachSteps }, (_, i) => i + 1).map((step) => ({
-    x: castle.gate.x + out[0]! * step,
-    z: castle.gate.z + out[1]! * step,
-  }));
   const safe = candidates.filter((spot) => bridgeApproach.every((road) =>
-    Math.abs(spot.x - road.x) + Math.abs(spot.z - road.z) >= 2));
+    Math.abs(spot.x - road.x) + Math.abs(spot.z - road.z) >= 2))
+    .filter((spot) => footprint({
+      x: Math.floor(spotAt({ at }, spot).x),
+      z: Math.floor(spotAt({ at }, spot).z),
+    }).every((cell) => !blocked[idx(size, cell.x, cell.z)]));
   for (let i = safe.length - 1; i > 0; i--) {
     const j = randInt(sceneryRng, i + 1);
     const swap = safe[i]!;
     safe[i] = safe[j]!;
     safe[j] = swap;
   }
+  // Шахта без породы читалась складом. Первые два места пояса отдаются
+  // скалам рядом с ней; деревья и оставшиеся камни сохраняют перемешанный
+  // порядок и продолжают обходить весь периметр.
+  const minePiece = outbuildings.find((piece) => piece.model === 'mine');
+  if (minePiece !== undefined) {
+    const mineBase = spotAt({ at }, minePiece);
+    const nearest = [...safe]
+      .sort((a, b) => {
+        const aa = spotAt({ at }, a);
+        const bb = spotAt({ at }, b);
+        return Math.abs(aa.x - mineBase.x) + Math.abs(aa.z - mineBase.z)
+          - Math.abs(bb.x - mineBase.x) - Math.abs(bb.z - mineBase.z);
+      })
+      .slice(0, 4);
+    const close = new Set(nearest.map((spot) => `${spot.x}:${spot.z}`));
+    safe.splice(0, safe.length, ...nearest, ...safe.filter((spot) => !close.has(`${spot.x}:${spot.z}`)));
+  }
   const count = Math.min(safe.length, 8 + randInt(sceneryRng, 5));
-  const modelOffset = randInt(sceneryRng, CASTLE_SURROUNDINGS.length);
-  for (let i = 0; i < count; i++) {
+  const modelOffset = 0;
+  let placedScenery = 0;
+  for (let i = 0; i < safe.length && placedScenery < count; i++) {
     const spot = safe[i]!;
     const piece: Piece = {
-      model: CASTLE_SURROUNDINGS[(modelOffset + i) % CASTLE_SURROUNDINGS.length]!,
+      model: CASTLE_SURROUNDINGS[(modelOffset + placedScenery) % CASTLE_SURROUNDINGS.length]!,
       x: spot.x,
       z: spot.z,
       y: 0,
       turn: randInt(sceneryRng, 4),
       role: 'окружение',
     };
-    surroundings.push(piece);
     const base = spotAt({ at }, piece);
+    const occupied: Cell[] = [];
     for (let dz = 0; dz < CASTLE_CELL; dz++) {
       for (let dx = 0; dx < CASTLE_CELL; dx++) {
         const x = Math.floor(base.x) + dx;
         const z = Math.floor(base.z) + dz;
         if (x < WOOD || z < WOOD || x >= size - WOOD || z >= size - WOOD) continue;
-        blocked[idx(size, x, z)] = 1;
+        occupied.push({ x, z });
       }
     }
+    const trial = Uint8Array.from(blocked);
+    for (const cell of occupied) trial[idx(size, cell.x, cell.z)] = 1;
+    if (!freeConnected(trial)) continue;
+    surroundings.push(piece);
+    for (const cell of occupied) blocked[idx(size, cell.x, cell.z)] = 1;
+    placedScenery++;
   }
 
   /*
@@ -505,5 +724,18 @@ export function generateCastleSite(seed: number): CastleSite {
     (x, z) => !busyCell.has(`${x},${z}`),
     true,
   );
-  return { loc, castle, at, trees, surroundings, bushes, gate, trader, roads, lamps };
+  return {
+    loc,
+    castle,
+    at,
+    trees,
+    surroundings,
+    outbuildings,
+    water,
+    bushes,
+    gate,
+    trader,
+    roads,
+    lamps,
+  };
 }

@@ -148,8 +148,8 @@ export const CASTLE_SLOT_ORDER = [
 export const CASTLE_PALETTE = paletteOf(CASTLE_SLOT_ORDER);
 
 /**
- * KayKit Medieval Builder (§6.1.9) — небольшие здания внутри замка. Набор
- * использует только существующие дерево, солому, камень, зелень и акценты.
+ * KayKit Medieval Builder (§6.1.9) — здания двора и хозяйственного пояса.
+ * Набор использует только существующие дерево, солому, камень, зелень и акценты.
  */
 export const BUILDER_SLOT_ORDER = [
   'дерево-тень', 'дерево', 'солома',

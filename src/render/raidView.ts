@@ -725,12 +725,14 @@ export class RaidView {
       };
       for (const spot of keep.castle.yard) mark(spot.x, spot.z);
       for (const spot of keep.castle.moat) mark(spot.x, spot.z);
+      for (const cell of keep.water) out.add(idx(this.loc.size, cell.x, cell.z));
       // Расширенное поле сделало подход длинным: трава не должна прятать
       // дорогу, которая объясняет игроку, где ворота и как к ним идти.
       for (const spot of keep.roads) mark(spot.x, spot.z);
       // Только основание: ярусы башни и шапка ворот стоят выше нуля
       // и на вопрос «что под ними на земле» не отвечают.
       for (const piece of keep.castle.pieces) if (piece.y === 0) mark(piece.x, piece.z);
+      for (const piece of keep.outbuildings) mark(piece.x, piece.z);
       return out;
     }
     const site = this.grave;
@@ -1112,8 +1114,31 @@ export class RaidView {
       this.group.add(water);
     }
 
+    // Ручей живёт в сетке локации, а не в крупной сетке конструктора: его
+    // берег может пройти вплотную к колесу водяной мельницы, не занимая
+    // целый четырёхклеточный модуль.
+    if (site.water.length > 0) {
+      const geometry = this.track(new THREE.PlaneGeometry(0.94, 0.94));
+      geometry.rotateX(-Math.PI / 2);
+      const material = this.track(new THREE.MeshLambertMaterial({
+        color: MATERIAL['краска-синяя'],
+        transparent: true,
+        opacity: 0.84,
+        depthWrite: false,
+      }));
+      const stream = new THREE.InstancedMesh(geometry, material, site.water.length);
+      const at = new THREE.Object3D();
+      site.water.forEach((cell, i) => {
+        at.position.set(cell.x, 0.03, cell.z);
+        at.updateMatrix();
+        stream.setMatrixAt(i, at.matrix);
+      });
+      stream.renderOrder = 1;
+      this.group.add(stream);
+    }
+
     const byModel = new Map<string, typeof site.castle.pieces[number][]>();
-    for (const piece of [...site.castle.pieces, ...site.surroundings]) {
+    for (const piece of [...site.castle.pieces, ...site.outbuildings, ...site.surroundings]) {
       // Мощение двора не рисуется: под замком уже лежит земля локации,
       // и вторая плита поверх неё дала бы z-fighting, а не пол.
       if (piece.role === 'двор') continue;

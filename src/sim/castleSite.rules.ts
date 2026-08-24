@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CASTLE_CELL, CASTLE_SURROUNDINGS, FIXED_BRIDGES } from './castle';
+import { CASTLE_CELL, CASTLE_OUTBUILDINGS, CASTLE_SURROUNDINGS, FIXED_BRIDGES } from './castle';
 import { FIELD, TRADER_REACH, WOOD, atTrader, generateCastleSite, inYard, spotAt } from './castleSite';
 import { distanceField, idx } from './grid';
 
@@ -171,7 +171,7 @@ describe('Замок на карте: чего в нём нет', () => {
   });
 
   test('между лесом и стеной есть поле: замок видно целиком', () => {
-    assert.equal(FIELD, 10, 'свободный пояс снова сжался до прежних шести клеток');
+    assert.equal(FIELD, 12, 'хозяйственный пояс снова сжался и не вмещает воду со зданиями');
     for (const site of sites) {
       const { loc, castle, at } = site;
       assert.ok(at.x >= WOOD + FIELD, `сид ${loc.seed}: замок упёрся в лес по x`);
@@ -203,6 +203,8 @@ describe('Замок на карте: чего в нём нет', () => {
       const b = generateCastleSite(seed);
       assert.deepEqual([...a.loc.blocked], [...b.loc.blocked], `сид ${seed}`);
       assert.deepEqual(a.loc.evac, b.loc.evac, `сид ${seed}`);
+      assert.deepEqual(a.water, b.water, `сид ${seed}: ручей меняется`);
+      assert.deepEqual(a.outbuildings, b.outbuildings, `сид ${seed}: хозяйство меняется`);
     }
   });
 
@@ -380,6 +382,126 @@ describe('Замок на карте: ров и окружение принад�
         }
         assert.ok(occupied > 0, `сид ${site.loc.seed}: «${piece.model}» не занимает места`);
       }
+    }
+  });
+});
+
+describe('Замок на карте: хозяйственный пояс и вода', () => {
+  test('все шесть хозяйственных построек имеют место и занимают его', () => {
+    for (const site of sites) {
+      assert.deepEqual(
+        new Set(site.outbuildings.map((piece) => piece.model)),
+        new Set(CASTLE_OUTBUILDINGS),
+        `сид ${site.loc.seed}: хозяйство неполно`,
+      );
+      const occupied = new Set<string>();
+      for (const piece of site.outbuildings) {
+        assert.ok(
+          piece.x < 0 || piece.z < 0 || piece.x >= site.castle.width || piece.z >= site.castle.depth,
+          `сид ${site.loc.seed}: ${piece.model} попала внутрь плана`,
+        );
+        const base = spotAt(site, piece);
+        for (let dz = 0; dz < CASTLE_CELL; dz++) {
+          for (let dx = 0; dx < CASTLE_CELL; dx++) {
+            const cell = `${base.x + dx}:${base.z + dz}`;
+            assert.ok(!occupied.has(cell), `сид ${site.loc.seed}: постройки пересеклись в ${cell}`);
+            occupied.add(cell);
+            assert.equal(
+              site.loc.blocked[idx(site.loc.size, base.x + dx, base.z + dz)],
+              1,
+              `сид ${site.loc.seed}: ${piece.model} не занимает ${cell}`,
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test('ручей связный, приходит из леса и не перечёркивает дорогу', () => {
+    for (const site of sites) {
+      assert.ok(site.water.length >= 10, `сид ${site.loc.seed}: вместо ручья ${site.water.length} клеток`);
+      const water = new Set(site.water.map((cell) => `${cell.x}:${cell.z}`));
+      const queue = [site.water[0]!];
+      const seen = new Set([`${queue[0]!.x}:${queue[0]!.z}`]);
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const key = `${cur.x + dx!}:${cur.z + dz!}`;
+          if (!water.has(key) || seen.has(key)) continue;
+          seen.add(key);
+          queue.push({ x: cur.x + dx!, z: cur.z + dz! });
+        }
+      }
+      assert.equal(seen.size, water.size, `сид ${site.loc.seed}: русло порвано`);
+      assert.ok(
+        site.water.some((cell) => cell.x === WOOD || cell.z === WOOD
+          || cell.x === site.loc.size - WOOD - 1 || cell.z === site.loc.size - WOOD - 1),
+        `сид ${site.loc.seed}: ручей не приходит из леса`,
+      );
+      const road = new Set<string>();
+      for (const plan of site.roads) {
+        const base = spotAt(site, plan);
+        for (let dz = 0; dz < CASTLE_CELL; dz++) {
+          for (let dx = 0; dx < CASTLE_CELL; dx++) road.add(`${base.x + dx}:${base.z + dz}`);
+        }
+      }
+      for (const cell of site.water) {
+        assert.equal(site.loc.blocked[idx(site.loc.size, cell.x, cell.z)], 1, `сид ${site.loc.seed}: вода проходима`);
+        assert.ok(!road.has(`${cell.x}:${cell.z}`), `сид ${site.loc.seed}: вода легла на дорогу`);
+      }
+    }
+  });
+
+  test('водяная мельница стоит у воды, обычная — рядом с полем', () => {
+    for (const site of sites) {
+      const byModel = new Map(site.outbuildings.map((piece) => [piece.model, piece]));
+      const watermill = byModel.get('watermill')!;
+      const waterBase = spotAt(site, watermill);
+      const touches = Array.from({ length: CASTLE_CELL }, (_, dz) =>
+        Array.from({ length: CASTLE_CELL }, (_, dx) => ({ x: waterBase.x + dx, z: waterBase.z + dz }))).flat()
+        .some((cell) => [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dx, dz]) =>
+          site.water.some((wet) => wet.x === cell.x + dx! && wet.z === cell.z + dz!)));
+      assert.ok(touches, `сид ${site.loc.seed}: водяная мельница стоит без воды`);
+
+      const centre = (model: string) => {
+        const base = spotAt(site, byModel.get(model)!);
+        return { x: base.x + (CASTLE_CELL >> 1), z: base.z + (CASTLE_CELL >> 1) };
+      };
+      const farm = centre('farm_plot');
+      const mill = centre('mill');
+      assert.ok(
+        Math.abs(farm.x - mill.x) + Math.abs(farm.z - mill.z) <= CASTLE_CELL * 2,
+        `сид ${site.loc.seed}: мельница оторвалась от поля`,
+      );
+    }
+  });
+
+  test('лесопилка и шахта держатся внешнего ресурсного края', () => {
+    for (const site of sites) {
+      const edge = (model: string): number => {
+        const piece = site.outbuildings.find((candidate) => candidate.model === model)!;
+        const base = spotAt(site, piece);
+        return Math.min(
+          base.x - WOOD,
+          base.z - WOOD,
+          site.loc.size - WOOD - (base.x + CASTLE_CELL),
+          site.loc.size - WOOD - (base.z + CASTLE_CELL),
+        );
+      };
+      assert.ok(edge('lumbermill') <= 2, `сид ${site.loc.seed}: лесопилка далеко от леса`);
+      assert.ok(edge('mine') <= 2, `сид ${site.loc.seed}: шахта далеко от каменного края`);
+      assert.ok(edge('farm_plot') > edge('lumbermill'), `сид ${site.loc.seed}: поле спрятано в лесу`);
+      const mine = spotAt(site, site.outbuildings.find((piece) => piece.model === 'mine')!);
+      const rockDistance = Math.min(...site.surroundings
+        .filter((piece) => piece.model.startsWith('rocks'))
+        .map((piece) => {
+          const rock = spotAt(site, piece);
+          return Math.abs(rock.x - mine.x) + Math.abs(rock.z - mine.z);
+        }));
+      assert.ok(
+        rockDistance <= CASTLE_CELL * 4,
+        `сид ${site.loc.seed}: шахта в ${rockDistance} клетках от ближайшей скалы`,
+      );
     }
   });
 });

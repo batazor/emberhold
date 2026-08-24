@@ -189,6 +189,20 @@ export const COURTYARD_BUILDINGS = {
   service: ['well'],
 } as const;
 
+/**
+ * Хозяйственный пояс KayKit Medieval Builder стоит уже снаружи стен. Эти
+ * постройки не заменяют замок: они объясняют, чем он живёт и откуда берёт
+ * дерево, зерно, камень и воду.
+ */
+export const CASTLE_OUTBUILDINGS = [
+  'watermill',
+  'watchtower',
+  'farm_plot',
+  'mill',
+  'lumbermill',
+  'mine',
+] as const;
+
 /** Высота зубцов над последним этажом. Измерена, как и всё остальное. */
 export const CAP = 0.3;
 
@@ -414,6 +428,9 @@ export const WALL_TOP = 1.31;
  * не потеря, а свойство: крепостная стена и должна быть толстой.
  */
 export const CASTLE_CELL = 2;
+
+/** Сухой пояс между рвом и прямоугольным обходом гарнизона. */
+export const CASTLE_PATROL_GAP = CASTLE_CELL + 1;
 
 /* ---------- поставленная деталь ---------- */
 
