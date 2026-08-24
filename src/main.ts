@@ -152,6 +152,7 @@ import {
   cloudCamp,
   cloudCampLikeStates,
   cloudCamps,
+  cloudEnsureClan,
   cloudNeighbours,
   cloudLanguage,
   cloudOnSignIn,
@@ -169,6 +170,7 @@ import {
   cloudWipe,
 } from './core/cloud';
 import { AuthCard } from './ui/authCard';
+import { StorePanel } from './ui/storePanel';
 import {
   KIND,
   SHIFT_SEC,
@@ -2628,6 +2630,12 @@ const statsPanel = new StatsPanel(app);
  * слоем соседей; окно клана открывает строка задания.
  */
 const mailButton = new MailButton(app);
+new StorePanel(app, {
+  onState: (state) => campHud.setCosmetics(
+    state.personal.equipped,
+    state.clan?.equipped ?? 'default',
+  ),
+});
 const clanPanel = new ClanPanel(app, {
   onFound: (name) => {
     if (!foundClan(camp, name, clock.now())) {
@@ -2636,6 +2644,7 @@ const clanPanel = new ClanPanel(app, {
     }
     play('build');
     campHud.notify(`Клан «${camp.clan?.name ?? name}» основан`);
+    void cloudEnsureClan(camp.clan?.name ?? name);
     persist();
     campHud.sync(camp, clock.now(), 0);
     syncFarmUi();
@@ -6238,13 +6247,17 @@ if (debugTier !== null || debugNode !== null) {
  *   Последнее открывает четыре полосы и массовый повтор готового урожая.
  * `?test=character` — экран героя с опытом и свободным очком умения.
  * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
+ * `?test=cosmetics` — личный и клановый знаки на настоящей глобальной карте.
  *
  * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
  * но открыть их можно лишь адресом, которого в игре нет.
  */
 const debugCamp = debugGet(debugParams, 'test');
 if (debugCamp !== null) {
-  if (debugCamp === 'walls') {
+  if (debugCamp === 'cosmetics') {
+    if (camp.clan == null) foundClan(camp, 'Артель Знака', clock.now());
+    campHud.setCosmetics('watchfire', 'banner_tower');
+  } else if (debugCamp === 'walls') {
     // Площадь по максимуму и полный карман камня: сцена заведена, чтобы
     // смотреть стену, а не чтобы копить на неё. При Жилье ур. 1 кольцо
     // занимает лагерь целиком, и смотреть внутри нечего.

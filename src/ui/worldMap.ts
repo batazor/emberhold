@@ -57,6 +57,15 @@ import { drawMapTerrain } from './mapTerrain';
 import { gameDuration, gameMarkup, gameMessage, gameText, setGameText } from '../i18n/game';
 import { gameMessages } from '../i18n/gameMessages';
 import { eventMessage, resourceMessage, tierMessage } from '../i18n/gameData';
+import {
+  CLAN_CAMP_ICONS,
+  PERSONAL_CAMP_ICONS,
+  clanCampIcon,
+  clanCampIconUrl,
+  personalCampIcon,
+  personalCampIconUrl,
+} from '../core/cosmetics';
+import type { ClanCampIcon, PersonalCampIcon } from '../core/cosmetics';
 
 const WORLD_PLACE_PREFIX: Readonly<Record<string, ReturnType<typeof gameMessage>>> = {
   'Замок': gameMessage('Замок', 'Castle'),
@@ -272,10 +281,7 @@ export const MAP_ICON_URL: Record<NodeKind, string> = {
   'призы': new URL('../../assets/kenney-cartography/png/compass.png', import.meta.url).href,
 };
 
-export const CAMP_ICON_URL = new URL(
-  '../../assets/kenney-cartography/png/tent.png',
-  import.meta.url,
-).href;
+export const CAMP_ICON_URL = personalCampIconUrl('default');
 
 /** Светлая тушь читается на тёмной земле; исходные PNG у Kenney чёрные. */
 const MAP_ICON_COLOR = '#e8e2d4';
@@ -287,6 +293,7 @@ export const MAP_ICON_DIAMETER = 1.72;
 interface MapCamp {
   readonly key: string;
   readonly color: string;
+  readonly icon: string;
   readonly x: number;
   readonly y: number;
 }
@@ -408,6 +415,8 @@ export class WorldMap {
    * говорят «сегодня можно только сюда».
    */
   private only: number | null = null;
+  private personalIcon: PersonalCampIcon = 'default';
+  private clanIcon: ClanCampIcon = 'default';
 
   /** Исходные PNG и их окрашенные копии. Копия нужна потому, что набор
    * нарисован чёрной тушью, а на тёмной земле карты она исчезает. */
@@ -470,7 +479,11 @@ export class WorldMap {
   /** Загружает семь маленьких файлов один раз. До загрузки остаются кольца;
    * `load` тут же перерисует карту и положит внутрь готовые картинки. */
   private loadMapIcons(): void {
-    const urls = new Set([...Object.values(MAP_ICON_URL), CAMP_ICON_URL]);
+    const urls = new Set([
+      ...Object.values(MAP_ICON_URL),
+      ...PERSONAL_CAMP_ICONS.map(personalCampIconUrl),
+      ...CLAN_CAMP_ICONS.map(clanCampIconUrl),
+    ]);
     for (const url of urls) {
       const image = new Image();
       image.decoding = 'async';
@@ -596,13 +609,22 @@ export class WorldMap {
     const own: MapCamp = {
       key: 'свой',
       color: OWN_CAMP_COLOR,
+      icon: personalCampIconUrl(this.personalIcon),
       x: this.region.camp.x,
       y: this.region.camp.y,
     };
+    const ownClan: MapCamp[] = this.camp?.clan == null ? [] : [{
+      key: 'клан-свой',
+      color: OWN_CAMP_COLOR,
+      icon: clanCampIconUrl(this.clanIcon),
+      x: Math.min(0.94, this.region.camp.x + 0.075),
+      y: Math.min(0.92, this.region.camp.y + 0.065),
+    }];
     const clans: MapCamp[] = this.camp !== null && neighboursOpen(this.camp)
       ? CLAN_CAMPS.map((c) => ({
           key: `клан:${c.id}`,
           color: CLANS[c.id % CLANS.length]!.color,
+          icon: CAMP_ICON_URL,
           x: c.x,
           y: c.y,
         }))
@@ -612,10 +634,25 @@ export class WorldMap {
     const live: MapCamp[] = liveCampSpots(this.live.map((c) => c.id)).map((spot) => ({
       key: `живой:${spot.id}`,
       color: LIVE_COLOR,
+      icon: personalCampIconUrl(this.live.find((camp) => camp.id === spot.id)?.icon),
       x: spot.x,
       y: spot.y,
     }));
-    return [own, ...clans, ...live];
+    const clanRows = [...new Map(this.live
+      .filter((camp) => camp.clanId != null)
+      .map((camp) => [camp.clanId!, camp] as const)).values()];
+    const liveClans: MapCamp[] = liveCampSpots(clanRows.map((camp) => camp.clanId!)).map((spot) => {
+      const camp = clanRows.find((row) => row.clanId === spot.id);
+      return {
+        key: `живой-клан:${spot.id}`,
+        color: LIVE_COLOR,
+        icon: clanCampIconUrl(camp?.clanIcon),
+        // Общий лагерь стоит чуть глубже личных точек по кромке.
+        x: spot.x * 0.91 + 0.045,
+        y: spot.y * 0.89 + 0.055,
+      };
+    });
+    return [own, ...ownClan, ...clans, ...live, ...liveClans];
   }
 
   private paint(): void {
@@ -687,7 +724,7 @@ export class WorldMap {
     // соседские цветом своей фракции — тем же, каким её флаг стоит
     // на занятой точке, иначе флаг и лагерь читались бы разными людьми.
     for (const spot of this.camps()) {
-      const own = spot.key === 'свой';
+      const own = spot.key === 'свой' || spot.key === 'клан-свой';
       const color = spot.color;
       const x = spot.x * w;
       const y = spot.y * h;
@@ -708,7 +745,7 @@ export class WorldMap {
       // Палатка Kenney вместо собранного вручную треугольника. Своя золотая,
       // чужие светлые: это разводит свой лагерь и золотой «Клан Отвала»,
       // а цвет фракции остаётся на кольце.
-      this.drawMapIcon(CAMP_ICON_URL, x, y, r, own ? color : MAP_ICON_COLOR);
+      this.drawMapIcon(spot.icon, x, y, r, own ? color : MAP_ICON_COLOR);
     }
 
     for (const node of this.region.nodes) {
@@ -907,6 +944,13 @@ export class WorldMap {
     this.paint();
   }
 
+  /** Платные знаки меняют только рисунок; цвет и размер остаются правилами карты. */
+  setCosmetics(personal: unknown, clan: unknown): void {
+    this.personalIcon = personalCampIcon(personal);
+    this.clanIcon = clanCampIcon(clan);
+    this.paint();
+  }
+
   /**
    * Открыть карту целиком или запереть на одном месте (§16.2). Зовётся
    * снаружи: про кадры раскадровки карта не знает и знать не должна.
@@ -1069,12 +1113,46 @@ export class WorldMap {
       this.paintOwnCard();
       return;
     }
+    if (key === 'клан-свой') {
+      this.paintOwnClanCard();
+      return;
+    }
+    if (key.startsWith('живой-клан:')) {
+      const id = key.slice('живой-клан:'.length);
+      const live = this.live.find((camp) => camp.clanId === id);
+      if (live !== undefined) this.paintLiveClanCard(live);
+      return;
+    }
     if (key.startsWith('клан:')) {
       this.paintNeighbourCard(Number(key.slice(5)));
       return;
     }
     const live = this.live.find((c) => `живой:${c.id}` === key);
     if (live !== undefined) this.paintLiveCard(live);
+  }
+
+  private paintOwnClanCard(): void {
+    const clan = this.camp?.clan;
+    if (clan == null) return;
+    this.card.innerHTML =
+      `<div class="row t"><b style="color:${OWN_CAMP_COLOR}">${clan.name}</b>` +
+      `<i>${gameMarkup(gameMessage('лагерь клана', 'clan camp'))}</i></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Владелец знака', 'Mark owner'))}</span>` +
+      `<b>${gameMarkup(gameMessage('клан', 'clan'))}</b></div>`;
+    setGameText(this.note, gameMessage(
+      'Этот знак принадлежит клану и останется с ним при смене участников.',
+      'This mark belongs to the clan and remains with it when members change.',
+    ));
+  }
+
+  private paintLiveClanCard(live: LiveCamp): void {
+    this.card.innerHTML =
+      `<div class="row t"><b style="color:${LIVE_COLOR}">${live.clan ?? NO_CLAN}</b>` +
+      `<i>${gameMarkup(gameMessage('лагерь клана', 'clan camp'))}</i></div>`;
+    setGameText(this.note, gameMessage(
+      'Общий лагерь живого клана. Его знак выбран главой или офицером.',
+      'A live clan’s shared camp. Its mark is selected by a leader or officer.',
+    ));
   }
 
   /**

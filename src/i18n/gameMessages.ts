@@ -171,4 +171,39 @@ export const gameMessages = {
   settingsChronicle: message('game.settings.chronicle', 'Летопись', 'Chronicle'),
   settingsNewGame: message('game.settings.newGame', 'Новая игра', 'New game'),
   settingsClose: message('game.settings.close', 'Закрыть', 'Close'),
+
+  storeOpen: message('game.store.open', 'Платный контент', 'Paid content'),
+  storeTitle: message('game.store.title', 'Платный контент', 'Paid content'),
+  storeFounderTitle: message('game.store.founder.title', 'Набор основателя', 'Founder Pack'),
+  storeFounderLead: message(
+    'game.store.founder.lead',
+    'Постоянная огненная эмблема аккаунта. На баланс игры не влияет.',
+    'A permanent ember emblem for your account. It does not affect game balance.',
+  ),
+  storeBuy: message('game.store.buy', 'Купить тестовой картой', 'Buy with a test card'),
+  storeOwned: message('game.store.owned', 'Уже получено', 'Already owned'),
+  storeClose: message('game.store.close', 'Закрыть', 'Close'),
+  storeSandboxNote: message(
+    'game.store.sandboxNote',
+    'Песочница Stripe: настоящих списаний нет.',
+    'Stripe sandbox: no real charge is made.',
+  ),
+  storeGranted: message(
+    'game.store.granted',
+    'Эмблема выдана этому аккаунту.',
+    'The emblem is unlocked for this account.',
+  ),
+  storeSignIn: message('game.store.signIn', 'Сначала войдите в аккаунт.', 'Sign in to your account first.'),
+  storeOpening: message('game.store.opening', 'Открываем Stripe Checkout…', 'Opening Stripe Checkout…'),
+  storeProcessing: message('game.store.processing', 'Платёж принят, ждём выдачу…', 'Payment received, granting access…'),
+  storePending: message(
+    'game.store.pending',
+    'Stripe ещё обрабатывает платёж. Откройте магазин чуть позже.',
+    'Stripe is still processing the payment. Open the store again shortly.',
+  ),
+  storeFailed: message(
+    'game.store.failed',
+    'Не удалось начать покупку — проверьте вход и сеть.',
+    'Could not start checkout — check your sign-in and connection.',
+  ),
 } as const satisfies Record<string, GameMessage>;

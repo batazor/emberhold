@@ -8020,6 +8020,16 @@ msgid "Safari не даёт запустить звук без жеста. Пе�
 msgstr "Safari does not allow sound without a gesture. The first tap in the game is a step from the first frame of the storyboard; a separate screen \"turn on the sound\" is not necessary."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Stripe Sandbox · реальные деньги не списываются"
+msgstr "Stripe Sandbox · no real money is charged"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.pending"
+msgstr "Stripe is still processing the payment. Open the store again shortly."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "sword_A, sword_B, sword_C, sword_D, sword_E — 2447 треугольников, 11.0% набора"
 msgstr "sword_A, sword_B, sword_C, sword_D, sword_E — 2447 triangles, 11.0% of the set"
@@ -8468,6 +8478,11 @@ msgstr "Tower"
 #: locales/game-messages.ts
 msgid "Башня · строится"
 msgstr "Tower · building"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Башня знамени"
+msgstr "Banner tower"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -10053,6 +10068,11 @@ msgstr "Tabs"
 #: locales/legacy-messages.ts
 msgid "Включить звук"
 msgstr "Turn on the sound"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Владелец знака"
+msgstr "Mark owner"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -11878,6 +11898,11 @@ msgid "Две дыры, которые лес закрывает"
 msgstr "Two holes that the forest closes"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Две иконки навсегда принадлежат аккаунту."
+msgstr "Two icons permanently owned by your account."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Две категории: два жителя и три предмета под их ремёсла. Пришёл набор в FBX со своим ригом — rigify, 27 костей — и на общий"
 msgstr "Two categories: two residents and three subjects for their crafts. Came set in FBX with his rig - rigify, 27 bones - and on the common"
@@ -12750,6 +12775,11 @@ msgstr "Finishes construction and remains in the session."
 #: locales/game-messages.ts
 msgid "Дозорная башня"
 msgstr "Watchtower"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дозорный костёр"
+msgstr "Watchfire"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13890,6 +13920,11 @@ msgstr "Close"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.store.close"
+msgstr "Close"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Закрыть"
 msgstr "Close"
@@ -14654,6 +14689,21 @@ msgstr "sign not closer than 0.075 width, channel - further than the outer ring 
 #: locales/legacy-messages.ts
 msgid "Знак фона, повторяющий глиф события, — это уже не фон, а ложное сообщение."
 msgstr "The background sign repeating the event glyph is no longer the background, but a false message."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Знаки клана I"
+msgstr "Clan Camp Marks I"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Знаки личного лагеря I"
+msgstr "Personal Camp Marks I"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Знаки меняют только силуэт лагеря на глобальной карте."
+msgstr "Marks only change a camp’s silhouette on the global map."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -16412,6 +16462,11 @@ msgstr "Laying stones"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "клан"
+msgstr "clan"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Клан"
 msgstr "Clan"
@@ -17550,6 +17605,11 @@ msgid "Кулачное"
 msgstr "Fists"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.buy"
+msgstr "Buy with a test card"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "куплено за 200 вылазок"
 msgstr "purchased for 200 forays"
@@ -17711,6 +17771,11 @@ msgstr "The camp is set up where they decided to stay."
 #: locales/legacy-messages.ts
 msgid "Лагерь идёт на"
 msgstr "Camp''s on its way."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "лагерь клана"
+msgstr "clan camp"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -18110,6 +18175,11 @@ msgstr "fox skin {value0}"
 #: locales/legacy-messages.ts
 msgid "Лицо приходится делать геометрией"
 msgstr "The face has to be made geometry."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Личная покупка останется на вашем аккаунте."
+msgstr "A personal purchase remains on your account."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19293,9 +19363,24 @@ msgid "Набор оружия"
 msgstr "Arms collection"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.founder.title"
+msgstr "Founder Pack"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Набор персонажей"
 msgstr "Character set"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Набор принадлежит вам. Выберите активный знак."
+msgstr "You own this pack. Choose the active mark."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Набор принадлежит клану «{clan}»."
+msgstr "This pack belongs to clan “{clan}”."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20009,6 +20094,11 @@ msgstr "Did the forest eat the depths?"
 #: locales/legacy-messages.ts
 msgid "не тот силуэт"
 msgstr "silhouette"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.failed"
+msgstr "Could not start checkout — check your sign-in and connection."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -20976,6 +21066,11 @@ msgid "Общее"
 msgstr "General"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Общий лагерь живого клана. Его знак выбран главой или офицером."
+msgstr "A live clan’s shared camp. Its mark is selected by a leader or officer."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Общий порог §17.6: короче читается как сбой"
 msgstr "General threshold §17.6: shorter read as failure"
@@ -20999,6 +21094,11 @@ msgstr "priced"
 #: locales/legacy-messages.ts
 msgid "Объявляется до входа"
 msgstr "Announced before the entrance"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Обычная палатка"
+msgstr "Standard tent"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21818,6 +21918,11 @@ msgstr "Opens with the reputation of {value0}"
 #: locales/legacy-messages.ts
 msgid "Открой сундук альянса"
 msgstr "Open the alliance chest"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.opening"
+msgstr "Opening Stripe Checkout…"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -22830,6 +22935,11 @@ msgid "песок"
 msgstr "Sand"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.sandboxNote"
+msgstr "Stripe sandbox: no real charge is made."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "песчаник"
 msgstr "Sandstone"
@@ -22969,9 +23079,24 @@ msgid "Плата за наём: {price} монет · {reason}"
 msgstr "Hiring fee: {price} coins · {reason}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.processing"
+msgstr "Payment received, granting access…"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "платная страховка на один заход"
 msgstr "single-entry"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.open"
+msgstr "Paid content"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.title"
+msgstr "Paid content"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23664,9 +23789,19 @@ msgid "покупка доступна"
 msgstr "purchase"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Покупка навсегда поступает в имущество текущего клана."
+msgstr "The purchase permanently becomes property of your current clan."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Покупка предлагалась"
 msgstr "Purchase was offered"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Покупка станет имуществом клана «{clan}», а не игрока."
+msgstr "The purchase becomes property of clan “{clan}”, not the player."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -24072,6 +24207,11 @@ msgstr "Put the workshop on."
 #: locales/legacy-messages.ts
 msgid "постоянная география — то же расписание, что и постоянные ярусы (§4.1)"
 msgstr "permanent geography – the same schedule as permanent tiers (§4.1)"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.founder.lead"
+msgstr "A permanent ember emblem for your account. It does not affect game balance."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -26483,6 +26623,11 @@ msgid "ровный шум ставит лагерь то в болото, то 
 msgstr "Even noise puts the camp in the swamp, then on the crest"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Рогатый шатёр"
+msgstr "Horned tent"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Род"
 msgstr "rod"
@@ -28257,6 +28402,11 @@ msgstr "Equipment reads in silhouette"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.store.signIn"
+msgstr "Sign in to your account first."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.build.finishCurrent"
 msgstr "Finish the current construction first"
 
@@ -28275,6 +28425,11 @@ msgstr "Shelter is required first"
 #: locales/game-messages.ts
 msgid "Сначала поймайте {count} лис"
 msgstr "Catch {count} foxes first"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сначала создайте клан."
+msgstr "Create a clan first."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -30670,6 +30825,11 @@ msgstr "That same conflict from §20.1: one slot takes away the main button from
 "The second slot, without a timer, restores it."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Тотем совета"
+msgstr "Council totem"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "точек · 20"
 msgstr "points · 20"
@@ -31450,6 +31610,11 @@ msgstr "Another construction job is underway"
 #: locales/legacy-messages.ts
 msgid "Уже по X"
 msgstr "Already X."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.owned"
+msgstr "Already owned"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -33999,6 +34164,11 @@ msgid "Экран, на котором вещь"
 msgstr "The screen on which the thing"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.store.granted"
+msgstr "The emblem is unlocked for this account."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "эмиссией плафона"
 msgstr "plafond"
@@ -34108,6 +34278,11 @@ msgstr "That''s right."
 #: locales/legacy-messages.ts
 msgid "Этот документ предлагал «одну-две», и замер ("
 msgstr "This paper suggested \"one or two\" and measured (above)."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Этот знак принадлежит клану и останется с ним при смене участников."
+msgstr "This mark belongs to the clan and remains with it when members change."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
