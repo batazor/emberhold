@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && npm run check && npm run arch && npm run verify && vite build",
+    "i18n:extract": "lingui extract",
+    "i18n:compile": "lingui compile",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "tsx --test \"src/**/*.rules.ts\"",
@@ -48,12 +50,17 @@
     "edge:deploy": "npm run edge && npx supabase functions deploy sortie wheel --project-ref ynprsyzjdaheivhfcuel --use-api"
   },
   "dependencies": {
+    "@lingui/core": "^6.6.0",
     "@supabase/supabase-js": "^2.112.3",
     "posthog-js": "^1.418.10",
     "three": "^0.185.1"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.4.2",
+    "@lingui/cli": "^6.6.0",
+    "@lingui/format-po": "^6.6.0",
+    "@lingui/vite-plugin": "^6.6.0",
+    "@rolldown/plugin-babel": "^0.2.3",
     "@types/node": "^26.2.0",
     "@types/three": "^0.185.4",
     "tsx": "^4.23.12",
