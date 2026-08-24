@@ -16,7 +16,13 @@ import { PALETTE } from './palette';
  * раз в ход, и тридцать контуров по шесть отрезков — это дешевле, чем один
  * инстансинг с его обвязкой.
  */
-export type HexRole = 'move' | 'safe' | 'danger' | 'stand' | 'target' | 'hover';
+export type HexRole =
+  | 'move' | 'safe' | 'danger' | 'stand' | 'target' | 'hover'
+  | 'counter' | 'covered';
+
+const ROLES: readonly HexRole[] = [
+  'move', 'safe', 'danger', 'stand', 'target', 'hover', 'counter', 'covered',
+];
 
 const COLOR: Record<HexRole, number> = {
   // Куда дойду — тем же спокойным цветом, что место под здание (§20.4):
@@ -33,6 +39,10 @@ const COLOR: Record<HexRole, number> = {
   // Куда веду палец — цветом добычи: он в игре значит «вот это», и здесь
   // значит то же. Новый цвет тут был бы четвёртым словом об одном и том же.
   hover: PALETTE.loot,
+  // Контрприём — горячим кольцом под врагом; перехватываемая цель — цветом
+  // выбора, чтобы пара читалась на земле раньше пояснения в HUD.
+  counter: PALETTE.torch,
+  covered: PALETTE.loot,
 };
 
 /** Высота над полом. Чуть выше метки тапа, чтобы не спорить с ней z-буфером. */
@@ -59,7 +69,7 @@ export class HexGrid {
   private key = '';
 
   constructor() {
-    for (const role of ['move', 'safe', 'danger', 'stand', 'target', 'hover'] as HexRole[]) {
+    for (const role of ROLES) {
       const material = new THREE.LineBasicMaterial({
         color: COLOR[role],
         transparent: true,
@@ -92,13 +102,13 @@ export class HexGrid {
    * правилами, которыми потом применит ход.
    */
   show(sets: Readonly<Record<HexRole, readonly Hex[]>>): void {
-    const key = (['move', 'safe', 'danger', 'stand', 'target', 'hover'] as HexRole[])
+    const key = ROLES
       .map((r) => `${r}:${sets[r].map((h) => `${h.q},${h.r}`).join('|')}`)
       .join(';');
     if (key === this.key) return;
     this.key = key;
 
-    for (const role of ['move', 'safe', 'danger', 'stand', 'target', 'hover'] as HexRole[]) {
+    for (const role of ROLES) {
       const mesh = this.lines.get(role)!;
       const hexes = sets[role];
       mesh.visible = hexes.length > 0;
@@ -109,7 +119,12 @@ export class HexGrid {
         // Стойка и цель рисуются чуть меньше хода: вложенные контуры
         // читаются как «этот гекс особенный», а совпадающие — как рябь.
         const travel = role === 'move' || role === 'safe' || role === 'danger';
-        const ring = corners(hexToWorld(h), travel ? 0.92 : role === 'hover' ? 0.86 : 0.78);
+        const scale = travel ? 0.92
+          : role === 'hover' ? 0.86
+            : role === 'counter' ? 0.68
+              : role === 'covered' ? 0.58
+                : 0.78;
+        const ring = corners(hexToWorld(h), scale);
         for (let i = 0; i < 6; i++) {
           const a = ring[i]!;
           const b = ring[(i + 1) % 6]!;

@@ -660,7 +660,7 @@ export function botBattlePlan(state: RaidState, policy: Policy): BattleAction {
   // Заслон должен менять позицию боя, а не превращать её в вечное
   // «держу щит». Дальнего врага он не оттолкнёт, как и двух тяжёлых,
   // которых правило стойкости оставляет на месте.
-  const canPushThreat = forecast?.threats.some((threat) => {
+  const canPushThreat = forecast?.guardedThreats.some((threat) => {
     if (threat.target !== me.id || threat.ranged) return false;
     const attacker = battle.units.find((u) => u.id === threat.attacker);
     return attacker?.kind !== 'minotaur' && attacker?.kind !== 'stone-golem';

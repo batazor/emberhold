@@ -2759,14 +2759,14 @@ export class RaidView {
     if (this.battleBusy()) {
       const acting = this.playNow?.play.unit;
       const at = acting === undefined ? undefined : this.restHex.get(acting);
-      this.hexGrid.show({ move: [], safe: [], danger: [], stand: at === undefined ? [] : [at], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: at === undefined ? [] : [at], target: [], hover: [], counter: [], covered: [] });
       return;
     }
     // Сетка показывается только на ходу героя. На чужом ходу она молчит:
     // подсвечивать чужие возможности — значит просить игрока читать то,
     // на что он всё равно не влияет.
     if (unit.side !== 'hero') {
-      this.hexGrid.show({ move: [], safe: [], danger: [], stand: [unit.hex], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: [unit.hex], target: [], hover: [], counter: [], covered: [] });
       return;
     }
     const { size, blocked } = this.loc;
@@ -2796,7 +2796,19 @@ export class RaidView {
     const onTarget = target.some((h) => `${h.q},${h.r}` === key);
     const canGo = move.some((h) => `${h.q},${h.r}` === key);
     const hover = this.hoverHex !== null && (canGo || onTarget) ? [this.hoverHex] : [];
-    this.hexGrid.show({ move: [], safe, danger, stand: [unit.hex], target, hover });
+    const preview = this.battlePreview(state);
+    const counter = preview?.guardedThreats
+      .filter((threat) => threat.intent !== undefined)
+      .map((threat) => {
+        const last = threat.path[threat.path.length - 1];
+        return last ?? battle.units.find((u) => u.id === threat.attacker)?.hex;
+      })
+      .filter((h): h is Hex => h !== undefined) ?? [];
+    const covered = preview?.guardedThreats
+      .filter((threat) => threat.aimed !== threat.target)
+      .map((threat) => battle.units.find((u) => u.id === threat.aimed)?.hex)
+      .filter((h): h is Hex => h !== undefined) ?? [];
+    this.hexGrid.show({ move: [], safe, danger, stand: [unit.hex], target, hover, counter, covered });
   }
 
   /**

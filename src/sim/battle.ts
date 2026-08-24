@@ -444,6 +444,36 @@ export function targets(
   );
 }
 
+/** Кто встанет между ударом и выбранной целью. Одно правило для боя и прогноза. */
+function interceptorFor(state: BattleState, aimed: BattleUnit): BattleUnit | undefined {
+  return state.units
+    .filter((u) =>
+      u.hp > 0
+      && u.side === aimed.side
+      && u.id !== aimed.id
+      && u.guarding
+      && u.hasShield
+      && u.interceptReady
+      && hexDistance(u.hex, aimed.hex) <= 1)
+    .sort((a, b) => a.id - b.id)[0];
+}
+
+/** Куда отлетит атакующий. `from` нужен ИИ, который оценивает будущую стойку. */
+function bracePushTo(
+  state: BattleState,
+  size: number,
+  blocked: Uint8Array,
+  attacker: BattleUnit,
+  target: BattleUnit,
+  from: Hex = attacker.hex,
+): Hex | undefined {
+  if (attacker.kind === 'minotaur' || attacker.kind === 'stone-golem') return undefined;
+  const want = { q: from.q + (from.q - target.hex.q), r: from.r + (from.r - target.hex.r) };
+  return hexOpen(size, blocked, want) && !occupied(state, attacker.id).has(hexKey(want))
+    ? want
+    : undefined;
+}
+
 /** Передать ход следующему живому. Новый раунд снимает блоки и отметки. */
 export function advance(state: BattleState): void {
   for (let step = 0; step < state.order.length + 1; step++) {
@@ -569,16 +599,7 @@ export function apply(
       if (aimed === undefined) return false;
       if (!targets(state, size, blocked, unit).includes(aimed)) return false;
       // §11.7 — щитоносец в Заслоне прикрывает соседа один раз.
-      const interceptor = state.units
-        .filter((u) =>
-          u.hp > 0
-          && u.side === aimed.side
-          && u.id !== aimed.id
-          && u.guarding
-          && u.hasShield
-          && u.interceptReady
-          && hexDistance(u.hex, aimed.hex) <= 1)
-        .sort((a, b) => a.id - b.id)[0];
+      const interceptor = interceptorFor(state, aimed);
       const target = interceptor ?? aimed;
       if (interceptor !== undefined) interceptor.interceptReady = false;
       const attackFrom = unit.hex;
@@ -633,12 +654,8 @@ export function apply(
         && hexDistance(unit.hex, target.hex) === 1
       ) {
         target.braceReady = false;
-        const heavy = unit.kind === 'minotaur' || unit.kind === 'stone-golem';
-        const want = {
-          q: unit.hex.q + (unit.hex.q - target.hex.q),
-          r: unit.hex.r + (unit.hex.r - target.hex.r),
-        };
-        if (!heavy && hexOpen(size, blocked, want) && unitAt(state, want) === undefined) {
+        const want = bracePushTo(state, size, blocked, unit, target);
+        if (want !== undefined) {
           unit.hex = want;
           pushedTo = want;
         }
@@ -711,8 +728,7 @@ export function enemyPlan(
 ): BattleAction {
   const reachable = targets(state, size, blocked, unit);
   if (reachable.length > 0) {
-    // Из достижимых — самый израненный: добить дешевле, чем начать нового.
-    const best = reachable.reduce((a, b) => (a.hp <= b.hp ? a : b));
+    const best = preferredEnemyTarget(state, unit, reachable);
     return { kind: 'attack', target: best.id };
   }
   // Уже ходил и не достал — ход кончен. Без этого план «дойти» остаётся
@@ -721,37 +737,79 @@ export function enemyPlan(
 
   const foes = alive(state, unit.side === 'hero' ? 'enemy' : 'hero');
   if (foes.length === 0) return { kind: 'wait' };
+  const focus = preferredEnemyTarget(state, unit, foes);
 
   const reach = moves(state, size, blocked, unit);
   let best: { hex: Hex; score: number } | null = null;
   for (const [, spot] of reach) {
-    // Ближе к ближайшему противнику; при равенстве — меньше шагов, чтобы
-    // не топтаться. Оба ключа целые, поэтому порядок обхода не решает ничего.
-    const near = Math.min(...foes.map((f) => hexDistance(spot.hex, f.hex)));
-    const score = near * 100 + spot.steps;
+    // Каждый тип идёт к той же цели, которую выберет для удара. Воин возле
+    // Заслона дополнительно ищет стойку, из которой отбрасыванию некуда идти:
+    // стена или другое тело сжигают первое срабатывание без бесплатного отрыва.
+    const near = hexDistance(spot.hex, focus.hex);
+    const trapsBrace = unit.kind === 'warrior'
+      && focus.hasShield
+      && focus.guarding
+      && near <= unit.reach
+      && bracePushTo(state, size, blocked, unit, focus, spot.hex) === undefined;
+    const score = near * 100 + spot.steps - (trapsBrace ? 40 : 0);
     if (best === null || score < best.score) best = { hex: spot.hex, score };
   }
   return best === null ? { kind: 'wait' } : { kind: 'move', to: best.hex };
 }
 
+/**
+ * Цель — часть силуэта врага, а не скрытая случайность.
+ *
+ * - воин и тяжёлые бьют поднятый щит, чтобы снять первое срабатывание;
+ * - маг целит прикрытого соседа и тем самым заставляет тратить перехват;
+ * - остальные добивают самого раненого, поэтому стая складывает удары.
+ */
+function preferredEnemyTarget(
+  state: BattleState,
+  unit: BattleUnit,
+  choices: readonly BattleUnit[],
+): BattleUnit {
+  const score = (target: BattleUnit): number => {
+    const shieldUp = target.hasShield && target.guarding && target.braceReady;
+    const covered = !target.hasShield && interceptorFor(state, target) !== undefined;
+    const role = unit.kind === 'mage' && covered
+      ? -20_000
+      : (unit.kind === 'warrior' || unit.kind === 'minotaur' || unit.kind === 'stone-golem') && shieldUp
+        ? -10_000
+        : 0;
+    return role + target.hp * 100 + target.id;
+  };
+  return choices.reduce((a, b) => (score(a) <= score(b) ? a : b));
+}
+
+export type ThreatIntent =
+  | 'brace-burn'
+  | 'draw-intercept'
+  | 'charge'
+  | 'immovable'
+  | 'swarm';
+
 export interface BattleThreat {
   readonly attacker: number;
-  /** Кого ударят, если текущий боец не закроется. */
+  /** Кого противник выбрал до возможного перехвата. */
+  readonly aimed: number;
+  /** Кто действительно примет удар в этом сценарии. */
   readonly target: number;
-  /** Кого ударят в сценарии Блока/Заслона. Отличается при перехвате. */
-  readonly guardedTarget: number;
   readonly path: readonly Hex[];
-  /** Урон при попадании, если не закрываться. */
+  /** Урон при попадании в этом сценарии. */
   readonly damage: number;
-  /** Тот же удар под Блоком. */
-  readonly guardedDamage: number;
   readonly hitChance: number;
   readonly ranged: boolean;
+  /** Почему этот удар является контрприёмом против Заслона. */
+  readonly intent?: ThreatIntent | undefined;
 }
 
 export interface BattleForecast {
   readonly unit: number;
+  /** Что случится без защитного действия. */
   readonly threats: readonly BattleThreat[];
+  /** Что случится, если текущий боец выберет Блок/Заслон. */
+  readonly guardedThreats: readonly BattleThreat[];
   /** Сумма только по тому бойцу, который сейчас ходит. */
   readonly damage: number;
   readonly guardedDamage: number;
@@ -764,6 +822,115 @@ const copyBattle = (state: BattleState): BattleState => ({
   order: [...state.order],
   events: [],
 });
+
+interface ForecastScenario {
+  readonly threats: readonly BattleThreat[];
+  readonly broken: boolean;
+}
+
+function threatIntent(
+  unit: BattleUnit,
+  target: BattleUnit,
+  interceptor: BattleUnit | undefined,
+): ThreatIntent | undefined {
+  if (unit.kind === 'mage' && interceptor !== undefined) return 'draw-intercept';
+  if (!target.guarding || !target.hasShield) return undefined;
+  if (!target.braceReady) return undefined;
+  if (unit.kind === 'warrior') return 'brace-burn';
+  if (unit.kind === 'minotaur') return unit.moved ? 'charge' : 'immovable';
+  if (unit.kind === 'stone-golem') return 'immovable';
+  return undefined;
+}
+
+/** Проиграть один вариант круга, не вскрывая броски и не снимая HP. */
+function forecastScenario(
+  state: BattleState,
+  size: number,
+  blocked: Uint8Array,
+  damageOf: (from: BattleUnit, to: BattleUnit) => DamageSource,
+  originalId: number,
+  guarding: boolean,
+  stand?: Hex,
+): ForecastScenario | null {
+  const copy = copyBattle(state);
+  const hero = copy.units.find((u) => u.id === originalId);
+  if (hero === undefined) return null;
+  if (stand !== undefined) {
+    const legal = moves(copy, size, blocked, hero).get(hexKey(stand));
+    if (legal === undefined) return null;
+    hero.hex = { ...legal.hex };
+  }
+  hero.moved = stand !== undefined;
+  hero.guarding = guarding;
+  hero.braceReady = guarding && hero.hasShield;
+  hero.interceptReady = guarding && hero.hasShield;
+  hero.acted = true;
+  advance(copy);
+
+  const paths = new Map<number, readonly Hex[]>();
+  const threats: BattleThreat[] = [];
+  let guard = 0;
+  while (guard++ < copy.units.length * 3) {
+    const unit = current(copy);
+    if (unit === undefined || unit.side === 'hero') break;
+    const stats = ENEMY_STATS[unit.kind!];
+    const plan = enemyPlan(copy, size, blocked, unit, stats.chases);
+    if (plan.kind === 'move') {
+      const plays: BattlePlay[] = [];
+      if (!apply(copy, size, blocked, plan, damageOf, () => '', plays)) break;
+      const moved = plays.find((p): p is Extract<BattlePlay, { kind: 'move' }> => p.kind === 'move');
+      if (moved !== undefined) paths.set(unit.id, moved.path);
+      continue;
+    }
+    if (plan.kind === 'attack') {
+      const aimed = copy.units.find((u) => u.id === plan.target && u.hp > 0);
+      if (aimed !== undefined) {
+        const interceptor = interceptorFor(copy, aimed);
+        const target = interceptor ?? aimed;
+        if (interceptor !== undefined) interceptor.interceptReady = false;
+        threats.push({
+          attacker: unit.id,
+          aimed: aimed.id,
+          target: target.id,
+          path: paths.get(unit.id) ?? [],
+          damage: strikeProtection(unit, target, damageOf(unit, target)).dealt,
+          hitChance: target.guarding
+            ? ATTACK_ACCURACY
+            : Math.max(0, Math.min(100, ATTACK_ACCURACY - target.dodge)),
+          ranged: unit.ranged,
+          intent: threatIntent(unit, target, interceptor),
+        });
+
+        // Первое столкновение со щитом меняет последующие пути даже в
+        // прогнозе. HP не снимается, но срабатывание и позиция — настоящие.
+        if (
+          target.guarding
+          && target.hasShield
+          && target.braceReady
+          && !unit.ranged
+          && hexDistance(unit.hex, target.hex) === 1
+        ) {
+          target.braceReady = false;
+          const pushed = bracePushTo(copy, size, blocked, unit, target);
+          if (pushed !== undefined) unit.hex = pushed;
+        }
+      }
+    }
+    unit.acted = true;
+    advance(copy);
+  }
+
+  const minions = guarding && hero.hasShield
+    ? threats.filter((t) => copy.units.find((u) => u.id === t.attacker)?.kind === 'minion')
+    : [];
+  const marked = minions.length < 2
+    ? threats
+    : threats.map((t) =>
+      copy.units.find((u) => u.id === t.attacker)?.kind === 'minion'
+        ? { ...t, intent: 'swarm' as const }
+        : t);
+  return { threats: marked, broken: contactBroken(copy, size, blocked) };
+}
 
 /**
  * Что сделают противники, если герой кончит ход здесь.
@@ -781,72 +948,17 @@ export function forecastRound(
 ): BattleForecast | null {
   const original = current(state);
   if (original === undefined || original.side !== 'hero') return null;
-  const copy = copyBattle(state);
-  const hero = current(copy)!;
-
-  if (stand !== undefined) {
-    const legal = moves(copy, size, blocked, hero).get(hexKey(stand));
-    if (legal === undefined) return null;
-    hero.hex = { ...legal.hex };
-  }
-  hero.moved = stand !== undefined;
-  hero.acted = true;
-  advance(copy);
-
-  const paths = new Map<number, readonly Hex[]>();
-  const threats: BattleThreat[] = [];
-  let interceptReady = original.hasShield;
-  let guard = 0;
-  while (guard++ < copy.units.length * 3) {
-    const unit = current(copy);
-    if (unit === undefined || unit.side === 'hero') break;
-    const stats = ENEMY_STATS[unit.kind!];
-    const plan = enemyPlan(copy, size, blocked, unit, stats.chases);
-    if (plan.kind === 'move') {
-      const plays: BattlePlay[] = [];
-      if (!apply(copy, size, blocked, plan, damageOf, () => '', plays)) break;
-      const moved = plays.find((p): p is Extract<BattlePlay, { kind: 'move' }> => p.kind === 'move');
-      if (moved !== undefined) paths.set(unit.id, moved.path);
-      continue;
-    }
-    if (plan.kind === 'attack') {
-      const target = copy.units.find((u) => u.id === plan.target && u.hp > 0);
-      if (target !== undefined) {
-        const source = damageOf(unit, target);
-        const intercepts = interceptReady
-          && target.id !== original.id
-          && target.side === original.side
-          && hexDistance(hero.hex, target.hex) <= 1;
-        const guardedTarget = intercepts ? hero : target;
-        if (intercepts) interceptReady = false;
-        threats.push({
-          attacker: unit.id,
-          target: target.id,
-          guardedTarget: guardedTarget.id,
-          path: paths.get(unit.id) ?? [],
-          damage: strikeProtection(unit, target, source, false).dealt,
-          guardedDamage: strikeProtection(
-            unit,
-            guardedTarget,
-            intercepts ? damageOf(unit, guardedTarget) : source,
-            true,
-          ).dealt,
-          hitChance: Math.max(0, Math.min(100, ATTACK_ACCURACY - target.dodge)),
-          ranged: unit.ranged,
-        });
-      }
-    }
-    unit.acted = true;
-    advance(copy);
-  }
-
-  const mine = threats.filter((t) => t.target === original.id);
-  const guardedMine = threats.filter((t) => t.guardedTarget === original.id);
+  const plain = forecastScenario(state, size, blocked, damageOf, original.id, false, stand);
+  const guarded = forecastScenario(state, size, blocked, damageOf, original.id, true, stand);
+  if (plain === null || guarded === null) return null;
+  const mine = plain.threats.filter((t) => t.target === original.id);
+  const guardedMine = guarded.threats.filter((t) => t.target === original.id);
   return {
     unit: original.id,
-    threats,
+    threats: plain.threats,
+    guardedThreats: guarded.threats,
     damage: mine.reduce((sum, t) => sum + t.damage, 0),
-    guardedDamage: guardedMine.reduce((sum, t) => sum + t.guardedDamage, 0),
-    canBreakContact: contactBroken(copy, size, blocked),
+    guardedDamage: guardedMine.reduce((sum, t) => sum + t.damage, 0),
+    canBreakContact: plain.broken,
   };
 }

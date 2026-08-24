@@ -283,7 +283,69 @@ describe('Пошаговый бой', () => {
     const forecast = forecastRound(state, N, open(), flat)!;
     assert.equal(forecast.damage, 0, 'без Заслона враг выбирает слабого союзника');
     assert.equal(forecast.guardedDamage, 2, 'Заслон переносит половину удара на щит');
-    assert.equal(forecast.threats[0]?.guardedTarget, -1);
+    assert.equal(forecast.guardedThreats[0]?.target, -1);
+  });
+
+  test('воин сначала сжигает поднятый щит, а не добивает слабого соседа', () => {
+    const shieldAt = hexToWorld({ q: 8, r: 8 });
+    const allyAt = hexToWorld({ q: 8, r: 9 });
+    const enemyAt = hexToWorld({ q: 9, r: 8 });
+    const state = createBattle(
+      N, open(),
+      [
+        { id: -1, x: shieldAt.x, z: shieldAt.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true },
+        { id: -2, x: allyAt.x, z: allyAt.z, hp: 1, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 0, agility: 0 },
+      ],
+      [{ id: 0, kind: 'warrior', level: 1, x: enemyAt.x, z: enemyAt.z, hp: 12 }],
+    );
+    const shield = state.units.find((u) => u.id === -1)!;
+    shield.guarding = true;
+    shield.braceReady = true;
+    shield.interceptReady = true;
+    while (current(state)!.side !== 'enemy') advance(state);
+    assert.deepEqual(enemyPlan(state, N, open(), current(state)!, true), { kind: 'attack', target: -1 });
+  });
+
+  test('маг целит прикрытого соседа и вынуждает потратить перехват', () => {
+    const shieldAt = hexToWorld({ q: 8, r: 8 });
+    const allyAt = hexToWorld({ q: 8, r: 9 });
+    const mageAt = hexToWorld({ q: 12, r: 9 });
+    const state = createBattle(
+      N, open(),
+      [
+        { id: -1, x: shieldAt.x, z: shieldAt.z, hp: 1, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true },
+        { id: -2, x: allyAt.x, z: allyAt.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 0, agility: 0 },
+      ],
+      [{ id: 0, kind: 'mage', level: 1, x: mageAt.x, z: mageAt.z, hp: 12 }],
+    );
+    const shield = state.units.find((u) => u.id === -1)!;
+    shield.guarding = true;
+    shield.interceptReady = true;
+    while (current(state)!.side !== 'enemy') advance(state);
+    assert.deepEqual(enemyPlan(state, N, open(), current(state)!, false), { kind: 'attack', target: -2 });
+  });
+
+  test('прогноз называет таран, неподвижную тяжесть и натиск стаи', () => {
+    const heroAt = hexToWorld({ q: 8, r: 8 });
+    const shield = [{ id: -1, x: heroAt.x, z: heroAt.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true }];
+    const forecastFor = (enemies: Parameters<typeof createBattle>[3]) =>
+      forecastRound(createBattle(N, open(), shield, enemies), N, open(), flat)!;
+
+    const minotaurAt = hexToWorld({ q: 11, r: 8 });
+    const minotaur = forecastFor([{ id: 0, kind: 'minotaur', level: 1, x: minotaurAt.x, z: minotaurAt.z, hp: 36 }]);
+    assert.equal(minotaur.guardedThreats[0]?.intent, 'charge');
+
+    const golemAt = hexToWorld({ q: 9, r: 8 });
+    const golem = forecastFor([{ id: 0, kind: 'stone-golem', level: 1, x: golemAt.x, z: golemAt.z, hp: 18 }]);
+    assert.equal(golem.guardedThreats[0]?.intent, 'immovable');
+
+    const a = hexToWorld({ q: 9, r: 8 });
+    const b = hexToWorld({ q: 8, r: 10 });
+    const swarm = forecastFor([
+      { id: 0, kind: 'minion', level: 1, x: a.x, z: a.z, hp: 8 },
+      { id: 1, kind: 'minion', level: 1, x: b.x, z: b.z, hp: 8 },
+    ]);
+    assert.equal(swarm.guardedThreats.filter((t) => t.intent === 'swarm').length, 2);
   });
 
   test('бой кончается, когда одна сторона кончилась', () => {
