@@ -642,7 +642,17 @@ export function dwellersAt(g: Garrison, t: number): Dweller[] {
   // непрерывность шага — жёсткость, включающаяся на полпути, отдаёт
   // весь накопленный сдвиг одним кадром. Толкают его всё равно редко:
   // клетка дела закрыта для чужих обходов.
-  keepApart(folk, { fixed: (i) => folk[i]!.look === 'торговец' });
+  // В точке замыкания жилец уже дома. Плотный двор может свести его там
+  // с соседом, чей собственный цикл сейчас в другой фазе; если толкнуть
+  // вернувшегося, геометрически замкнутый маршрут визуально перестанет
+  // замыкаться. На единственный точный кадр дома он якорь, как торговец.
+  const atHome = (i: number): boolean => {
+    const cycle = g.yard[i]!.cycle;
+    if (cycle <= 0) return true;
+    const phase = ((t % cycle) + cycle) % cycle;
+    return phase < 1e-9 || cycle - phase < 1e-9;
+  };
+  keepApart(folk, { fixed: (i) => folk[i]!.look === 'торговец' || atHome(i) });
   return folk;
 }
 

@@ -474,7 +474,32 @@ export interface Castle {
   readonly towerStyle: TowerStyle;
   /** Углы, которым достался угол с башенкой. */
   readonly towers: readonly Spot[];
+  /** Семантические маршруты двора, построенные до декоративных деталей. */
+  readonly routes: readonly CastleRoute[];
+  /** Как был выбран план: нужно правилам качества и отладочной странице. */
+  readonly generation: CastleGeneration;
   readonly pieces: readonly Piece[];
+}
+
+export type CastleRouteKind = 'ворота-донжон' | 'ворота-стена';
+
+export interface CastleRoute {
+  readonly kind: CastleRouteKind;
+  readonly cells: readonly Spot[];
+}
+
+export interface CastleGeneration {
+  /** Сколько геометрических вариантов реально сравнено. */
+  readonly evaluated: number;
+  /** Сколько вариантов вместили весь обязательный смысловой граф. */
+  readonly valid: number;
+  readonly score: number;
+  /** Сторона света в порядке DIRS, с которой задуман главный вход. */
+  readonly intendedGateSide: number;
+  readonly gateInside: Spot;
+  readonly keep: Spot;
+  readonly keepStep: Spot;
+  readonly wallStair: Spot;
 }
 
 /**
@@ -677,16 +702,295 @@ function plan(
   return { inside, wall, ring, yard };
 }
 
-/** Перемешанная копия: порядок перебора решает сид, а не порядок в списке. */
-function shuffled<T>(rng: Rng, list: readonly T[]): T[] {
-  const out = [...list];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = randInt(rng, i + 1);
-    const swap = out[i]!;
-    out[i] = out[j]!;
-    out[j] = swap;
+/* ---------- смысловой граф до деталей ---------- */
+
+const CASTLE_CANDIDATES = 8;
+
+interface CastlePlanCandidate {
+  readonly width: number;
+  readonly depth: number;
+  readonly wall: Uint8Array;
+  readonly ring: readonly Spot[];
+  readonly yard: readonly Spot[];
+  readonly gate: Spot;
+  readonly gateInside: Spot;
+  readonly keep: Spot;
+  readonly keepStep: Spot;
+  readonly wallStair: Spot;
+  readonly routes: readonly CastleRoute[];
+  readonly score: number;
+}
+
+const sameSpot = (a: Spot, b: Spot): boolean => a.x === b.x && a.z === b.z;
+const distance = (a: Spot, b: Spot): number => Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+
+/** Наружная сторона клетки ворот: противоположна соседней клетке двора. */
+function gateOutside(yard: readonly Spot[], gate: Spot): number {
+  const inward = DIRS.findIndex(([dx, dz]) => yard.some((s) => s.x === gate.x + dx && s.z === gate.z + dz));
+  return inward < 0 ? -1 : [1, 0, 3, 2][inward]!;
+}
+
+/** Ворота занимают середину самого длинного прямого фасада. */
+function straightGates(ring: readonly Spot[]): Spot[] {
+  const runs = straightRuns(ring, ringJoints(ring));
+  const longest = Math.max(0, ...runs.map((run) => run.spots.length));
+  return runs
+    .filter((run) => run.spots.length === longest && run.spots.length >= 3)
+    .flatMap((run) => run.spots.length % 2 === 0
+      ? [run.spots[run.spots.length / 2 - 1]!, run.spots[run.spots.length / 2]!]
+      : [run.spots[(run.spots.length / 2) | 0]!]);
+}
+
+interface PathState {
+  readonly spot: Spot;
+  readonly dir: number;
+  readonly run: number;
+  readonly g: number;
+  readonly f: number;
+  readonly previous: string | null;
+}
+
+/**
+ * Направленный A* для мощёных линий двора. Он не ищет просто кратчайшую
+ * ломаную: частые повороты, прилипание к стене, слишком длинные прямые и
+ * повтор уже проложенного маршрута получают цену. Так две смысловые ветки
+ * читаются дорогами, а не случайными следами заливки.
+ */
+function courtyardPath(
+  yard: readonly Spot[],
+  ring: readonly Spot[],
+  start: Spot,
+  goals: readonly Spot[],
+  blocked: ReadonlySet<string>,
+  used: ReadonlySet<string> = new Set(),
+): Spot[] | null {
+  const allowed = new Set(yard.map(keyOf));
+  const ringKeys = new Set(ring.map(keyOf));
+  const goalKeys = new Set(goals.filter((s) => allowed.has(keyOf(s)) && !blocked.has(keyOf(s))).map(keyOf));
+  if (!allowed.has(keyOf(start)) || blocked.has(keyOf(start)) || goalKeys.size === 0) return null;
+
+  const heuristic = (spot: Spot): number => Math.min(...goals.map((goal) => distance(spot, goal))) * 10;
+  const stateKey = (spot: Spot, dir: number, run: number): string => `${spot.x}:${spot.z}:${dir}:${run}`;
+  const startKey = stateKey(start, -1, 0);
+  const open: PathState[] = [{ spot: start, dir: -1, run: 0, g: 0, f: heuristic(start), previous: null }];
+  const best = new Map<string, number>([[startKey, 0]]);
+  const states = new Map<string, PathState>([[startKey, open[0]!]]);
+
+  while (open.length > 0) {
+    let pick = 0;
+    for (let i = 1; i < open.length; i++) {
+      if (open[i]!.f < open[pick]!.f || (open[i]!.f === open[pick]!.f && open[i]!.g < open[pick]!.g)) pick = i;
+    }
+    const current = open.splice(pick, 1)[0]!;
+    const currentKey = stateKey(current.spot, current.dir, current.run);
+    if (current.g !== best.get(currentKey)) continue;
+    if (goalKeys.has(keyOf(current.spot))) {
+      const path: Spot[] = [];
+      let cursor: PathState | undefined = current;
+      while (cursor !== undefined) {
+        path.push(cursor.spot);
+        cursor = cursor.previous === null ? undefined : states.get(cursor.previous);
+      }
+      return path.reverse();
+    }
+
+    for (let dir = 0; dir < DIRS.length; dir++) {
+      const [dx, dz] = DIRS[dir]!;
+      const next = { x: current.spot.x + dx, z: current.spot.z + dz };
+      const cell = keyOf(next);
+      if (!allowed.has(cell) || blocked.has(cell)) continue;
+      const run = current.dir === dir ? Math.min(5, current.run + 1) : 1;
+      let step = 10;
+      if (current.dir >= 0 && current.dir !== dir) step += 5;
+      if (run >= 4) step += run - 2;
+      if (DIRS.some(([wx, wz]) => ringKeys.has(`${next.x + wx}:${next.z + wz}`))) step += 3;
+      if (used.has(cell) && !sameSpot(next, start)) step += 8;
+      const g = current.g + step;
+      const nextKey = stateKey(next, dir, run);
+      if (g >= (best.get(nextKey) ?? Number.POSITIVE_INFINITY)) continue;
+      const state: PathState = { spot: next, dir, run, g, f: g + heuristic(next), previous: currentKey };
+      best.set(nextKey, g);
+      states.set(nextKey, state);
+      open.push(state);
+    }
   }
-  return out;
+  return null;
+}
+
+const pathTurns = (path: readonly Spot[]): number => {
+  let turns = 0;
+  for (let i = 2; i < path.length; i++) {
+    const a = path[i - 2]!;
+    const b = path[i - 1]!;
+    const c = path[i]!;
+    if (b.x - a.x !== c.x - b.x || b.z - a.z !== c.z - b.z) turns++;
+  }
+  return turns;
+};
+
+/** После дорог во дворе обязаны остаться место службы и вторая линия. */
+function fitsCourtyardFunctions(
+  width: number,
+  yard: readonly Spot[],
+  occupied: readonly Spot[],
+  routes: readonly CastleRoute[],
+): boolean {
+  const reserved = new Set(routes.flatMap((route) => route.cells.map(keyOf)));
+  const occupiedKeys = new Set(occupied.map(keyOf));
+  const free = yard.filter((spot) => !occupiedKeys.has(keyOf(spot)) && !reserved.has(keyOf(spot)));
+  const freeKeys = new Set(free.map(keyOf));
+  for (const building of free) {
+    if (!yardPassable(width, yard, [...occupied, building])) continue;
+    for (const first of free) {
+      if (sameSpot(first, building)) continue;
+      for (const dir of [1, 3]) {
+        const second = { x: first.x + DIRS[dir]![0], z: first.z + DIRS[dir]![1] };
+        if (!freeKeys.has(keyOf(second)) || sameSpot(second, building)) continue;
+        const busy = [...occupied, building, first, second];
+        if (!yardPassable(width, yard, busy)) continue;
+        const busyKeys = new Set(busy.map(keyOf));
+        if (DIRS.some(([dx, dz]) => {
+          const door = { x: building.x + dx, z: building.z + dz };
+          return freeKeys.has(keyOf(door)) && !busyKeys.has(keyOf(door));
+        })) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Расставляет обязательные узлы графа и возвращает лучший вариант для формы. */
+function semanticLayout(
+  width: number,
+  depth: number,
+  wall: Uint8Array,
+  ring: readonly Spot[],
+  yard: readonly Spot[],
+  intendedGateSide: number,
+): Omit<CastlePlanCandidate, 'width' | 'depth' | 'wall' | 'ring' | 'yard'> | null {
+  const yardKeys = new Set(yard.map(keyOf));
+  const gates = straightGates(ring)
+    .sort((a, b) => {
+      const sideA = gateOutside(yard, a) === intendedGateSide ? 0 : 1;
+      const sideB = gateOutside(yard, b) === intendedGateSide ? 0 : 1;
+      const centreA = Math.abs(a.x - (width - 1) / 2) + Math.abs(a.z - (depth - 1) / 2);
+      const centreB = Math.abs(b.x - (width - 1) / 2) + Math.abs(b.z - (depth - 1) / 2);
+      return sideA - sideB || centreA - centreB || a.z - b.z || a.x - b.x;
+    })
+    .slice(0, 2);
+  let best: Omit<CastlePlanCandidate, 'width' | 'depth' | 'wall' | 'ring' | 'yard'> | null = null;
+
+  for (const gate of gates) {
+    const gateInside = yard.find((s) => distance(s, gate) === 1);
+    if (gateInside === undefined) continue;
+    const outside = gateOutside(yard, gate);
+
+    const keepChoices = [...yard]
+      .filter((s) => !sameSpot(s, gateInside))
+      .filter((s) => yardPassable(width, yard, [s]))
+      .sort((a, b) => {
+        const wallA = Math.min(...ring.map((r) => distance(a, r)));
+        const wallB = Math.min(...ring.map((r) => distance(b, r)));
+        const scoreA = distance(gateInside, a) * 4 + wallA * 2 - Math.abs(a.x - (width - 1) / 2) - Math.abs(a.z - (depth - 1) / 2);
+        const scoreB = distance(gateInside, b) * 4 + wallB * 2 - Math.abs(b.x - (width - 1) / 2) - Math.abs(b.z - (depth - 1) / 2);
+        return scoreB - scoreA || a.z - b.z || a.x - b.x;
+      })
+      .slice(0, 2);
+
+    for (const keep of keepChoices) {
+      const steps = DIRS.map(([dx, dz]) => ({ x: keep.x + dx, z: keep.z + dz }))
+        .filter((s) => yardKeys.has(keyOf(s)) && !sameSpot(s, gateInside))
+        .sort((a, b) => distance(a, gateInside) - distance(b, gateInside) || a.z - b.z || a.x - b.x)
+        .slice(0, 2);
+      for (const keepStep of steps) {
+        const stairChoices = yard.filter((s) => !sameSpot(s, gateInside) && !sameSpot(s, keep) && !sameSpot(s, keepStep)
+          && DIRS.some(([dx, dz]) => {
+            const nx = s.x + dx;
+            const nz = s.z + dz;
+            return nx >= 0 && nz >= 0 && nx < width && nz < depth
+              && wall[at(width, nx, nz)]
+              && !(nx === gate.x && nz === gate.z)
+              && ringNeighbors(width, depth, wall, nx, nz).length === 2;
+          }))
+          .sort((a, b) => distance(b, keep) - distance(a, keep) || distance(a, gateInside) - distance(b, gateInside)
+            || a.z - b.z || a.x - b.x)
+          .slice(0, 2);
+        for (const wallStair of stairChoices) {
+          const occupied = [keep, keepStep, wallStair];
+          if (!yardPassable(width, yard, occupied)) continue;
+          const blocked = new Set(occupied.map(keyOf));
+          const keepGoals = DIRS.map(([dx, dz]) => ({ x: keepStep.x + dx, z: keepStep.z + dz }));
+          const toKeep = courtyardPath(yard, ring, gateInside, keepGoals, blocked);
+          if (toKeep === null) continue;
+          const used = new Set(toKeep.slice(2).map(keyOf));
+          const stairGoals = DIRS.map(([dx, dz]) => ({ x: wallStair.x + dx, z: wallStair.z + dz }));
+          const toWall = courtyardPath(yard, ring, gateInside, stairGoals, blocked, used);
+          if (toWall === null) continue;
+
+          const overlap = toWall.filter((s) => used.has(keyOf(s))).length;
+          const keepDepth = distance(gateInside, keep);
+          const wallClearance = Math.min(...ring.map((s) => distance(keep, s)));
+          const routes = [
+            { kind: 'ворота-донжон', cells: toKeep },
+            { kind: 'ворота-стена', cells: toWall },
+          ] as const;
+          if (!fitsCourtyardFunctions(width, yard, occupied, routes)) continue;
+          const routeCells = new Set(routes.flatMap((route) => route.cells.map(keyOf))).size;
+          const score = yard.length * 0.35
+            + keepDepth * 2.4
+            + wallClearance * 2
+            + distance(keep, wallStair) * 0.4
+            + (outside === intendedGateSide ? 10 : 0)
+            - overlap * 1.5
+            - routeCells * 0.35
+            - Math.abs(pathTurns(toKeep) - 2) * 0.8
+            - Math.abs(pathTurns(toWall) - 2) * 0.6;
+          if (best === null || score > best.score) {
+            best = { gate, gateInside, keep, keepStep, wallStair, routes, score };
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+
+/** Несколько полных вариантов вместо принятия первого случайного плана. */
+function chooseCastlePlan(seed: number): CastlePlanCandidate & { evaluated: number; valid: number; intendedGateSide: number } {
+  const intentRng = mulberry32(seed ^ 0x6d2f35a1);
+  const intendedGateSide = randInt(intentRng, DIRS.length);
+  const intendedWidth = 6 + randInt(intentRng, 5);
+  const intendedDepth = 6 + randInt(intentRng, 5);
+  const candidates: CastlePlanCandidate[] = [];
+  for (let i = 0; i < CASTLE_CANDIDATES; i++) {
+    const salt = Math.imul(i + 1, 0x45d9f3b);
+    const rng = mulberry32((seed ^ salt) >>> 0);
+    const width = 6 + randInt(rng, 5);
+    const depth = 6 + randInt(rng, 5);
+    const shape = plan(rng, width, depth);
+    const layout = semanticLayout(width, depth, shape.wall, shape.ring, shape.yard, intendedGateSide);
+    if (layout === null) continue;
+    const corners = shape.ring.filter((s) => ringNeighbors(width, depth, shape.wall, s.x, s.z)
+      .some((dir, _, dirs) => dirs.some((other) => other !== dir && DIRS[dir]![0] !== -DIRS[other]![0] && DIRS[dir]![1] !== -DIRS[other]![1]))).length;
+    const narrow = shape.yard.filter((s) => DIRS.filter(([dx, dz]) => shape.yard.some((n) => n.x === s.x + dx && n.z === s.z + dz)).length <= 1).length;
+    candidates.push({
+      width,
+      depth,
+      wall: shape.wall,
+      ring: shape.ring,
+      yard: shape.yard,
+      ...layout,
+      score: layout.score
+        + Math.min(corners, 8) * 0.7
+        - narrow * 4
+        - Math.abs(width - depth) * 0.5
+        - Math.abs(width - intendedWidth) * 7
+        - Math.abs(depth - intendedDepth) * 7,
+    });
+  }
+  if (candidates.length === 0) throw new Error(`сид ${seed}: ни один план замка не вместил смысловой граф`);
+  candidates.sort((a, b) => b.score - a.score || a.width - b.width || a.depth - b.depth);
+  return { ...candidates[0]!, evaluated: CASTLE_CANDIDATES, valid: candidates.length, intendedGateSide };
 }
 
 /**
@@ -821,38 +1125,6 @@ function straightRuns(ring: readonly Spot[], joints: ReadonlyMap<string, Joint>)
   return out;
 }
 
-/** Наружная сторона клетки стены: там нет ни двора, ни другой стены. */
-function outsideOf(spot: Spot, ring: ReadonlySet<string>, yard: ReadonlySet<string>): number {
-  return DIRS.findIndex(([dx, dz]) =>
-    !ring.has(`${spot.x + dx}:${spot.z + dz}`) && !yard.has(`${spot.x + dx}:${spot.z + dz}`));
-}
-
-/**
- * Ворота стоят в середине самого длинного фасада. Сид меняет предпочитаемую
- * сторону только при близких по длине вариантах: короткая задняя стенка не
- * выигрывает у парадного пролёта одной случайностью.
- */
-function chooseGate(seed: number, ring: readonly Spot[], yard: readonly Spot[], joints: ReadonlyMap<string, Joint>): Spot {
-  const ringSet = new Set(ring.map(keyOf));
-  const yardSet = new Set(yard.map(keyOf));
-  const preferred = seed >>> 3 & 3;
-  let best: { spot: Spot; score: number } | null = null;
-  for (const run of straightRuns(ring, joints)) {
-    if (run.spots.length < 3) continue;
-    const middles = run.spots.length % 2 === 0
-      ? [run.spots[run.spots.length / 2 - 1]!, run.spots[run.spots.length / 2]!]
-      : [run.spots[(run.spots.length / 2) | 0]!];
-    for (const spot of middles) {
-      const outside = outsideOf(spot, ringSet, yardSet);
-      if (outside < 0) continue;
-      const tie = ((spot.x * 17 + spot.z * 31 + seed) >>> 0) % 7;
-      const score = run.spots.length * 100 + (outside === preferred ? 12 : 0) + tie;
-      if (best === null || score > best.score) best = { spot, score };
-    }
-  }
-  return best?.spot ?? ring.find((spot) => joints.get(keyOf(spot)) === 'прямая') ?? ring[0]!;
-}
-
 /**
  * Кольцо крепости использует тот же обмер стыков, что `buildWall`, но выбирает
  * варианты по роли. Контрфорсы держат ритм длинного фасада и обрамляют ворота,
@@ -932,11 +1204,9 @@ export function generateCastle(seed: number): Castle {
   // не должно молча переставлять ворота и донжон у уже знакомого сида.
   const styleRng = mulberry32(seed ^ 0x48e7a6);
   const towerStyle: TowerStyle = randInt(styleRng, 2) === 0 ? 'квадратные' : 'шестигранные';
-  const width = 6 + randInt(rng, 4);
-  const depth = 6 + randInt(rng, 4);
-  const { wall, ring, yard } = plan(rng, width, depth);
+  const selected = chooseCastlePlan(seed);
+  const { width, depth, wall, ring, yard, gate, gateInside } = selected;
   const joints = ringJoints(ring);
-  const gate = chooseGate(seed, ring, yard, joints);
 
   // Стыки остаются общими с пользовательской стройкой, но готовая крепость
   // получает архитектурную грамматику: ритм опор, усиленные внешние углы
@@ -1009,7 +1279,6 @@ export function generateCastle(seed: number): Castle {
     role: 'мост',
   });
   const moat = moatOf(ring, yard);
-  const gateInside = yard.find((s) => Math.abs(s.x - gate.x) + Math.abs(s.z - gate.z) === 1) ?? null;
 
   /* ---------- двор ---------- */
 
@@ -1020,77 +1289,45 @@ export function generateCastle(seed: number): Castle {
     pieces.push({ model: 'ground', x: spot.x, z: spot.z, y: 0, turn: 0, role: 'двор' });
   }
 
-  // Лестница: клетка двора у прямой стены, ход выходит к этой стене.
-  const landings = yard.filter((s) =>
-    (gateInside === null || keyOf(s) !== keyOf(gateInside)) && DIRS.some((dir) => {
-      const nx = s.x + dir[0];
-      const nz = s.z + dir[1];
-      return (
-        nx >= 0 && nz >= 0 && nx < width && nz < depth
-        && wall[at(width, nx, nz)]
-        && kind.get(at(width, nx, nz)) === 'прямая'
-        && !(nx === gate.x && nz === gate.z)
-      );
-    }),
-  );
-  // Кандидаты перебираются в случайном порядке, и берётся первый, который
-  // не запирает двор. Отказ тоже возможен: во дворе в одну клетку лестнице
-  // места нет, и её просто не будет.
+  // Лестница уже выбрана смысловым графом: отдельная ветка плаца обязана
+  // вести к стене, а не возникать после донжона в случайной свободной клетке.
   const taken: Spot[] = [];
-  for (const spot of shuffled(rng, landings)) {
-    if (!yardPassable(width, yard, [spot])) continue;
-    const toWall = DIRS.findIndex((dir) => {
-      const nx = spot.x + dir[0];
-      const nz = spot.z + dir[1];
-      return nx >= 0 && nz >= 0 && nx < width && nz < depth && wall[at(width, nx, nz)];
-    });
-    const stair = STAIR_PARTS[randInt(rng, STAIR_PARTS.length)]!;
-    const turn = fitTurn(stair.open, [toWall]);
-    if (turn < 0) continue;
-    pieces.push({ model: stair.model, x: spot.x, z: spot.z, y: 0, turn, role: 'лестница' });
-    taken.push(spot);
-    break;
-  }
+  const wallStair = selected.wallStair;
+  const toWall = DIRS.findIndex((dir) => {
+    const nx = wallStair.x + dir[0];
+    const nz = wallStair.z + dir[1];
+    return nx >= 0 && nz >= 0 && nx < width && nz < depth && wall[at(width, nx, nz)];
+  });
+  const stair = STAIR_PARTS[randInt(rng, STAIR_PARTS.length)]!;
+  const stairTurn = fitTurn(stair.open, [toWall]);
+  pieces.push({ model: stair.model, x: wallStair.x, z: wallStair.z, y: 0, turn: stairTurn, role: 'лестница' });
+  taken.push(wallStair);
 
   /* ---------- донжон ---------- */
 
   // Башня во дворе, а не в кольце: башня глухая со всех сторон — это измерено, —
   // и, встав в кольцо, она разорвала бы ход поверху.
-  const middle = (c: Spot): number =>
-    Math.abs(c.x - (width - 1) / 2) + Math.abs(c.z - (depth - 1) / 2);
-  const keep = [...yard]
-    .sort((a, b) => middle(a) - middle(b))
-    .find((s) => !taken.some((t) => t.x === s.x && t.z === s.z)
-      && (gateInside === null || keyOf(s) !== keyOf(gateInside))
-      && yardPassable(width, yard, [...taken, s])) ?? null;
-  if (keep !== null) {
+  const keep = selected.keep;
+  {
     taken.push(keep);
     // Отдельная каменная лестница стоит у входа донжона. Она выбирается
     // только среди соседних свободных клеток и не имеет права рассечь двор.
-    const yardKeys = new Set(yard.map(keyOf));
-    let keepStep: Spot | null = null;
+    const keepStep = selected.keepStep;
     let entranceTurn: number | undefined;
-    for (const dir of shuffled(rng, [0, 1, 2, 3])) {
-      const spot = { x: keep.x + DIRS[dir]![0], z: keep.z + DIRS[dir]![1] };
-      if (!yardKeys.has(keyOf(spot)) || taken.some((s) => keyOf(s) === keyOf(spot))) continue;
-      if (gateInside !== null && keyOf(spot) === keyOf(gateInside)) continue;
-      if (!yardPassable(width, yard, [...taken, spot])) continue;
-      keepStep = spot;
-      // Дверь и высокий край лестницы в исходных моделях смотрят в +z.
-      entranceTurn = fitTurn([false, false, false, true], [dir]);
-      const toKeep = [1, 0, 3, 2][dir]!;
-      const stairTurn = fitTurn([false, false, false, true], [toKeep]);
-      pieces.push({
-        model: FREE_STAIRS[randInt(rng, FREE_STAIRS.length)]!,
-        x: spot.x,
-        z: spot.z,
-        y: 0,
-        turn: stairTurn,
-        role: 'лестница',
-      });
-      taken.push(spot);
-      break;
-    }
+    const dir = DIRS.findIndex(([dx, dz]) => keepStep.x === keep.x + dx && keepStep.z === keep.z + dz);
+    // Дверь и высокий край лестницы в исходных моделях смотрят в +z.
+    entranceTurn = fitTurn([false, false, false, true], [dir]);
+    const toKeep = [1, 0, 3, 2][dir]!;
+    const keepStairTurn = fitTurn([false, false, false, true], [toKeep]);
+    pieces.push({
+      model: FREE_STAIRS[randInt(rng, FREE_STAIRS.length)]!,
+      x: keepStep.x,
+      z: keepStep.z,
+      y: 0,
+      turn: keepStairTurn,
+      role: 'лестница',
+    });
+    taken.push(keepStep);
     // Донжон выше стены всегда: в один ярус он с ней сравнялся бы и перестал
     // быть донжоном. Крыша вместо зубцов — он не боевая площадка.
     const floors = 2 + randInt(rng, TOWER_MAX - 1);
@@ -1103,29 +1340,42 @@ export function generateCastle(seed: number): Castle {
       turn: randInt(rng, 4),
       role: 'знамя',
     });
-    void keepStep;
   }
 
   /* ---------- здания двора ---------- */
 
+  // Эти клетки — геометрическое воплощение смыслового графа. Здания и
+  // вторая линия обороны могут обрамлять дороги, но не занимать их.
+  const routeCells = new Set(selected.routes.flatMap((route) => route.cells.map(keyOf)));
+
   // Застройка идёт раньше второй линии обороны: в тесной крепости казарма
-  // важнее декоративного внутреннего забора. В большом дворе помещаются
-  // квартал из четырёх функций и укрепление, в малом остаётся одно здание.
+  // важнее декоративного внутреннего забора. Большой двор получает квартал
+  // из всех функций и повторные дома служб, малый сохраняет одно главное.
   const buildingOrder: readonly string[] = towerStyle === 'шестигранные'
     ? [
         ...COURTYARD_BUILDINGS.military,
         ...COURTYARD_BUILDINGS.service,
         COURTYARD_BUILDINGS.civic[0],
+        COURTYARD_BUILDINGS.military[0],
+        COURTYARD_BUILDINGS.civic[0],
+        COURTYARD_BUILDINGS.military[1],
+        COURTYARD_BUILDINGS.service[0],
       ]
     : [
         ...COURTYARD_BUILDINGS.civic,
         ...COURTYARD_BUILDINGS.service,
         COURTYARD_BUILDINGS.military[0],
+        COURTYARD_BUILDINGS.civic[0],
+        COURTYARD_BUILDINGS.civic[1],
+        COURTYARD_BUILDINGS.military[0],
+        COURTYARD_BUILDINGS.service[0],
       ];
   const freeBeforeBuildings = yard.length - taken.length;
-  const buildingTarget = freeBeforeBuildings >= 18 ? 4
-    : freeBeforeBuildings >= 11 ? 3
-      : freeBeforeBuildings >= 6 ? 2 : 1;
+  const buildingTarget = freeBeforeBuildings >= 36 ? 8
+    : freeBeforeBuildings >= 28 ? 7
+      : freeBeforeBuildings >= 20 ? 6
+        : freeBeforeBuildings >= 14 ? 5
+          : freeBeforeBuildings >= 9 ? 3 : 1;
   const minimumBuildings = yard.length >= 18 ? 3 : 1;
   const yardKeys = new Set(yard.map(keyOf));
   const builtBuildings: Spot[] = [];
@@ -1155,6 +1405,7 @@ export function generateCastle(seed: number): Castle {
     const baseCandidates = yard
       .filter((spot) => !taken.some((busy) => keyOf(busy) === keyOf(spot)))
       .filter((spot) => keyOf(spot) !== keyOf(gateAnchor))
+      .filter((spot) => !routeCells.has(keyOf(spot)))
       .filter((spot) => yardPassable(width, yard, [...taken, spot]))
       .filter((spot) => DIRS.some(([dx, dz]) => {
         const next = { x: spot.x + dx, z: spot.z + dz };
@@ -1166,7 +1417,8 @@ export function generateCastle(seed: number): Castle {
       const nextBusy = new Set(nextTaken.map(keyOf));
       const remaining = yard.filter((candidate) =>
         !nextBusy.has(keyOf(candidate))
-        && keyOf(candidate) !== keyOf(gateAnchor));
+        && keyOf(candidate) !== keyOf(gateAnchor)
+        && !routeCells.has(keyOf(candidate)));
       const remainingKeys = new Set(remaining.map(keyOf));
       return remaining.some((start) => directions.some((dir) => {
         const end = { x: start.x + DIRS[dir]![0], z: start.z + DIRS[dir]![1] };
@@ -1235,7 +1487,8 @@ export function generateCastle(seed: number): Castle {
   // весь свободный двор одной областью.
   const free = new Set(yard
     .filter((s) => !taken.some((t) => keyOf(t) === keyOf(s)))
-    .filter((s) => gateInside === null || keyOf(s) !== keyOf(gateInside))
+    .filter((s) => keyOf(s) !== keyOf(gateInside))
+    .filter((s) => !routeCells.has(keyOf(s)))
     .map(keyOf));
   const lines: { spots: readonly [Spot, Spot]; dir: number }[] = [];
   for (const spot of yard) {
@@ -1366,5 +1619,27 @@ export function generateCastle(seed: number): Castle {
     });
   }
 
-  return { seed, width, depth, ring, yard, gate, moat, towerStyle, towers, pieces };
+  return {
+    seed,
+    width,
+    depth,
+    ring,
+    yard,
+    gate,
+    moat,
+    towerStyle,
+    towers,
+    routes: selected.routes,
+    generation: {
+      evaluated: selected.evaluated,
+      valid: selected.valid,
+      score: selected.score,
+      intendedGateSide: selected.intendedGateSide,
+      gateInside,
+      keep,
+      keepStep: selected.keepStep,
+      wallStair,
+    },
+    pieces,
+  };
 }

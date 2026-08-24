@@ -12,6 +12,32 @@
   const page = location.pathname.split('/').pop() || 'castleart.html';
   const dir = decodeURIComponent(new URL('.', location.href).pathname);
   let redirected = false;
+  let retryTimer;
+
+  const stopProbing = () => {
+    if (retryTimer !== undefined) clearInterval(retryTimer);
+  };
+
+  const probeServers = () => {
+    if (redirected) return;
+    const attempt = Date.now();
+    for (let port = 5173; port <= 5199; port++) {
+      const probe = document.createElement('link');
+      probe.rel = 'stylesheet';
+      probe.href = new URL(
+        '/@fs' + dir + 'artbook-mobile.css?direct&artbook-probe=' + attempt,
+        `http://127.0.0.1:${port}`,
+      ).href;
+      probe.onload = () => {
+        if (redirected) return;
+        redirected = true;
+        stopProbing();
+        location.replace(`http://127.0.0.1:${port}/${encodeURIComponent(page)}`);
+      };
+      probe.onerror = () => probe.remove();
+      document.head.append(probe);
+    }
+  };
 
   const showHelp = () => {
     if (redirected) return;
@@ -19,11 +45,16 @@
       const warn = document.getElementById('warn');
       if (!warn || redirected) return;
       const command = document.createElement('code');
-      command.textContent = 'npm run dev';
+      command.textContent = 'npm run artbook:castle';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'Проверить сервер';
+      retry.addEventListener('click', probeServers);
       warn.replaceChildren(
-        document.createTextNode('Артбук нельзя открыть как обычный файл. Запустите '),
+        document.createTextNode('Артбук запускается через локальный сервер. Выполните '),
         command,
-        document.createTextNode(' в папке проекта и обновите эту страницу — она сама найдёт сервер.'),
+        document.createTextNode(' в папке проекта — эта страница сама найдёт правильный worktree и откроется. '),
+        retry,
       );
       warn.style.display = '';
     };
@@ -31,18 +62,8 @@
     else render();
   };
 
-  for (let port = 5173; port <= 5199; port++) {
-    const probe = document.createElement('link');
-    probe.rel = 'stylesheet';
-    probe.href = new URL('/@fs' + dir + 'artbook-mobile.css?direct', `http://127.0.0.1:${port}`).href;
-    probe.onload = () => {
-      if (redirected) return;
-      redirected = true;
-      location.replace(`http://127.0.0.1:${port}/${encodeURIComponent(page)}`);
-    };
-    probe.onerror = () => probe.remove();
-    document.head.append(probe);
-  }
+  probeServers();
+  retryTimer = setInterval(probeServers, 2500);
   setTimeout(showHelp, 1200);
 })();
 </script>
@@ -345,16 +366,20 @@
 <div class="sec">
   <div class="hd">
     <h2>Генератор замковых стен</h2>
-    <p>Сид — и замок. Участок прямоугольный, до двух углов сид вырезает; вырез
-      отменяется сам, если после него цепь стен перестаёт быть цепью. Ворота встают
-      в середину самого длинного фасада и получают пару контрфорсов и баннеров;
-      внешние углы усиливаются башнями, а остальные детали держат один ритм стены.
-      Внутреннее укрепление ставится поперёк подхода к донжону, не перерезая двор.</p>
+    <p>Сид задаёт смысловой граф раньше камня: <b>ворота → плац → донжон</b> и
+      отдельную ветку <b>плац → подъём на стену</b>. Затем строятся восемь полных
+      вариантов участка. Каждый обязан вместить обе дороги, служебное здание и
+      вторую линию обороны; выигрывает вариант с лучшей оборонной глубиной,
+      связностью двора и читаемым фасадом, а не первый случайно допустимый.</p>
+    <p>Дороги проводит направленный A*: он штрафует частые повороты, прилипание
+      к стене, длинные прямые и повтор уже проложенной ветки. Только после этого
+      встают стены и детали. Ворота занимают середину самого длинного фасада,
+      получают контрфорсы и баннеры; внешние углы усиливаются башнями.</p>
     <p>После донжона генератор собирает внутри небольшой квартал. Военный стиль
       начинает с казармы и стрельбища, гражданский — с дома и рынка; колодец
       занимает центральную свободную зону. Компактный двор получает хотя бы одно
-      здание, большой — три–четыре. Каждая дверь развёрнута в свободный проход,
-      а путь от ворот и место для внутреннего укрепления сохраняются.</p>
+      здание, большой — квартал до восьми построек. Каждая дверь развёрнута
+      в свободный проход, а здания и укрепления не занимают дороги графа.</p>
     <p>Карта места оставляет между замком и лесом <b>десять клеток поля с каждой
       стороны</b> вместо шести. Подход продолжает дорогу через весь новый пояс,
       а скалы и деревья отнесены к его внешней кромке — свободное место остаётся
@@ -1151,6 +1176,13 @@ async function drawCastle(castle){
     ctx.fillStyle = ROLE_COLOR[p.role] ?? '#888';
     ctx.fillRect(ox + p.x * step + 1, oy + p.z * step + 1, step - 2, step - 2);
   }
+  const routeColor = {'ворота-донжон':'#f2c66d', 'ворота-стена':'#58b9d6'};
+  for(const route of castle.routes){
+    ctx.fillStyle = routeColor[route.kind];
+    for(const cell of route.cells){
+      ctx.fillRect(ox + cell.x * step + step * .27, oy + cell.z * step + step * .27, step * .46, step * .46);
+    }
+  }
   ctx.strokeStyle = css.getPropertyValue('--dim').trim();
   ctx.lineWidth = 1;
   for(let i = 0; i <= castle.width; i++){
@@ -1164,8 +1196,11 @@ async function drawCastle(castle){
   ctx.fillText('ворота', ox + castle.gate.x * step - 8, oy + castle.gate.z * step - 3);
 
   document.getElementById('planCap').innerHTML =
-    'План сида <b>' + castle.seed + '</b>: ' + Object.entries(ROLE_COLOR)
-      .map(([k, v]) => '<span style="color:' + v + '">■</span> ' + k).join(' · ');
+    'План сида <b>' + castle.seed + '</b>, кандидатов ' + castle.generation.valid +
+      '/' + castle.generation.evaluated + ': ' + Object.entries(ROLE_COLOR)
+      .map(([k, v]) => '<span style="color:' + v + '">■</span> ' + k).join(' · ') +
+      ' · <span style="color:#f2c66d">■</span> к донжону' +
+      ' · <span style="color:#58b9d6">■</span> на стену';
 
   const bill = new Map();
   for(const p of castle.pieces){
@@ -1190,6 +1225,8 @@ async function drawCastle(castle){
     ['участок', castle.width + '×' + castle.depth],
     ['кольцо', cells(castle.ring.length)],
     ['двор', cells(castle.yard.length)],
+    ['кандидаты', castle.generation.valid + '/' + castle.generation.evaluated],
+    ['дороги', castle.routes.map(route => route.cells.length).join('+')],
     ['деталей', castle.pieces.length],
     ['треугольников', sceneTris],
   ].map(([k, v]) => '<span>' + k + ' <b>' + v + '</b></span>').join('');

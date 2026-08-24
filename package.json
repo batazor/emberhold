@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "artbook:castle": "vite --host 127.0.0.1 --open /castleart.html",
     "build": "npm run typecheck && npm run check && npm run arch && npm run verify && vite build",
     "i18n:extract": "tsx scripts/i18n-game.ts --source && lingui extract && tsx scripts/i18n-game.ts --catalog",
     "i18n:game:check": "tsx scripts/i18n-game.ts --source --check",
