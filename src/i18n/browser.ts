@@ -2,7 +2,8 @@ import { i18n, type Messages } from '@lingui/core';
 import { legacyPatterns } from './legacy';
 
 type Language = 'en' | 'ru';
-type MessageValues = Readonly<Record<string, string | number>>;
+type MessageValue = string | number | { readonly kind: 'duration'; readonly seconds: number };
+type MessageValues = Readonly<Record<string, MessageValue>>;
 interface RuntimeMessage {
   readonly id: string;
   readonly message: string;
@@ -38,12 +39,37 @@ let current: Language = read();
 let activation = 0;
 
 const normalized = (text: string): string => text.replace(/\s+/g, ' ').trim();
-const interpolate = (source: string, values: MessageValues = {}): string =>
-  source.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) => String(values[name] ?? whole));
+function duration(seconds: number): string {
+  const value = Math.max(0, Math.ceil(seconds));
+  if (value >= 3600) {
+    const hours = Math.floor(value / 3600);
+    const minutes = Math.round((value % 3600) / 60);
+    if (current === 'en') return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`;
+    return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
+  }
+  if (value >= 60) {
+    const minutes = Math.floor(value / 60);
+    const secondsLeft = value % 60;
+    if (current === 'en') return secondsLeft > 0 ? `${minutes} min ${secondsLeft} sec` : `${minutes} min`;
+    return secondsLeft > 0 ? `${minutes} мин ${secondsLeft} с` : `${minutes} мин`;
+  }
+  return current === 'en' ? `${value} sec` : `${value} с`;
+}
+
+const resolvedValues = (values: MessageValues = {}): Record<string, string | number> =>
+  Object.fromEntries(Object.entries(values).map(([name, value]) => [
+    name,
+    typeof value === 'object' ? duration(value.seconds) : value,
+  ]));
+
+const interpolate = (source: string, values: MessageValues = {}): string => {
+  const resolved = resolvedValues(values);
+  return source.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) => String(resolved[name] ?? whole));
+};
 
 function message(descriptor: Pick<RuntimeMessage, 'id' | 'message'>, values?: MessageValues): string {
   if (!loaded.has(current) || current === 'ru') return interpolate(descriptor.message, values);
-  return i18n._(descriptor.id, values);
+  return i18n._(descriptor.id, resolvedValues(values));
 }
 
 function readMessage(value: string | null): RuntimeMessage | null {

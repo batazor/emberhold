@@ -2,27 +2,24 @@ import {
   BUILDINGS,
   BUILDING_ORDER,
   BUILD_COST,
-  gearAction,
   suggestGear,
   suggestUpgrade,
   upgradeBlock,
   upgradeProgress,
-  UPGRADE_REASON,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
-import { formatDuration } from '../core/clock';
-import { GEAR, gearLine } from '../sim/gear';
+import { gearLine } from '../sim/gear';
 import type { GearSlot } from '../sim/gear';
-import { TIER_NAME } from '../sim/config';
-import { CONSUMABLES, cheapestAffordable } from '../sim/consumables';
+import { cheapestAffordable } from '../sim/consumables';
 import type { ConsumableId } from '../sim/consumables';
 import { play } from '../core/audio';
-import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
 import { KIND, dayAt, regionAt, worldAt } from '../sim/world';
 import type { Visit } from '../sim/world';
 import { resourceIcon } from './resourceIcons';
+import { buildingMessage, consumableMessage, gearMessage, resourceMessage, tierMessage } from '../i18n/gameData';
+import { gameDuration, gameMarkup, gameMessage, gameText, setGameText } from '../i18n/game';
 
 /**
  * Экран возврата (мокап 04). Самый важный экран для удержания: здесь игрок
@@ -146,7 +143,7 @@ export class ReturnScreen {
         <div class="loot" id="r-loot"></div>
         <p class="bad" id="r-lost"></p>
         <section class="card r-combat" id="r-combat">
-          <h3>Итог боя</h3>
+          <h3>${gameMarkup(gameMessage('Итог боя', 'Combat summary'))}</h3>
           <div class="r-combat-grid" id="r-combat-grid"></div>
           <p class="good" id="r-level"></p>
         </section>
@@ -157,7 +154,7 @@ export class ReturnScreen {
         <div class="acts">
           <button id="r-primary" class="primary"></button>
           <button id="r-secondary"></button>
-          <button id="r-tertiary" class="ghost">В лагерь</button>
+          <button id="r-tertiary" class="ghost">${gameMarkup(gameMessage('В лагерь', 'To camp'))}</button>
         </div>
       </div>`;
     parent.appendChild(this.root);
@@ -266,16 +263,20 @@ export class ReturnScreen {
       this.suggestion === null && this.consumable === null ? suggestGear(camp) : null;
 
     const ok = result.status === 'evacuated';
-    this.title.textContent = ok ? 'Вылазка завершена' : 'Провал';
+    setGameText(this.title, ok
+      ? gameMessage('Вылазка завершена', 'Raid completed')
+      : gameMessage('Провал', 'Failed'));
     this.title.className = ok ? 'ok' : 'bad';
 
     const depth =
       result.locMaxBack > 0 ? Math.round((result.maxBack / result.locMaxBack) * 100) : 0;
-    const minutes = Math.floor(result.durationSec / 60);
-    const seconds = Math.round(result.durationSec % 60);
-    this.subtitle.textContent =
-      `${TIER_NAME[result.tier]} · глубина ${result.maxBack} из ${result.locMaxBack} шагов ` +
-      `(${depth}%) · ${minutes > 0 ? `${minutes} мин ` : ''}${seconds} с`;
+    setGameText(this.subtitle,
+      gameMessage('{tier} · глубина {depthNow} из {depthMax} шагов ({percent}%) · {duration}',
+        '{tier} · depth {depthNow} of {depthMax} steps ({percent}%) · {duration}'),
+      {
+        tier: gameText(tierMessage[result.tier]), depthNow: result.maxBack,
+        depthMax: result.locMaxBack, percent: depth, duration: gameDuration(result.durationSec),
+      });
 
     this.lootBox.innerHTML = '';
     this.counters.clear();
@@ -286,7 +287,7 @@ export class ReturnScreen {
       row.className = 'row loot-row';
       const name = document.createElement('span');
       name.className = 'lbl';
-      name.textContent = RESOURCE_NAME[kind];
+      setGameText(name, resourceMessage[kind]);
       const icon = resourceIcon(kind);
       if (icon !== undefined) {
         const pic = document.createElement('img');
@@ -302,47 +303,66 @@ export class ReturnScreen {
       this.counters.set(kind, { el: value, target: amount });
     }
     if (this.counters.size === 0) {
-      this.lootBox.innerHTML = '<div class="loot-row dim">Пусто</div>';
+      this.lootBox.innerHTML = `<div class="loot-row dim">${gameMarkup(gameMessage('Пусто', 'Empty'))}</div>`;
     }
 
-    this.lostLine.textContent =
-      result.lost > 0 ? `Потеряно ${result.lost} из ${result.bagTotal}` : '';
+    if (result.lost > 0) {
+      setGameText(this.lostLine, gameMessage('Потеряно {lost} из {total}', 'Lost {lost} of {total}'), {
+        lost: result.lost, total: result.bagTotal,
+      });
+    } else this.lostLine.textContent = '';
 
     const showCombat = result.fights > 0 || result.kills > 0 || result.damageTaken > 0;
     this.combatBox.style.display = showCombat ? '' : 'none';
     if (showCombat) {
-      const stats: readonly [string, number | string][] = [
-        ['Стычки', result.fights],
-        ['Побеждено', result.kills],
-        ['Получено урона', result.damageTaken],
-        ['Опыт за бой', `+${result.combatXp}`],
-        ['Всего опыта', progression === null ? '—' : `+${progression.xp}`],
+      const stats = [
+        { label: gameMessage('Стычки', 'Encounters'), value: result.fights },
+        { label: gameMessage('Побеждено', 'Defeated'), value: result.kills },
+        { label: gameMessage('Получено урона', 'Damage taken'), value: result.damageTaken },
+        { label: gameMessage('Опыт за бой', 'Combat XP'), value: `+${result.combatXp}` },
+        { label: gameMessage('Всего опыта', 'Total XP'), value: progression === null ? '—' : `+${progression.xp}` },
       ];
-      this.combatGrid.innerHTML = stats.map(([label, value]) =>
-        `<span>${label}</span><b>${value}</b>`,
-      ).join('');
-      this.levelLine.textContent = progression !== null && progression.levels > 0
-        ? `Новый уровень: ${progression.level} · +${progression.levels * 2} очк. характеристик · +${progression.levels} очк. умений`
-        : '';
+      this.combatGrid.replaceChildren();
+      for (const { label, value } of stats) {
+        const name = document.createElement('span');
+        setGameText(name, label);
+        const amount = document.createElement('b');
+        amount.textContent = String(value);
+        this.combatGrid.append(name, amount);
+      }
+      if (progression !== null && progression.levels > 0) {
+        setGameText(this.levelLine,
+          gameMessage('Новый уровень: {level} · +{stats} очк. характеристик · +{skills} очк. умений',
+            'New level: {level} · +{stats} stat points · +{skills} skill points'),
+          { level: progression.level, stats: progression.levels * 2, skills: progression.levels });
+      } else this.levelLine.textContent = '';
     }
 
     // §20.1 — главная кнопка это трата. Если тратить нечего, честно
     // предлагаем повтор, а не серую кнопку.
     if (this.suggestion !== null) {
       const id = this.suggestion;
-      this.primary.textContent = `Построить: ${BUILDINGS[id].name} ур. ${camp.levels[id] + 1}`;
-      this.secondary.textContent = this.raidLabel();
+      setGameText(this.primary, gameMessage('Построить: {building} ур. {level}', 'Build: {building} lvl {level}'), {
+        building: gameText(buildingMessage[id]), level: camp.levels[id] + 1,
+      });
+      this.setRaidLabel(this.secondary);
       this.secondary.style.display = '';
     } else if (this.consumable !== null) {
-      this.primary.textContent = `Взять: ${CONSUMABLES[this.consumable].name}`;
-      this.secondary.textContent = this.raidLabel();
+      setGameText(this.primary, gameMessage('Взять: {item}', 'Take: {item}'), {
+        item: gameText(consumableMessage[this.consumable].name),
+      });
+      this.setRaidLabel(this.secondary);
       this.secondary.style.display = '';
     } else if (this.gearSuggestion !== null) {
-      this.primary.textContent = gearAction(camp, this.gearSuggestion);
-      this.secondary.textContent = this.raidLabel();
+      setGameText(this.primary,
+        camp.gear[this.gearSuggestion] <= 0
+          ? gameMessage('Выковать: {item}', 'Forge: {item}')
+          : gameMessage('Улучшить: {item}', 'Upgrade: {item}'),
+        { item: gameText(gearMessage[this.gearSuggestion]) });
+      this.setRaidLabel(this.secondary);
       this.secondary.style.display = '';
     } else {
-      this.primary.textContent = this.raidLabel();
+      this.setRaidLabel(this.primary);
       this.secondary.style.display = 'none';
     }
 
@@ -350,9 +370,9 @@ export class ReturnScreen {
 
     // Первое возвращение ведёт в лагерь и никуда больше.
     if (onlyCamp) {
-      this.primary.textContent = 'В лагерь';
+      setGameText(this.primary, gameMessage('В лагерь', 'To camp'));
       this.secondary.style.display = 'none';
-      this.progressLabel.textContent = 'Лагерь открыт';
+      setGameText(this.progressLabel, gameMessage('Лагерь открыт', 'Camp unlocked'));
       this.progressBar.style.width = '100%';
     }
     this.tertiary.style.display = onlyCamp ? 'none' : '';
@@ -364,9 +384,12 @@ export class ReturnScreen {
    * Куда зовёт кнопка. Название места вместо «ещё вылазка»: после первой же
    * вылазки места перестают быть одинаковыми, и кнопка обязана это признавать.
    */
-  private raidLabel(): string {
+  private setRaidLabel(element: Element): void {
     const node = regionAt(dayAt(this.at)).nodes[this.raidNode];
-    return node === undefined ? 'Ещё вылазка' : `Ещё вылазка · ${node.name}`;
+    if (node === undefined) setGameText(element, gameMessage('Ещё вылазка', 'Another raid'));
+    else setGameText(element, gameMessage('Ещё вылазка · {place}', 'Another raid · {place}'), {
+      place: window.EmberholdLanguage?.translate(node.name) ?? node.name,
+    });
   }
 
   /** Полоса прогресса к следующему улучшению — то, ради чего играли. */
@@ -376,13 +399,15 @@ export class ReturnScreen {
     if (this.suggestion === null && this.gearSuggestion !== null) {
       const slot = this.gearSuggestion;
       const next = camp.gear[slot] + 1;
-      this.progressLabel.textContent = `${GEAR[slot].name} ур. ${next} — ${gearLine(slot, next)}`;
+      setGameText(this.progressLabel, gameMessage('{item} ур. {level} — {effect}', '{item} lvl {level} — {effect}'), {
+        item: gameText(gearMessage[slot]), level: next, effect: gearLine(slot, next),
+      });
       this.progressBar.style.width = '100%';
       return;
     }
     const id = this.suggestion ?? this.cheapestLocked(camp);
     if (id === null) {
-      this.progressLabel.textContent = 'Всё построено';
+      setGameText(this.progressLabel, gameMessage('Всё построено', 'Everything is built'));
       this.progressBar.style.width = '100%';
       return;
     }
@@ -390,37 +415,48 @@ export class ReturnScreen {
     const progress = upgradeProgress(camp, id);
     const block = this.upgradeBlockedLine(camp, id);
     if (progress >= 1) {
-      this.progressLabel.textContent =
-        `${BUILDINGS[id].name} ур. ${next} — ресурсы собраны` +
-        (block === null ? '' : ` · ${block}`);
+      setGameText(this.progressLabel,
+        block === null
+          ? gameMessage('{building} ур. {level} — ресурсы собраны', '{building} lvl {level} — resources collected')
+          : gameMessage('{building} ур. {level} — ресурсы собраны · {block}', '{building} lvl {level} — resources collected · {block}'),
+        { building: gameText(buildingMessage[id]), level: next, ...(block === null ? {} : { block }) });
       this.progressBar.style.width = '100%';
       return;
     }
     const cost = BUILD_COST[next] ?? {};
     const need = (Object.entries(cost) as [ResourceKind, number][])
       .filter(([kind, amount]) => (camp.resources[kind] ?? 0) < amount)
-      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${camp.resources[kind] ?? 0}/${amount}`)
+      .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${camp.resources[kind] ?? 0}/${amount}`)
       .join(' · ');
     const tail = [need, block].filter((part) => part !== null && part !== '').join(' · ');
-    this.progressLabel.textContent = `${BUILDINGS[id].name} ур. ${next} — ${tail}`;
+    setGameText(this.progressLabel, gameMessage('{building} ур. {level} — {remaining}', '{building} lvl {level} — {remaining}'), {
+      building: gameText(buildingMessage[id]), level: next, remaining: tail,
+    });
     this.progressBar.style.width = `${(progress * 100).toFixed(1)}%`;
   }
 
   private upgradeBlockedLine(camp: CampState, id: BuildingId): string | null {
     const block = upgradeBlock(camp, id);
     if (block === 'ok' || block === 'resources') return null;
-    if (block === 'locked') return `нужно Жильё ур. ${BUILDINGS[id].unlockHq}`;
+    if (block === 'locked') return gameText(gameMessage('нужно Жильё ур. {level}', 'requires Housing lvl {level}'), {
+      level: BUILDINGS[id].unlockHq,
+    });
     if (block === 'slot-busy') {
       if (camp.construction !== null) {
-        const left = formatDuration(camp.construction.endsAt - this.at);
-        return `слот занят: ${BUILDINGS[camp.construction.building].name} ещё ${left}`;
+        return gameText(gameMessage('слот занят: {building} ещё {duration}', 'slot occupied: {building}, {duration} left'), {
+          building: gameText(buildingMessage[camp.construction.building]),
+          duration: gameDuration(camp.construction.endsAt - this.at),
+        });
       }
       if (camp.walls?.work != null) {
-        const left = formatDuration(camp.walls.work.endsAt - this.at);
-        return `слот занят: стена ещё ${left}`;
+        return gameText(gameMessage('слот занят: стена ещё {duration}', 'slot occupied: wall, {duration} left'), {
+          duration: gameDuration(camp.walls.work.endsAt - this.at),
+        });
       }
     }
-    return UPGRADE_REASON[block];
+    if (block === 'max') return gameText(gameMessage('Максимальный уровень', 'Maximum level'));
+    if (block === 'hq-cap') return gameText(gameMessage('Жильё не пускает выше', 'Housing level is too low'));
+    return gameText(gameMessage('Слот занят другой стройкой', 'The slot is occupied by another build'));
   }
 
   private cheapestLocked(camp: CampState): BuildingId | null {

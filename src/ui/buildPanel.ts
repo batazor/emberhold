@@ -54,8 +54,10 @@ import {
   type WallTool,
 } from '../sim/campWalls';
 import { canAfford, type Resources } from '../sim/resources';
-import { FENCE } from '../sim/fence';
+import { type FenceMaterial } from '../sim/fence';
 import { TOWER_MAX } from '../sim/castle';
+import { clearGameAttribute, clearGameText, gameMessage, gameText, setGameAttribute, setGameText } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
 
 export interface BuildPanelCallbacks {
   /** Игрок выбрал карточку или снял выбор. */
@@ -71,20 +73,59 @@ export interface BuildPanelCallbacks {
  * руками, раньше, чем что это даст. Вторая — то, что уже построено: панель
  * без счёта превращается в набор кнопок без обратной связи.
  */
-const CARD: Record<WallTool, { readonly title: string; readonly gesture: string }> = {
-  'стена': { title: 'Стена', gesture: 'Ведите линию по земле' },
+const CARD: Record<WallTool, {
+  readonly title: GameMessage;
+  readonly gesture: GameMessage;
+  readonly gestureValues?: Readonly<Record<string, number>>;
+}> = {
+  'стена': {
+    title: gameMessage('Стена', 'Wall'),
+    gesture: gameMessage('Ведите линию по земле', 'Drag a line across the ground'),
+  },
   // Материал перебирается повторным тапом по карточке — тем же жестом,
   // каким башня растёт ярусом. Второго органа управления под четыре
   // материала панель не заводит: она и так называет жест, а не эффект.
-  'ограда': { title: 'Ограда', gesture: 'Ведите линию · тап по карточке — другой материал' },
+  'ограда': {
+    title: gameMessage('Ограда', 'Fence'),
+    gesture: gameMessage('Ведите линию · тап по карточке — другой материал', 'Drag a line · tap the card to change material'),
+  },
   // Дорога ведётся тем же мазком, что стена: полотно — те же «много клеток
   // подряд», только по ним ходят, а не за ними прячутся.
-  'дорога': { title: 'Дорога', gesture: 'Ведите линию по земле' },
-  'фонарь': { title: 'Фонарь', gesture: 'Тап по клетке · ночью горит сам' },
-  'башня': { title: 'Башня', gesture: `Тап по клетке · ещё тап — ярус выше, до ${TOWER_MAX}` },
-  'ворота': { title: 'Ворота', gesture: 'Тап по середине прямого участка' },
-  'лестница': { title: 'Лестница', gesture: 'Тап по клетке у стены изнутри' },
-  'снос': { title: 'Снести', gesture: 'Тап по тому, что стоит' },
+  'дорога': {
+    title: gameMessage('Дорога', 'Road'),
+    gesture: gameMessage('Ведите линию по земле', 'Drag a line across the ground'),
+  },
+  'фонарь': {
+    title: gameMessage('Фонарь', 'Lantern'),
+    gesture: gameMessage('Тап по клетке · ночью горит сам', 'Tap a tile · lights automatically at night'),
+  },
+  'башня': {
+    title: gameMessage('Башня', 'Tower'),
+    gesture: gameMessage(
+      'Тап по клетке · ещё тап — ярус выше, до {max}',
+      'Tap a tile · tap again to add a level, up to {max}',
+    ),
+    gestureValues: { max: TOWER_MAX },
+  },
+  'ворота': {
+    title: gameMessage('Ворота', 'Gate'),
+    gesture: gameMessage('Тап по середине прямого участка', 'Tap the middle of a straight section'),
+  },
+  'лестница': {
+    title: gameMessage('Лестница', 'Stairs'),
+    gesture: gameMessage('Тап по клетке у стены изнутри', 'Tap a tile beside the inside of a wall'),
+  },
+  'снос': {
+    title: gameMessage('Снести', 'Demolish'),
+    gesture: gameMessage('Тап по тому, что стоит', 'Tap an existing structure'),
+  },
+};
+
+const FENCE_TITLE: Record<FenceMaterial, GameMessage> = {
+  'дерево': gameMessage('Ограда: дощатая', 'Fence: plank'),
+  'ковка': gameMessage('Ограда: кованая', 'Fence: wrought iron'),
+  'кирпич': gameMessage('Ограда: кирпичная', 'Fence: brick'),
+  'камень': gameMessage('Ограда: каменная', 'Fence: stone'),
 };
 
 /**
@@ -139,10 +180,10 @@ export class BuildPanel {
     const head = document.createElement('div');
     head.className = 'row mid sheet-head';
     const title = document.createElement('b');
-    title.textContent = 'Стены лагеря';
+    setGameText(title, gameMessage('Стены лагеря', 'Camp defenses'));
     const close = document.createElement('button');
     close.className = 'ghost sheet-x';
-    close.textContent = 'Готово';
+    setGameText(close, gameMessage('Готово', 'Done'));
     close.addEventListener('click', () => {
       this.select(null);
       this.cb.onDone();
@@ -186,11 +227,11 @@ export class BuildPanel {
     icon.innerHTML = GLYPH[tool];
 
     const name = document.createElement('b');
-    name.textContent = CARD[tool].title;
+    setGameText(name, CARD[tool].title);
 
     const gesture = document.createElement('span');
     gesture.className = 'dim build-gesture';
-    gesture.textContent = CARD[tool].gesture;
+    setGameText(gesture, CARD[tool].gesture, CARD[tool].gestureValues);
 
     // Счёт построенного — в углу карточки. В одной строке с ценой он делил
     // с ней ширину и ломался на длинной цене ограды.
@@ -203,13 +244,19 @@ export class BuildPanel {
     price.className = 'build-price';
     // Дорога и фонарь платятся деревом; дорога к тому же дробная, как ограда
     // (§6.1.7): карточка называет, за сколько клеток берут единицу.
-    price.textContent = tool === 'снос'
-      ? 'вернёт ресурс'
-      : tool === 'дорога'
-        ? `1 дерева за ${Math.round(1 / ROAD_COST.perCell)} кл. · ${WALL_SECONDS[tool]} с/кл.`
-        : tool === 'фонарь'
-          ? `${WALL_COST[tool]} дерева · ${WALL_SECONDS[tool]} с`
-          : `${WALL_COST[tool]} камня · ${WALL_SECONDS[tool]} с`;
+    if (tool === 'снос') setGameText(price, gameMessage('вернёт ресурс', 'refunds resources'));
+    else if (tool === 'дорога') setGameText(price, gameMessage(
+      '1 дерева за {cells} кл. · {seconds} с/кл.',
+      '1 wood per {cells} tiles · {seconds} sec/tile',
+    ), { cells: Math.round(1 / ROAD_COST.perCell), seconds: WALL_SECONDS[tool] });
+    else if (tool === 'фонарь') setGameText(price, gameMessage(
+      '{cost} дерева · {seconds} с',
+      '{cost} wood · {seconds} sec',
+    ), { cost: WALL_COST[tool], seconds: WALL_SECONDS[tool] });
+    else setGameText(price, gameMessage(
+      '{cost} камня · {seconds} с',
+      '{cost} stone · {seconds} sec',
+    ), { cost: WALL_COST[tool], seconds: WALL_SECONDS[tool] });
 
     button.append(icon, name, gesture, count, price);
     button.addEventListener('click', () => {
@@ -264,9 +311,13 @@ export class BuildPanel {
       const left = Math.max(0, Math.ceil(work.endsAt - now));
       this.bar.style.display = '';
       this.fill.style.width = `${Math.round(wallProgress(walls, now) * 100)}%`;
-      this.timer.textContent = `${work.tool}: осталось ${left} с`;
+      setGameText(this.timer, gameMessage(
+        '{tool}: осталось {left} с',
+        '{tool}: {left} sec left',
+      ), { tool: gameText(CARD[work.tool].title), left });
     } else {
       this.bar.style.display = 'none';
+      clearGameText(this.timer);
       this.timer.textContent = '';
     }
 
@@ -275,13 +326,18 @@ export class BuildPanel {
     const fence = this.cards.get('ограда');
     if (fence !== undefined) {
       const material = fenceMaterial(walls);
-      fence.name.textContent = `Ограда: ${FENCE[material].title.toLowerCase()}`;
+      setGameText(fence.name, FENCE_TITLE[material]);
       const back = fenceResource(material) === 'wood' ? 'дерева' : 'камня';
       // Цена ограды дробная (§6.1.7), и назвать её «1 за клетку» значило бы
       // соврать вчетверо. Карточка говорит, за сколько клеток берут единицу;
       // сколько выйдет за этот мазок, считается под карточками по ходу пальца.
       const per = Math.round(1 / FENCE_COST[material].perCell);
-      fence.price.textContent = `1 ${back} за ${per} кл. · ${WALL_SECONDS['ограда']} с/кл.`;
+      setGameText(fence.price, back === 'дерева'
+        ? gameMessage('1 дерева за {cells} кл. · {seconds} с/кл.', '1 wood per {cells} tiles · {seconds} sec/tile')
+        : gameMessage('1 камня за {cells} кл. · {seconds} с/кл.', '1 stone per {cells} tiles · {seconds} sec/tile'), {
+        cells: per,
+        seconds: WALL_SECONDS['ограда'],
+      });
     }
 
     const count = wallCount(walls);
@@ -291,7 +347,8 @@ export class BuildPanel {
       const n = count[tool as keyof typeof count] ?? 0;
       card.count.textContent = n === 0 ? '' : String(n);
       // Читалке одного числа мало: в углу оно понятно только глазом.
-      card.count.setAttribute('aria-label', n === 0 ? '' : `стоит ${n}`);
+      if (n === 0) clearGameAttribute(card.count, 'aria-label');
+      else setGameAttribute(card.count, 'aria-label', gameMessage('{count} построено', '{count} built'), { count: n });
     }
     const raze = this.cards.get('снос');
     if (raze !== undefined) raze.count.textContent = '';
@@ -314,13 +371,19 @@ export class BuildPanel {
    */
   setNote(reason: string | null): void {
     if (reason !== null) {
+      clearGameText(this.note);
       this.note.textContent = reason;
       this.note.classList.add('warn');
       return;
     }
     this.note.classList.remove('warn');
-    this.note.textContent = this.tool === null
-      ? 'Выберите, что строить. Пока карточка не выбрана, лагерь работает как обычно.'
-      : CARD[this.tool].gesture + '. Тап по карточке ещё раз — снять выбор.';
+    if (this.tool === null) setGameText(this.note, gameMessage(
+      'Выберите, что строить. Пока карточка не выбрана, лагерь работает как обычно.',
+      'Choose what to build. Until a card is selected, the camp works as usual.',
+    ));
+    else setGameText(this.note, gameMessage(
+      'Карточка выбрана. Тап по карточке ещё раз — снять выбор.',
+      'Card selected. Tap it again to clear the selection.',
+    ));
   }
 }

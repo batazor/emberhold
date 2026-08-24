@@ -1,9 +1,10 @@
-import { ENEMY_STATS } from '../sim/enemies';
 import { alive, current } from '../sim/battle';
 import type { BattleState, BattleUnit } from '../sim/battle';
 import type { BattleForecast } from '../sim/battle';
 import type { HeroLoadout } from '../sim/heroes';
 import { avatarSvg } from './avatar';
+import { enemyMessage } from '../i18n/gameData';
+import { gameMarkup, gameMessage, gameText, setGameText } from '../i18n/game';
 
 /**
  * Панель боя (§11.3). Появляется вместе с полем и показывает ровно то,
@@ -27,7 +28,13 @@ export interface BattleHudHooks {
 // §22.6 — уровень в подписи: сила противника обязана читаться до удара,
 // а не выясняться по полоске.
 const nameOf = (u: BattleUnit): string =>
-  u.side === 'hero' ? 'Герой' : `${ENEMY_STATS[u.kind!].name}${u.level > 1 ? ` ур. ${u.level}` : ''}`;
+  u.side === 'hero'
+    ? gameText(gameMessage('Герой', 'Hero'))
+    : u.level > 1
+      ? gameText(gameMessage('{enemy} ур. {level}', '{enemy} lvl {level}'), {
+          enemy: gameText(enemyMessage[u.kind!]), level: u.level,
+        })
+      : gameText(enemyMessage[u.kind!]);
 
 export class BattleHud {
   private readonly root: HTMLElement;
@@ -53,11 +60,11 @@ export class BattleHud {
       <div class="battle-counter" id="b-counter"></div>
       <div class="battle-defense dim" id="b-defense"></div>
       <div class="battle-acts">
-        <button id="b-attack" type="button">Удар</button>
-        <button id="b-guard" type="button">Блок</button>
-        <button id="b-wait" type="button">Ждать</button>
+        <button id="b-attack" type="button">${gameMarkup(gameMessage('Удар', 'Attack'))}</button>
+        <button id="b-guard" type="button">${gameMarkup(gameMessage('Блок', 'Block'))}</button>
+        <button id="b-wait" type="button">${gameMarkup(gameMessage('Ждать', 'Wait'))}</button>
       </div>
-      <p class="battle-hint dim">Тап по гексу — шаг, по противнику — удар</p>
+      <p class="battle-hint dim">${gameMarkup(gameMessage('Тап по гексу — шаг, по противнику — удар', 'Tap a hex to move, tap an enemy to attack'))}</p>
     `;
     host.appendChild(this.root);
 
@@ -107,7 +114,7 @@ export class BattleHud {
     const queue = state.order
       .map((i) => state.units[i]!)
       .filter((u) => u.hp > 0);
-    const key = `${state.round}|${unit.id}|${canAttack}|${busy}|${unit.dodge}|${unit.guarding}|` +
+    const key = `${document.documentElement.lang}|${state.round}|${unit.id}|${canAttack}|${busy}|${unit.dodge}|${unit.guarding}|` +
       `${forecast?.damage ?? '-'}:${forecast?.guardedDamage ?? '-'}:${forecast?.canBreakContact ?? '-'}|` +
       `${forecast?.guardedThreats.map((t) => `${t.attacker}:${t.aimed}:${t.target}:${t.intent ?? '-'}`).join('/') ?? '-'}|` +
       queue.map((u) => `${u.id}:${u.hp}:${u.dodge}:${u.guarding}`).join(',');
@@ -115,9 +122,17 @@ export class BattleHud {
     this.key = key;
 
     const mine = unit.side === 'hero' && !busy;
-    this.turn.textContent = busy ? 'Бой идёт…' : mine ? 'Ваш ход' : `Ходит ${nameOf(unit)}`;
+    setGameText(this.turn,
+      busy
+        ? gameMessage('Бой идёт…', 'Battle in progress…')
+        : mine
+          ? gameMessage('Ваш ход', 'Your turn')
+          : gameMessage('Ходит {unit}', '{unit} acts'),
+      busy || mine ? undefined : { unit: nameOf(unit) });
     this.turn.className = mine ? 'good' : 'dim';
-    this.q('b-round').textContent = `раунд ${state.round} · противников ${alive(state, 'enemy').length}`;
+    setGameText(this.q('b-round'), gameMessage('раунд {round} · противников {enemies}', 'round {round} · enemies {enemies}'), {
+      round: state.round, enemies: alive(state, 'enemy').length,
+    });
 
     // Очередь — порядком, а не числами: игрок читает, кто следующий,
     // а не считает инициативу.
@@ -143,25 +158,32 @@ export class BattleHud {
       const attacks = forecast.threats.filter((t) => t.target === unit.id).length;
       const guardedAttacks = forecast.guardedThreats.filter((t) => t.target === unit.id).length;
       const attackLabel = attacks === guardedAttacks ? String(attacks) : `${attacks}→${guardedAttacks}`;
-      this.threat.textContent = `Угроза: ${num(forecast.damage)} · ` +
-        `${unit.hasShield ? 'Заслон' : 'Блок'} ${num(forecast.damage)}→${num(forecast.guardedDamage)} · ` +
-        `ударов ${attackLabel}`;
+      setGameText(this.threat,
+        gameMessage('Угроза: {damage} · {guard} {damage}→{guarded} · ударов {attacks}',
+          'Threat: {damage} · {guard} {damage}→{guarded} · attacks {attacks}'), {
+          damage: num(forecast.damage),
+          guard: gameText(unit.hasShield ? gameMessage('Заслон', 'Intercept') : gameMessage('Блок', 'Block')),
+          guarded: num(forecast.guardedDamage), attacks: attackLabel,
+        });
       this.counter.textContent = counterText(state, forecast);
     } else {
-      this.threat.textContent = forecast.canBreakContact
-        ? 'Угрозы нет · к следующему кругу отрыв'
-        : 'Удара в этом круге нет';
+      setGameText(this.threat, forecast.canBreakContact
+        ? gameMessage('Угрозы нет · к следующему кругу отрыв', 'No threat · contact breaks next round')
+        : gameMessage('Удара в этом круге нет', 'No attack this round'));
       this.counter.textContent = counterText(state, forecast);
     }
-    this.defense.textContent = mine
-      ? `Уворот ${Math.round(unit.dodge)}%` +
-        (unit.hasShield ? ' · щит: первый ближний удар оттолкнёт' : '')
-      : '';
+    if (mine) {
+      setGameText(this.defense,
+        unit.hasShield
+          ? gameMessage('Уворот {dodge}% · щит: первый ближний удар оттолкнёт', 'Dodge {dodge}% · shield: the first melee hit will push the attacker back')
+          : gameMessage('Уворот {dodge}%', 'Dodge {dodge}%'),
+        { dodge: Math.round(unit.dodge) });
+    } else this.defense.textContent = '';
 
     // Кнопки живут только на своём ходу: на чужом жать нечего.
     this.attack.disabled = !mine || !canAttack;
     this.guard.disabled = !mine;
-    this.guard.textContent = unit.hasShield ? 'Заслон' : 'Блок';
+    setGameText(this.guard, unit.hasShield ? gameMessage('Заслон', 'Intercept') : gameMessage('Блок', 'Block'));
     this.wait.disabled = !mine;
   }
 }
@@ -172,14 +194,16 @@ const num = (value: number): string =>
 function counterText(state: BattleState, forecast: BattleForecast): string {
   const intents = new Set(forecast.guardedThreats.map((t) => t.intent).filter((x) => x !== undefined));
   const lines: string[] = [];
-  if (intents.has('brace-burn')) lines.push('Воин целит щит: первое отбрасывание сгорит');
-  if (intents.has('draw-intercept')) lines.push('Маг целит соседа: Заслон примет болт');
-  if (intents.has('charge')) lines.push('Таран усилен и не отбрасывается');
+  if (intents.has('brace-burn')) lines.push(gameText(gameMessage('Воин целит щит: первое отбрасывание сгорит', 'The warrior targets the shield: the first knockback will be spent')));
+  if (intents.has('draw-intercept')) lines.push(gameText(gameMessage('Маг целит соседа: Заслон примет болт', 'The mage targets an ally: Intercept will take the bolt')));
+  if (intents.has('charge')) lines.push(gameText(gameMessage('Таран усилен и не отбрасывается', 'The charge is empowered and cannot be knocked back')));
   if (intents.has('immovable')) {
     const minotaur = forecast.guardedThreats.some((t) =>
       t.intent === 'immovable' && state.units.find((u) => u.id === t.attacker)?.kind === 'minotaur');
-    lines.push(minotaur ? 'Минотавр слишком тяжёл для толчка' : 'Голем удержит позицию');
+    lines.push(gameText(minotaur
+      ? gameMessage('Минотавр слишком тяжёл для толчка', 'The minotaur is too heavy to push')
+      : gameMessage('Голем удержит позицию', 'The golem will hold its position')));
   }
-  if (intents.has('swarm')) lines.push('Стая: оттолкнётся только первый');
+  if (intents.has('swarm')) lines.push(gameText(gameMessage('Стая: оттолкнётся только первый', 'Swarm: only the first attacker will be pushed back')));
   return lines.join(' · ');
 }

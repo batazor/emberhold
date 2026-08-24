@@ -11,13 +11,14 @@
  */
 import { GIVABLE, SELLABLE, askOf, dealsToParity, feeOf, onCounter, worthOf } from '../sim/trade';
 import type { Stock } from '../sim/trade';
-import { RESOURCE_NAME } from '../sim/resources';
 import type { ResourceKind, Resources } from '../sim/resources';
 import type { CampState } from '../sim/camp';
 import { ExchangePanel } from './exchangePanel';
 import type { Piles } from './exchangePanel';
 import { avatarSvg } from './avatar';
 import { resourceIcon } from './resourceIcons';
+import { resourceMessage } from '../i18n/gameData';
+import { gameMessage, gameText, setGameText } from '../i18n/game';
 
 /** Сид лица торговца. Он один на игру, и лицо у него одно. */
 export const TRADER_FACE = 41;
@@ -48,13 +49,13 @@ export class TradePanel {
     this.screen = new ExchangePanel({
       parent,
       left: {
-        title: 'Ваше',
+        title: gameMessage('Ваше', 'Yours'),
         stock: () =>
           GIVABLE.map((kind) => {
             const icon = resourceIcon(kind);
             return {
               id: kind,
-              name: RESOURCE_NAME[kind],
+              name: gameText(resourceMessage[kind]),
               count: this.camp?.resources[kind] ?? 0,
               ...(icon === undefined ? {} : { icon }),
             };
@@ -67,14 +68,14 @@ export class TradePanel {
          * а пища — ровно та, что местные сняли с кустов этого места
          * за сутки (§13.8). `null` в карточке и значит «без счёта».
          */
-        title: 'Торговца',
+        title: gameMessage('Торговца', "Trader's"),
         stock: () =>
           SELLABLE.map((kind) => {
             const left = onCounter(this.stock, kind);
             const icon = resourceIcon(kind);
             return {
               id: kind,
-              name: RESOURCE_NAME[kind],
+              name: gameText(resourceMessage[kind]),
               count: Number.isFinite(left) ? left : null,
               ...(icon === undefined ? {} : { icon }),
             };
@@ -87,11 +88,13 @@ export class TradePanel {
           const deals = this.camp?.trades ?? 0;
           const fee = feeOf(deals);
           return fee > 0
-            ? `Наценка ${Math.round(fee * 100)} на сто · до своей цены ${dealsToParity(deals)} сделок`
-            : 'Своя цена: наценки нет';
+            ? gameText(gameMessage('Наценка {fee} на сто · до своей цены {deals} сделок', 'Markup {fee} percent · {deals} deals until fair pricing'), {
+                fee: Math.round(fee * 100), deals: dealsToParity(deals),
+              })
+            : gameText(gameMessage('Своя цена: наценки нет', 'Fair price: no markup'));
         },
       },
-      confirmLabel: 'Обменять',
+      confirmLabel: gameMessage('Обменять', 'Trade'),
       onConfirm: (give, take) => cb.onDeal(pilesToResources(give), pilesToResources(take)),
       onLeave: () => cb.onLeave(),
     });
@@ -101,7 +104,7 @@ export class TradePanel {
     face.innerHTML = avatarSvg('торговец', TRADER_FACE);
     const title = document.createElement('p');
     title.className = 'panel t';
-    title.textContent = 'Торговец';
+    setGameText(title, gameMessage('Торговец', 'Trader'));
     this.screen.setHead(face, title);
   }
 
@@ -123,8 +126,10 @@ export class TradePanel {
   static gained(give: Partial<Resources>, take: Partial<Resources>): string {
     const side = (part: Partial<Resources>): string =>
       (Object.entries(part) as [ResourceKind, number][])
-        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
         .join(' · ');
-    return `${side(take)} · отдано ${side(give)}`;
+    return gameText(gameMessage('{received} · отдано {given}', '{received} · given {given}'), {
+      received: side(take), given: side(give),
+    });
   }
 }

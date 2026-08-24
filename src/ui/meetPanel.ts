@@ -15,11 +15,42 @@
  * подставленное имя тапом и не печатает ни буквы. Форма от этого не
  * возникает — возникает согласие.
  */
-import { GUEST_FROM_TEXT, GUEST_SEEK_TEXT, GUEST_TERM_TEXT, termLine } from '../sim/castleGuest';
 import type { CastleGuest, GuestMeet } from '../sim/castleGuest';
-import { MAX_NAME, SELF_ANSWERS, SELF_HINT, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
+import { termLine } from '../sim/castleGuest';
+import type { GuestOrigin, GuestSeek, GuestTerm } from '../sim/castleGuest';
+import { MAX_NAME, SELF_ANSWERS, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
 import { avatarSvg } from './avatar';
+import { gameMessage, setGameText, type GameMessageValues } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
+
+const selfCopy: Record<SelfAnswer, { label: GameMessage; hint: GameMessage }> = {
+  строим: {
+    label: gameMessage('Строим лагерь', 'We are building a camp'),
+    hint: gameMessage('Гость возьмётся за дерево: прибавка в кладовую, пока у него есть крыша', 'The guest will gather wood, adding to storage while they have a roof'),
+  },
+  ходим: {
+    label: gameMessage('Ходим в вылазки', 'We go on raids'),
+    hint: gameMessage('Гость возьмётся за камень: прибавка в кладовую, пока у него есть крыша', 'The guest will gather stone, adding to storage while they have a roof'),
+  },
+};
+
+const guestFromCopy: Record<GuestOrigin, GameMessage> = {
+  хутор: gameMessage('— С хутора за лесом. Хутора больше нет, вот и хожу.', '— From the farmstead beyond the forest. It is gone now, so I wander.'),
+  застава: gameMessage('— Со сторожевой заставы. Смена кончилась, а возвращаться некуда.', '— From the watch post. My shift ended, but there is nowhere to return to.'),
+  обоз: gameMessage('— Шёл с обозом. Обоз ушёл, я остался.', '— I traveled with a caravan. It moved on; I stayed.'),
+  берег: gameMessage('— С берега за холмами. Вода поднялась выше дома.', '— From the shore beyond the hills. The water rose above the house.'),
+};
+const guestSeekCopy: Record<GuestSeek, GameMessage> = {
+  дело: gameMessage('— Ищу, где строятся. Руки помнят дерево.', '— I seek a place where people build. My hands remember wood.'),
+  дорога: gameMessage('— Ищу спуск под землю. Мне бы к камню поближе.', '— I seek a way underground. I want to be closer to the stone.'),
+};
+const guestTermCopy: Record<GuestTerm, GameMessage> = {
+  даром: gameMessage('— Ничего не возьму. Место у огня — и по рукам.', '— I ask for nothing. A place by the fire, and we have a deal.'),
+  долг: gameMessage('— Задолжал я страже. Покроешь камнем — пойду.', '— I owe the guard. Cover it with stone and I will come.'),
+  родня: gameMessage('— Родне собрать надо в дорогу. С тебя дерево — и я твой.', '— My family needs supplies for the road. Give them wood and I am with you.'),
+  изба: gameMessage('— Хватит с меня палаток. Встанет изба — перееду.', '— I have had enough of tents. Build a house and I will move in.'),
+};
 
 export interface MeetPanelCallbacks {
   /** Игрок принял имя — своё или подставленное. */
@@ -98,13 +129,13 @@ export class MeetPanel {
     }
 
     if (state.step === 'он') {
-      this.line.textContent = `— Я ${settler.name}.`;
-      this.act('Назваться', () => this.cb.onAdvance());
+      setGameText(this.line, gameMessage('— Я {name}.', '— I am {name}.'), { name: settler.name });
+      this.act(gameMessage('Назваться', 'Introduce yourself'), () => this.cb.onAdvance());
       return;
     }
 
     if (state.step === 'ты') {
-      this.line.textContent = '— А тебя как звать?';
+      setGameText(this.line, gameMessage('— А тебя как звать?', '— What is your name?'));
       this.field.style.display = 'block';
       // Значение ставится только на входе в кадр: перетирать его на каждой
       // перерисовке значило бы стирать то, что игрок печатает.
@@ -112,27 +143,29 @@ export class MeetPanel {
         this.field.value = state.heroName;
         this.field.dataset.step = 'ты';
       }
-      this.act('Так и звать', () => this.cb.onName(this.field.value));
+      this.act(gameMessage('Так и звать', 'That is my name'), () => this.cb.onName(this.field.value));
       return;
     }
 
     if (state.step === 'вопрос') {
       this.field.dataset.step = '';
-      this.line.textContent = `— ${state.heroName}. Чем у вас там живут?`;
+      setGameText(this.line, gameMessage('— {name}. Чем у вас там живут?', '— {name}. How do you make a living there?'), { name: state.heroName });
       for (const answer of SELF_ANSWERS) {
-        this.act(SELF_LABEL[answer], () => this.cb.onAnswer(answer), SELF_HINT[answer]);
+        this.act(selfCopy[answer].label, () => this.cb.onAnswer(answer), selfCopy[answer].hint);
       }
       return;
     }
 
     const gift = giftOf(state);
-    this.line.textContent = gift === null ? '— Возьми, что есть.' : '— Возьми, что было.';
+    setGameText(this.line, gift === null
+      ? gameMessage('— Возьми, что есть.', '— Take what I have.')
+      : gameMessage('— Возьми, что было.', '— Take what I had.'));
     // Дар отдельной строкой, а не внутри реплики: это перечень с числами,
     // и в кавычках прямой речи он читался бы репликой, которую человек
     // произносит вслух.
     this.goods.textContent = gift === null ? '' : giftLine(gift);
     this.goods.style.display = gift === null ? 'none' : 'block';
-    this.act('Позвать с собой', () => this.cb.onInvite());
+    this.act(gameMessage('Позвать с собой', 'Invite along'), () => this.cb.onInvite());
   }
 
   /**
@@ -156,35 +189,35 @@ export class MeetPanel {
     }
 
     if (state.step === 'кто') {
-      this.line.textContent = `— Я ${guest.who.name}. Сижу у огня, жду попутчиков.`;
-      this.act('Спросить, откуда', () => this.cb.onAdvance());
+      setGameText(this.line, gameMessage('— Я {name}. Сижу у огня, жду попутчиков.', '— I am {name}. I sit by the fire and wait for companions.'), { name: guest.who.name });
+      this.act(gameMessage('Спросить, откуда', 'Ask where they are from'), () => this.cb.onAdvance());
       return;
     }
 
     if (state.step === 'откуда') {
-      this.line.textContent = GUEST_FROM_TEXT[guest.origin];
-      this.act('Спросить, что ищет', () => this.cb.onAdvance());
+      setGameText(this.line, guestFromCopy[guest.origin]);
+      this.act(gameMessage('Спросить, что ищет', 'Ask what they seek'), () => this.cb.onAdvance());
       return;
     }
 
     // Цену гость называет в ответ на приглашение (`GuestStep`): кнопка
     // «Позвать» открывает уговор, а не заключает его.
     if (state.step === 'дело') {
-      this.line.textContent = GUEST_SEEK_TEXT[guest.seek];
-      this.act('Позвать в лагерь', () => this.cb.onAdvance());
+      setGameText(this.line, guestSeekCopy[guest.seek]);
+      this.act(gameMessage('Позвать в лагерь', 'Invite to camp'), () => this.cb.onAdvance());
       return;
     }
 
-    this.line.textContent = GUEST_TERM_TEXT[guest.term];
+    setGameText(this.line, guestTermCopy[guest.term]);
     // Цена отдельной строкой, как дар знакомства: перечень с числами
     // в кавычках прямой речи читался бы репликой.
     const cost = termLine(guest.term);
     this.goods.textContent = cost;
     this.goods.style.display = cost === '' ? 'none' : 'block';
     this.act(
-      'По рукам',
+      gameMessage('По рукам', 'Deal'),
       () => this.cb.onInvite(),
-      'Палатку и костёр заберёт с собой, место в лагере выберет сам',
+      gameMessage('Палатку и костёр заберёт с собой, место в лагере выберет сам', 'They will bring their tent and campfire and choose a place in camp'),
     );
   }
 
@@ -204,13 +237,13 @@ export class MeetPanel {
     return this.root.style.display !== 'none';
   }
 
-  private act(label: string, onClick: () => void, hint?: string): void {
+  private act(label: GameMessage, onClick: () => void, hint?: GameMessage, values?: GameMessageValues): void {
     const button = document.createElement('button');
-    button.textContent = label;
+    setGameText(button, label, values);
     // Пояснение внутри кнопки, а не рядом: выбор и его цена — одно касание.
     if (hint !== undefined) {
       const sub = document.createElement('small');
-      sub.textContent = hint;
+      setGameText(sub, hint, values);
       button.append(sub);
     }
     button.addEventListener('click', onClick);

@@ -13,6 +13,16 @@ msgstr ""
 "Language-Team: \n"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "—"
+msgstr "—"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "— {name}. Чем у вас там живут?"
+msgstr "— {name}. Чем у вас там живут?"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "— ZXQPH0QXZ. Чем у вас там живут?"
 msgstr "— {value0}. Чем у вас там живут?"
@@ -48,6 +58,7 @@ msgid "— Death01 тянет 2,4 с против 0,8. Лука, щита и п�
 msgstr "— Death01 тянет 2,4 с против 0,8. Лука, щита и пробуждения у UAL нет, а его сидение — под стул, которого в лесу тоже нет."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— А тебя как звать?"
 msgstr "— А тебя как звать?"
@@ -63,6 +74,7 @@ msgid "— в игре два экрана, и оба на расстоянии 
 msgstr "— в игре два экрана, и оба на расстоянии одного тапа; кнопка превратила бы доску в навигацию."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— В моём доме берут не тайком. За моей спиной два каменных стража. Есть три пути: испытание, честный обмен или работа."
 msgstr "— В моём доме берут не тайком. За моей спиной два каменных стража. Есть три пути: испытание, честный обмен или работа."
@@ -73,11 +85,13 @@ msgid "— в угловой клетке два отрезка смыкаютс
 msgstr "— в угловой клетке два отрезка смыкаются сами, — а поворот не выбирается, он и есть направление отрезка."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Возьми, что было."
 msgstr "— Возьми, что было."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Возьми, что есть."
 msgstr "— Возьми, что есть."
@@ -123,6 +137,7 @@ msgid "— задание объясняется целью или не объя
 msgstr "— задание объясняется целью или не объясняется вовсе."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Задолжал я страже. Покроешь камнем — пойду."
 msgstr "— Задолжал я страже. Покроешь камнем — пойду."
@@ -198,11 +213,13 @@ msgid "— иначе это вторая экономика, а не второ
 msgstr "— иначе это вторая экономика, а не второй биом."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Ищу спуск под землю. Мне бы к камню поближе."
 msgstr "— Ищу спуск под землю. Мне бы к камню поближе."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Ищу, где строятся. Руки помнят дерево."
 msgstr "— Ищу, где строятся. Руки помнят дерево."
@@ -268,6 +285,7 @@ msgid "— ни описывать её форму словами, ни подб
 msgstr "— ни описывать её форму словами, ни подбирать ей поворот не придётся."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Ничего не возьму. Место у огня — и по рукам."
 msgstr "— Ничего не возьму. Место у огня — и по рукам."
@@ -398,6 +416,7 @@ msgid "— риг у них общий,"
 msgstr "— риг у них общий,"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Родне собрать надо в дорогу. С тебя дерево — и я твой."
 msgstr "— Родне собрать надо в дорогу. С тебя дерево — и я твой."
@@ -413,11 +432,13 @@ msgid "— рядом с гарнизоном они читались не «д�
 msgstr "— рядом с гарнизоном они читались не «другой человек», а «другая игра». Гарнизон и жильцы стоят в одном дворе, и это условие сильнее любого вкуса: габариты сняты с"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— С берега за холмами. Вода поднялась выше дома."
 msgstr "— С берега за холмами. Вода поднялась выше дома."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— С хутора за лесом. Хутора больше нет, вот и хожу."
 msgstr "— С хутора за лесом. Хутора больше нет, вот и хожу."
@@ -443,6 +464,7 @@ msgid "— со второго дня. Сама карта открыта с п�
 msgstr "— со второго дня. Сама карта открыта с первой вылазки: пролог кончается лагерем, и прятать за кнопкой отложенный экран нечестно."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Со сторожевой заставы. Смена кончилась, а возвращаться некуда."
 msgstr "— Со сторожевой заставы. Смена кончилась, а возвращаться некуда."
@@ -523,6 +545,7 @@ msgid "— уровни Кайла из Мастерской (§14). Урове�
 msgstr "— уровни Кайла из Мастерской (§14). Уровень предмета до сих пор не читался моделью: в руке у героя стоял топор из набора персонажей, один на все пять ступеней. Остальные"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Хватит с меня палаток. Встанет изба — перееду."
 msgstr "— Хватит с меня палаток. Встанет изба — перееду."
@@ -543,6 +566,7 @@ msgid "— шейдерное пламя и точечный свет класс
 msgstr "— шейдерное пламя и точечный свет класса"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "— Шёл с обозом. Обоз ушёл, я остался."
 msgstr "— Шёл с обозом. Обоз ушёл, я остался."
@@ -556,6 +580,16 @@ msgstr "— это «Ближний бой», средняя оснастка. �
 #: locales/legacy-messages.ts
 msgid "— это лицо игры. Набор героев спорит с этой строчкой, и спор решается не вкусом, а тремя числами: бюджетом героя, числом вызовов отрисовки и списком клипов из артбука «Скелетные клипы»."
 msgstr "— это лицо игры. Набор героев спорит с этой строчкой, и спор решается не вкусом, а тремя числами: бюджетом героя, числом вызовов отрисовки и списком клипов из артбука «Скелетные клипы»."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "— Я {name}."
+msgstr "— Я {name}."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "— Я {name}. Сижу у огня, жду попутчиков."
+msgstr "— Я {name}. Сижу у огня, жду попутчиков."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -2889,6 +2923,101 @@ msgstr "[ ] — соседняя книга"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "{building} ур. {level} — {remaining}"
+msgstr "{building} ур. {level} — {remaining}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{building} ур. {level} — ресурсы собраны"
+msgstr "{building} ур. {level} — ресурсы собраны"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{building} ур. {level} — ресурсы собраны · {block}"
+msgstr "{building} ур. {level} — ресурсы собраны · {block}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{cost} дерева · {seconds} с"
+msgstr "{cost} дерева · {seconds} с"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{cost} камня · {seconds} с"
+msgstr "{cost} камня · {seconds} с"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{count} построено"
+msgstr "{count} построено"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{duration}"
+msgstr "{duration}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{effect}"
+msgstr "{effect}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{effect} · {cost}"
+msgstr "{effect} · {cost}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{enemy} ур. {level}"
+msgstr "{enemy} ур. {level}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{item} · {effect}"
+msgstr "{item} · {effect}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{item} → {slot}. {effect} · {cost}"
+msgstr "{item} → {slot}. {effect} · {cost}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{item} в слот «{slot}» не встаёт."
+msgstr "{item} в слот «{slot}» не встаёт."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{item} надеть некуда."
+msgstr "{item} надеть некуда."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{item} убран в сумку."
+msgstr "{item} убран в сумку."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{item} ур. {level} — {effect}"
+msgstr "{item} ур. {level} — {effect}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{kind} · ур. {level}"
+msgstr "{kind} · ур. {level}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{name}"
+msgstr "{name}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{name} · {price}"
+msgstr "{name} · {price}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.build.workerCamp"
 msgstr "{name} · в личном лагере"
 
@@ -2896,6 +3025,81 @@ msgstr "{name} · в личном лагере"
 #: locales/game-messages.ts
 msgid "game.clan.build.workerAssigned"
 msgstr "{name} · строит"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{place} из {total}"
+msgstr "{place} из {total}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{price}"
+msgstr "{price}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{received} · отдано {given}"
+msgstr "{received} · отдано {given}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{rich} из {max}"
+msgstr "{rich} из {max}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{skill} · {seconds} с"
+msgstr "{skill} · {seconds} с"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{skill} · 1/1"
+msgstr "{skill} · 1/1"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{skill} · использовано"
+msgstr "{skill} · использовано"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{skill} · ур. {level}: {effect}"
+msgstr "{skill} · ур. {level}: {effect}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{skill} · ур. {level}/{max}"
+msgstr "{skill} · ур. {level}/{max}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{steps} ш."
+msgstr "{steps} ш."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{task} · {reason}"
+msgstr "{task} · {reason}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{tier} · глубина {depthNow} из {depthMax} шагов ({percent}%) · {duration}"
+msgstr "{tier} · глубина {depthNow} из {depthMax} шагов ({percent}%) · {duration}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{tier} · ставка {risk}%"
+msgstr "{tier} · ставка {risk}%"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{tool}: осталось {left} с"
+msgstr "{tool}: осталось {left} с"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{trigger} → {effect}"
+msgstr "{trigger} → {effect}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -3391,6 +3595,11 @@ msgstr "// характер клана: медленный / жадный"
 #: locales/legacy-messages.ts
 msgid "#a7b6bd и #aab8be, насыщенность 0,12 против 0,11"
 msgstr "#a7b6bd и #aab8be, насыщенность 0,12 против 0,11"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "+{capacity} вместимости до конца вылазки"
+msgstr "+{capacity} вместимости до конца вылазки"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -4198,6 +4407,11 @@ msgid "1 дерева · 20 с"
 msgstr "1 дерева · 20 с"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "1 дерева за {cells} кл. · {seconds} с/кл."
+msgstr "1 дерева за {cells} кл. · {seconds} с/кл."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "1 дерева за ZXQPH0QXZ кл. · ZXQPH1QXZ с/кл."
 msgstr "1 дерева за {value0} кл. · {value1} с/кл."
@@ -4226,6 +4440,11 @@ msgstr "1 камень и 20 секунд"
 #: locales/legacy-messages.ts
 msgid "1 камня · 20 с"
 msgstr "1 камня · 20 с"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "1 камня за {cells} кл. · {seconds} с/кл."
+msgstr "1 камня за {cells} кл. · {seconds} с/кл."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -7273,6 +7492,11 @@ msgid "handleCoins · 0.85 с"
 msgstr "handleCoins · 0.85 с"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "HP +1"
+msgstr "HP +1"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "HUD: нет элемента #ZXQPH0QXZ"
 msgstr "HUD: нет элемента #{value0}"
@@ -7758,9 +7982,15 @@ msgid "Астра"
 msgstr "Астра"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Атака"
 msgstr "Атака"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Атака {value}"
+msgstr "Атака {value}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -7768,16 +7998,19 @@ msgid "Атака +ZXQPH0QXZ"
 msgstr "Атака +{value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Атака +2"
 msgstr "Атака +2"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Атака +3"
 msgstr "Атака +3"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Атака +4"
 msgstr "Атака +4"
@@ -7828,6 +8061,7 @@ msgid "Атлас: кость, сталь и сукно"
 msgstr "Атлас: кость, сталь и сукно"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "аттракцион"
 msgstr "аттракцион"
@@ -7838,6 +8072,7 @@ msgid "аудио не запущено"
 msgstr "аудио не запущено"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Аффикс задан ковкой"
 msgstr "Аффикс задан ковкой"
@@ -7868,6 +8103,7 @@ msgid "Байты — это дельты от взаимодействий иг
 msgstr "Байты — это дельты от взаимодействий игрока. Само существование кланов не стоит ни байта: оно выводится из сида."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Бандит"
 msgstr "Бандит"
@@ -7893,6 +8129,7 @@ msgid "башня"
 msgstr "башня"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Башня"
 msgstr "Башня"
@@ -7936,6 +8173,16 @@ msgstr "Без крыши: {value0}"
 #: locales/legacy-messages.ts
 msgid "Без крыши: ZXQPH0QXZ и ещё ZXQPH1QXZ"
 msgstr "Без крыши: {value0} и ещё {value1}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Без крыши: {who}"
+msgstr "Без крыши: {who}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Без крыши: {who} и ещё {count}"
+msgstr "Без крыши: {who} и ещё {count}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -7993,6 +8240,7 @@ msgid "Берут ли все три"
 msgstr "Берут ли все три"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "бесплатно"
 msgstr "бесплатно"
@@ -8058,6 +8306,7 @@ msgid "Ближний бой — это соседство"
 msgstr "Ближний бой — это соседство"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Блок"
 msgstr "Блок"
@@ -8303,6 +8552,7 @@ msgid "бой · отметка ждёт"
 msgstr "бой · отметка ждёт"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Бой идёт…"
 msgstr "Бой идёт…"
@@ -8321,6 +8571,11 @@ msgstr "Бой не требует ввода. Игрок выбирает, вв
 #: locales/legacy-messages.ts
 msgid "бой стоит 2 провианта вместо 3"
 msgstr "бой стоит 2 провианта вместо 3"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "бой, обмен или заказ"
+msgstr "бой, обмен или заказ"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -8613,6 +8868,7 @@ msgid "В бою"
 msgstr "В бою"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "В бою не даёт ничего"
 msgstr "В бою не даёт ничего"
@@ -8748,6 +9004,7 @@ msgid "В лагере, без ран. Единственное состояни
 msgstr "В лагере, без ран. Единственное состояние, из которого можно выйти в вылазку."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "В лагерь"
 msgstr "В лагерь"
@@ -8778,6 +9035,7 @@ msgid "в любой момент времени игроку доступны �
 msgstr "в любой момент времени игроку доступны минимум три локации с богатством ≥ 2 на его ярусах."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "В мир"
 msgstr "В мир"
@@ -8863,11 +9121,13 @@ msgid "в строю через"
 msgstr "в строю через"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "В сумке нет места для снятого."
 msgstr "В сумке нет места для снятого."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "В сумке нет места."
 msgstr "В сумке нет места."
@@ -8878,6 +9138,7 @@ msgid "В Сухое русло"
 msgstr "В Сухое русло"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "В таблице"
 msgstr "В таблице"
@@ -8943,6 +9204,7 @@ msgid "ваш лагерь"
 msgstr "ваш лагерь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ваш лагерь"
 msgstr "Ваш лагерь"
@@ -8958,11 +9220,13 @@ msgid "Ваш путь через вылазки, лагерь и мир"
 msgstr "Ваш путь через вылазки, лагерь и мир"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ваш ход"
 msgstr "Ваш ход"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ваше"
 msgstr "Ваше"
@@ -8976,6 +9240,16 @@ msgstr "Ваше {value0} против его {value1} — не хватает {
 #: locales/legacy-messages.ts
 msgid "Ваше ZXQPH0QXZ против его ZXQPH1QXZ — сделка его устраивает"
 msgstr "Ваше {value0} против его {value1} — сделка его устраивает"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ваше {worth} против его {ask} — не хватает {missing}"
+msgstr "Ваше {worth} против его {ask} — не хватает {missing}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ваше {worth} против его {ask} — сделка его устраивает"
+msgstr "Ваше {worth} против его {ask} — сделка его устраивает"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -8993,11 +9267,13 @@ msgid "вдвое сократить рисование"
 msgstr "вдвое сократить рисование"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ведите линию · тап по карточке — другой материал"
 msgstr "Ведите линию · тап по карточке — другой материал"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ведите линию по земле"
 msgstr "Ведите линию по земле"
@@ -9028,6 +9304,7 @@ msgid "Верёвка"
 msgstr "Верёвка"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "вернёт ресурс"
 msgstr "вернёт ресурс"
@@ -9053,6 +9330,7 @@ msgid "Вернулся"
 msgstr "Вернулся"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Вернуть"
 msgstr "Вернуть"
@@ -9193,6 +9471,7 @@ msgid "Вечером бы похлёбки."
 msgstr "Вечером бы похлёбки."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Вещь вернулась на место."
 msgstr "Вещь вернулась на место."
@@ -9223,6 +9502,7 @@ msgid "взят Knight, sword_1handed, shield_round, Ranger, bow_withString, arr
 msgstr "взят Knight, sword_1handed, shield_round, Ranger, bow_withString, arrow_bow, Rogue, dagger, quiver — 24009 треугольников, 594,0 КБ в бандле (base64)"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "взято"
 msgstr "взято"
@@ -9256,6 +9536,11 @@ msgstr "взяты в игру"
 #: locales/legacy-messages.ts
 msgid "взятый герой: в игре он приведён к росту примитива, 1,38"
 msgstr "взятый герой: в игре он приведён к росту примитива, 1,38"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Взять: {item}"
+msgstr "Взять: {item}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -9448,6 +9733,7 @@ msgid "Возвращает инвентарную логику и вместе 
 msgstr "Возвращает инвентарную логику и вместе с ней возражение §19.1. Плюс требует руки на экране, где обе заняты дорогой."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "возвращает одну рану"
 msgstr "возвращает одну рану"
@@ -9488,6 +9774,7 @@ msgid "Возчик"
 msgstr "Возчик"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Возьмите товар с его прилавка"
 msgstr "Возьмите товар с его прилавка"
@@ -9503,9 +9790,20 @@ msgid "Воин с топором, маг с посохом: §15 требует
 msgstr "Воин с топором, маг с посохом: §15 требует, чтобы тип читался силуэтом, а силуэт делает то, что в руке. Место для предмета не подобрано на глаз — это узел"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Воин целит щит: первое отбрасывание сгорит"
+msgstr "Воин целит щит: первое отбрасывание сгорит"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Войти"
 msgstr "Войти"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Войти · ставка {stake}%"
+msgstr "Войти · ставка {stake}%"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -9573,6 +9871,7 @@ msgid "ворота"
 msgstr "ворота"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ворота"
 msgstr "Ворота"
@@ -9733,6 +10032,7 @@ msgid "Все остальные постройки и вкладки — но �
 msgstr "Все остальные постройки и вкладки — но только у того, кому камня хватило. Кому не хватило, нижняя строка остаётся: иначе вторая вылазка была бы заперта."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Все под крышей"
 msgstr "Все под крышей"
@@ -9743,6 +10043,7 @@ msgid "всё помещается, площадь не ограничивает
 msgstr "всё помещается, площадь не ограничивает"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Всё построено"
 msgstr "Всё построено"
@@ -9833,6 +10134,7 @@ msgid "Всего 76 моделей и 22095 треугольников. Тяж�
 msgstr "Всего 76 моделей и 22095 треугольников. Тяжелее потолка на здание (1500) — 2 детали: siege-tower 1598, siege-trebuchet 1518. Потолок этот про модель, которую рисуют руками, и к готовому набору отношения не имеет: его цена — килобайты в бандле."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Всего опыта"
 msgstr "Всего опыта"
@@ -10063,9 +10365,15 @@ msgid "Выберите одну — сборы тратятся на эту в�
 msgstr "Выберите одну — сборы тратятся на эту вылазку"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Выберите, что строить. Пока карточка не выбрана, лагерь работает как обычно."
 msgstr "Выберите, что строить. Пока карточка не выбрана, лагерь работает как обычно."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Выбор"
+msgstr "Выбор"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -10163,9 +10471,15 @@ msgid "Выйти Следопытом"
 msgstr "Выйти Следопытом"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Выковать"
 msgstr "Выковать"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Выковать: {item}"
+msgstr "Выковать: {item}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -10193,6 +10507,7 @@ msgid "Вылазка длиннее ровно на бои, и число «1,5
 msgstr "Вылазка длиннее ровно на бои, и число «1,5–3 минуты» из §0"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Вылазка завершена"
 msgstr "Вылазка завершена"
@@ -10538,11 +10853,13 @@ msgid "Герои, характеристики, снаряжение"
 msgstr "Герои, характеристики, снаряжение"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "герой"
 msgstr "герой"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Герой"
 msgstr "Герой"
@@ -10658,6 +10975,7 @@ msgid "глубже половины локации"
 msgstr "глубже половины локации"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Глубже Яруса 1 отряд один не ходит"
 msgstr "Глубже Яруса 1 отряд один не ходит"
@@ -10706,6 +11024,11 @@ msgstr "Глухая штольня"
 #: locales/legacy-messages.ts
 msgid "Гнилой мост"
 msgstr "Гнилой мост"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Голем удержит позицию"
+msgstr "Голем удержит позицию"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -10758,21 +11081,25 @@ msgid "горсть монет — добыча, которую сейчас р�
 msgstr "горсть монет — добыча, которую сейчас рисует октаэдр"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "гость"
 msgstr "гость"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Гость возьмётся за дерево: прибавка в кладовую, пока у него есть крыша"
 msgstr "Гость возьмётся за дерево: прибавка в кладовую, пока у него есть крыша"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Гость возьмётся за камень: прибавка в кладовую, пока у него есть крыша"
 msgstr "Гость возьмётся за камень: прибавка в кладовую, пока у него есть крыша"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Гость у костра"
 msgstr "Гость у костра"
@@ -10798,6 +11125,7 @@ msgid "Готов"
 msgstr "Готов"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Готово"
 msgstr "Готово"
@@ -10888,11 +11216,13 @@ msgid "Даёт"
 msgstr "Даёт"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "даёт 15 провианта"
 msgstr "даёт 15 провианта"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "даётся один раз"
 msgstr "даётся один раз"
@@ -11253,6 +11583,11 @@ msgid "День"
 msgstr "День"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "День {day}"
+msgstr "День {day}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "День ZXQPH0QXZ"
 msgstr "День {value0}"
@@ -11298,6 +11633,7 @@ msgid "дерево"
 msgstr "дерево"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дерево"
 msgstr "Дерево"
@@ -11316,6 +11652,21 @@ msgstr "дерево — 24.1%"
 #: locales/legacy-messages.ts
 msgid "дерево ZXQPH0QXZ"
 msgstr "дерево {value0}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "дерево {wood}"
+msgstr "дерево {wood}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дерево {wood}"
+msgstr "Дерево {wood}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дерево {wood} · Железо {iron}"
+msgstr "Дерево {wood} · Железо {iron}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -11366,6 +11717,11 @@ msgstr "Дерево и железо"
 #: locales/legacy-messages.ts
 msgid "Дерево и инструмент. Звучит один раз при старте, а не циклом: фоновый стук в лагере утомляет."
 msgstr "Дерево и инструмент. Звучит один раз при старте, а не циклом: фоновый стук в лагере утомляет."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "дерево и камень"
+msgstr "дерево и камень"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -11438,6 +11794,7 @@ msgid "Держалось оно на двух вещах: чтобы модел
 msgstr "Держалось оно на двух вещах: чтобы модель"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дёрните рычаг — сколько выпадет, столько кристаллов и заберёте."
 msgstr "Дёрните рычаг — сколько выпадет, столько кристаллов и заберёте."
@@ -11583,6 +11940,7 @@ msgid "дни"
 msgstr "дни"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дно"
 msgstr "Дно"
@@ -11688,6 +12046,7 @@ msgid "Добыто: ZXQPH0QXZ"
 msgstr "Добыто: {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Добыча"
 msgstr "Добыча"
@@ -11701,6 +12060,11 @@ msgstr "Добыча — то, что уже мертво"
 #: locales/legacy-messages.ts
 msgid "добыча +40%"
 msgstr "добыча +40%"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "добыча ×{share}"
+msgstr "добыча ×{share}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -11743,6 +12107,7 @@ msgid "Добыча в кармане обязана нести множител
 msgstr "Добыча в кармане обязана нести множитель глубины"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Добыча в полтора раза, ставка выше на четверть"
 msgstr "Добыча в полтора раза, ставка выше на четверть"
@@ -11788,6 +12153,7 @@ msgid "добыча, размер = ценность"
 msgstr "добыча, размер = ценность"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Добычи больше, и противников тоже"
 msgstr "Добычи больше, и противников тоже"
@@ -11908,6 +12274,7 @@ msgid "Домашний экран. Открывается при каждом �
 msgstr "Домашний экран. Открывается при каждом запуске: игрок сначала видит, что выросло без него, и только потом решает, идти ли в вылазку."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Домой"
 msgstr "Домой"
@@ -11923,6 +12290,7 @@ msgid "дорога"
 msgstr "дорога"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дорога"
 msgstr "Дорога"
@@ -11983,6 +12351,7 @@ msgid "Дорожки пишут все"
 msgstr "Дорожки пишут все"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дорожный паёк"
 msgstr "Дорожный паёк"
@@ -12053,6 +12422,7 @@ msgid "Достижимость"
 msgstr "Достижимость"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Достроить"
 msgstr "Достроить"
@@ -12148,6 +12518,7 @@ msgid "Дым не делаем"
 msgstr "Дым не делаем"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дымовая шашка"
 msgstr "Дымовая шашка"
@@ -12303,6 +12674,7 @@ msgid "Ельник"
 msgstr "Ельник"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ему нужна крыша"
 msgstr "Ему нужна крыша"
@@ -12343,14 +12715,25 @@ msgid "ещё 3 ч 20 мин"
 msgstr "ещё 3 ч 20 мин"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ещё вылазка"
 msgstr "Ещё вылазка"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ещё вылазка · {place}"
+msgstr "Ещё вылазка · {place}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Ещё вылазка · ZXQPH0QXZ"
 msgstr "Ещё вылазка · {value0}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ещё один заход вернётся через {duration}"
+msgstr "Ещё один заход вернётся через {duration}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -12378,6 +12761,7 @@ msgid "Жар"
 msgstr "Жар"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ждать"
 msgstr "Ждать"
@@ -12393,11 +12777,13 @@ msgid "железа"
 msgstr "железа"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "железо"
 msgstr "железо"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Железо"
 msgstr "Железо"
@@ -12406,6 +12792,11 @@ msgstr "Железо"
 #: locales/legacy-messages.ts
 msgid "Железо — у торговца в замке"
 msgstr "Железо — у торговца в замке"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Железо {iron}"
+msgstr "Железо {iron}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -12458,9 +12849,15 @@ msgid "Живой лагерь"
 msgstr "Живой лагерь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Живой сосед. Клана у него нет — в таблице он стоит без имени."
 msgstr "Живой сосед. Клана у него нет — в таблице он стоит без имени."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Живой сосед. Стоит в таблице как «{clan}»."
+msgstr "Живой сосед. Стоит в таблице как «{clan}»."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -12488,11 +12885,13 @@ msgid "живут рядом и при одном сиде и одном"
 msgstr "живут рядом и при одном сиде и одном"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Жила"
 msgstr "Жила"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "жилец"
 msgstr "жилец"
@@ -12503,6 +12902,7 @@ msgid "жилец:ZXQPH0QXZ:ZXQPH1QXZ"
 msgstr "жилец:{value0}:{value1}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Жильё"
 msgstr "Жильё"
@@ -12528,6 +12928,7 @@ msgid "Жильё ещё не изба"
 msgstr "Жильё ещё не изба"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Жильё не пускает выше"
 msgstr "Жильё не пускает выше"
@@ -12598,6 +12999,7 @@ msgid "Жителей столько, сколько заслужил лагер
 msgstr "Жителей столько, сколько заслужил лагерь: два плюс по одному на каждые четыре уровня зданий, потолок десять. Развитие читается без единой цифры, ровно как силуэты построек."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Жители"
 msgstr "Жители"
@@ -12668,6 +13070,7 @@ msgid "Забирать нечего: награда уже выдана на в
 msgstr "Забирать нечего: награда уже выдана на возврате (§06). Значок сообщает о новизне, а не о долге"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Забрать"
 msgstr "Забрать"
@@ -12708,6 +13111,7 @@ msgid "Зависимости не нужно"
 msgstr "Зависимости не нужно"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "завтра"
 msgstr "завтра"
@@ -12788,6 +13192,7 @@ msgid "Заказ выполнен: монеты +ZXQPH0QXZ, репутация 
 msgstr "Заказ выполнен: монеты +{value0}, репутация +{value1}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "заказ минотавра"
 msgstr "заказ минотавра"
@@ -12833,6 +13238,7 @@ msgid "game.settings.close"
 msgstr "Закрыть"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Закрыть"
 msgstr "Закрыть"
@@ -12948,6 +13354,11 @@ msgid "замок Kenney; прогулка, кольцо тонкое всегд
 msgstr "замок Kenney; прогулка, кольцо тонкое всегда"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "замок и золотой сундук"
+msgstr "замок и золотой сундук"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Замок и кладбище выпадают по одному-три в день, и добавляются они"
 msgstr "Замок и кладбище выпадают по одному-три в день, и добавляются они"
@@ -12993,6 +13404,7 @@ msgid "замок: подход, арка ворот, двором к торго
 msgstr "замок: подход, арка ворот, двором к торговцу"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Занимает левую руку"
 msgstr "Занимает левую руку"
@@ -13013,6 +13425,7 @@ msgid "занят"
 msgstr "занят"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Занят"
 msgstr "Занят"
@@ -13031,6 +13444,11 @@ msgstr "занята кланом"
 #: locales/legacy-messages.ts
 msgid "Занятие: носит ZXQPH0QXZ — прибавка в кладовую, пока есть крыша"
 msgstr "Занятие: носит {value0} — прибавка в кладовую, пока есть крыша"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Занято {used} из {capacity}"
+msgstr "Занято {used} из {capacity}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13123,11 +13541,13 @@ msgid "Запишем как чудо"
 msgstr "Запишем как чудо"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Заплечный короб"
 msgstr "Заплечный короб"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Заплечье"
 msgstr "Заплечье"
@@ -13168,9 +13588,15 @@ msgid "Запустить пульс"
 msgstr "Запустить пульс"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Заслон"
 msgstr "Заслон"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Заслон · Защита +4.8"
+msgstr "Заслон · Защита +4.8"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13203,6 +13629,7 @@ msgid "Зафиксировано"
 msgstr "Зафиксировано"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Заходы соседей"
 msgstr "Заходы соседей"
@@ -13223,6 +13650,7 @@ msgid "защита"
 msgstr "защита"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Защита"
 msgstr "Защита"
@@ -13236,6 +13664,11 @@ msgstr "Защита — сколько шагов переживёшь; сил�
 #: locales/legacy-messages.ts
 msgid "защита · 4 раны · обзор −1"
 msgstr "защита · 4 раны · обзор −1"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Защита {value}"
+msgstr "Защита {value}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13261,6 +13694,11 @@ msgstr "защита, 4 раны"
 #: locales/legacy-messages.ts
 msgid "защита, здоровье"
 msgstr "защита, здоровье"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "защита, здоровье, обзор −1"
+msgstr "защита, здоровье, обзор −1"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13428,6 +13866,7 @@ msgid "Здоровый — у Жилья, раненый — у Лазарет�
 msgstr "Здоровый — у Жилья, раненый — у Лазарета. Состояние отряда читается из мира, а не из вкладки «Герои»."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Здоровье"
 msgstr "Здоровье"
@@ -13558,6 +13997,7 @@ msgid "знамя"
 msgstr "знамя"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Знание"
 msgstr "Знание"
@@ -13903,6 +14343,7 @@ msgid "Идти к выходу · 11 шагов"
 msgstr "Идти к выходу · 11 шагов"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Идти некому — все заняты"
 msgstr "Идти некому — все заняты"
@@ -13911,6 +14352,11 @@ msgstr "Идти некому — все заняты"
 #: locales/legacy-messages.ts
 msgid "из"
 msgstr "из"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "из {total}"
+msgstr "из {total}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -14153,6 +14599,7 @@ msgid "Информация не теряется ни одна"
 msgstr "Информация не теряется ни одна"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "испытание"
 msgstr "испытание"
@@ -14203,6 +14650,7 @@ msgid "итог"
 msgstr "итог"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Итог боя"
 msgstr "Итог боя"
@@ -14443,6 +14891,7 @@ msgid "кайло"
 msgstr "кайло"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Кайло"
 msgstr "Кайло"
@@ -14568,6 +15017,7 @@ msgid "каменная кухня, труба"
 msgstr "каменная кухня, труба"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Каменный голем"
 msgstr "Каменный голем"
@@ -14588,9 +15038,30 @@ msgid "камень"
 msgstr "камень"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Камень"
 msgstr "Камень"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Камень {stone}"
+msgstr "Камень {stone}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Камень {stone} · Дерево {wood}"
+msgstr "Камень {stone} · Дерево {wood}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Камень {stone} · Дерево {wood} · Железо {iron}"
+msgstr "Камень {stone} · Дерево {wood} · Железо {iron}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Камень {stone} · Железо {iron}"
+msgstr "Камень {stone} · Железо {iron}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -14838,6 +15309,7 @@ msgid "карта открыта с первой вылазки"
 msgstr "карта открыта с первой вылазки"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Карта региона"
 msgstr "Карта региона"
@@ -14893,6 +15365,11 @@ msgid "Карточка вооружает палец"
 msgstr "Карточка вооружает палец"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Карточка выбрана. Тап по карточке ещё раз — снять выбор."
+msgstr "Карточка выбрана. Тап по карточке ещё раз — снять выбор."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Карточка героя"
 msgstr "Карточка героя"
@@ -14933,6 +15410,7 @@ msgid "каска"
 msgstr "каска"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Каска"
 msgstr "Каска"
@@ -15113,14 +15591,26 @@ msgid "Кладбище открывалось локацией в 20–24 кл�
 msgstr "Кладбище открывалось локацией в 20–24 клетки, из которых участок внутри ограды был 4–8 клеток в поперечнике, и половину его занимали могилы. Прогулка кончалась раньше, чем успевала начаться. Стороны участка взяли"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "кладовая"
 msgstr "кладовая"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Кладовая"
 msgstr "Кладовая"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Кладовая +{bonus}"
+msgstr "Кладовая +{bonus}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Кладовая +{bonus} за каждый"
+msgstr "Кладовая +{bonus} за каждый"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -15133,6 +15623,7 @@ msgid "Кладовая +ZXQPH0QXZ за каждый"
 msgstr "Кладовая +{value0} за каждый"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Кладовая полна — из подарка не влезет ничего"
 msgstr "Кладовая полна — из подарка не влезет ничего"
@@ -15148,9 +15639,24 @@ msgid "Кладовая полна — часть добычи пропала"
 msgstr "Кладовая полна — часть добычи пропала"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Кладовая почти полна — из {asked} влезет {fits}"
+msgstr "Кладовая почти полна — из {asked} влезет {fits}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Кладовая почти полна — из ZXQPH0QXZ влезет ZXQPH1QXZ"
 msgstr "Кладовая почти полна — из {value0} влезет {value1}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Кладовая почти полна: {used}/{capacity}"
+msgstr "Кладовая почти полна: {used}/{capacity}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Кладовая почти полна: {used}/{capacity} · {reason}"
+msgstr "Кладовая почти полна: {used}/{capacity} · {reason}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -15163,6 +15669,7 @@ msgid "кладут камни"
 msgstr "кладут камни"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Клан"
 msgstr "Клан"
@@ -15388,6 +15895,7 @@ msgid "клинок"
 msgstr "клинок"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Клинок"
 msgstr "Клинок"
@@ -15523,6 +16031,7 @@ msgid "Кованая"
 msgstr "Кованая"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Кованое · §14"
 msgstr "Кованое · §14"
@@ -15643,6 +16152,12 @@ msgid "Колесо"
 msgstr "Колесо"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "колесо призов"
+msgstr "колесо призов"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Колесо уже крутили — новая прокрутка завтра, с новым регионом."
 msgstr "Колесо уже крутили — новая прокрутка завтра, с новым регионом."
@@ -15668,16 +16183,24 @@ msgid "Колония: волна в мире, а не в инстансе"
 msgstr "Колония: волна в мире, а не в инстансе"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Колчан"
 msgstr "Колчан"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Колчан пуст"
 msgstr "Колчан пуст"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Колчан пуст · нужно {cost}"
+msgstr "Колчан пуст · нужно {cost}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Колчан пустеет за вылазку — донесённое возвращается в лагерь"
 msgstr "Колчан пустеет за вылазку — донесённое возвращается в лагерь"
@@ -16113,6 +16636,7 @@ msgid "Кривой отвал"
 msgstr "Кривой отвал"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Кристалл"
 msgstr "Кристалл"
@@ -16123,6 +16647,7 @@ msgid "кристалл отмечен на карте"
 msgstr "кристалл отмечен на карте"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "кристаллы"
 msgstr "кристаллы"
@@ -16148,6 +16673,7 @@ msgid "Кромка добрая — руби, не кончится."
 msgstr "Кромка добрая — руби, не кончится."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "круг повторяется"
 msgstr "круг повторяется"
@@ -16183,6 +16709,7 @@ msgid "Кто"
 msgstr "Кто"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Кто здесь"
 msgstr "Кто здесь"
@@ -16263,6 +16790,7 @@ msgid "Кусты шуршат по уставу"
 msgstr "Кусты шуршат по уставу"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Кухня"
 msgstr "Кухня"
@@ -16333,11 +16861,13 @@ msgid "лагерем искателей, а не жильём"
 msgstr "лагерем искателей, а не жильём"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "лагерь"
 msgstr "лагерь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лагерь"
 msgstr "Лагерь"
@@ -16378,6 +16908,7 @@ msgid "Лагерь без имени"
 msgstr "Лагерь без имени"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лагерь без имени: соседи уже в таблице"
 msgstr "Лагерь без имени: соседи уже в таблице"
@@ -16408,6 +16939,7 @@ msgid "Лагерь опускается на 6–8° и подходит на �
 msgstr "Лагерь опускается на 6–8° и подходит на полшага: читается как «посмотрел на доску», а не «открыл меню»"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лагерь открыт"
 msgstr "Лагерь открыт"
@@ -16473,6 +17005,7 @@ msgid "лагерь: тап по клетке, единица дерева"
 msgstr "лагерь: тап по клетке, единица дерева"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лазарет"
 msgstr "Лазарет"
@@ -16553,6 +17086,7 @@ msgid "Левая рука"
 msgstr "Левая рука"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Левая рука занята: фонаря не будет"
 msgstr "Левая рука занята: фонаря не будет"
@@ -16643,6 +17177,7 @@ msgid "лестница"
 msgstr "лестница"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лестница"
 msgstr "Лестница"
@@ -16723,6 +17258,7 @@ msgid "линия детали; по тому, какая из двух коло
 msgstr "линия детали; по тому, какая из двух колонок непустая, видно, чем набор модулен. Отсюда следует всё остальное: пролёт ставится на отрезок между центрами соседних клеток,"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лиса"
 msgstr "Лиса"
@@ -16738,6 +17274,7 @@ msgid "листва"
 msgstr "листва"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лисья шкура"
 msgstr "Лисья шкура"
@@ -16763,6 +17300,7 @@ msgid "Личных локаций"
 msgstr "Личных локаций"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ловкость"
 msgstr "Ловкость"
@@ -16883,11 +17421,13 @@ msgid "луч, мкс"
 msgstr "луч, мкс"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лучник"
 msgstr "Лучник"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лучше не бывает"
 msgstr "Лучше не бывает"
@@ -16923,6 +17463,11 @@ msgid "Маг стоит на тропе, а не в проходе"
 msgstr "Маг стоит на тропе, а не в проходе"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Маг целит соседа: Заслон примет болт"
+msgstr "Маг целит соседа: Заслон примет болт"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Магия"
 msgstr "Магия"
@@ -16933,11 +17478,13 @@ msgid "Макеты"
 msgstr "Макеты"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Максимальный уровень"
 msgstr "Максимальный уровень"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "максимум"
 msgstr "максимум"
@@ -16958,6 +17505,7 @@ msgid "Манекен весит"
 msgstr "Манекен весит"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Мастерская"
 msgstr "Мастерская"
@@ -16983,6 +17531,7 @@ msgid "Мастерская и Плац добавляют оси боя и св
 msgstr "Мастерская и Плац добавляют оси боя и сведений."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Мастерская не тянет выше"
 msgstr "Мастерская не тянет выше"
@@ -17136,6 +17685,11 @@ msgstr "Медь, золото и дерево — один и тот же ор�
 #: locales/legacy-messages.ts
 msgid "Мелодия лагеря"
 msgstr "Мелодия лагеря"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Меняет на"
+msgstr "Меняет на"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17293,11 +17847,18 @@ msgid "Мила"
 msgstr "Мила"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Минотавр"
 msgstr "Минотавр"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "минотавр и два голема"
+msgstr "минотавр и два голема"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Минотавр и два голема охраняют золотой сундук"
 msgstr "Минотавр и два голема охраняют золотой сундук"
@@ -17316,6 +17877,11 @@ msgstr "Минотавр идёт на таран"
 #: locales/legacy-messages.ts
 msgid "Минотавр повержен — золотой сундук теперь можно открыть"
 msgstr "Минотавр повержен — золотой сундук теперь можно открыть"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Минотавр слишком тяжёл для толчка"
+msgstr "Минотавр слишком тяжёл для толчка"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17578,6 +18144,7 @@ msgid "мягкая валюта; её избыток — фон, на кото�
 msgstr "мягкая валюта; её избыток — фон, на котором дефицит остальных читается как настоящий"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Мясо"
 msgstr "Мясо"
@@ -17663,6 +18230,7 @@ msgid "на охоте · ZXQPH0QXZ ч ZXQPH1QXZ мин"
 msgstr "на охоте · {value0} ч {value1} мин"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "На площадке нет места"
 msgstr "На площадке нет места"
@@ -17988,6 +18556,7 @@ msgid "Названия противников — рабочие (§0.1). «С�
 msgstr "Названия противников — рабочие (§0.1). «Скелет-воин» — подпись к Skeleton_Warrior, а не имя мира; лора за ними нет и придумана задним числом не будет. Менять их можно правкой строки."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Назваться"
 msgstr "Назваться"
@@ -18078,6 +18647,7 @@ msgid "нарисовано"
 msgstr "нарисовано"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Народу"
 msgstr "Народу"
@@ -18098,6 +18668,7 @@ msgid "настой"
 msgstr "настой"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Настой"
 msgstr "Настой"
@@ -18143,6 +18714,11 @@ msgid "насыщенностью"
 msgstr "насыщенностью"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "находки ×{multiplier} на {seconds} с"
+msgstr "находки ×{multiplier} на {seconds} с"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "находки ×ZXQPH0QXZ на ZXQPH1QXZ с"
 msgstr "находки ×{value0} на {value1} с"
@@ -18151,6 +18727,11 @@ msgstr "находки ×{value0} на {value1} с"
 #: locales/legacy-messages.ts
 msgid "находки вдвое больше 20 с"
 msgstr "находки вдвое больше 20 с"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Наценка {fee} на сто · до своей цены {deals} сделок"
+msgstr "Наценка {fee} на сто · до своей цены {deals} сделок"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -18228,6 +18809,7 @@ msgid "не влезают намеренно"
 msgstr "не влезают намеренно"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "не выковано"
 msgstr "не выковано"
@@ -18388,6 +18970,7 @@ msgid "не попадали ни в одно окно, падали в запа
 msgstr "не попадали ни в одно окно, падали в запасную сталь и растягивали её шкалу с 0,71 до 0,97. На шести тысячах треугольников доспеха оставался"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "не построена"
 msgstr "не построена"
@@ -18483,11 +19066,13 @@ msgid "не успеть"
 msgstr "не успеть"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Не хватает дерева"
 msgstr "Не хватает дерева"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Не хватает железа"
 msgstr "Не хватает железа"
@@ -18508,6 +19093,7 @@ msgid "Не хватает ресурса или действие недосту
 msgstr "Не хватает ресурса или действие недоступно. Короткий и неприятный ровно настолько, чтобы не повторять."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Не хватает ресурсов"
 msgstr "Не хватает ресурсов"
@@ -18533,6 +19119,11 @@ msgid "Неделя ZXQPH0QXZ"
 msgstr "Неделя {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Неделя {week}"
+msgstr "Неделя {week}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Нежить"
 msgstr "Нежить"
@@ -18553,6 +19144,7 @@ msgid "Нест"
 msgstr "Нест"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "нет"
 msgstr "нет"
@@ -18788,6 +19380,11 @@ msgid "Ни экрана ошибки, ни блокирующего диало�
 msgstr "Ни экрана ошибки, ни блокирующего диалога, ни повторных попыток подключения на весь экран."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "нигде"
+msgstr "нигде"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Ниже —"
 msgstr "Ниже —"
@@ -18843,6 +19440,7 @@ msgid "никогда не отнимает отметку"
 msgstr "никогда не отнимает отметку"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "никого"
 msgstr "никого"
@@ -18963,6 +19561,11 @@ msgid "Новый уровень — ZXQPH0QXZ"
 msgstr "Новый уровень — {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Новый уровень: {level} · +{stats} очк. характеристик · +{skills} очк. умений"
+msgstr "Новый уровень: {level} · +{stats} очк. характеристик · +{skills} очк. умений"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Новый уровень: ZXQPH0QXZ · +ZXQPH1QXZ очк. характеристик · +ZXQPH2QXZ очк. умений"
 msgstr "Новый уровень: {value0} · +{value1} очк. характеристик · +{value2} очк. умений"
@@ -18973,6 +19576,7 @@ msgid "ноги"
 msgstr "ноги"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ноги"
 msgstr "Ноги"
@@ -19058,6 +19662,7 @@ msgid "ночь"
 msgstr "ночь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ночь"
 msgstr "Ночь"
@@ -19098,6 +19703,7 @@ msgid "нужен отступ от поляны"
 msgstr "нужен отступ от поляны"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Нужен Плац"
 msgstr "Нужен Плац"
@@ -19108,6 +19714,7 @@ msgid "нужна"
 msgstr "нужна"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Нужна Мастерская"
 msgstr "Нужна Мастерская"
@@ -19118,11 +19725,17 @@ msgid "Нужно ещё несколько вылазок для сравнен
 msgstr "Нужно ещё несколько вылазок для сравнения"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "нужно Жильё ур. {level}"
+msgstr "нужно Жильё ур. {level}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "нужно Жильё ур. ZXQPH0QXZ"
 msgstr "нужно Жильё ур. {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Нужно Жильё ур. 2"
 msgstr "Нужно Жильё ур. 2"
@@ -19168,6 +19781,7 @@ msgid "Оба прежних набора красились одной карт
 msgstr "Оба прежних набора красились одной картинкой на весь набор. Здесь их пять — своя на каждого героя, — и модель называет свою сама: реквизит ссылкой на соседний файл, персонаж куском внутри собственного"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Обвал"
 msgstr "Обвал"
@@ -19213,6 +19827,7 @@ msgid "обзор"
 msgstr "обзор"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Обзор"
 msgstr "Обзор"
@@ -19223,11 +19838,17 @@ msgid "обзор · скорость · рюкзак −25%"
 msgstr "обзор · скорость · рюкзак −25%"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Обзор {value}"
+msgstr "Обзор {value}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Обзор +ZXQPH0QXZ"
 msgstr "Обзор +{value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Обзор +1"
 msgstr "Обзор +1"
@@ -19253,6 +19874,7 @@ msgid "обзор −1 · ночью почти вслепую"
 msgstr "обзор −1 · ночью почти вслепую"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Обзор −1: край поля закрыт"
 msgstr "Обзор −1: край поля закрыт"
@@ -19261,6 +19883,11 @@ msgstr "Обзор −1: край поля закрыт"
 #: locales/legacy-messages.ts
 msgid "обзор, скорость"
 msgstr "обзор, скорость"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "обзор, скорость, рюкзак −25%"
+msgstr "обзор, скорость, рюкзак −25%"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19278,6 +19905,7 @@ msgid "Обмен добычи на бой начистоту: ставка не
 msgstr "Обмен добычи на бой начистоту: ставка не растёт, растёт цена ошибки."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Обменять"
 msgstr "Обменять"
@@ -19418,6 +20046,7 @@ msgid "ограда"
 msgstr "ограда"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ограда"
 msgstr "Ограда"
@@ -19428,11 +20057,17 @@ msgid "ограда лагеря и кладбища"
 msgstr "ограда лагеря и кладбища"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "ограда, могилы, склеп"
+msgstr "ограда, могилы, склеп"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Ограда: ZXQPH0QXZ"
 msgstr "Ограда: {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ограда: дощатая"
 msgstr "Ограда: дощатая"
@@ -19441,6 +20076,21 @@ msgstr "Ограда: дощатая"
 #: locales/legacy-messages.ts
 msgid "Ограда: живой конструктор"
 msgstr "Ограда: живой конструктор"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ограда: каменная"
+msgstr "Ограда: каменная"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ограда: кирпичная"
+msgstr "Ограда: кирпичная"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ограда: кованая"
+msgstr "Ограда: кованая"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19468,6 +20118,7 @@ msgid "Ограничение не про GPU"
 msgstr "Ограничение не про GPU"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Одежда"
 msgstr "Одежда"
@@ -19536,6 +20187,11 @@ msgstr "Одиннадцать слотов, все из тех же цвето�
 #: locales/legacy-messages.ts
 msgid "одиночная"
 msgstr "одиночная"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "одна в день, сегодня не тратилась"
+msgstr "одна в день, сегодня не тратилась"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19638,6 +20294,7 @@ msgid "Одновременных голосов"
 msgstr "Одновременных голосов"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Одноразовый"
 msgstr "Одноразовый"
@@ -19813,6 +20470,7 @@ msgid "оптимального по соотношению «добыча к п
 msgstr "оптимального по соотношению «добыча к провианту» маршрута. Без неё жадность не с чем сравнивать."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Опыт за бой"
 msgstr "Опыт за бой"
@@ -19978,6 +20636,7 @@ msgid "остаётся: экран ничего не крутит, он тол�
 msgstr "остаётся: экран ничего не крутит, он только надевает"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "осталась одна рана"
 msgstr "осталась одна рана"
@@ -20048,6 +20707,7 @@ msgid "отдаёт инструмент только тем, у кого рук
 msgstr "отдаёт инструмент только тем, у кого рука пуста, — поселенцу и торговцу."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Отдаёте"
 msgstr "Отдаёте"
@@ -20126,6 +20786,11 @@ msgstr "Отказ"
 #: locales/legacy-messages.ts
 msgid "Отказ не молчит"
 msgstr "Отказ не молчит"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Откроется при репутации {reputation}"
+msgstr "Откроется при репутации {reputation}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20313,6 +20978,11 @@ msgid "Оторвался"
 msgstr "Оторвался"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Отправить · {duration}"
+msgstr "Отправить · {duration}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Отправить · ZXQPH0QXZ"
 msgstr "Отправить · {value0}"
@@ -20368,6 +21038,7 @@ msgid "Отряд не дошёл домой"
 msgstr "Отряд не дошёл домой"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Отряд уже в пути"
 msgstr "Отряд уже в пути"
@@ -20458,6 +21129,11 @@ msgid "охотник"
 msgstr "охотник"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Охрана"
+msgstr "Охрана"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Очередь"
 msgstr "Очередь"
@@ -20478,9 +21154,15 @@ msgid "Очистить историю"
 msgstr "Очистить историю"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "очков навыка: 0"
 msgstr "очков навыка: 0"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "очков: {points}"
+msgstr "очков: {points}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20498,6 +21180,7 @@ msgid "Ощущение ближе к классической 2D-RPG, чем к
 msgstr "Ощущение ближе к классической 2D-RPG, чем к «Героям»"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Падает"
 msgstr "Падает"
@@ -20516,6 +21199,11 @@ msgstr "Падение"
 #: locales/legacy-messages.ts
 msgid "паёк"
 msgstr "паёк"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Палатка · {cost}"
+msgstr "Палатка · {cost}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20568,6 +21256,7 @@ msgid "Палатку бы — под небом спится так себе."
 msgstr "Палатку бы — под небом спится так себе."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Палатку и костёр заберёт с собой, место в лагере выберет сам"
 msgstr "Палатку и костёр заберёт с собой, место в лагере выберет сам"
@@ -20713,6 +21402,7 @@ msgid "Пауза при сворачивании"
 msgstr "Пауза при сворачивании"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Пачка стрел"
 msgstr "Пачка стрел"
@@ -20748,6 +21438,7 @@ msgid "Первая вылазка завершена"
 msgstr "Первая вылазка завершена"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Первая вылазка идёт в другое место — оно одно горит на карте"
 msgstr "Первая вылазка идёт в другое место — оно одно горит на карте"
@@ -20773,6 +21464,7 @@ msgid "Первая лицензия не CC0"
 msgstr "Первая лицензия не CC0"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Первая неделя"
 msgstr "Первая неделя"
@@ -21028,6 +21720,7 @@ msgid "пересекает"
 msgstr "пересекает"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Переставить"
 msgstr "Переставить"
@@ -21148,6 +21841,7 @@ msgid "Письмо собирается…"
 msgstr "Письмо собирается…"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Пища"
 msgstr "Пища"
@@ -21208,6 +21902,7 @@ msgid "плафон"
 msgstr "плафон"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Плац"
 msgstr "Плац"
@@ -21373,6 +22068,7 @@ msgid "По правилу §6.1 силуэт утверждается прим�
 msgstr "По правилу §6.1 силуэт утверждается примитивами"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "По рукам"
 msgstr "По рукам"
@@ -21393,6 +22089,7 @@ msgid "Победи 5 врагов"
 msgstr "Победи 5 врагов"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Побеждено"
 msgstr "Побеждено"
@@ -21408,11 +22105,13 @@ msgid "Повернуть"
 msgstr "Повернуть"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Повернуть влево"
 msgstr "Повернуть влево"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Повернуть вправо"
 msgstr "Повернуть вправо"
@@ -21483,6 +22182,7 @@ msgid "повязка"
 msgstr "повязка"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Повязка"
 msgstr "Повязка"
@@ -21508,6 +22208,7 @@ msgid "погасший горн читался бы как «закрыто»"
 msgstr "погасший горн читался бы как «закрыто»"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Поговорите с хозяином. За сундук придётся сразиться; торговля и заказ безопаснее, но награда меньше."
 msgstr "Поговорите с хозяином. За сундук придётся сразиться; торговля и заказ безопаснее, но награда меньше."
@@ -21538,9 +22239,15 @@ msgid "под треугольниками 1211 цветов картинки, �
 msgstr "под треугольниками 1211 цветов картинки, и почти все они — материал"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Под угрозой"
 msgstr "Под угрозой"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Под угрозой меньше на {value}"
+msgstr "Под угрозой меньше на {value}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21548,6 +22255,7 @@ msgid "Под угрозой меньше на ZXQPH0QXZ%"
 msgstr "Под угрозой меньше на {value0}%"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Под угрозой меньше на 20%"
 msgstr "Под угрозой меньше на 20%"
@@ -21568,6 +22276,7 @@ msgid "подарок взят"
 msgstr "подарок взят"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Подарок за вход"
 msgstr "Подарок за вход"
@@ -21583,6 +22292,12 @@ msgid "Подарок сегодня уже взят — следующий за
 msgstr "Подарок сегодня уже взят — следующий завтра"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Подарок сегодня уже взят — следующий через {duration}"
+msgstr "Подарок сегодня уже взят — следующий через {duration}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Подарок сегодняшнего дня ждёт в лагере"
 msgstr "Подарок сегодняшнего дня ждёт в лагере"
@@ -21663,6 +22378,7 @@ msgid "Подсвечивать нечего: все 18 слотов набор�
 msgstr "Подсвечивать нечего: все 18 слотов набора заняты прежними наборами. Четырнадцатый набор палитре ничего не стоил."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Подступы"
 msgstr "Подступы"
@@ -21693,11 +22409,13 @@ msgid "Поза приезжает с запеканием"
 msgstr "Поза приезжает с запеканием"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Позвать в лагерь"
 msgstr "Позвать в лагерь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Позвать с собой"
 msgstr "Позвать с собой"
@@ -21738,6 +22456,7 @@ msgid "Поиск по книгам и разделам"
 msgstr "Поиск по книгам и разделам"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Пойти"
 msgstr "Пойти"
@@ -21763,6 +22482,7 @@ msgid "Пока нижняя граница насыщенности стоял�
 msgstr "Пока нижняя граница насыщенности стояла круглым числом, два треугольника цвета"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Пока они там, точка тратит богатство — заход туда обойдётся дешевле по добыче."
 msgstr "Пока они там, точка тратит богатство — заход туда обойдётся дешевле по добыче."
@@ -21858,6 +22578,7 @@ msgid "Полкорзины есть, к вечеру будет полная."
 msgstr "Полкорзины есть, к вечеру будет полная."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Полная жила: три захода"
 msgstr "Полная жила: три захода"
@@ -21943,11 +22664,13 @@ msgid "полусферический, без теней"
 msgstr "полусферический, без теней"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Получаете"
 msgstr "Получаете"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Получено урона"
 msgstr "Получено урона"
@@ -22188,6 +22911,7 @@ msgid "Пост-обработка: сколько стоит свечение"
 msgstr "Пост-обработка: сколько стоит свечение"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Поставить"
 msgstr "Поставить"
@@ -22208,6 +22932,7 @@ msgid "постоянная география — то же расписани�
 msgstr "постоянная география — то же расписание, что и постоянные ярусы (§4.1)"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Построить"
 msgstr "Построить"
@@ -22223,11 +22948,17 @@ msgid "Построить Склад"
 msgstr "Построить Склад"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Построить: {building} ур. {level}"
+msgstr "Построить: {building} ур. {level}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Построить: ZXQPH0QXZ ур. ZXQPH1QXZ"
 msgstr "Построить: {value0} ур. {value1}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "постройка"
 msgstr "постройка"
@@ -22268,6 +22999,11 @@ msgid "потеряна рана"
 msgstr "потеряна рана"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Потеряно {lost} из {total}"
+msgstr "Потеряно {lost} из {total}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "потеряно ZXQPH0QXZ"
 msgstr "потеряно {value0}"
@@ -22283,6 +23019,7 @@ msgid "потолка в 1500 треугольников (§6.1): самая т�
 msgstr "потолка в 1500 треугольников (§6.1): самая тяжёлая модель набора —"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Потолок — на два уровня ниже лучшего"
 msgstr "Потолок — на два уровня ниже лучшего"
@@ -22733,6 +23470,7 @@ msgid "Приведение всё равно останется тем же, к
 msgstr "Приведение всё равно останется тем же, каким приводится дерево в"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Привидение"
 msgstr "Привидение"
@@ -22741,6 +23479,11 @@ msgstr "Привидение"
 #: locales/legacy-messages.ts
 msgid "Привидений теперь считает плотность, а не число."
 msgstr "Привидений теперь считает плотность, а не число."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "привидения"
+msgstr "привидения"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -22863,6 +23606,7 @@ msgid "Приоритет при переполнении"
 msgstr "Приоритет при переполнении"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Припасы"
 msgstr "Припасы"
@@ -22908,6 +23652,7 @@ msgid "Проба поставлена, и карта осталась плос�
 msgstr "Проба поставлена, и карта осталась плоской (§4.2)."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Провал"
 msgstr "Провал"
@@ -22998,6 +23743,7 @@ msgid "провиант"
 msgstr "провиант"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Провиант"
 msgstr "Провиант"
@@ -23028,11 +23774,13 @@ msgid "Провиант восполняется между вылазками �
 msgstr "Провиант восполняется между вылазками бесплатно и полностью, Кухня задаёт только его потолок. Как только «не могу пойти» становится возможным состоянием, игра выключает сама себя, и никакая мета-прогрессия этого не компенсирует."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "провиант дошёл до нуля"
 msgstr "провиант дошёл до нуля"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Провиант за шаг"
 msgstr "Провиант за шаг"
@@ -23083,6 +23831,7 @@ msgid "Провианта взял впритык. Впритык и хвати�
 msgstr "Провианта взял впритык. Впритык и хватило"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Провианта не хватит на такую глубину — нужна Кухня выше"
 msgstr "Провианта не хватит на такую глубину — нужна Кухня выше"
@@ -23098,21 +23847,25 @@ msgid "Прогресс"
 msgstr "Прогресс"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "прогулка"
 msgstr "прогулка"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Прогулка: добычи и противников нет. Торговец во дворе, за воротами."
 msgstr "Прогулка: добычи и противников нет. Торговец во дворе, за воротами."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Прогулка: добычи нет. Привидение медленнее вас — от него можно уйти."
 msgstr "Прогулка: добычи нет. Привидение медленнее вас — от него можно уйти."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Прогулка: тропа виляет и раздваивается, выходы на обоих концах. Лес рубят, валуны бьют — противников нет."
 msgstr "Прогулка: тропа виляет и раздваивается, выходы на обоих концах. Лес рубят, валуны бьют — противников нет."
@@ -23183,6 +23936,7 @@ msgid "прокрутка"
 msgstr "прокрутка"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Прокрутка"
 msgstr "Прокрутка"
@@ -23248,6 +24002,7 @@ msgid "прослушивает путь подставным контексто
 msgstr "прослушивает путь подставным контекстом и не пускает рисунок дальше 1,02 радиуса — глиф стоит на 1,3r, флаг от 0,95r, и значок, дошедший туда, читался бы как они."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "проснулись двое и больше"
 msgstr "проснулись двое и больше"
@@ -23323,6 +24078,7 @@ msgid "противников в полтора раза больше"
 msgstr "противников в полтора раза больше"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Противников меньше, добычи тоже"
 msgstr "Противников меньше, добычи тоже"
@@ -23508,9 +24264,15 @@ msgid "Пустить время"
 msgstr "Пустить время"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "пусто"
 msgstr "пусто"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Пусто"
+msgstr "Пусто"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23543,9 +24305,15 @@ msgid "путь до кармана, провианта"
 msgstr "путь до кармана, провианта"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Путь назад"
 msgstr "Путь назад"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "путь назад −{percent}% на {seconds} с"
+msgstr "путь назад −{percent}% на {seconds} с"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23783,6 +24551,7 @@ msgid "Разворот считается отдельно"
 msgstr "Разворот считается отдельно"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Разговор закончится"
 msgstr "Разговор закончится"
@@ -23913,6 +24682,7 @@ msgid "Разрыв не в полтора раза и не в два —"
 msgstr "Разрыв не в полтора раза и не в два —"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "разрывает контакт"
 msgstr "разрывает контакт"
@@ -23923,6 +24693,7 @@ msgid "разрывает контакт: все теряют героя"
 msgstr "разрывает контакт: все теряют героя"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ракурс лагеря"
 msgstr "Ракурс лагеря"
@@ -24188,6 +24959,11 @@ msgid "Ратник"
 msgstr "Ратник"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "раунд {round} · противников {enemies}"
+msgstr "раунд {round} · противников {enemies}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "раунд ZXQPH0QXZ · противников ZXQPH1QXZ"
 msgstr "раунд {value0} · противников {value1}"
@@ -24286,6 +25062,11 @@ msgstr "Репер на поверхности"
 #: locales/legacy-messages.ts
 msgid "Реплики и облачка над головой"
 msgstr "Реплики и облачка над головой"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Репутация: {reputation} · Монеты: {coins} · {stone}: {stoneCount} · {wood}: {woodCount} · {iron}: {ironCount}"
+msgstr "Репутация: {reputation} · Монеты: {coins} · {stone}: {stoneCount} · {wood}: {woodCount} · {iron}: {ironCount}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -24568,6 +25349,7 @@ msgid "Ротация вместо простоя. Это же ограниче�
 msgstr "Ротация вместо простоя. Это же ограничение растягивает прогресс по дням, не вводя энергию."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Рубит, но не долбит камень"
 msgstr "Рубит, но не долбит камень"
@@ -24583,6 +25365,7 @@ msgid "Рубку как отдельную механику"
 msgstr "Рубку как отдельную механику"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Рудничный фонарь"
 msgstr "Рудничный фонарь"
@@ -24608,6 +25391,7 @@ msgid "руки"
 msgstr "руки"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Руки"
 msgstr "Руки"
@@ -24653,6 +25437,7 @@ msgid "Ручной сбор — известный способ добавит�
 msgstr "Ручной сбор — известный способ добавить лишнее касание и лишний заход в игру. Мы от него отказываемся"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Рыцарь"
 msgstr "Рыцарь"
@@ -24663,9 +25448,15 @@ msgid "рюкзак"
 msgstr "рюкзак"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Рюкзак"
 msgstr "Рюкзак"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Рюкзак {value}"
+msgstr "Рюкзак {value}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -24678,6 +25469,7 @@ msgid "Рюкзак +ZXQPH0QXZ"
 msgstr "Рюкзак +{value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Рюкзак +2"
 msgstr "Рюкзак +2"
@@ -24691,6 +25483,11 @@ msgstr "рюкзак +30% · добыча"
 #: locales/legacy-messages.ts
 msgid "рюкзак +30%, добыча"
 msgstr "рюкзак +30%, добыча"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "рюкзак +30%, добыча, защита"
+msgstr "рюкзак +30%, добыча, защита"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -24808,6 +25605,16 @@ msgid "С ур. 3 тяжёлая: шаг дороже на 15%"
 msgstr "С ур. 3 тяжёлая: шаг дороже на 15%"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "с фонарём"
+msgstr "с фонарём"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "с щитом"
+msgstr "с щитом"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "с яруса 0"
 msgstr "с яруса 0"
@@ -24913,6 +25720,7 @@ msgid "сапоги"
 msgstr "сапоги"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сапоги"
 msgstr "Сапоги"
@@ -25073,6 +25881,7 @@ msgid "свободное время"
 msgstr "свободное время"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Свободный"
 msgstr "Свободный"
@@ -25086,6 +25895,11 @@ msgstr "свободный1"
 #: locales/legacy-messages.ts
 msgid "Свободных пиксельных наборов мало — большую часть придётся дорисовывать"
 msgstr "Свободных пиксельных наборов мало — большую часть придётся дорисовывать"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Свободных слотов {free} из {max} — остальные откроют навыки"
+msgstr "Свободных слотов {free} из {max} — остальные откроют навыки"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25138,6 +25952,7 @@ msgid "своя палатка золотая, чужие — светлые, а
 msgstr "своя палатка золотая, чужие — светлые, а цвет фракции остаётся на кольце"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Своя цена: наценки нет"
 msgstr "Своя цена: наценки нет"
@@ -25161,6 +25976,11 @@ msgstr "сгорание и отметка происходят мгновенн
 #: locales/legacy-messages.ts
 msgid "сгорание обязано укладываться в 400 мс"
 msgstr "сгорание обязано укладываться в 400 мс"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сдать: {quest}"
+msgstr "Сдать: {quest}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25188,14 +26008,21 @@ msgid "Северная стена чиста"
 msgstr "Северная стена чиста"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "сегодня"
 msgstr "сегодня"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сегодня работает"
 msgstr "Сегодня работает"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "сегодня уже была"
+msgstr "сегодня уже была"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25383,14 +26210,21 @@ msgid "Сид: тот же штрих дважды"
 msgstr "Сид: тот же штрих дважды"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сила"
 msgstr "Сила"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сила — вылазки, вложенные в лагерь: постройки, снаряжение, палатки и сундуки."
 msgstr "Сила — вылазки, вложенные в лагерь: постройки, снаряжение, палатки и сундуки."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сила — вылазки, вложенные в лагерь. На кромке {shown} лагерей соседей из {total}, остальные — в таблице."
+msgstr "Сила — вылазки, вложенные в лагерь. На кромке {shown} лагерей соседей из {total}, остальные — в таблице."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25523,6 +26357,7 @@ msgid "Скала против решётки"
 msgstr "Скала против решётки"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Скелет"
 msgstr "Скелет"
@@ -25563,6 +26398,7 @@ msgid "Скелет щёлкает зубами: «Тише, страшно»"
 msgstr "Скелет щёлкает зубами: «Тише, страшно»"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Скелет-воин"
 msgstr "Скелет-воин"
@@ -25583,6 +26419,7 @@ msgid "Скелет-воин стучит топором: «Порядок ко�
 msgstr "Скелет-воин стучит топором: «Порядок костяной»"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Скелет-маг"
 msgstr "Скелет-маг"
@@ -25648,6 +26485,7 @@ msgid "Скиннованных персонажей в кадре"
 msgstr "Скиннованных персонажей в кадре"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Склад"
 msgstr "Склад"
@@ -25948,14 +26786,25 @@ msgid "Слот занят — предложение меняется"
 msgstr "Слот занят — предложение меняется"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Слот занят другой стройкой"
 msgstr "Слот занят другой стройкой"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "слот занят: {building} ещё {duration}"
+msgstr "слот занят: {building} ещё {duration}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "слот занят: ZXQPH0QXZ ещё ZXQPH1QXZ"
 msgstr "слот занят: {value0} ещё {value1}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "слот занят: стена ещё {duration}"
+msgstr "слот занят: стена ещё {duration}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -26153,11 +27002,13 @@ msgid "Сначала эффект, потом цена."
 msgstr "Сначала эффект, потом цена."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Снести"
 msgstr "Снести"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Снимает одну рану"
 msgstr "Снимает одну рану"
@@ -26278,6 +27129,7 @@ msgid "Создайте запас на будущее"
 msgstr "Создайте запас на будущее"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Создать клан"
 msgstr "Создать клан"
@@ -26358,6 +27210,7 @@ msgid "соль-тень"
 msgstr "соль-тень"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Соляная буря"
 msgstr "Соляная буря"
@@ -26423,6 +27276,7 @@ msgid "Сортировка по готовности"
 msgstr "Сортировка по готовности"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "сосед"
 msgstr "сосед"
@@ -26548,6 +27402,7 @@ msgid "спит"
 msgstr "спит"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Спокойная рука"
 msgstr "Спокойная рука"
@@ -26568,11 +27423,13 @@ msgid "Спрайты меньше и дешевле в анимации"
 msgstr "Спрайты меньше и дешевле в анимации"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Спросить, откуда"
 msgstr "Спросить, откуда"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Спросить, что ищет"
 msgstr "Спросить, что ищет"
@@ -26628,11 +27485,13 @@ msgid "Сравнивает цену с тем, что принёс, и реша
 msgstr "Сравнивает цену с тем, что принёс, и решает."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сразиться"
 msgstr "Сразиться"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "сразу"
 msgstr "сразу"
@@ -26706,6 +27565,11 @@ msgstr "ставка"
 #: locales/legacy-messages.ts
 msgid "Ставка"
 msgstr "Ставка"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "ставка {stake}%"
+msgstr "ставка {stake}%"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -26873,6 +27737,12 @@ msgid "Статус документа."
 msgstr "Статус документа."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стая: оттолкнётся только первый"
+msgstr "Стая: оттолкнётся только первый"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Стёганая куртка"
 msgstr "Стёганая куртка"
@@ -26898,6 +27768,7 @@ msgid "стена"
 msgstr "стена"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Стена"
 msgstr "Стена"
@@ -26993,6 +27864,7 @@ msgid "Стены гаснут, пока герой во дворе. Гарни�
 msgstr "Стены гаснут, пока герой во дворе. Гарнизон ушёл наружу не по своей воле: двор камера прячет за стеной. Пока во дворе было пусто, это ничего не стоило — прятать было некого. Жильцы вопрос вернули, и замер показал, что он больше, чем казался: стена в две клетки при камере в 30° прячет за собой около четырёх с половиной клеток земли, и по ста двадцати сидам на четверти двора герой скрыт целиком, ещё на трети — наполовину. Прятался не только жилец, но и сам герой. Поэтому материал замка уходит в прозрачность 0,45, как только герой вошёл во двор, и возвращается, когда тот вышел. Тень стена кладёт прежнюю: она не исчезла, её видно насквозь."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Стены лагеря"
 msgstr "Стены лагеря"
@@ -27001,6 +27873,11 @@ msgstr "Стены лагеря"
 #: locales/legacy-messages.ts
 msgid "Стены остаются камнем"
 msgstr "Стены остаются камнем"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "стены, башни, двор"
+msgstr "стены, башни, двор"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -27128,6 +28005,7 @@ msgid "Стража спешит ко двору!"
 msgstr "Стража спешит ко двору!"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Стражник"
 msgstr "Стражник"
@@ -27188,6 +28066,16 @@ msgid "стрелы"
 msgstr "стрелы"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стрелы {arrows} / {capacity} · +{pack} · {price}"
+msgstr "Стрелы {arrows} / {capacity} · +{pack} · {price}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стрелы {count}"
+msgstr "Стрелы {count}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Стрелы ZXQPH0QXZ"
 msgstr "Стрелы {value0}"
@@ -27218,6 +28106,7 @@ msgid "строим"
 msgstr "строим"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Строим лагерь"
 msgstr "Строим лагерь"
@@ -27228,6 +28117,7 @@ msgid "строит, а не крутит камеру"
 msgstr "строит, а не крутит камеру"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Строительство"
 msgstr "Строительство"
@@ -27398,6 +28288,7 @@ msgid "стычка стоит 2 провианта вместо 3"
 msgstr "стычка стоит 2 провианта вместо 3"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Стычки"
 msgstr "Стычки"
@@ -27443,6 +28334,7 @@ msgid "сумка"
 msgstr "сумка"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сумка"
 msgstr "Сумка"
@@ -27468,6 +28360,7 @@ msgid "сундук"
 msgstr "сундук"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сундук"
 msgstr "Сундук"
@@ -27478,9 +28371,19 @@ msgid "сундук — контейнер вылазки, если привод
 msgstr "сундук — контейнер вылазки, если приводить высотой"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сундук · {cost}"
+msgstr "Сундук · {cost}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Сундук · ZXQPH0QXZ"
 msgstr "Сундук · {value0}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сундук ×{count}"
+msgstr "Сундук ×{count}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -27493,6 +28396,7 @@ msgid "Сундук взят наполовину"
 msgstr "Сундук взят наполовину"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сундук некуда поставить — площадка занята"
 msgstr "Сундук некуда поставить — площадка занята"
@@ -27563,6 +28467,7 @@ msgid "сходятся не все"
 msgstr "сходятся не все"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Схрон"
 msgstr "Схрон"
@@ -27748,6 +28653,7 @@ msgid "Так зовут фракцию мира"
 msgstr "Так зовут фракцию мира"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Так и звать"
 msgstr "Так и звать"
@@ -27773,6 +28679,7 @@ msgid "Тап"
 msgstr "Тап"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тап по гексу — шаг, по противнику — удар"
 msgstr "Тап по гексу — шаг, по противнику — удар"
@@ -27793,6 +28700,11 @@ msgid "Тап по земле неточен: экранная точка нео
 msgstr "Тап по земле неточен: экранная точка неоднозначно ложится на две координаты"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Тап по клетке · ещё тап — ярус выше, до {max}"
+msgstr "Тап по клетке · ещё тап — ярус выше, до {max}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Тап по клетке · ещё тап — ярус выше, до ZXQPH0QXZ"
 msgstr "Тап по клетке · ещё тап — ярус выше, до {value0}"
@@ -27803,21 +28715,25 @@ msgid "Тап по клетке · ещё тап — ярус выше, до 3"
 msgstr "Тап по клетке · ещё тап — ярус выше, до 3"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тап по клетке · ночью горит сам"
 msgstr "Тап по клетке · ночью горит сам"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тап по клетке у стены изнутри"
 msgstr "Тап по клетке у стены изнутри"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тап по середине прямого участка"
 msgstr "Тап по середине прямого участка"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тап по тому, что стоит"
 msgstr "Тап по тому, что стоит"
@@ -27848,11 +28764,17 @@ msgid "Тара"
 msgstr "Тара"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Таран усилен и не отбрасывается"
+msgstr "Таран усилен и не отбрасывается"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Тащите вещь из рюкзака на слот. Слот подсветится жёлтым, если вещь ему подходит, и красным, если нет: кольцо в слот оружия не влезет. Короткий тап работает вместо перетаскивания — вещь уходит в свой слот сама, а надетая возвращается в рюкзак. Наведение показывает, что изменится в вылазке, до того как вещь надета. Фигура поворачивается перетаскиванием и колесом, а три кнопки под ней крутят на четверть — так же, как камера вылазки."
 msgstr "Тащите вещь из рюкзака на слот. Слот подсветится жёлтым, если вещь ему подходит, и красным, если нет: кольцо в слот оружия не влезет. Короткий тап работает вместо перетаскивания — вещь уходит в свой слот сама, а надетая возвращается в рюкзак. Наведение показывает, что изменится в вылазке, до того как вещь надета. Фигура поворачивается перетаскиванием и колесом, а три кнопки под ней крутят на четверть — так же, как камера вылазки."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тащите вещь из сумки на слот — или коротко тапните по ней."
 msgstr "Тащите вещь из сумки на слот — или коротко тапните по ней."
@@ -28003,6 +28925,7 @@ msgid "Типы ресурсов и их назначение. Пока это �
 msgstr "Типы ресурсов и их назначение. Пока это просто «добыча»."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тихая ночь"
 msgstr "Тихая ночь"
@@ -28223,6 +29146,7 @@ msgid "топор"
 msgstr "топор"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Топор"
 msgstr "Топор"
@@ -28253,11 +29177,13 @@ msgid "Топь"
 msgstr "Топь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "торговец"
 msgstr "торговец"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Торговец"
 msgstr "Торговец"
@@ -28268,6 +29194,7 @@ msgid "Торговец в замке"
 msgstr "Торговец в замке"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Торговца"
 msgstr "Торговца"
@@ -28393,6 +29320,7 @@ msgid "трава"
 msgstr "трава"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Трава"
 msgstr "Трава"
@@ -28463,6 +29391,7 @@ msgid "Тренировка поднимает уровень без вылаз�
 msgstr "Тренировка поднимает уровень без вылазок: 1 уровень за 2 часа, потолок — на два ниже лучшего героя."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тренировочный слот занят"
 msgstr "Тренировочный слот занят"
@@ -28703,9 +29632,15 @@ msgid "тропа"
 msgstr "тропа"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тропа"
 msgstr "Тропа"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "тропа, развилки, тупики"
+msgstr "тропа, развилки, тупики"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -28748,6 +29683,7 @@ msgid "Тяжелее бюджета"
 msgstr "Тяжелее бюджета"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тяжёлое: рюкзак −1"
 msgstr "Тяжёлое: рюкзак −1"
@@ -28758,6 +29694,7 @@ msgid "Тяжёлый кошель"
 msgstr "Тяжёлый кошель"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Тяжёлый: рюкзак −1"
 msgstr "Тяжёлый: рюкзак −1"
@@ -28958,6 +29895,16 @@ msgid "убрать защиту от совпадения осей"
 msgstr "убрать защиту от совпадения осей"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Уворот {dodge}%"
+msgstr "Уворот {dodge}%"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Уворот {dodge}% · щит: первый ближний удар оттолкнёт"
+msgstr "Уворот {dodge}% · щит: первый ближний удар оттолкнёт"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Угли"
 msgstr "Угли"
@@ -29023,6 +29970,17 @@ msgid "Уголь"
 msgstr "Уголь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Угроза: {damage} · {guard} {damage}→{guarded} · ударов {attacks}"
+msgstr "Угроза: {damage} · {guard} {damage}→{guarded} · ударов {attacks}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Угрозы нет · к следующему кругу отрыв"
+msgstr "Угрозы нет · к следующему кругу отрыв"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Удар"
 msgstr "Удар"
@@ -29051,6 +30009,11 @@ msgstr "Удар в клипе — это пик скорости конечно
 #: locales/legacy-messages.ts
 msgid "Удар остался KayKit"
 msgstr "Удар остался KayKit"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Удара в этом круге нет"
+msgstr "Удара в этом круге нет"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -29083,6 +30046,7 @@ msgid "узкий конус капюшона"
 msgstr "узкий конус капюшона"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Уйти"
 msgstr "Уйти"
@@ -29113,9 +30077,15 @@ msgid "Улучшение здания"
 msgstr "Улучшение здания"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Улучшить"
 msgstr "Улучшить"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Улучшить · {points}"
+msgstr "Улучшить · {points}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -29123,11 +30093,17 @@ msgid "Улучшить · ZXQPH0QXZ"
 msgstr "Улучшить · {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Улучшить: {item}"
+msgstr "Улучшить: {item}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Улучшить: ZXQPH0QXZ"
 msgstr "Улучшить: {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Умение"
 msgstr "Умение"
@@ -29206,6 +30182,26 @@ msgstr "ур {value0}"
 #: locales/legacy-messages.ts
 msgid "ур."
 msgstr "ур."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "ур. {level}"
+msgstr "ур. {level}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "ур. {level} · {effect}"
+msgstr "ур. {level} · {effect}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "ур. {level} / {max}"
+msgstr "ур. {level} / {max}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "ур. {level} → {next}"
+msgstr "ур. {level} → {next}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -29453,6 +30449,11 @@ msgid "Ускорение камнем"
 msgstr "Ускорение камнем"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ускорить · монеты {coins}"
+msgstr "Ускорить · монеты {coins}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Ускорить · монеты ZXQPH0QXZ"
 msgstr "Ускорить · монеты {value0}"
@@ -29653,6 +30654,7 @@ msgid "фонарь"
 msgstr "фонарь"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Фонарь"
 msgstr "Фонарь"
@@ -29768,6 +30770,7 @@ msgid "Фракции и истощение локаций"
 msgstr "Фракции и истощение локаций"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "фракция"
 msgstr "фракция"
@@ -29778,6 +30781,7 @@ msgid "фракция ·"
 msgstr "фракция ·"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Фракция мира. Сегодня её людей на точках не видно."
 msgstr "Фракция мира. Сегодня её людей на точках не видно."
@@ -29793,6 +30797,12 @@ msgid "фронт роста"
 msgstr "фронт роста"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Характеристик у жильца игра не считает — есть занятие и крыша."
+msgstr "Характеристик у жильца игра не считает — есть занятие и крыша."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Характеристики"
 msgstr "Характеристики"
@@ -29863,9 +30873,15 @@ msgid "ходим"
 msgstr "ходим"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ходим в вылазки"
 msgstr "Ходим в вылазки"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ходит {unit}"
+msgstr "Ходит {unit}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -30603,6 +31619,7 @@ msgid "Что будет в вылазке"
 msgstr "Что будет в вылазке"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Что будет в вылазке · §14"
 msgstr "Что будет в вылазке · §14"
@@ -30893,6 +31910,11 @@ msgid "Что страхует"
 msgstr "Что страхует"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Что там"
+msgstr "Что там"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Что экран обязан делать"
 msgstr "Что экран обязан делать"
@@ -31013,11 +32035,13 @@ msgid "шаг в чащу: −3 провианта, клетка станови�
 msgstr "шаг в чащу: −3 провианта, клетка становится поляной до конца вылазки"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Шаг дешевле на 10%"
 msgstr "Шаг дешевле на 10%"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Шаг дороже на 15%"
 msgstr "Шаг дороже на 15%"
@@ -31028,6 +32052,7 @@ msgid "шаг дороже на треть, обзор −1"
 msgstr "шаг дороже на треть, обзор −1"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Шаг дороже на треть, обзор короче"
 msgstr "Шаг дороже на треть, обзор короче"
@@ -31153,6 +32178,7 @@ msgid "Шкала яркости считается по задетому, а н
 msgstr "Шкала яркости считается по задетому, а не по всей картинке: под треугольниками"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Шлем"
 msgstr "Шлем"
@@ -31243,6 +32269,7 @@ msgid "шум с подъёмом 900→2600 Гц · 90 мс"
 msgstr "шум с подъёмом 900→2600 Гц · 90 мс"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Шумные: угроза быстрее"
 msgstr "Шумные: угроза быстрее"
@@ -31258,6 +32285,7 @@ msgid "щит"
 msgstr "щит"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Щит"
 msgstr "Щит"
@@ -31593,6 +32621,7 @@ msgid "ярус 0–1 · шум ветра, светлый"
 msgstr "ярус 0–1 · шум ветра, светлый"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ярус 1"
 msgstr "Ярус 1"
@@ -31638,6 +32667,7 @@ msgid "Ярус 1 · ставка 30%"
 msgstr "Ярус 1 · ставка 30%"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ярус 2"
 msgstr "Ярус 2"

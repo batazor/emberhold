@@ -225,6 +225,10 @@ for (const [file, code] of sources) {
       if (row[2] === '') continue;
       corpus.push({ text: row[2]!, where: line(m.index), channel, from: name, key: row[1]! });
     }
+    for (const row of m[2]!.matchAll(/^\s*'?([\w-]+)'?:\s*gameMessage\('([^']*)'/gm)) {
+      if (row[2] === '') continue;
+      corpus.push({ text: row[2]!, where: line(m.index), channel, from: name, key: row[1]! });
+    }
   }
 
   // Вызовы: строка, отданная полосе прямо в аргументе.
@@ -242,6 +246,13 @@ for (const [file, code] of sources) {
   if (file === DIALOGUE_FILE) {
     for (const m of code.matchAll(/\.textContent\s*=\s*([^;]+);/g)) {
       for (const text of literals(m[1]!)) {
+        corpus.push({ text, where: line(m.index), channel: 'диалог', from: 'meetPanel' });
+      }
+    }
+    // Explicit Lingui messages keep the source line inside gameMessage().
+    for (const m of code.matchAll(/setGameText\(\s*this\.line\s*,/g)) {
+      const at = m.index + m[0].indexOf('(');
+      for (const text of literals(argsOf(code, at))) {
         corpus.push({ text, where: line(m.index), channel: 'диалог', from: 'meetPanel' });
       }
     }

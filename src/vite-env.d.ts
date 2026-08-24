@@ -6,7 +6,7 @@ interface EmberholdLanguageApi {
   toggle(parent: HTMLElement, className?: string): HTMLElement;
   message(
     descriptor: { readonly id: string; readonly message: string },
-    values?: Readonly<Record<string, string | number>>,
+    values?: Readonly<Record<string, string | number | { readonly kind: 'duration'; readonly seconds: number }>>,
   ): string;
   translate(text: string): string;
   localize(root: Node): void;

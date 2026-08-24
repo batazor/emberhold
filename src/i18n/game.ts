@@ -1,6 +1,12 @@
 import type { GameMessage } from './gameMessages';
 
-export type GameMessageValues = Readonly<Record<string, string | number>>;
+export interface GameDurationValue {
+  readonly kind: 'duration';
+  readonly seconds: number;
+}
+
+export type GameMessageValue = string | number | GameDurationValue;
+export type GameMessageValues = Readonly<Record<string, GameMessageValue>>;
 
 interface GameMessagePayload {
   readonly id: string;
@@ -14,8 +20,36 @@ const payload = (descriptor: GameMessage, values?: GameMessageValues): GameMessa
   ...(values === undefined ? {} : { values }),
 });
 
+const fallbackValue = (value: GameMessageValue): string | number => {
+  if (typeof value !== 'object') return value;
+  const seconds = Math.max(0, Math.ceil(value.seconds));
+  if (seconds >= 3600) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.round((seconds % 3600) / 60);
+    return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
+  }
+  if (seconds >= 60) {
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return rest > 0 ? `${minutes} мин ${rest} с` : `${minutes} мин`;
+  }
+  return `${seconds} с`;
+};
+
 const interpolate = (source: string, values: GameMessageValues = {}): string =>
-  source.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) => String(values[name] ?? whole));
+  source.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) => {
+    const value = values[name];
+    return value === undefined ? whole : String(fallbackValue(value));
+  });
+
+/** Natural-language Lingui ID for static UI copy declared beside its render point. */
+export const gameMessage = (source: string, translation?: string): GameMessage => ({
+  id: source,
+  message: source,
+  ...(translation === undefined ? {} : { translation }),
+});
+
+export const gameDuration = (seconds: number): GameDurationValue => ({ kind: 'duration', seconds });
 
 export function gameText(descriptor: GameMessage, values?: GameMessageValues): string {
   return window.EmberholdLanguage?.message(descriptor, values) ?? interpolate(descriptor.message, values);
@@ -24,6 +58,19 @@ export function gameText(descriptor: GameMessage, values?: GameMessageValues): s
 export function setGameText(element: Element, descriptor: GameMessage, values?: GameMessageValues): void {
   element.setAttribute('data-lingui-text', JSON.stringify(payload(descriptor, values)));
   element.textContent = gameText(descriptor, values);
+}
+
+const escapeHtml = (value: string): string => value
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;');
+
+/** Explicit text payload for existing innerHTML-based panels. */
+export function gameMarkup(descriptor: GameMessage, values?: GameMessageValues): string {
+  const encoded = escapeHtml(JSON.stringify(payload(descriptor, values)));
+  return `<span data-lingui-text="${encoded}">${escapeHtml(gameText(descriptor, values))}</span>`;
 }
 
 export function clearGameText(element: Element): void {

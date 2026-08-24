@@ -1,9 +1,10 @@
-import { TIER_NAME, TIER_RISK } from '../sim/config';
-import { CONSUMABLES } from '../sim/consumables';
-import { SKILLS, skillEffect } from '../sim/heroes';
+import { TIER_RISK } from '../sim/config';
+import { cacheLoot, haulCapacity, skillSeconds, trailDiscount } from '../sim/heroes';
 import { atRisk, backLeft } from '../sim/raid';
 import type { RaidState } from '../sim/raid';
 import type { Reveal } from '../sim/onboarding';
+import { consumableMessage, skillMessage, tierMessage } from '../i18n/gameData';
+import { gameMarkup, gameMessage, gameText, setGameAttribute, setGameText } from '../i18n/game';
 
 /**
  * §6: UI — DOM поверх канваса, не внутри сцены.
@@ -94,19 +95,19 @@ export class Hud {
     this.root.innerHTML = `
       <div class="panel top">
         <div class="stats">
-          <span class="lbl" data-row="food">Провиант</span>
+          <span class="lbl" data-row="food">${gameMarkup(gameMessage('Провиант', 'Provisions'))}</span>
           <div class="bar" data-row="food"><i id="h-food-bar"></i></div>
           <span class="num" id="h-food" data-row="food">0</span>
 
-          <span class="lbl" data-row="wounds">Здоровье</span>
+          <span class="lbl" data-row="wounds">${gameMarkup(gameMessage('Здоровье', 'Health'))}</span>
           <div class="bar" id="h-wounds" data-row="wounds"><i></i></div>
           <span class="num" id="h-wounds-num" data-row="wounds">0</span>
 
-          <span class="lbl" data-row="bag">Рюкзак</span>
+          <span class="lbl" data-row="bag">${gameMarkup(gameMessage('Рюкзак', 'Backpack'))}</span>
           <div class="bar" data-row="bag"><i id="h-bag-bar"></i></div>
           <span class="num" id="h-bag" data-row="bag">0 / 0</span>
 
-          <span class="lbl" data-row="back">Путь назад</span>
+          <span class="lbl" data-row="back">${gameMarkup(gameMessage('Путь назад', 'Way back'))}</span>
           <div class="bar back" data-row="back"><i id="h-back-bar"></i></div>
           <span class="num" id="h-back" data-row="back">0 ш.</span>
         </div>
@@ -117,10 +118,10 @@ export class Hud {
         <div id="h-hint" class="chip hint"></div>
         <div id="h-prompt" class="prompt"></div>
         <div class="ctl">
-          <button data-act="rot-l" data-row="controls" aria-label="Повернуть влево"><i class="icon turn" aria-hidden="true"></i></button>
-          <button data-act="rot-r" data-row="controls" aria-label="Повернуть вправо"><i class="icon turn r" aria-hidden="true"></i></button>
-          <button data-act="skill" id="h-skill" data-row="controls">Умение</button>
-          <button data-act="evac" data-row="evac"><i class="icon home" aria-hidden="true"></i> Домой</button>
+          <button data-act="rot-l" data-row="controls"><i class="icon turn" aria-hidden="true"></i></button>
+          <button data-act="rot-r" data-row="controls"><i class="icon turn r" aria-hidden="true"></i></button>
+          <button data-act="skill" id="h-skill" data-row="controls">${gameMarkup(gameMessage('Умение', 'Skill'))}</button>
+          <button data-act="evac" data-row="evac"><i class="icon home" aria-hidden="true"></i> ${gameMarkup(gameMessage('Домой', 'Return home'))}</button>
         </div>
       </div>`;
     parent.appendChild(this.root);
@@ -141,6 +142,8 @@ export class Hud {
     this.stats = document.createElement('div');
     this.stats.id = 'stats';
     this.stats.className = 'chip';
+    setGameAttribute(this.root.querySelector('[data-act="rot-l"]')!, 'aria-label', gameMessage('Повернуть влево', 'Turn left'));
+    setGameAttribute(this.root.querySelector('[data-act="rot-r"]')!, 'aria-label', gameMessage('Повернуть вправо', 'Turn right'));
     if (this.debug) {
       const bottom = this.root.querySelector('.bottom');
       // Ряд собирается целиком здесь, а не прячется в разметке выключателем:
@@ -148,9 +151,9 @@ export class Hud {
       const debugRow = document.createElement('div');
       debugRow.className = 'panel night';
       debugRow.innerHTML = `
-        <span class="lbl">Ночь</span>
+        <span class="lbl">${gameMarkup(gameMessage('Ночь', 'Night'))}</span>
         <input id="h-night" type="range" min="0" max="100" value="${Math.round(debug!.night * 100)}">
-        <span class="lbl">Трава</span>
+        <span class="lbl">${gameMarkup(gameMessage('Трава', 'Grass'))}</span>
         <input id="h-grass" type="range" min="0" max="64" value="${debug!.grass}">
         <button data-act="zoom-in">＋</button><button data-act="zoom-out">－</button>`;
       bottom?.insertBefore(debugRow, bottom.querySelector('.ctl'));
@@ -191,15 +194,32 @@ export class Hud {
 
     // Кнопка не исчезает после применения, а гаснет: исчезнувшая читается
     // как поломка, а гаснущая — как «уже потратил» (§11.7 — отката нет).
-    const skill = SKILLS[state.loadout.skill];
-    this.skill.title = `${skill.name} · ур. ${state.loadout.skillLevel}: ${skillEffect(skill.id, state.loadout.skillLevel)}`;
+    const skill = skillMessage[state.loadout.skill];
+    const level = state.loadout.skillLevel;
+    const effect = state.loadout.skill === 'trail'
+      ? gameText(gameMessage('путь назад −{percent}% на {seconds} с', 'way back −{percent}% for {seconds} sec'), {
+          percent: Math.round(trailDiscount(level) * 100), seconds: skillSeconds('trail', level),
+        })
+      : state.loadout.skill === 'haul'
+        ? gameText(gameMessage('+{capacity} вместимости до конца вылазки', '+{capacity} capacity until the raid ends'), {
+            capacity: haulCapacity(level),
+          })
+        : gameText(gameMessage('находки ×{multiplier} на {seconds} с', 'loot ×{multiplier} for {seconds} sec'), {
+            multiplier: cacheLoot(level).toFixed(2).replace(/\.00$/, ''), seconds: skillSeconds('cache', level),
+          });
+    setGameAttribute(this.skill, 'title', gameMessage('{skill} · ур. {level}: {effect}', '{skill} · lvl {level}: {effect}'), {
+      skill: gameText(skill), level, effect,
+    });
     this.skill.disabled = state.skillUsed || state.status !== 'running';
-    this.skill.textContent =
-      state.skillLeft > 0
-        ? `${skill.name} · ${state.skillLeft.toFixed(0)} с`
-        : state.skillUsed
-          ? `${skill.name} · использовано`
-          : `${skill.name} · 1/1`;
+    if (state.skillLeft > 0) {
+      setGameText(this.skill, gameMessage('{skill} · {seconds} с', '{skill} · {seconds} sec'), {
+        skill: gameText(skill), seconds: state.skillLeft.toFixed(0),
+      });
+    } else if (state.skillUsed) {
+      setGameText(this.skill, gameMessage('{skill} · использовано', '{skill} · used'), { skill: gameText(skill) });
+    } else {
+      setGameText(this.skill, gameMessage('{skill} · 1/1', '{skill} · 1/1'), { skill: gameText(skill) });
+    }
     const foodMax = state.foodMax;
     const food = Math.max(0, state.food);
 
@@ -234,10 +254,12 @@ export class Hud {
     const needed = food > 0 ? Math.min(1, back / food) : 1;
     this.backBar.style.width = `${needed * 100}%`;
     this.backBar.className = needed > 0.9 ? 'bad' : needed > 0.6 ? 'warn' : 'dimbar';
-    this.back.textContent = `${back} ш.`;
+    setGameText(this.back, gameMessage('{steps} ш.', '{steps} steps'), { steps: back });
 
-    this.risk.innerHTML = `Под угрозой <b>${atRisk(state)}</b> из ${state.bagTotal}`;
-    this.tier.textContent = `${TIER_NAME[tier]} · ставка ${Math.round(TIER_RISK[tier] * 100)}%`;
+    this.risk.innerHTML = `${gameMarkup(gameMessage('Под угрозой', 'At risk'))} <b>${atRisk(state)}</b> ${gameMarkup(gameMessage('из {total}', 'of {total}'), { total: state.bagTotal })}`;
+    setGameText(this.tier, gameMessage('{tier} · ставка {risk}%', '{tier} · stake {risk}%'), {
+      tier: gameText(tierMessage[tier]), risk: Math.round(TIER_RISK[tier] * 100),
+    });
     this.tier.className = tier >= 3 ? 'bad' : tier === 2 ? 'warn' : 'dim';
 
     // §21: слоты молчат. Пока расходник цел, слот тусклый; счётчиков,
@@ -264,13 +286,13 @@ export class Hud {
       for (const id of state.consumables) {
         const el = document.createElement('span');
         el.className = 'chip raid-slot';
-        el.textContent = CONSUMABLES[id].name;
+        setGameText(el, consumableMessage[id].name);
         this.slots.appendChild(el);
       }
       for (const id of state.fired) {
         const el = document.createElement('span');
         el.className = 'chip raid-slot spent';
-        el.textContent = CONSUMABLES[id].name;
+        setGameText(el, consumableMessage[id].name);
         this.slots.appendChild(el);
       }
     }

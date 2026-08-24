@@ -1,5 +1,23 @@
-import { GEAR, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine } from '../sim/gear';
+import { GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine } from '../sim/gear';
 import type { GearState, Offhand } from '../sim/gear';
+import { gearMessage, offhandMessage } from '../i18n/gameData';
+import { gameMessage, gameText, setGameAttribute, setGameText } from '../i18n/game';
+
+function gearEffectText(source: string): string {
+  if (source === 'не выковано') return gameText(gameMessage('не выковано', 'not forged'));
+  const match = /^ур\. (\d+) · (.+)$/.exec(source);
+  if (match === null) return window.EmberholdLanguage?.translate(source) ?? source;
+  const level = Number(match[1]);
+  const effect = match[2]!;
+  const value = /([+−-]?\d+(?:\.\d+)?%?)$/.exec(effect)?.[1] ?? '';
+  let translated = window.EmberholdLanguage?.translate(effect) ?? effect;
+  if (effect.startsWith('Атака ')) translated = gameText(gameMessage('Атака {value}', 'Attack {value}'), { value });
+  else if (effect.startsWith('Обзор ')) translated = gameText(gameMessage('Обзор {value}', 'Vision {value}'), { value });
+  else if (effect.startsWith('Защита ')) translated = gameText(gameMessage('Защита {value}', 'Defense {value}'), { value });
+  else if (effect.startsWith('Рюкзак ')) translated = gameText(gameMessage('Рюкзак {value}', 'Backpack {value}'), { value });
+  else if (effect.startsWith('Под угрозой меньше на ')) translated = gameText(gameMessage('Под угрозой меньше на {value}', '{value} less at risk'), { value });
+  return gameText(gameMessage('ур. {level} · {effect}', 'lvl {level} · {effect}'), { level, effect: translated });
+}
 
 /**
  * Секция снаряжения в разборе человека — одна на карточку героя
@@ -38,7 +56,7 @@ export class GearSection {
       }
       return;
     }
-    const key = `${GEAR_ORDER.map((slot) => gear[slot]).join(',')}:${offhand}`;
+    const key = `${document.documentElement.lang}:${GEAR_ORDER.map((slot) => gear[slot]).join(',')}:${offhand}`;
     if (key === this.key) return;
     this.key = key;
     const rows: HTMLElement[] = [];
@@ -51,8 +69,10 @@ export class GearSection {
         for (const hand of OFFHAND_ORDER) {
           const b = document.createElement('button');
           const def = OFFHAND[hand];
-          b.textContent = def.name;
-          b.title = gearItemLine(def, gear.torch);
+          setGameText(b, offhandMessage[hand]);
+          setGameAttribute(b, 'title', gameMessage('{effect}', '{effect}'), {
+            effect: gearEffectText(gearItemLine(def, gear.torch)),
+          });
           b.disabled = offhand === hand;
           b.addEventListener('click', () => this.onOffhand(hand));
           row.appendChild(b);
@@ -62,7 +82,10 @@ export class GearSection {
       }
       const line = document.createElement('div');
       line.className = 'r-meta';
-      line.textContent = `${GEAR[slot].name} · ${gearLine(slot, gear[slot])}`;
+      setGameText(line, gameMessage('{item} · {effect}', '{item} · {effect}'), {
+        item: gameText(gearMessage[slot]),
+        effect: gearEffectText(gearLine(slot, gear[slot])),
+      });
       rows.push(line);
     }
     this.el.replaceChildren(...rows);

@@ -1,4 +1,3 @@
-import { formatDuration } from '../core/clock';
 import {
   BUILDINGS,
   BUILDING_ORDER,
@@ -9,15 +8,12 @@ import {
   coinsOf,
   speedupCost,
   upgradeBlock,
-  UPGRADE_REASON,
-  GEAR_REASON,
 } from '../sim/camp';
 import type { BuildingId, CampState } from '../sim/camp';
 import { ARROW_PACK, ARROW_PACK_COST, canBuyArrows } from '../sim/camp';
 import {
   CHEST_BONUS,
   CHEST_COST,
-  CHEST_REASON,
   chestBlock,
   storeCapacity,
   storeUsed,
@@ -36,7 +32,7 @@ import type { Visit } from '../sim/world';
 import type { LiveCamp } from '../sim/standing';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
-import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
+import { TENT_COST, homeless, homelessFolk, tentBlock } from '../sim/residents';
 import { clanTaskOpen } from '../sim/clan';
 import { avatarSvg } from './avatar';
 import { DailyPanel } from './dailyPanel';
@@ -46,6 +42,18 @@ import { Banner } from './banner';
 import type { Roster } from '../sim/heroes';
 import { WorldMap } from './worldMap';
 import { resourceIcon } from './resourceIcons';
+import {
+  clearGameAttribute,
+  clearGameText,
+  gameDuration,
+  gameMessage,
+  gameText,
+  setGameAttribute,
+  setGameText,
+  type GameMessageValues,
+} from '../i18n/game';
+import { buildingMessage, consumableMessage, gearMessage, offhandMessage, resourceMessage } from '../i18n/gameData';
+import type { GameMessage } from '../i18n/gameMessages';
 
 /**
  * Лагерь: сцена первая, карточка по тапу.
@@ -146,6 +154,32 @@ export type FlyTarget = ResourceKind | 'store' | 'quiver';
 
 const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
+
+const TENT_REASON_MESSAGE = {
+  nobody: gameMessage('Все под крышей'),
+  resources: gameMessage('Не хватает дерева'),
+  area: gameMessage('На площадке нет места'),
+} as const;
+
+const CHEST_REASON_MESSAGE = {
+  resources: gameMessage('Не хватает дерева'),
+  area: gameMessage('На площадке нет места'),
+} as const;
+
+const UPGRADE_REASON_MESSAGE = {
+  max: gameMessage('Максимальный уровень'),
+  locked: gameMessage('Нужно Жильё ур. 2'),
+  'hq-cap': gameMessage('Жильё не пускает выше'),
+  'slot-busy': gameMessage('Слот занят другой стройкой'),
+  resources: gameMessage('Не хватает ресурсов'),
+} as const;
+
+const GEAR_REASON_MESSAGE = {
+  'no-forge': gameMessage('Нужна Мастерская'),
+  max: gameMessage('Лучше не бывает'),
+  'forge-cap': gameMessage('Мастерская не тянет выше'),
+  resources: gameMessage('Не хватает железа'),
+} as const;
 
 interface Row {
   readonly box: HTMLElement;
@@ -255,7 +289,7 @@ export class CampHud {
       item.className = 'res-item';
       const label = document.createElement('span');
       label.className = 'lbl';
-      label.textContent = RESOURCE_NAME[kind];
+      setGameText(label, resourceMessage[kind]);
       const value = document.createElement('b');
       value.textContent = '0';
       item.append(label, value);
@@ -269,7 +303,7 @@ export class CampHud {
     meter.className = 'res-item';
     const meterLabel = document.createElement('span');
     meterLabel.className = 'lbl';
-    meterLabel.textContent = 'кладовая';
+    setGameText(meterLabel, gameMessage('кладовая', 'storage'));
     this.storeMeter = document.createElement('b');
     meter.append(meterLabel, this.storeMeter);
     meter.addEventListener('click', () => this.openStore());
@@ -323,7 +357,7 @@ export class CampHud {
     this.sheetTitle = document.createElement('b');
     this.sheetClose = document.createElement('button');
     this.sheetClose.className = 'ghost sheet-x';
-    this.sheetClose.textContent = 'Закрыть';
+    setGameText(this.sheetClose, gameMessage('Закрыть'));
     this.sheetClose.addEventListener('click', () => this.close());
     head.append(this.sheetTitle, this.sheetClose);
     this.sheet.appendChild(head);
@@ -374,7 +408,7 @@ export class CampHud {
       pic.src = resourceIcon(kind)!;
       pic.alt = '';
       const label = document.createElement('span');
-      label.textContent = RESOURCE_NAME[kind];
+      setGameText(label, resourceMessage[kind]);
       const value = document.createElement('b');
       value.textContent = '0';
       item.append(pic, label, value);
@@ -401,7 +435,7 @@ export class CampHud {
     this.chestStatus.className = 'dim';
     this.chestButton = document.createElement('button');
     this.chestButton.className = 'act';
-    this.chestButton.textContent = 'Поставить';
+    setGameText(this.chestButton, gameMessage('Поставить'));
     // Лист закрывается, как у перестановки: дальше жест по земле, и сцена
     // обязана быть видна.
     this.chestButton.addEventListener('click', () => {
@@ -416,7 +450,7 @@ export class CampHud {
     // в карточке, а не отдельный режим редактирования лагеря.
     this.moveButton = document.createElement('button');
     this.moveButton.className = 'ghost move';
-    this.moveButton.textContent = 'Переставить';
+    setGameText(this.moveButton, gameMessage('Переставить'));
     this.moveButton.addEventListener('click', () => {
       if (!isBuilding(this.open)) return;
       this.cb.onMove(this.open);
@@ -499,7 +533,7 @@ export class CampHud {
     // не улучшение постройки, а свой режим со своим жестом, и прятать её
     // внутрь карточки Штаба значило бы соврать про то, чем она является.
     const walls = document.createElement('button');
-    walls.textContent = 'Строительство';
+    setGameText(walls, gameMessage('Строительство'));
     walls.addEventListener('click', () => {
       this.close();
       this.cb.onWalls();
@@ -509,13 +543,13 @@ export class CampHud {
     // пальца (`features/fan`) и стоит на экране постоянно. Лист открывался
     // ради одного вопроса — кем идти, — и на него теперь отвечает лицо
     // под пальцем, без листа и без второго касания.
-    const supplies = this.makeBarButton('Припасы', 'shop');
+    const supplies = this.makeBarButton(gameMessage('Припасы'), 'shop');
     this.suppliesButton = supplies;
     this.bar.append(
       walls,
-      this.makeActionButton('Жители', () => this.cb.onResidents()),
+      this.makeActionButton(gameMessage('Жители'), () => this.cb.onResidents()),
       supplies,
-      this.makeBarButton('В мир', 'tiers', true),
+      this.makeBarButton(gameMessage('В мир'), 'tiers', true),
     );
 
     // Значок стоит в пустом месте между полосами — там же, где сцена.
@@ -632,9 +666,9 @@ export class CampHud {
     });
   }
 
-  private makeBarButton(text: string, kind: SheetKind, primary = false): HTMLButtonElement {
+  private makeBarButton(text: GameMessage, kind: SheetKind, primary = false): HTMLButtonElement {
     const b = document.createElement('button');
-    b.textContent = text;
+    setGameText(b, text);
     if (primary) b.className = 'primary';
     // Повторный тап по той же кнопке закрывает лист: кнопка, которая только
     // открывает, вынуждает целиться в «Закрыть».
@@ -642,9 +676,9 @@ export class CampHud {
     return b;
   }
 
-  private makeActionButton(text: string, action: () => void): HTMLButtonElement {
+  private makeActionButton(text: GameMessage, action: () => void): HTMLButtonElement {
     const b = document.createElement('button');
-    b.textContent = text;
+    setGameText(b, text);
     b.addEventListener('click', () => {
       this.close();
       action();
@@ -694,7 +728,6 @@ export class CampHud {
   }
 
   private makeGearRow(slot: GearSlot): HTMLElement {
-    const def = GEAR[slot];
     const box = document.createElement('div');
     // Пять предметов подряд — список, и коробка ему нужна общая: `.card`.
     box.className = 'card b gear-row';
@@ -721,7 +754,7 @@ export class CampHud {
     const top = document.createElement('div');
     top.className = 'row b-top';
     const name = document.createElement('b');
-    name.textContent = def.name;
+    setGameText(name, gearMessage[slot]);
     const level = document.createElement('span');
     level.className = 'badge';
     top.append(name, level);
@@ -758,7 +791,11 @@ export class CampHud {
     if (kind === 'tiers') this.taskNudge = null;
     this.sheet.style.display = kind === null ? 'none' : '';
     for (const [key, el] of this.sections) el.style.display = key === kind ? '' : 'none';
-    this.sheetTitle.textContent = this.titleFor(kind);
+    const title = this.titleFor(kind);
+    if (title === null) {
+      clearGameText(this.sheetTitle);
+      this.sheetTitle.textContent = '';
+    } else setGameText(this.sheetTitle, title);
     if (kind === 'tiers' && this.last !== null) {
       this.map.open(this.last.camp, this.last.now);
       // Кадр мог встать до первого `sync`, когда выбирать было ещё не из чего:
@@ -803,15 +840,15 @@ export class CampHud {
     return this.open !== null;
   }
 
-  private titleFor(kind: SheetKind): string {
-    if (kind === null) return '';
-    if (kind === 'tiers') return 'Карта региона';
+  private titleFor(kind: SheetKind): GameMessage | null {
+    if (kind === null) return null;
+    if (kind === 'tiers') return gameMessage('Карта региона');
     // Заголовок называет ту же кнопку, что открыла лист: «В вылазку» здесь
     // называло кнопку, которой больше нет.
-    if (kind === 'shop') return 'Припасы';
-    if (kind === 'store') return 'Кладовая';
-    if (kind === 'daily') return 'Подарок за вход';
-    return BUILDINGS[kind].name;
+    if (kind === 'shop') return gameMessage('Припасы');
+    if (kind === 'store') return gameMessage('Кладовая');
+    if (kind === 'daily') return gameMessage('Подарок за вход');
+    return buildingMessage[kind];
   }
 
   /* ---------- обновление ---------- */
@@ -887,8 +924,11 @@ export class CampHud {
     // получилось и читалось поломкой. Двоеточие обходит падеж целиком
     // и работает с любым именем.
     const first = homelessFolk(camp)[0];
-    const who = first?.name ?? 'гость';
-    this.taskWhy.textContent = need === 1 ? `Без крыши: ${who}` : `Без крыши: ${who} и ещё ${need - 1}`;
+    const who = first?.name ?? gameText(gameMessage('гость'));
+    const taskMessage = need === 1
+      ? gameMessage('Без крыши: {who}', 'Needs shelter: {who}')
+      : gameMessage('Без крыши: {who} и ещё {count}', 'Need shelter: {who} and {count} more');
+    const taskValues: GameMessageValues = { who, count: need - 1 };
     const face = first === undefined ? '' : `${first.look}/${first.seed}`;
     if (this.taskFace.dataset['who'] !== face) {
       this.taskFace.dataset['who'] = face;
@@ -896,12 +936,21 @@ export class CampHud {
       this.taskFace.style.display = first === undefined ? 'none' : '';
     }
     const block = tentBlock(camp);
-    this.taskButton.textContent = `Палатка · ${this.costLine(0, TENT_COST)}`;
+    setGameText(this.taskButton, gameMessage('Палатка · {cost}', 'Tent · {cost}'), {
+      cost: this.costLine(0, TENT_COST),
+    });
     this.taskButton.disabled = block !== 'ok';
     // Название причины дописывается к поводу, а не заменяет его: игрок
     // должен видеть и что просят, и почему нельзя, — одно без другого
     // это либо задание без выхода, либо отказ без повода.
-    if (block !== 'ok') this.taskWhy.textContent += ` · ${TENT_REASON[block]}`;
+    if (block === 'ok') setGameText(this.taskWhy, taskMessage, taskValues);
+    else setGameText(this.taskWhy, gameMessage(
+      '{task} · {reason}',
+      '{task} · {reason}',
+    ), {
+      task: gameText(taskMessage, taskValues),
+      reason: gameText(TENT_REASON_MESSAGE[block]),
+    });
     this.taskDoes = 'tent';
   }
 
@@ -925,8 +974,8 @@ export class CampHud {
     this.task.style.display = 'flex';
     this.taskDoes = 'clan';
     this.hideTaskFace();
-    this.taskWhy.textContent = 'Лагерь без имени: соседи уже в таблице';
-    this.taskButton.textContent = 'Создать клан';
+    setGameText(this.taskWhy, gameMessage('Лагерь без имени: соседи уже в таблице'));
+    setGameText(this.taskButton, gameMessage('Создать клан'));
     this.taskButton.disabled = false;
   }
 
@@ -938,10 +987,17 @@ export class CampHud {
     this.task.style.display = 'flex';
     this.taskDoes = 'chest';
     this.hideTaskFace();
-    this.taskWhy.textContent =
-      `Кладовая почти полна: ${used}/${cap}` +
-      (block === 'ok' ? '' : ` · ${CHEST_REASON[block]}`);
-    this.taskButton.textContent = `Сундук · ${this.costLine(0, CHEST_COST)}`;
+    if (block === 'ok') setGameText(this.taskWhy, gameMessage(
+      'Кладовая почти полна: {used}/{capacity}',
+      'Storage is almost full: {used}/{capacity}',
+    ), { used, capacity: cap });
+    else setGameText(this.taskWhy, gameMessage(
+      'Кладовая почти полна: {used}/{capacity} · {reason}',
+      'Storage is almost full: {used}/{capacity} · {reason}',
+    ), { used, capacity: cap, reason: gameText(CHEST_REASON_MESSAGE[block]) });
+    setGameText(this.taskButton, gameMessage('Сундук · {cost}', 'Chest · {cost}'), {
+      cost: this.costLine(0, CHEST_COST),
+    });
     this.taskButton.disabled = block !== 'ok';
     return true;
   }
@@ -952,10 +1008,12 @@ export class CampHud {
     this.task.style.display = 'flex';
     this.taskDoes = 'shop';
     this.hideTaskFace();
-    this.taskWhy.textContent =
-      'Колчан пуст' +
-      (canBuyArrows(camp, cap) ? '' : ` · нужно ${this.costLine(0, ARROW_PACK_COST)}`);
-    this.taskButton.textContent = 'Припасы';
+    if (canBuyArrows(camp, cap)) setGameText(this.taskWhy, gameMessage('Колчан пуст'));
+    else setGameText(this.taskWhy, gameMessage(
+      'Колчан пуст · нужно {cost}',
+      'Quiver is empty · requires {cost}',
+    ), { cost: this.costLine(0, ARROW_PACK_COST) });
+    setGameText(this.taskButton, gameMessage('Припасы'));
     this.taskButton.disabled = false;
     return true;
   }
@@ -964,8 +1022,9 @@ export class CampHud {
     this.task.style.display = 'flex';
     this.taskDoes = 'world';
     this.hideTaskFace();
+    clearGameText(this.taskWhy);
     this.taskWhy.textContent = text;
-    this.taskButton.textContent = 'В мир';
+    setGameText(this.taskButton, gameMessage('В мир'));
     this.taskButton.disabled = false;
   }
 
@@ -1017,10 +1076,15 @@ export class CampHud {
       const button = this.shopButtons.get(id);
       if (button === undefined) continue;
       const price = (Object.entries(def.price) as [ResourceKind, number][])
-        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
         .join(' · ');
-      button.textContent = `${def.name} · ${price}`;
-      button.title = `${def.trigger} → ${def.effect}`;
+      const copy = consumableMessage[id];
+      setGameText(button, gameMessage('{name} · {price}', '{name} · {price}'), {
+        name: gameText(copy.name), price,
+      });
+      setGameAttribute(button, 'title', gameMessage('{trigger} → {effect}', '{trigger} → {effect}'), {
+        trigger: gameText(copy.trigger), effect: gameText(copy.effect),
+      });
       const full = camp.loadout.length >= CONSUMABLE_SLOTS;
       const afford = (Object.entries(def.price) as [ResourceKind, number][]).every(
         ([kind, amount]) => (camp.resources[kind] ?? 0) >= amount,
@@ -1036,10 +1100,16 @@ export class CampHud {
     this.quiver.style.display = cap > 0 ? '' : 'none';
     if (cap > 0) {
       const price = (Object.entries(ARROW_PACK_COST) as [ResourceKind, number][])
-        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+        .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
         .join(' · ');
-      this.quiver.textContent = `Стрелы ${camp.arrows} / ${cap} · +${ARROW_PACK} · ${price}`;
-      this.quiver.title = 'Колчан пустеет за вылазку — донесённое возвращается в лагерь';
+      setGameText(this.quiver, gameMessage(
+        'Стрелы {arrows} / {capacity} · +{pack} · {price}',
+        'Arrows {arrows} / {capacity} · +{pack} · {price}',
+      ), { arrows: camp.arrows, capacity: cap, pack: ARROW_PACK, price });
+      setGameAttribute(this.quiver, 'title', gameMessage(
+        'Колчан пустеет за вылазку — донесённое возвращается в лагерь',
+        'The quiver is consumed during a run — unused arrows return to camp',
+      ));
       this.quiver.disabled = !canBuyArrows(camp, cap);
     }
 
@@ -1054,7 +1124,8 @@ export class CampHud {
       const b = this.offhandButtons.get(hand);
       if (b === undefined) continue;
       const def = OFFHAND[hand];
-      b.textContent = def.name;
+      setGameText(b, offhandMessage[hand]);
+      clearGameAttribute(b, 'title');
       b.title = gearItemLine(def, level);
       b.className = 'slot' + (camp.offhand === hand ? '' : ' empty');
       b.disabled = camp.offhand === hand;
@@ -1065,10 +1136,10 @@ export class CampHud {
       const taken = camp.loadout[i];
       const slot = document.createElement('button');
       slot.className = 'slot' + (taken === undefined ? ' empty' : '');
-      slot.textContent = taken === undefined ? 'пусто' : CONSUMABLES[taken].name;
+      setGameText(slot, taken === undefined ? gameMessage('пусто') : consumableMessage[taken].name);
       slot.disabled = taken === undefined;
       if (taken !== undefined) {
-        slot.title = 'Вернуть';
+        setGameAttribute(slot, 'title', gameMessage('Вернуть'));
         slot.addEventListener('click', () => this.cb.onRefundConsumable(i));
       }
       this.slots.appendChild(slot);
@@ -1085,37 +1156,48 @@ export class CampHud {
       const left = Math.max(0, c.endsAt - now);
       const total = Math.max(1, c.endsAt - c.startedAt);
       const price = speedupCost(left, total);
-      row.level.textContent = `ур. ${level} → ${c.toLevel}`;
+      setGameText(row.level, gameMessage('ур. {level} → {next}', 'lvl {level} → {next}'), {
+        level, next: c.toLevel,
+      });
       row.effect.textContent = BUILDINGS[id].effect(c.toLevel);
       row.barWrap.style.display = '';
       row.bar.style.width = `${((1 - left / total) * 100).toFixed(1)}%`;
-      row.status.textContent = formatDuration(left);
+      setGameText(row.status, gameMessage('{duration}', '{duration}'), { duration: gameDuration(left) });
       row.button.dataset['mode'] = 'speedup';
       // §20.5 — последние пять минут бесплатны.
-      row.button.textContent = price === 0 ? 'Достроить' : `Ускорить · монеты ${price}`;
+      setGameText(row.button, price === 0
+        ? gameMessage('Достроить')
+        : gameMessage('Ускорить · монеты {coins}', 'Speed up · {coins} coins'), { coins: price });
       row.button.disabled = price > coinsOf(camp);
       return;
     }
 
     const block = upgradeBlock(camp, id);
     // Уровень 0 — не «ур. 0», а пустое место: цифра тут врала бы.
-    row.level.textContent = level > 0 ? `ур. ${level}` : 'не построена';
+    setGameText(row.level, level > 0
+      ? gameMessage('ур. {level}', 'lvl {level}')
+      : gameMessage('не построена'), { level });
     row.effect.textContent = BUILDINGS[id].effect(level);
     row.barWrap.style.display = 'none';
     row.button.dataset['mode'] = 'upgrade';
-    row.button.textContent = level > 0 ? 'Улучшить' : 'Построить';
+    setGameText(row.button, level > 0 ? gameMessage('Улучшить') : gameMessage('Построить'));
     row.button.disabled = block !== 'ok';
-    row.status.textContent =
-      block === 'ok' || block === 'resources'
-        ? this.priceLine(level + 1)
-        : UPGRADE_REASON[block];
+    if (block === 'ok' || block === 'resources') setGameText(
+      row.status,
+      gameMessage('{price}', '{price}'),
+      { price: this.priceLine(level + 1) },
+    );
+    else setGameText(row.status, UPGRADE_REASON_MESSAGE[block]);
   }
 
   /** Лист кладовой (§13.6): занятость и карточка сундука. */
   private syncStore(camp: CampState): void {
     const used = storeUsed(camp);
     const cap = storeCapacity(camp);
-    this.storeLevel.textContent = `Занято ${used} из ${cap}`;
+    setGameText(this.storeLevel, gameMessage(
+      'Занято {used} из {capacity}',
+      '{used} of {capacity} used',
+    ), { used, capacity: cap });
     this.storeBar.style.width = `${Math.min(100, (used / Math.max(1, cap)) * 100).toFixed(1)}%`;
     // Три ступени, как у «хорошо/плохо» всей игры: зелёная — место есть,
     // жёлтая с четырёх пятых — «пора строить сундук» говорится до потери
@@ -1126,13 +1208,19 @@ export class CampHud {
     }
 
     const block = chestBlock(camp);
-    this.chestName.textContent = camp.chests.length > 0 ? `Сундук ×${camp.chests.length}` : 'Сундук';
-    this.chestEffect.textContent = `Кладовая +${CHEST_BONUS} за каждый`;
+    setGameText(this.chestName, camp.chests.length > 0
+      ? gameMessage('Сундук ×{count}', 'Chest ×{count}')
+      : gameMessage('Сундук'), { count: camp.chests.length });
+    setGameText(this.chestEffect, gameMessage(
+      'Кладовая +{bonus} за каждый',
+      'Storage +{bonus} each',
+    ), { bonus: CHEST_BONUS });
     this.chestButton.disabled = block !== 'ok';
-    this.chestStatus.textContent =
-      block === 'ok' || block === 'resources'
-        ? `дерево ${CHEST_COST.wood ?? 0}`
-        : CHEST_REASON[block];
+    if (block === 'ok' || block === 'resources') setGameText(this.chestStatus, gameMessage(
+      'дерево {wood}',
+      'wood {wood}',
+    ), { wood: CHEST_COST.wood ?? 0 });
+    else setGameText(this.chestStatus, CHEST_REASON_MESSAGE[block]);
   }
 
   /** Снаряжение. Компромисс слота показывается всегда, а не только когда
@@ -1159,14 +1247,18 @@ export class CampHud {
         // у которого нет картинки вовсе, читается сломанным, а не пустым.
         row.pic.classList.toggle('empty', level === 0);
       }
-      row.level.textContent = level > 0 ? `ур. ${level} / ${itemCap(camp.levels.forge)}` : '—';
+      setGameText(row.level, level > 0
+        ? gameMessage('ур. {level} / {max}', 'lvl {level} / {max}')
+        : gameMessage('—', '—'), { level, max: itemCap(camp.levels.forge) });
       row.effect.textContent = `${gearLine(slot, level)} · ${GEAR[slot].tradeoff}`;
-      row.button.textContent = level > 0 ? 'Улучшить' : 'Выковать';
+      setGameText(row.button, level > 0 ? gameMessage('Улучшить') : gameMessage('Выковать'));
       row.button.disabled = block !== 'ok';
-      row.status.textContent =
-        block === 'ok' || block === 'resources'
-          ? this.gearCostLine(level + 1)
-          : GEAR_REASON[block];
+      if (block === 'ok' || block === 'resources') setGameText(
+        row.status,
+        gameMessage('{price}', '{price}'),
+        { price: this.gearCostLine(level + 1) },
+      );
+      else setGameText(row.status, GEAR_REASON_MESSAGE[block]);
     }
   }
 
@@ -1303,10 +1395,11 @@ export class CampHud {
   private priceLine(level: number): string {
     const cost = this.costLine(level);
     const seconds = BUILD_SECONDS[level] ?? 0;
-    if (cost === '' && seconds === 0) return 'бесплатно · сразу';
-    return `${cost === '' ? 'бесплатно' : cost} · ${
-      seconds === 0 ? 'сразу' : formatDuration(seconds)
-    }`;
+    const price = cost === '' ? gameText(gameMessage('бесплатно')) : cost;
+    const duration = seconds === 0
+      ? gameText(gameMessage('сразу'))
+      : gameText(gameMessage('{duration}', '{duration}'), { duration: gameDuration(seconds) });
+    return `${price} · ${duration}`;
   }
 
   /**
@@ -1318,7 +1411,7 @@ export class CampHud {
     const cost = ready ?? BUILD_COST[level];
     if (cost === undefined) return '';
     return (Object.entries(cost) as [ResourceKind, number][])
-      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+      .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
       .join(' · ');
   }
 
@@ -1326,7 +1419,7 @@ export class CampHud {
     const cost = GEAR_COST[level];
     if (cost === undefined) return '';
     return (Object.entries(cost) as [ResourceKind, number][])
-      .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
+      .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
       .join(' · ');
   }
 

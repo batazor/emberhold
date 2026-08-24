@@ -60,12 +60,25 @@ function cyrillicLiteralLine(source: string): number | null {
 }
 
 describe('Lingui: explicit game UI', () => {
+  test('every generated game message has an English translation', () => {
+    for (const [id, message] of Object.entries(catalog)) {
+      const generated = message.origin?.some(([path]) => path === 'locales/game-messages.ts') ?? false;
+      if (!generated) continue;
+      assert.equal(typeof message.translation, 'string', `missing English translation: ${id}`);
+      assert.notEqual(message.translation, '', `missing English translation: ${id}`);
+      assert.ok(!CYRILLIC.test(message.translation ?? ''), `Cyrillic remains in English: ${id}`);
+    }
+  });
+
   test('every game descriptor is extracted and translated', () => {
     for (const descriptor of Object.values(gameMessages)) {
       const extracted = catalog[descriptor.id];
       assert.ok(extracted, `message was not extracted: ${descriptor.id}`);
-      assert.equal(extracted.translation, descriptor.translation, `catalog drift: ${descriptor.id}`);
-      assert.ok(!CYRILLIC.test(extracted.translation), `Cyrillic remains in English: ${descriptor.id}`);
+      if (descriptor.translation !== undefined) {
+        assert.equal(extracted.translation, descriptor.translation, `catalog drift: ${descriptor.id}`);
+      }
+      assert.equal(typeof extracted.translation, 'string', `missing English translation: ${descriptor.id}`);
+      assert.ok(!CYRILLIC.test(extracted.translation ?? ''), `Cyrillic remains in English: ${descriptor.id}`);
       assert.ok(
         extracted.origin?.some(([path]) => path === 'locales/game-messages.ts'),
         `game extraction origin is missing: ${descriptor.id}`,

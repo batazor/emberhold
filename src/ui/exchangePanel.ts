@@ -15,6 +15,9 @@
  */
 
 /** Кучка предмета на прилавке или в сделке. */
+import { gameMessage, setGameText } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
+
 export interface ExchangeItem {
   readonly id: string;
   readonly name: string;
@@ -24,7 +27,7 @@ export interface ExchangeItem {
 }
 
 export interface ExchangeSide {
-  readonly title: string;
+  readonly title: GameMessage;
   readonly stock: () => readonly ExchangeItem[];
 }
 
@@ -46,7 +49,7 @@ export interface ExchangeHooks {
   readonly right: ExchangeSide;
   /** null — обмен без торговли: сделку держит только непустота сторон. */
   readonly price: ExchangePrice | null;
-  readonly confirmLabel: string;
+  readonly confirmLabel: GameMessage;
   /** true — сделка прошла: зоны очищаются, прилавок пересчитывается. */
   readonly onConfirm: (give: Piles, take: Piles) => boolean;
   readonly onLeave: () => void;
@@ -81,11 +84,11 @@ export class ExchangePanel {
     this.head = document.createElement('div');
     this.head.className = 'head';
 
-    const zone = (title: string, kind: 'stock' | 'deal'): Zone => {
+    const zone = (title: GameMessage, kind: 'stock' | 'deal'): Zone => {
       const root = document.createElement('div');
       root.className = `zone ${kind}`;
       const label = document.createElement('b');
-      label.textContent = title;
+      setGameText(label, title);
       const cards = document.createElement('div');
       cards.className = 'cards';
       root.append(label, cards);
@@ -94,8 +97,8 @@ export class ExchangePanel {
 
     this.stockL = zone(hooks.left.title, 'stock');
     this.stockR = zone(hooks.right.title, 'stock');
-    this.dealL = zone('Отдаёте', 'deal');
-    this.dealR = zone('Получаете', 'deal');
+    this.dealL = zone(gameMessage('Отдаёте', 'You give'), 'deal');
+    this.dealR = zone(gameMessage('Получаете', 'You receive'), 'deal');
 
     const cols = document.createElement('div');
     cols.className = 'cols';
@@ -112,7 +115,7 @@ export class ExchangePanel {
 
     this.confirm = document.createElement('button');
     this.confirm.className = 'primary';
-    this.confirm.textContent = hooks.confirmLabel;
+    setGameText(this.confirm, hooks.confirmLabel);
     this.confirm.addEventListener('click', () => {
       if (!this.hooks.onConfirm(this.give, this.take)) return;
       this.give = {};
@@ -121,7 +124,7 @@ export class ExchangePanel {
     });
 
     const leave = document.createElement('button');
-    leave.textContent = 'Уйти';
+    setGameText(leave, gameMessage('Уйти', 'Leave'));
     leave.addEventListener('click', () => hooks.onLeave());
 
     const acts = document.createElement('div');
@@ -204,12 +207,13 @@ export class ExchangePanel {
     } else {
       const worth = price.worth(this.give);
       const ask = price.ask(this.take);
-      this.balance.textContent = !took
-        ? 'Возьмите товар с его прилавка'
-        : worth >= ask
-          ? `Ваше ${worth} против его ${ask} — сделка его устраивает`
-          : `Ваше ${worth} против его ${ask} — не хватает ${ask - worth}`;
-      this.note.textContent = price.note();
+      if (!took) setGameText(this.balance, gameMessage('Возьмите товар с его прилавка', 'Take an item from their counter'));
+      else if (worth >= ask) {
+        setGameText(this.balance, gameMessage('Ваше {worth} против его {ask} — сделка его устраивает', 'Yours {worth} against theirs {ask}—they accept the deal'), { worth, ask });
+      } else {
+        setGameText(this.balance, gameMessage('Ваше {worth} против его {ask} — не хватает {missing}', 'Yours {worth} against theirs {ask}—short by {missing}'), { worth, ask, missing: ask - worth });
+      }
+      this.note.textContent = window.EmberholdLanguage?.translate(price.note()) ?? price.note();
       this.confirm.disabled = !took || worth < ask;
     }
   }
