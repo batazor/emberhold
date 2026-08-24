@@ -1,7 +1,7 @@
 import type { CampState } from '../sim/camp';
 import { FARM_FOOD_GOAL } from '../sim/farm';
 
-export type CampLocation = 'camp' | 'farm';
+export type CampLocation = 'camp' | 'farm' | 'clan';
 
 interface FarmOnboardingCallbacks {
   onAdvance(): void;
@@ -305,6 +305,7 @@ export class CampLocations {
   private readonly root: HTMLElement;
   private readonly campButton: HTMLButtonElement;
   private readonly farmButton: HTMLButtonElement;
+  private readonly clanButton: HTMLButtonElement;
   private readonly farmState: HTMLElement;
   private sceneVisible = false;
   private camp: CampState | null = null;
@@ -335,7 +336,16 @@ export class CampLocations {
     this.campButton.append(campName, campState);
     this.campButton.addEventListener('click', () => cb.onSelect('camp'));
 
-    this.root.append(label, this.farmButton, this.campButton);
+    this.clanButton = document.createElement('button');
+    this.clanButton.className = 'cl-place clan';
+    const clanName = document.createElement('b');
+    clanName.textContent = 'Клан';
+    const clanState = document.createElement('span');
+    clanState.textContent = '⚑';
+    this.clanButton.append(clanName, clanState);
+    this.clanButton.addEventListener('click', () => cb.onSelect('clan'));
+
+    this.root.append(label, this.farmButton, this.campButton, this.clanButton);
     parent.appendChild(this.root);
   }
 
@@ -352,13 +362,18 @@ export class CampLocations {
 
   private paint(): void {
     const farm = this.camp?.farm;
-    this.root.style.display = this.sceneVisible && farm !== undefined ? 'grid' : 'none';
-    if (farm === undefined) return;
-    this.farmButton.classList.toggle('locked', !farm.unlocked);
-    this.farmButton.disabled = !farm.unlocked;
-    this.farmButton.setAttribute('aria-disabled', String(!farm.unlocked));
+    const clan = this.camp?.clan;
+    this.root.style.display = this.sceneVisible && (farm !== undefined || clan != null) ? 'grid' : 'none';
+    this.farmButton.style.display = farm === undefined ? 'none' : '';
+    this.farmButton.classList.toggle('locked', farm?.unlocked !== true);
+    this.farmButton.disabled = farm?.unlocked !== true;
+    this.farmButton.setAttribute('aria-disabled', String(farm?.unlocked !== true));
     this.farmButton.setAttribute('aria-pressed', String(this.active === 'farm'));
     this.campButton.setAttribute('aria-pressed', String(this.active === 'camp'));
-    this.farmState.textContent = farm.unlocked ? '✦' : '🔒';
+    this.clanButton.style.display = clan == null ? 'none' : '';
+    this.clanButton.disabled = clan == null;
+    this.clanButton.setAttribute('aria-pressed', String(this.active === 'clan'));
+    this.clanButton.title = clan?.name ?? '';
+    this.farmState.textContent = farm?.unlocked === true ? '✦' : '🔒';
   }
 }

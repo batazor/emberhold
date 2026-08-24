@@ -11,6 +11,7 @@ import { cycleTower, putStairs, raiseWall, toggleGate } from './campWalls';
 import { createRoster, syncRoster } from './heroes';
 import { emptyGear } from './gear';
 import { ticketOf } from './sortie';
+import { residentUuid } from './residents';
 import { load, save, wipe } from './save';
 
 /** Поддельный localStorage: тесты сейва живут без браузера. */
@@ -201,7 +202,7 @@ describe('Сохранение', () => {
     const camp = createCamp();
     camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 12345, answer: 'строим', rest: false }];
     save(camp, createRoster(), 1);
-    assert.deepEqual(load().camp.residents, camp.residents);
+    assert.deepEqual(load().camp.residents, [{ ...camp.residents[0]!, id: residentUuid(camp.residents[0]!) }]);
     wipe();
   });
 

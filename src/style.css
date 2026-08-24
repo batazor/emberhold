@@ -1049,10 +1049,35 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #camp-locations .cl-place.farm {
   background: repeating-linear-gradient(105deg, color-mix(in srgb, var(--warn) 30%, var(--panel)) 0 8px, color-mix(in srgb, var(--panel) 92%, var(--warn)) 9px 17px);
 }
+#camp-locations .cl-place.clan {
+  background: linear-gradient(155deg, color-mix(in srgb, var(--gold) 25%, var(--panel)) 0 48%, var(--panel) 49%);
+}
 #camp-locations .cl-place b, #camp-locations .cl-place span { position: relative; z-index: 1; }
 #camp-locations .cl-place span { font-size: 11px; }
 #camp-locations .cl-place[aria-pressed="true"] { border-color: var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 22%, transparent); }
 #camp-locations .cl-place.locked { filter: saturate(0.45); opacity: 0.72; }
+
+#clan-build {
+  position: fixed; z-index: 17; left: 50%; bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%); width: min(620px, calc(100% - 24px));
+  flex-direction: column; gap: 7px; padding: 10px; pointer-events: auto;
+}
+#clan-build .cb-head { gap: 12px; }
+#clan-build .cb-head span, #clan-build small { font-size: 11px; color: var(--dim); }
+#clan-build .cb-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#clan-build .cb-list button { min-height: 44px; padding: 8px; }
+#clan-build .cb-list button[aria-pressed="true"] { border-color: var(--gold); color: var(--warn); }
+#clan-build .cb-resources, #clan-build .cb-progress { font-size: 12px; color: var(--ink); }
+#clan-build .cb-workers { display: flex; align-items: center; gap: 6px; overflow-x: auto; }
+#clan-build .cb-workers b { flex: 0 0 auto; font-size: 12px; }
+#clan-build .cb-workers button { flex: 0 0 auto; min-height: 34px; padding: 6px 9px; }
+#clan-build .cb-workers button[aria-pressed="true"] { border-color: var(--good); color: var(--good); }
+@media (max-width: 620px) {
+  #clan-build .cb-head span { display: none; }
+  #clan-build .cb-list { grid-template-columns: 1fr; }
+  #clan-build .cb-list button { min-height: 36px; }
+  #clan-build .cb-workers b { display: none; }
+}
 
 @media (max-width: 620px) {
   #farm-onboarding {

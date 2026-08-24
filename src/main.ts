@@ -267,8 +267,21 @@ import { ReturnScreen } from './ui/returnScreen';
 import type { ReturnProgress } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
 import { ClanPanel } from './ui/clanPanel';
+import { ClanBuildBar } from './ui/clanBuildBar';
 import { MailButton } from './ui/mail';
-import { foundClan, neighboursOpen } from './sim/clan';
+import {
+  CLAN_BUILDINGS,
+  CLAN_BUILD_REASON,
+  advanceClanConstruction,
+  assignClanBuilder,
+  clanBuildBlock,
+  clanBuilderIds,
+  ensureClanLocation,
+  foundClan,
+  neighboursOpen,
+  placeClanBuilding,
+} from './sim/clan';
+import type { ClanBuildingKind } from './sim/clan';
 import { CampPrompt } from './ui/campPrompt';
 import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
@@ -414,7 +427,15 @@ const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark)
  * заплатить за смену, которой не было.
  */
 const upkeep = payUpkeep(camp, awaySec);
-const worked = collectWork(camp, awaySec, workingAfter(camp, upkeep.hungry), startedAt);
+const clanWorkersOffline = clanBuilderIds(camp);
+advanceClanConstruction(camp, startedAt);
+const worked = collectWork(
+  camp,
+  awaySec,
+  workingAfter(camp, upkeep.hungry),
+  startedAt,
+  clanWorkersOffline,
+);
 // Охотники не получают одновременно обычную зарплату: сначала считается
 // отлучка с живым билетом, затем дозревший билет возвращает их в лагерь.
 const huntReportsOffline = collectHunts(camp, startedAt);
@@ -431,6 +452,10 @@ if (finishedOffline !== null) {
 
 let mode: 'title' | 'camp' | 'raid' = 'title';
 let campLocation: CampLocation = 'camp';
+/** Отдельная опушка клана использует ходьбу поляны, но не личный лагерь. */
+let inClanCamp = false;
+/** Какое клановое здание глава сейчас размещает. */
+let clanPlacing: ClanBuildingKind | null = null;
 let raid: RaidState | null = null;
 let titleView: TitleView | null = null;
 /** Колесо призов — оверлей поверх карты, в риг не входит (`wheelView.ts`). */
@@ -521,6 +546,7 @@ let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
 let lastCampFrame = 0;
+let lastClanWorkCheck = startedAt;
 let selected: BuildingId | null = null;
 /** Кнопка «Палатка» вооружила выбор места: следующий тап ставит палатку. */
 let placingTent = false;
@@ -2299,6 +2325,19 @@ const clanPanel = new ClanPanel(app, {
     campHud.notify(`Клан «${camp.clan?.name ?? name}» основан`);
     persist();
     campHud.sync(camp, clock.now(), 0);
+    syncFarmUi();
+  },
+});
+
+const clanBuildBar = new ClanBuildBar(app, {
+  onSelect: (kind) => selectClanBuilding(kind),
+  onBuilder: (residentId, assigned) => {
+    if (!assignClanBuilder(camp, residentId, assigned, clock.now())) {
+      play('deny');
+      return;
+    }
+    clanBuildBar.sync(camp, clanPlacing, inClanCamp);
+    persist();
   },
 });
 
@@ -2735,6 +2774,19 @@ function syncFarmUi(): void {
 /** Сменить соседнюю локацию, не превращая Ферму в место мировой карты. */
 function switchCampLocation(next: CampLocation): void {
   if (mode !== 'camp') return;
+  if (next === 'clan') {
+    if (camp.clan == null) {
+      play('deny');
+      return;
+    }
+    toClanCamp();
+    return;
+  }
+  if (inClanCamp) {
+    toCamp();
+    if (next === 'farm') switchCampLocation('farm');
+    return;
+  }
   const farm = camp.farm;
   if (next === 'farm' && farm?.unlocked !== true) {
     play('deny');
@@ -2780,6 +2832,9 @@ function switchCampLocation(next: CampLocation): void {
 function showScene(scene: Scene, tier: Tier = 0): void {
   if (scene !== 'camp') {
     campLocation = 'camp';
+    inClanCamp = false;
+    clanPlacing = null;
+    clanBuildBar.setVisible(false);
     farmView.group.visible = false;
   }
   // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
@@ -4191,12 +4246,152 @@ function notifyWorked(): void {
  */
 function toCamp(): void {
   campLocation = 'camp';
+  inClanCamp = false;
+  clanPlacing = null;
+  clanBuildBar.setVisible(false);
   farmView.group.visible = false;
   // Снятие прошлой сцены повторится в теле — и пусть: вызов идемпотентен,
   // а правило арх-теста «каждый to* начинается с уборки» дороже одной строки.
   leaveWalkSites();
   if (camp.glade !== undefined) toGladeCamp();
   else toPadCamp();
+}
+
+function clanSiteNearHero(kind: ClanBuildingKind): Cell {
+  if (raid === null) return { x: 0, z: 0 };
+  const hx = Math.round(raid.hero.x);
+  const hz = Math.round(raid.hero.z);
+  for (let radius = 1; radius < 8; radius++) {
+    for (let dz = -radius; dz <= radius; dz++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== radius) continue;
+        const cell = { x: hx + dx, z: hz + dz };
+        if (clanBuildBlock(camp, kind, cell, raid.hero) === 'ok') return cell;
+      }
+    }
+  }
+  return { x: hx, z: hz };
+}
+
+function selectClanBuilding(kind: ClanBuildingKind | null): void {
+  if (!inClanCamp || raid === null) return;
+  clanPlacing = kind;
+  clanBuildBar.setReason(kind === null ? '' : 'Коснитесь свободного места на опушке');
+  clanBuildBar.sync(camp, clanPlacing, true);
+  if (kind === null) {
+    raidView?.hideSite();
+    return;
+  }
+  const cell = clanSiteNearHero(kind);
+  const ok = clanBuildBlock(camp, kind, cell, raid.hero) === 'ok';
+  raidView?.showSite(CLAN_BUILDINGS[kind].model, cell.x, cell.z, ok);
+}
+
+function tryPlaceClanBuilding(cell: Cell): void {
+  if (!inClanCamp || raid === null || clanPlacing === null) return;
+  const kind = clanPlacing;
+  const block = placeClanBuilding(camp, kind, cell, raid.hero, clock.now());
+  raidView?.showSite(CLAN_BUILDINGS[kind].model, cell.x, cell.z, block === 'ok');
+  if (block !== 'ok') {
+    play('deny');
+    clanBuildBar.setReason(CLAN_BUILD_REASON[block]);
+    return;
+  }
+  play('build');
+  clanPlacing = null;
+  clanBuildBar.setReason(`${CLAN_BUILDINGS[kind].name}: стройка начата — нужны рабочие`);
+  clanBuildBar.sync(camp, null, true);
+  persist();
+}
+
+/**
+ * Вход на отдельную опушку клана. Постройки восстанавливаются из состояния
+ * клана и не подменяются зданиями личного лагеря главы.
+ */
+function toClanCamp(): void {
+  leaveTitle();
+  leaveWalkSites();
+  const location = ensureClanLocation(camp);
+  if (location === null) return;
+  chop = null;
+  campMine = null;
+  campPick = null;
+  buildPanel.setVisible(false);
+  buildTool = null;
+  selected = null;
+  placingTent = false;
+  placingChest = false;
+  raidView?.dispose();
+
+  const blocked = unpackGlade(location.glade);
+  const start = { x: location.glade.size >> 1, z: location.glade.size >> 1 };
+  const loc: GameLocation = {
+    seed: location.seed,
+    tier: 0,
+    size: location.glade.size,
+    blocked,
+    evac: start,
+    containers: [],
+    stones: [],
+    enemies: [],
+    backSteps: distanceField(location.glade.size, blocked, start),
+  };
+  const hero = heroForRaid() ?? roster.heroes[0]!;
+  raidHero = null;
+  raid = createRaid({
+    seed: location.seed,
+    tier: 0,
+    kitchenLevel: camp.levels.kitchen,
+    storageLevel: camp.levels.storage,
+    loadout: loadout(hero),
+    followers: [],
+    loc,
+    food: gladeFood(),
+    capacity: gladeCapacity(),
+    evacOpen: false,
+    containerFood: 0,
+    hunger: false,
+    risk: false,
+    // Лес пока часть места, а не источник личного склада.
+    logging: false,
+  });
+  raidView = new RaidView(
+    raid.loc, raid.loadout.cls, grassPerTile, 'glade', null, null, null,
+    camp.gear.weapon, [], debugFluffy,
+  );
+  rig.world.add(raidView.group);
+  for (const building of location.buildings) {
+    raidView.place(CLAN_BUILDINGS[building.kind].model, building.x, building.z);
+  }
+  if (location.construction !== null) {
+    raidView.showSite(
+      CLAN_BUILDINGS[location.construction.kind].model,
+      location.construction.x,
+      location.construction.z,
+      true,
+    );
+  }
+  campView.group.visible = false;
+  farmView.group.visible = false;
+  rig.lookAt(raid.hero.x, raid.hero.z, true);
+  rig.setZoom(20, true);
+  setNight(nightAt(campTime()));
+  inGlade = false;
+  inGladeCamp = false;
+  inClanCamp = true;
+  campLocation = 'clan';
+  controlled = -1;
+  parkedHero = null;
+  resultShown = false;
+  ear.reset(raid);
+  showScene('camp');
+  // На клановой опушке личные стройка, склад и веер не действуют.
+  farmOnboarding.setVisible(false);
+  campHud.setVisible(false);
+  heroFan.setVisible(false);
+  clanBuildBar.sync(camp, clanPlacing, true);
+  syncFarmUi();
+  persist();
 }
 
 /**
@@ -4830,6 +5025,20 @@ canvas.addEventListener('pointerdown', (e) => {
   // Ферма пока сцена-награда: у неё нет жестов лагеря, и тап по грядке не
   // должен двигать героя на скрытой площадке.
   if (mode === 'camp' && campLocation === 'farm') return;
+  // Клановая опушка — самостоятельное место: здесь пока есть только ходьба,
+  // а жесты и панели личного лагеря не должны менять его из-за общего вида.
+  if (mode === 'camp' && campLocation === 'clan' && inClanCamp) {
+    if (raid === null) return;
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    if (hit === null) return;
+    if (clanPlacing !== null) {
+      tryPlaceClanBuilding({ x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) });
+      return;
+    }
+    const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+    if (commandMove(raid, cell)) raidView?.showMarker(cell.x, cell.z);
+    return;
+  }
   // Стройка стен перехватывает палец целиком: пока карточка выбрана,
   // лагерь не крутится и здания не выбираются.
   if (mode === 'camp' && buildTool !== null) {
@@ -5001,6 +5210,11 @@ canvas.addEventListener('pointermove', (e) => {
   if (placingTent || placingChest) {
     const o = inGladeCamp ? campOrigin(camp) : { x: 0, z: 0 };
     showPlacingSpot({ x: Math.round(hit.x) - o.x, z: Math.round(hit.z) - o.z });
+  }
+  if (inClanCamp && clanPlacing !== null && raid !== null) {
+    const cell = { x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) };
+    const ok = clanBuildBlock(camp, clanPlacing, cell, raid.hero) === 'ok';
+    raidView?.showSite(CLAN_BUILDINGS[clanPlacing].model, cell.x, cell.z, ok);
   }
   // §11.3 — в бою наведение показывает, куда можно шагнуть. На телефоне
   // наведения нет, и подсветка там просто не появится: жест от этого
@@ -5415,7 +5629,7 @@ if (debugCamp !== null) {
     // Отлучка руками: ждать полчаса, чтобы посмотреть на прибавку, —
     // не проверка. Кладёт ровно то же, что положила бы загрузка.
     away: (seconds: number) => {
-      const done = collectWork(camp, seconds);
+      const done = collectWork(camp, seconds, undefined, undefined, clanBuilderIds(camp));
       campHud.sync(camp, clock.now(), 0);
       syncFarmUi();
       persist();
@@ -5939,12 +6153,32 @@ if (debugParams.has('bench')) {
   });
 }
 
+function stepClanConstruction(now: number): void {
+  if (now - lastClanWorkCheck < 30) return;
+  lastClanWorkCheck = now;
+  const result = advanceClanConstruction(camp, now);
+  if (result.worked <= 0) return;
+  if (result.completed !== null) {
+    const location = camp.clan?.location;
+    const building = location?.buildings.find((item) => item.kind === result.completed);
+    if (inClanCamp && building !== undefined) {
+      raidView?.hideSite();
+      raidView?.place(CLAN_BUILDINGS[building.kind].model, building.x, building.z);
+    }
+    clanBuildBar.setReason(`${CLAN_BUILDINGS[result.completed].name} построен`);
+    play('levelup');
+  }
+  clanBuildBar.sync(camp, clanPlacing, inClanCamp);
+  persist();
+}
+
 /**
  * Тик систем лагеря: таймеры стройки, отряд, панель. Общий у обеих сцен
  * лагеря — площадки и поляны (§16.1): лагерь один, сцен у него две.
  */
 function stepCampSystems(dt: number, now: number): void {
     idleSeconds += dt;
+    stepClanConstruction(now);
     // Стена кончается тем же тиком, что и здание: слот один, освобождаться
     // он обязан одинаково.
     if (completeWallIfDue(wallsOf(), now) !== null) {
@@ -6007,6 +6241,12 @@ startLoop({
     // На заставке не тикает ничего: таймеры стройки досчитываются при входе
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
+    if (inClanCamp && raid !== null) {
+      stepRaid(raid, dt, false, 0);
+      raid.food = raid.foodMax;
+      stepClanConstruction(now);
+      return;
+    }
     if (inGladeCamp && raid !== null) {
       // Лагерь на поляне: ходьба — прологовая, а провиант в лагере ничего
       // не отсчитывает (§18.4) — запас пополняется тем же тиком, что тратит.
@@ -6276,7 +6516,7 @@ startLoop({
       rig.lookAt(c.x, c.z);
       rig.update(farmDt, c.x, c.z, 12);
       rig.render();
-    } else if ((mode === 'raid' || inGladeCamp) && raid !== null && raidView !== null) {
+    } else if ((mode === 'raid' || inGladeCamp || inClanCamp) && raid !== null && raidView !== null) {
       /**
        * Небо лагеря поворачивается по смене мира (§24). Значение идёт
        * через `setNight`, а не в `rig.night` напрямую, ровно ради `?night=`:
@@ -6287,7 +6527,7 @@ startLoop({
        * замирания, — поэтому ход неба ничего не стоит по батарее. Вылазку
        * это не трогает: под землёй время суток не при чём, там своя тьма.
        */
-      if (inGladeCamp || castleNow !== null) setNight(nightAt(campTime()));
+      if (inGladeCamp || inClanCamp || castleNow !== null) setNight(nightAt(campTime()));
       raidView.sync(raid, alpha, dt, now, rig.dayFactor);
       // §11.3 — панель боя живёт вместе с полем. Досягаемость считает поле
       // теми же правилами, которыми применит ход: кнопка, предлагающая

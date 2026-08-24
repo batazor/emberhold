@@ -36,6 +36,7 @@ import {
   collectWork,
   huntYield,
   recallHunt,
+  residentUuid,
   residentPhaseAt,
   scheduledWorkSeconds,
   startHunt,
@@ -352,6 +353,17 @@ describe('Жильцы и палатки', () => {
     const before = camp.resources.wood;
     collectWork(camp, WORK_SECONDS / 2);
     assert.equal(camp.resources.wood, before, 'доля накопилась между отлучками');
+  });
+
+  test('отправленный в клан жилец не работает одновременно на личный склад', () => {
+    const camp = rich();
+    admit(camp, guest('Гита'));
+    buildTent(camp);
+    const id = residentUuid(camp.residents[0]!);
+    assert.deepEqual(
+      workDone(camp, WORK_SECONDS * WORK_CAP, undefined, undefined, new Set([id])),
+      [],
+    );
   });
 
   /**

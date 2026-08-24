@@ -6,7 +6,7 @@ import type { DwellerLook } from './garrison';
 import { prunePicks } from './berries';
 import { pruneBought } from './trade';
 import type { PickLog } from './berries';
-import { RESIDENT_JOBS, RESIDENT_SCHEDULE_ORDER } from './residents';
+import { RESIDENT_JOBS, RESIDENT_SCHEDULE_ORDER, residentUuid } from './residents';
 import type { ResidentJob, ResidentScheduleId } from './residents';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
@@ -28,6 +28,8 @@ import { liveVisits } from './world';
 import type { Resources } from './resources';
 import type { Tier } from './types';
 import { FARM_FOOD_GOAL } from './farm';
+import { CLAN_BUILDING_ORDER, startingClanResources } from './clan';
+import type { ClanBuildingKind } from './clan';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -162,6 +164,7 @@ interface SaveV1 {
    * в Жилье, ровно как было до появления жильцов.
    */
   residents?: {
+    id?: string;
     name: string;
     look: string;
     answer: string;
@@ -185,7 +188,20 @@ interface SaveV1 {
    * причине, что все соседние: сейв, записанный до кланов, обязан
    * открываться, и открывается он лагерем без клана.
    */
-  clan?: { name: string; at: number };
+  clan?: {
+    name: string;
+    at: number;
+    leader?: boolean;
+    location?: {
+      seed: number;
+      glade: { size: number; cells: string };
+      buildings?: { kind: string; x: number; z: number }[];
+      resources?: { stone: number; wood: number; iron: number };
+      construction?: { kind: string; x: number; z: number; work: number } | null;
+      builders?: string[];
+      workedAt?: number;
+    };
+  };
   /**
    * Сундуки-хранилища (`chests.ts`). Необязательное — сейв прежних этапов
    * обязан открываться; но отсутствие поля читается не пустотой, а миграцией:
@@ -258,6 +274,7 @@ export function save(
     // камень, которого больше нет, и хранить о нём запись незачем.
     stones: camp.stones.filter((s) => !s.taken).map((s) => ({ x: s.x, z: s.z })),
     residents: camp.residents.map((r) => ({
+      id: residentUuid(r),
       name: r.name,
       look: r.look,
       answer: r.answer,
@@ -282,7 +299,30 @@ export function save(
       : {}),
     chests: camp.chests.map((c) => ({ x: c.x, z: c.z })),
     // exactOptionalPropertyTypes: у лагеря без клана ключа нет вовсе.
-    ...(camp.clan != null ? { clan: { name: camp.clan.name, at: camp.clan.at } } : {}),
+    ...(camp.clan != null
+      ? {
+          clan: {
+            name: camp.clan.name,
+            at: camp.clan.at,
+            ...(camp.clan.leader !== undefined ? { leader: camp.clan.leader } : {}),
+            ...(camp.clan.location !== undefined
+              ? {
+                  location: {
+                    seed: camp.clan.location.seed,
+                    glade: { ...camp.clan.location.glade },
+                    buildings: camp.clan.location.buildings.map((b) => ({ ...b })),
+                    resources: { ...camp.clan.location.resources },
+                    construction: camp.clan.location.construction === null
+                      ? null
+                      : { ...camp.clan.location.construction },
+                    builders: [...camp.clan.location.builders],
+                    workedAt: camp.clan.location.workedAt,
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
     // exactOptionalPropertyTypes: у лагеря без гостей этих ключей нет вовсе.
     ...(camp.fires !== undefined ? { fires: camp.fires.map((f) => ({ x: f.x, z: f.z })) } : {}),
     // §13.8 — кусты: клетка и время сбора. Обобранный обязан пережить
@@ -555,6 +595,7 @@ export function load(): LoadResult {
         // сохранение с добытчиком не открылось бы, и жилец пропал бы молча.
         .filter((r): r is {
           name: string;
+          id?: string;
           look: DwellerLook;
           answer: ResidentJob;
           seed?: number;
@@ -571,6 +612,12 @@ export function load(): LoadResult {
         // нельзя: жилец менял бы лицо при каждой загрузке. Берётся из имени —
         // оно у жильца не меняется, значит и лицо не изменится.
         .map((r) => ({
+          id: residentUuid({
+            name: r.name,
+            look: r.look,
+            seed: typeof r.seed === 'number' ? r.seed : seedOfName(r.name),
+            ...(typeof r.id === 'string' ? { id: r.id } : {}),
+          }),
           name: r.name,
           look: r.look,
           answer: r.answer,
@@ -606,6 +653,74 @@ export function load(): LoadResult {
       camp.clan = {
         name: data.clan.name.trim(),
         at: typeof data.clan.at === 'number' ? data.clan.at : 0,
+        // Все сохранения до ролей принадлежат основателю и читаются главой.
+        leader: data.clan.leader !== false,
+        ...(data.clan.location != null &&
+          typeof data.clan.location.seed === 'number' &&
+          data.clan.location.glade != null &&
+          typeof data.clan.location.glade.size === 'number' &&
+          Number.isInteger(data.clan.location.glade.size) &&
+          data.clan.location.glade.size > 0 &&
+          typeof data.clan.location.glade.cells === 'string'
+            ? {
+                location: {
+                  seed: data.clan.location.seed >>> 0,
+                  glade: {
+                    size: data.clan.location.glade.size,
+                    cells: data.clan.location.glade.cells,
+                  },
+                  buildings: Array.isArray(data.clan.location.buildings)
+                    ? data.clan.location.buildings
+                        .filter((b): b is { kind: ClanBuildingKind; x: number; z: number } =>
+                          b != null &&
+                          CLAN_BUILDING_ORDER.includes(b.kind as ClanBuildingKind) &&
+                          typeof b.x === 'number' && Number.isFinite(b.x) &&
+                          typeof b.z === 'number' && Number.isFinite(b.z))
+                        .map((b) => ({ kind: b.kind, x: Math.floor(b.x), z: Math.floor(b.z) }))
+                    : [],
+                  resources: (() => {
+                    const start = startingClanResources();
+                    const raw = data.clan!.location!.resources;
+                    if (raw == null) return start;
+                    for (const kind of ['stone', 'wood', 'iron'] as const) {
+                      const amount = raw[kind];
+                      if (typeof amount === 'number' && Number.isFinite(amount)) {
+                        start[kind] = Math.max(0, Math.floor(amount));
+                      }
+                    }
+                    return start;
+                  })(),
+                  construction: (() => {
+                    const site = data.clan!.location!.construction;
+                    if (site == null ||
+                        !CLAN_BUILDING_ORDER.includes(site.kind as ClanBuildingKind) ||
+                        typeof site.x !== 'number' || !Number.isFinite(site.x) ||
+                        typeof site.z !== 'number' || !Number.isFinite(site.z) ||
+                        typeof site.work !== 'number' || !Number.isFinite(site.work)) return null;
+                    return {
+                      kind: site.kind as ClanBuildingKind,
+                      x: Math.floor(site.x),
+                      z: Math.floor(site.z),
+                      work: Math.max(0, site.work),
+                    };
+                  })(),
+                  builders: Array.isArray(data.clan.location.builders)
+                    ? data.clan.location.builders
+                        .filter((name): name is string => typeof name === 'string' && name.trim() !== '')
+                        .map((savedId) => {
+                          const resident = camp.residents.find((item) =>
+                            residentUuid(item) === savedId || item.name === savedId);
+                          return resident === undefined ? null : residentUuid(resident);
+                        })
+                        .filter((id): id is string => id !== null)
+                    : [],
+                  workedAt: typeof data.clan.location.workedAt === 'number' &&
+                      Number.isFinite(data.clan.location.workedAt)
+                    ? data.clan.location.workedAt
+                    : (typeof data.clan.at === 'number' ? data.clan.at : 0),
+                },
+              }
+            : {}),
       };
     }
     if (Array.isArray(data.chests)) {
