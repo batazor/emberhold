@@ -1065,7 +1065,7 @@ export function villagerCount(camp: CampState): number {
 
 /** §20.4 — перестановка бесплатна и мгновенна: планировка выразительная,
  *  а не механическая. Занятость клетки проверяется, площадь — по Жилью. */
-export function moveBuilding(camp: CampState, id: BuildingId, x: number, z: number): boolean {
+export function buildingFits(camp: CampState, id: BuildingId, x: number, z: number): boolean {
   const area = campArea(camp.levels.hq);
   if (x < 0 || z < 0 || x + 2 > area || z + 2 > area) return false;
   for (const other of BUILDING_ORDER) {
@@ -1076,6 +1076,11 @@ export function moveBuilding(camp: CampState, id: BuildingId, x: number, z: numb
     const p = camp.layout[other];
     if (Math.abs(p.x - x) < 2 && Math.abs(p.z - z) < 2) return false;
   }
+  return true;
+}
+
+export function moveBuilding(camp: CampState, id: BuildingId, x: number, z: number): boolean {
+  if (!buildingFits(camp, id, x, z)) return false;
   // Стена зданию не мешает: она закрывает путь игроку, а планировка лагеря
   // остаётся свободной — §20.4 требует от неё выразительности, а не логистики.
   camp.layout[id] = { x, z };

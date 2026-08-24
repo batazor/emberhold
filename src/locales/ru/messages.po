@@ -3159,6 +3159,11 @@ msgstr "[ ] — соседняя книга"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "{building} · ур. {level}"
+msgstr "{building} · ур. {level}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "{building} ур. {level} — {remaining}"
 msgstr "{building} ур. {level} — {remaining}"
 
@@ -8435,6 +8440,11 @@ msgid "Башня"
 msgstr "Башня"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Башня · строится"
+msgstr "Башня · строится"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Башня разрывает ход"
 msgstr "Башня разрывает ход"
@@ -8546,7 +8556,6 @@ msgid "Берут ли все три"
 msgstr "Берут ли все три"
 
 #. js-lingui-explicit-id
-#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "бесплатно"
 msgstr "бесплатно"
@@ -8580,6 +8589,11 @@ msgstr "Библиотека игры синтезируется прямо на
 #: locales/legacy-messages.ts
 msgid "Битый камень"
 msgstr "Битый камень"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Благоустройство"
+msgstr "Благоустройство"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -10250,6 +10264,11 @@ msgid "Ворота"
 msgstr "Ворота"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ворота · строятся"
+msgstr "Ворота · строятся"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Ворота в две трети фасада"
 msgstr "Ворота в две трети фасада"
@@ -11686,6 +11705,11 @@ msgid "Дальше — ещё один сундук"
 msgstr "Дальше — ещё один сундук"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дальше · {effect}"
+msgstr "Дальше · {effect}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Дальше: надень вещь в Мастерской"
 msgstr "Дальше: надень вещь в Мастерской"
@@ -12804,6 +12828,11 @@ msgstr "Дорога — мазок, фонарь — тап"
 #: locales/legacy-messages.ts
 msgid "Дорога — это клетки, плитка —"
 msgstr "Дорога — это клетки, плитка —"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дорога · строится"
+msgstr "Дорога · строится"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -14353,6 +14382,7 @@ msgid "зданий"
 msgstr "зданий"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Здания"
 msgstr "Здания"
@@ -17857,6 +17887,11 @@ msgid "Лестница"
 msgstr "Лестница"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Лестница · строится"
+msgstr "Лестница · строится"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "лестница со двора: ход выходит одним ребром"
 msgstr "лестница со двора: ход выходит одним ребром"
@@ -20337,6 +20372,11 @@ msgstr "Новая ферма с огородом на рассвете"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "новое"
+msgstr "новое"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Новое в поселении · пища"
 msgstr "Новое в поселении · пища"
 
@@ -20537,6 +20577,11 @@ msgstr "Нужно ещё несколько вылазок для сравне�
 #: locales/game-messages.ts
 msgid "нужно Жильё ур. {level}"
 msgstr "нужно Жильё ур. {level}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Нужно Жильё ур. {level}"
+msgstr "Нужно Жильё ур. {level}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20746,6 +20791,11 @@ msgid "Обойти все комнаты и вернуться стоит"
 msgstr "Обойти все комнаты и вернуться стоит"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Оборона"
+msgstr "Оборона"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "обрезанный глиф читается как другой глиф"
 msgstr "обрезанный глиф читается как другой глиф"
@@ -20870,6 +20920,11 @@ msgstr "ограда"
 #: locales/legacy-messages.ts
 msgid "Ограда"
 msgstr "Ограда"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ограда · строится"
+msgstr "Ограда · строится"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21449,6 +21504,11 @@ msgstr "остаётся: экран ничего не крутит, он тол
 #: locales/legacy-messages.ts
 msgid "осталась одна рана"
 msgstr "осталась одна рана"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Осталось {duration}"
+msgstr "Осталось {duration}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -27743,6 +27803,11 @@ msgid "Следующей записью — очередь задана кри�
 msgstr "Следующей записью — очередь задана кривой §16, а не игроком"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Следующий уровень · {effect}"
+msgstr "Следующий уровень · {effect}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Слепой поворот"
 msgstr "Слепой поворот"
@@ -28583,10 +28648,14 @@ msgid "Сразиться"
 msgstr "Сразиться"
 
 #. js-lingui-explicit-id
-#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "сразу"
 msgstr "сразу"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сразу"
+msgstr "Сразу"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -28866,6 +28935,11 @@ msgid "стена — замкнутая цепь клеток, у каждой 
 msgstr "стена — замкнутая цепь клеток, у каждой ровно два соседа, и деталь выбирается тем, где эти соседи стоят."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стена · строится"
+msgstr "Стена · строится"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "стена в четыре клетки — резать или строить генератор под неё"
 msgstr "стена в четыре клетки — резать или строить генератор под неё"
@@ -28951,7 +29025,6 @@ msgid "Стены гаснут, пока герой во дворе. Гарни�
 msgstr "Стены гаснут, пока герой во дворе. Гарнизон ушёл наружу не по своей воле: двор камера прячет за стеной. Пока во дворе было пусто, это ничего не стоило — прятать было некого. Жильцы вопрос вернули, и замер показал, что он больше, чем казался: стена в две клетки при камере в 30° прячет за собой около четырёх с половиной клеток земли, и по ста двадцати сидам на четверти двора герой скрыт целиком, ещё на трети — наполовину. Прятался не только жилец, но и сам герой. Поэтому материал замка уходит в прозрачность 0,45, как только герой вошёл во двор, и возвращается, когда тот вышел. Тень стена кладёт прежнюю: она не исчезла, её видно насквозь."
 
 #. js-lingui-explicit-id
-#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Стены лагеря"
 msgstr "Стены лагеря"
@@ -29223,6 +29296,11 @@ msgstr "строит, а не крутит камеру"
 #: locales/legacy-messages.ts
 msgid "Строительство"
 msgstr "Строительство"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Строится · {effect}"
+msgstr "Строится · {effect}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -31903,6 +31981,11 @@ msgstr "Фонарь"
 #: locales/legacy-messages.ts
 msgid "ФОНАРЬ"
 msgstr "ФОНАРЬ"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Фонарь · ставится"
+msgstr "Фонарь · ставится"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

@@ -14,6 +14,7 @@ import {
   MAX_LEVEL,
   archeryQuiverBonus,
   buyArrows,
+  buildingFits,
   campArea,
   campQuiverCapacity,
   completeIfDue,
@@ -263,6 +264,9 @@ describe('Лагерь', () => {
 
   test('§20.4 — перестановка свободна, но не поверх соседа и не за границу', () => {
     const camp = createCamp();
+    const before = { ...camp.layout.kitchen };
+    assert.equal(buildingFits(camp, 'kitchen', 4, 1), true);
+    assert.deepEqual(camp.layout.kitchen, before, 'предпросмотр не меняет планировку');
     assert.equal(moveBuilding(camp, 'kitchen', 4, 1), true);
     assert.equal(moveBuilding(camp, 'kitchen', 1, 1), false, 'на Жильё нельзя');
     assert.equal(moveBuilding(camp, 'kitchen', 5, 1), false, 'след 2×2 не влезает в 6×6');

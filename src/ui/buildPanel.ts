@@ -66,7 +66,16 @@ export interface BuildPanelCallbacks {
   onDone(): void;
   /** Тап по уже выбранной карточке ограды — следующий материал. */
   onCycleFence(): void;
+  /** Вернуться к каталогу обычных зданий, не закрывая строительный сценарий. */
+  onBuildings(): void;
 }
+
+export type BuildCategory = 'defense' | 'decor';
+
+const CATEGORY_TOOLS: Record<BuildCategory, readonly WallTool[]> = {
+  defense: ['стена', 'ограда', 'башня', 'ворота', 'лестница', 'снос'],
+  decor: ['дорога', 'фонарь', 'снос'],
+};
 
 /**
  * Что карточка обещает. Первая строка — жест: игрок обязан узнать, что делать
@@ -170,6 +179,8 @@ export class BuildPanel {
   private readonly timer: HTMLElement;
   private readonly bar: HTMLElement;
   private readonly fill: HTMLElement;
+  private readonly categoryTabs = new Map<BuildCategory, HTMLButtonElement>();
+  private category: BuildCategory = 'defense';
   private tool: WallTool | null = null;
 
   constructor(private readonly cb: BuildPanelCallbacks) {
@@ -180,7 +191,7 @@ export class BuildPanel {
     const head = document.createElement('div');
     head.className = 'row mid sheet-head';
     const title = document.createElement('b');
-    setGameText(title, gameMessage('Стены лагеря', 'Camp defenses'));
+    setGameText(title, gameMessage('Строительство', 'Building'));
     const close = document.createElement('button');
     close.className = 'ghost sheet-x';
     setGameText(close, gameMessage('Готово', 'Done'));
@@ -189,6 +200,24 @@ export class BuildPanel {
       this.cb.onDone();
     });
     head.append(title, close);
+
+    const tabs = document.createElement('div');
+    tabs.className = 'construction-tabs';
+    const buildings = document.createElement('button');
+    setGameText(buildings, gameMessage('Здания', 'Buildings'));
+    buildings.setAttribute('aria-pressed', 'false');
+    buildings.addEventListener('click', () => this.cb.onBuildings());
+    tabs.appendChild(buildings);
+    for (const [kind, label] of [
+      ['defense', gameMessage('Оборона', 'Defenses')],
+      ['decor', gameMessage('Благоустройство', 'Amenities')],
+    ] as const) {
+      const button = document.createElement('button');
+      setGameText(button, label);
+      button.addEventListener('click', () => this.setCategory(kind));
+      tabs.appendChild(button);
+      this.categoryTabs.set(kind, button);
+    }
 
     const list = document.createElement('div');
     list.className = 'build-cards';
@@ -206,7 +235,8 @@ export class BuildPanel {
     this.fill = document.createElement('i');
     this.bar.appendChild(this.fill);
 
-    this.root.append(head, list, this.bar, this.timer, this.note);
+    this.root.append(head, tabs, list, this.bar, this.timer, this.note);
+    this.setCategory('defense');
     this.setNote(null);
   }
 
@@ -287,6 +317,22 @@ export class BuildPanel {
 
   get selected(): WallTool | null {
     return this.tool;
+  }
+
+  setCategory(category: BuildCategory): void {
+    this.category = category;
+    const allowed = new Set(CATEGORY_TOOLS[category]);
+    for (const [tool, card] of this.cards) card.box.style.display = allowed.has(tool) ? '' : 'none';
+    for (const [kind, button] of this.categoryTabs) {
+      const active = kind === category;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+    if (this.tool !== null && !allowed.has(this.tool)) this.select(null);
+  }
+
+  get activeCategory(): BuildCategory {
+    return this.category;
   }
 
   setVisible(on: boolean): void {

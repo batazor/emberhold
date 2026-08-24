@@ -16,6 +16,7 @@ import {
   BUILDINGS,
   BUILD_SECONDS,
   archeryQuiverBonus,
+  buildingFits,
   campQuiverCapacity,
   campArea,
   campOrigin,
@@ -184,7 +185,7 @@ import type { Visit, WorldNode } from './sim/world';
 import { worldUnlock } from './sim/worldUnlock';
 import { campLevel, campPower } from './sim/standing';
 import type { LiveCamp } from './sim/standing';
-import { BuildPanel } from './ui/buildPanel';
+import { BuildPanel, type BuildCategory } from './ui/buildPanel';
 import {
   campNav,
   commandCampMove,
@@ -831,9 +832,12 @@ const campHud = new CampHud(app, {
     placingTent = false;
     placingChest = false;
     hidePlacingSpot();
+    const at = camp.layout[id];
+    campView.showBuildingSpot(at.x, at.z, true);
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
-  onWalls: () => openWalls(),
+  onConstruction: () => openConstructionCatalog(),
+  onWalls: (category) => openWalls(category),
   /**
    * §14.3 — пачка стрел. Колчан наполняется только здесь: в вылазке стрелы
    * тратятся, донесённое возвращается в лагерь, а взяться им больше неоткуда.
@@ -875,6 +879,7 @@ const campHud = new CampHud(app, {
     // не бывает двух разом.
     selected = null;
     campView.highlight(null);
+    campView.hideBuildingSpot();
     placingChest = false;
     placingTent = true;
     campHud.notify('Палатка: коснитесь свободного места');
@@ -960,6 +965,7 @@ const campHud = new CampHud(app, {
     }
     selected = null;
     campView.highlight(null);
+    campView.hideBuildingSpot();
     placingTent = false;
     placingChest = true;
     campHud.notify('Сундук: коснитесь свободного места');
@@ -1291,6 +1297,9 @@ const buildPanel = new BuildPanel({
     campHud.notify(`Ограда: ${FENCE[material].title.toLowerCase()}`);
     persist();
   },
+  onBuildings: () => {
+    openConstructionCatalog();
+  },
 });
 campHud.slot.appendChild(buildPanel.root);
 
@@ -1318,7 +1327,16 @@ const wallSite = (): WallSite => ({
   levels: camp.levels,
 });
 
-function openWalls(): void {
+function openConstructionCatalog(): void {
+  buildPanel.setVisible(false);
+  buildTool = null;
+  stroke = null;
+  campView.hideWallGhost();
+  campHud.openConstruction();
+}
+
+function openWalls(category: BuildCategory = 'defense'): void {
+  buildPanel.setCategory(category);
   buildPanel.setVisible(true);
   buildPanel.update(wallsOf(), clock.now(), camp.resources);
   campHud.notify('Стены: выберите карточку, дальше жест по земле');
@@ -3157,6 +3175,7 @@ function switchCampLocation(next: CampLocation): void {
     buildPanel.setVisible(false);
     buildTool = null;
     selected = null;
+    campView.hideBuildingSpot();
     placingTent = false;
     placingChest = false;
     stopCampMining();
@@ -4977,6 +4996,7 @@ function toClanCamp(): void {
   buildPanel.setVisible(false);
   buildTool = null;
   selected = null;
+  campView.hideBuildingSpot();
   placingTent = false;
   placingChest = false;
   raidView?.dispose();
@@ -5283,12 +5303,14 @@ function campTap(clientX: number, clientY: number): void {
     if (moveSelected(hit.x, hit.z)) {
       selected = null;
       campView.highlight(null);
+      campView.hideBuildingSpot();
       return;
     }
     // Отказ обязан быть слышен: молчащий тап читается как непопадание.
     campHud.notify(`${BUILDINGS[selected].name}: здесь не встанет`);
     selected = null;
     campView.highlight(null);
+    campView.hideBuildingSpot();
     return;
   }
 
@@ -5953,6 +5975,12 @@ canvas.addEventListener('pointermove', (e) => {
   if (placingTent || placingChest) {
     const o = inGladeCamp ? campOrigin(camp) : { x: 0, z: 0 };
     showPlacingSpot({ x: Math.round(hit.x) - o.x, z: Math.round(hit.z) - o.z });
+  }
+  if (mode === 'camp' && selected !== null) {
+    const at = campLocal(hit);
+    const x = Math.round(at.x - 0.5);
+    const z = Math.round(at.z - 0.5);
+    campView.showBuildingSpot(x, z, buildingFits(camp, selected, x, z));
   }
   if (inClanCamp && clanPlacing !== null && raid !== null) {
     const cell = { x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) };

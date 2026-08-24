@@ -3,6 +3,7 @@ import {
   BUILDING_ORDER,
   BUILD_COST,
   BUILD_SECONDS,
+  MAX_LEVEL,
   campQuiverCapacity,
   gearBlock,
   itemCap,
@@ -43,6 +44,8 @@ import { Banner } from './banner';
 import type { Roster } from '../sim/heroes';
 import { WorldMap } from './worldMap';
 import { resourceIcon } from './resourceIcons';
+import type { BuildCategory } from './buildPanel';
+import { wallProgress, type WallTool } from '../sim/campWalls';
 import {
   clearGameAttribute,
   clearGameText,
@@ -86,8 +89,10 @@ export interface CampCallbacks {
   onCraft(slot: GearSlot): void;
   /** §20.4 — перестановка: карточка вооружает режим, дальше тап по клетке. */
   onMove(id: BuildingId): void;
+  /** Открыть общий каталог стройки и погасить внешний режим размещения. */
+  onConstruction(): void;
   /** §6.1.6 — стройка стен: карточка открывает панель, дальше жест по земле. */
-  onWalls(): void;
+  onWalls(category: BuildCategory): void;
   /** §14.3 — пачка стрел за железо. Единственный способ наполнить колчан. */
   onBuyArrows(): void;
   /** §14.2 — что в левой руке: фонарь или щит. Бесплатно и мгновенно. */
@@ -156,7 +161,7 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'cryst
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь.
  *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене.
  *  'daily' — подарок за вход (§29): открывается тапом по значку над сценой. */
-type SheetKind = BuildingId | 'tiers' | 'shop' | 'store' | 'daily' | null;
+type SheetKind = BuildingId | 'buildings' | 'tiers' | 'shop' | 'store' | 'daily' | null;
 
 /**
  * Куда летит подарок (§29.4): к числу ресурса, к счёту кладовой или
@@ -167,6 +172,41 @@ export type FlyTarget = ResourceKind | 'store' | 'quiver';
 
 const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
+
+const BUILDING_GLYPH: Record<BuildingId, string> = {
+  hq: '<path d="M3 12 12 4l9 8v9h-7v-6h-4v6H3z"/>',
+  kitchen: '<path d="M4 10h16v11H4zM7 4h3v6H7zM14 2h3v8h-3zM8 14h8v3H8z"/>',
+  storage: '<path d="M3 9 12 4l9 5v12H3zM7 12h10v9H7z"/>',
+  forge: '<path d="M3 13h13v8H3zM6 8h7v5H6zM17 3h3v18h-3zM4 4h10v3H4z"/>',
+  infirmary: '<path d="M3 8h18v13H3zM10 3h4v5h-4zM7 13h3v-3h4v3h3v4h-3v3h-4v-3H7z"/>',
+  yard: '<path d="M4 18h16v3H4zM6 5h3v13H6zM15 3h3v15h-3zM3 8h9v3H3zM12 6h9v3h-9z"/>',
+  archery: '<path fill-rule="evenodd" d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 4a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>',
+  barracks: '<path d="M3 10 12 4l9 6v11H3zM6 12h4v9H6zM14 12h4v9h-4zM8 7h8v3H8z"/>',
+  watchtower: '<path fill-rule="evenodd" d="M5 3h3v3h3V3h3v3h3V3h3v18h-5v-6h-6v6H4V3zm5 6h4v3h-4z"/>',
+};
+
+const WALL_WORK_MESSAGE: Record<Exclude<WallTool, 'снос'>, GameMessage> = {
+  'стена': gameMessage('Стена · строится', 'Wall · building'),
+  'ограда': gameMessage('Ограда · строится', 'Fence · building'),
+  'дорога': gameMessage('Дорога · строится', 'Road · building'),
+  'фонарь': gameMessage('Фонарь · ставится', 'Lamp · placing'),
+  'башня': gameMessage('Башня · строится', 'Tower · building'),
+  'ворота': gameMessage('Ворота · строятся', 'Gate · building'),
+  'лестница': gameMessage('Лестница · строится', 'Stairs · building'),
+};
+
+interface CostChip {
+  readonly root: HTMLElement;
+  readonly have: HTMLElement;
+  readonly need: HTMLElement;
+}
+
+interface BuildingCard {
+  readonly button: HTMLButtonElement;
+  readonly level: HTMLElement;
+  readonly effect: HTMLElement;
+  readonly costs: Map<ResourceKind, CostChip>;
+}
 
 const TENT_REASON_MESSAGE = {
   nobody: gameMessage('Все под крышей', 'Everyone has shelter'),
@@ -224,6 +264,12 @@ interface Row {
   readonly pic?: HTMLImageElement;
 }
 
+interface BuildingRow extends Row {
+  readonly next: HTMLElement;
+  readonly costs: Map<ResourceKind, CostChip>;
+  readonly actions: HTMLElement;
+}
+
 /**
  * Панель строится один раз и дальше обновляется на месте.
  *
@@ -235,7 +281,8 @@ interface Row {
 export class CampHud {
   private readonly root: HTMLElement;
   private readonly resValues = new Map<ResourceKind, HTMLElement>();
-  private readonly rows = new Map<BuildingId, Row>();
+  private readonly rows = new Map<BuildingId, BuildingRow>();
+  private readonly buildingCards = new Map<BuildingId, BuildingCard>();
   private readonly gearRows = new Map<GearSlot, Row>();
   /** Лист кладовой (§13.6): полоса занятости и карточка сундука. */
   private storeLevel!: HTMLElement;
@@ -274,6 +321,10 @@ export class CampHud {
   private readonly gearSection: HTMLElement;
   private readonly moveButton: HTMLButtonElement;
   private readonly bar: HTMLElement;
+  private readonly constructionLive: HTMLButtonElement;
+  private readonly constructionLiveName: HTMLElement;
+  private readonly constructionLiveTime: HTMLElement;
+  private readonly constructionLiveBar: HTMLElement;
   /**
    * Место для панелей, которые живут в лагере, но не принадлежат зданиям, —
    * сейчас там панель стройки стен. Стоит **над нижней строкой, а не в листе**,
@@ -401,6 +452,16 @@ export class CampHud {
       this.sections.set(id, section);
       this.sheet.appendChild(section);
     }
+
+    const buildings = document.createElement('div');
+    buildings.className = 'sec build-catalog';
+    buildings.appendChild(this.makeConstructionTabs('buildings'));
+    const buildingGrid = document.createElement('div');
+    buildingGrid.className = 'building-cards';
+    for (const id of BUILDING_ORDER) buildingGrid.appendChild(this.makeBuildingCard(id));
+    buildings.appendChild(buildingGrid);
+    this.sections.set('buildings', buildings);
+    this.sheet.appendChild(buildings);
 
     // §20.1 — сток без таймера. Живёт внутри карточки Мастерской: снаряжение
     // делает она, и отдельная вкладка разорвала бы эту связь.
@@ -559,6 +620,30 @@ export class CampHud {
     this.slot = document.createElement('div');
     this.slot.className = 'sec camp-slot';
 
+    // Единственный строительный слот виден и при закрытом листе. Тап ведёт
+    // прямо к зданию, которое сейчас растёт, — искать его среди девяти не надо.
+    this.constructionLive = document.createElement('button');
+    this.constructionLive.className = 'panel construction-live';
+    this.constructionLive.style.display = 'none';
+    const liveText = document.createElement('span');
+    this.constructionLiveName = document.createElement('b');
+    this.constructionLiveTime = document.createElement('small');
+    liveText.append(this.constructionLiveName, this.constructionLiveTime);
+    const liveBar = document.createElement('span');
+    liveBar.className = 'bar';
+    this.constructionLiveBar = document.createElement('i');
+    liveBar.appendChild(this.constructionLiveBar);
+    this.constructionLive.append(liveText, liveBar);
+    this.constructionLive.addEventListener('click', () => {
+      const building = this.last?.camp.construction?.building;
+      if (building !== undefined) {
+        this.openBuilding(building);
+        return;
+      }
+      const tool = this.last?.camp.walls?.work?.tool;
+      if (tool !== undefined) this.cb.onWalls(tool === 'дорога' || tool === 'фонарь' ? 'decor' : 'defense');
+    });
+
     /* ---------- нижняя строка ---------- */
     this.bar = document.createElement('div');
     this.bar.className = 'camp-bar';
@@ -567,10 +652,7 @@ export class CampHud {
     // внутрь карточки Штаба значило бы соврать про то, чем она является.
     const walls = document.createElement('button');
     setGameText(walls, gameMessage('Строительство', 'Building'));
-    walls.addEventListener('click', () => {
-      this.close();
-      this.cb.onWalls();
-    });
+    walls.addEventListener('click', () => this.cb.onConstruction());
     this.wallsButton = walls;
     // Кнопки «Отряд» здесь больше нет: отряд переехал в веер у большого
     // пальца (`features/fan`) и стоит на экране постоянно. Лист открывался
@@ -590,7 +672,10 @@ export class CampHud {
     // середина экрана, которая принадлежит лагерю (§6.2.6).
     space.appendChild(this.daily.icon);
 
-    this.root.append(res, this.banner, this.task, space, this.sheet, this.slot, this.bar);
+    this.root.append(
+      res, this.banner, this.task, space, this.sheet, this.slot,
+      this.constructionLive, this.bar,
+    );
     parent.appendChild(this.root);
     this.close();
   }
@@ -719,20 +804,114 @@ export class CampHud {
     return b;
   }
 
+  private makeConstructionTabs(active: 'buildings' | BuildCategory): HTMLElement {
+    const tabs = document.createElement('div');
+    tabs.className = 'construction-tabs';
+    const entries: readonly [typeof active, GameMessage][] = [
+      ['buildings', gameMessage('Здания', 'Buildings')],
+      ['defense', gameMessage('Оборона', 'Defenses')],
+      ['decor', gameMessage('Благоустройство', 'Amenities')],
+    ];
+    for (const [kind, label] of entries) {
+      const button = document.createElement('button');
+      setGameText(button, label);
+      button.classList.toggle('active', kind === active);
+      button.setAttribute('aria-pressed', kind === active ? 'true' : 'false');
+      button.addEventListener('click', () => {
+        if (kind === 'buildings') this.openConstruction();
+        else {
+          this.close();
+          this.cb.onWalls(kind);
+        }
+      });
+      tabs.appendChild(button);
+    }
+    return tabs;
+  }
+
+  private makeCostChips(): { root: HTMLElement; chips: Map<ResourceKind, CostChip> } {
+    const root = document.createElement('div');
+    root.className = 'cost-chips';
+    const chips = new Map<ResourceKind, CostChip>();
+    for (const kind of RESOURCE_ORDER) {
+      const chip = document.createElement('span');
+      chip.className = 'cost-chip';
+      const name = document.createElement('span');
+      name.className = 'cost-name';
+      setGameText(name, resourceMessage[kind]);
+      const have = document.createElement('b');
+      const slash = document.createTextNode('/');
+      const need = document.createElement('b');
+      chip.append(name, have, slash, need);
+      chip.style.display = 'none';
+      root.appendChild(chip);
+      chips.set(kind, { root: chip, have, need });
+    }
+    return { root, chips };
+  }
+
+  private syncCostChips(
+    chips: Map<ResourceKind, CostChip>,
+    camp: CampState,
+    level: number,
+    visible: boolean,
+  ): void {
+    const cost = BUILD_COST[level] ?? {};
+    for (const [kind, chip] of chips) {
+      const need = cost[kind] ?? 0;
+      chip.root.style.display = visible && need > 0 ? '' : 'none';
+      if (need <= 0) continue;
+      const have = camp.resources[kind] ?? 0;
+      chip.have.textContent = String(have);
+      chip.need.textContent = String(need);
+      chip.root.classList.toggle('cant', have < need);
+    }
+  }
+
+  private makeBuildingCard(id: BuildingId): HTMLElement {
+    const button = document.createElement('button');
+    button.className = 'card building-pick';
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('class', 'glyph');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = BUILDING_GLYPH[id];
+    const name = document.createElement('b');
+    setGameText(name, buildingMessage[id]);
+    const level = document.createElement('span');
+    level.className = 'badge building-level';
+    const effect = document.createElement('span');
+    effect.className = 'dim building-next';
+    const costs = this.makeCostChips();
+    button.append(icon, name, level, effect, costs.root);
+    button.addEventListener('click', () => this.openBuilding(id));
+    this.buildingCards.set(id, { button, level, effect, costs: costs.chips });
+    return button;
+  }
+
   private makeRow(id: BuildingId): HTMLElement {
     const box = document.createElement('div');
-    box.className = 'b';
+    box.className = 'b building-sheet';
 
     // Имя здания стоит в шапке листа, и второй раз оно только шумит:
     // карточка открыта ровно про одно здание.
     const top = document.createElement('div');
     top.className = 'row b-top';
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('class', 'glyph building-glyph');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = BUILDING_GLYPH[id];
     const level = document.createElement('span');
     level.className = 'dim';
-    top.append(level);
+    top.append(icon, level);
 
     const effect = document.createElement('div');
     effect.className = 'b-eff';
+    const next = document.createElement('div');
+    next.className = 'building-delta';
+
+    const costs = this.makeCostChips();
 
     const barWrap = document.createElement('div');
     barWrap.className = 'bar';
@@ -747,6 +926,9 @@ export class CampHud {
     status.className = 'dim';
     const button = document.createElement('button');
     bottom.append(status, button);
+    const actions = document.createElement('div');
+    actions.className = 'building-actions';
+    actions.appendChild(bottom);
 
     // Слушатель вешается один раз на живой элемент — он и не переживает
     // перерисовку, потому что перерисовки больше нет.
@@ -755,8 +937,10 @@ export class CampHud {
       else this.cb.onUpgrade(id);
     });
 
-    box.append(top, effect, barWrap, bottom);
-    this.rows.set(id, { box, level, effect, status, barWrap, bar, button });
+    box.append(top, effect, next, costs.root, barWrap, actions);
+    this.rows.set(id, {
+      box, level, effect, next, costs: costs.chips, actions, status, barWrap, bar, button,
+    });
     return box;
   }
 
@@ -845,8 +1029,8 @@ export class CampHud {
     // Кнопка перестановки принадлежит карточке здания и переезжает в неё:
     // здание всегда одно, а разделов много.
     if (isBuilding(kind)) {
-      this.rows.get(kind)?.box.appendChild(this.moveButton);
-      this.moveButton.style.display = '';
+      this.rows.get(kind)?.actions.appendChild(this.moveButton);
+      this.moveButton.style.display = (this.last?.camp.levels[kind] ?? 0) > 0 ? '' : 'none';
     } else {
       this.moveButton.style.display = 'none';
     }
@@ -858,6 +1042,10 @@ export class CampHud {
   /** Тап по зданию в сцене. Открывает карточку именно этого здания. */
   openBuilding(id: BuildingId): void {
     this.openSheet(id);
+  }
+
+  openConstruction(): void {
+    this.openSheet('buildings');
   }
 
   /** Тап по сундуку в сцене (§13.6): сундук — лицо кладовой. */
@@ -879,6 +1067,7 @@ export class CampHud {
     // Заголовок называет ту же кнопку, что открыла лист: «В вылазку» здесь
     // называло кнопку, которой больше нет.
     if (kind === 'shop') return gameMessage('Припасы', 'Supplies');
+    if (kind === 'buildings') return gameMessage('Строительство', 'Building');
     if (kind === 'store') return gameMessage('Кладовая', 'Storage');
     if (kind === 'daily') return gameMessage('Подарок за вход', 'Daily gift');
     return buildingMessage[kind];
@@ -899,10 +1088,12 @@ export class CampHud {
     const low = [this.res, this.banner, this.task]
       .filter((el) => el.offsetParent !== null)
       .reduce((y, el) => Math.max(y, el.getBoundingClientRect().bottom), 0);
-    const bar = this.bar.getBoundingClientRect();
+    const bottomTops = [this.bar, this.constructionLive]
+      .filter((el) => el.offsetParent !== null)
+      .map((el) => el.getBoundingClientRect().top);
     return {
       top: Math.round(low),
-      bottom: Math.round(Math.max(0, window.innerHeight - bar.top)),
+      bottom: Math.round(Math.max(0, window.innerHeight - Math.min(...bottomTops))),
     };
   }
 
@@ -919,6 +1110,7 @@ export class CampHud {
     this.daily.sync(camp, now);
 
     this.last = { camp, now };
+    this.syncConstructionLive(camp, now);
     this.paintOpen();
     this.applyOnboarding();
   }
@@ -1106,6 +1298,7 @@ export class CampHud {
     if (this.last === null) return;
     const { camp, now } = this.last;
     if (this.open === 'tiers') this.syncTiers(camp, now);
+    else if (this.open === 'buildings') this.syncBuildingCatalog(camp);
     else if (this.open === 'shop') this.syncShop(camp);
     else if (this.open === 'store') this.syncStore(camp);
     else if (isBuilding(this.open)) {
@@ -1216,6 +1409,58 @@ export class CampHud {
     }
   }
 
+  private syncConstructionLive(camp: CampState, now: number): void {
+    const buildingWork = camp.construction;
+    const wallWork = camp.walls?.work ?? null;
+    this.constructionLive.style.display = (buildingWork === null && wallWork === null) || this.open !== null
+      ? 'none'
+      : '';
+    const work = buildingWork ?? wallWork;
+    if (work === null) return;
+    if (buildingWork !== null) {
+      setGameText(this.constructionLiveName, gameMessage(
+        '{building} · ур. {level}',
+        '{building} · lvl {level}',
+      ), { building: gameText(buildingMessage[buildingWork.building]), level: buildingWork.toLevel });
+    } else {
+      setGameText(this.constructionLiveName, WALL_WORK_MESSAGE[wallWork!.tool]);
+    }
+    const left = Math.max(0, work.endsAt - now);
+    setGameText(this.constructionLiveTime, gameMessage(
+      'Осталось {duration}',
+      '{duration} remaining',
+    ), { duration: gameDuration(left) });
+    const progress = buildingWork !== null
+      ? 1 - left / Math.max(1, work.endsAt - work.startedAt)
+      : wallProgress(camp.walls!, now);
+    this.constructionLiveBar.style.width = `${Math.max(0, Math.min(100, progress * 100)).toFixed(1)}%`;
+  }
+
+  private syncBuildingCatalog(camp: CampState): void {
+    for (const id of BUILDING_ORDER) {
+      const card = this.buildingCards.get(id);
+      if (card === undefined) continue;
+      const level = camp.levels[id];
+      const next = level + 1;
+      const block = upgradeBlock(camp, id);
+      setGameText(card.level, level > 0
+        ? gameMessage('ур. {level}', 'lvl {level}')
+        : gameMessage('новое', 'new'), { level });
+      if (level >= MAX_LEVEL) setGameText(card.effect, gameMessage(
+        'Улучшено до предела',
+        'Fully upgraded',
+      ));
+      else setGameText(card.effect, gameMessage(
+        'Дальше · {effect}',
+        'Next · {effect}',
+      ), { effect: BUILDINGS[id].effect(next) });
+      this.syncCostChips(card.costs, camp, next, level < MAX_LEVEL);
+      card.button.classList.toggle('locked', block === 'locked');
+      card.button.classList.toggle('busy', camp.construction?.building === id);
+      card.button.classList.toggle('cant', block === 'resources');
+    }
+  }
+
   private syncBuilding(camp: CampState, id: BuildingId, now: number): void {
     const row = this.rows.get(id);
     if (row === undefined) return;
@@ -1229,7 +1474,13 @@ export class CampHud {
       setGameText(row.level, gameMessage('ур. {level} → {next}', 'lvl {level} → {next}'), {
         level, next: c.toLevel,
       });
-      row.effect.textContent = BUILDINGS[id].effect(c.toLevel);
+      row.effect.textContent = BUILDINGS[id].effect(level);
+      setGameText(row.next, gameMessage(
+        'Строится · {effect}',
+        'Building · {effect}',
+      ), { effect: BUILDINGS[id].effect(c.toLevel) });
+      row.next.style.display = '';
+      this.syncCostChips(row.costs, camp, c.toLevel, false);
       row.barWrap.style.display = '';
       row.bar.style.width = `${((1 - left / total) * 100).toFixed(1)}%`;
       setGameText(row.status, gameMessage('{duration}', '{duration}'), { duration: gameDuration(left) });
@@ -1248,15 +1499,31 @@ export class CampHud {
       ? gameMessage('ур. {level}', 'lvl {level}')
       : gameMessage('не построена', 'not built'), { level });
     row.effect.textContent = BUILDINGS[id].effect(level);
+    if (level < MAX_LEVEL) {
+      setGameText(row.next, gameMessage(
+        'Следующий уровень · {effect}',
+        'Next level · {effect}',
+      ), { effect: BUILDINGS[id].effect(level + 1) });
+      row.next.style.display = '';
+    } else {
+      clearGameText(row.next);
+      row.next.textContent = '';
+      row.next.style.display = 'none';
+    }
+    this.syncCostChips(row.costs, camp, level + 1, level < MAX_LEVEL);
     row.barWrap.style.display = 'none';
     row.button.dataset['mode'] = 'upgrade';
     setGameText(row.button, level > 0 ? gameMessage('Улучшить', 'Upgrade') : gameMessage('Построить', 'Build'));
     row.button.disabled = block !== 'ok';
-    if (block === 'ok' || block === 'resources') setGameText(
-      row.status,
-      gameMessage('{price}', '{price}'),
-      { price: this.priceLine(level + 1) },
-    );
+    if (block === 'ok' || block === 'resources') {
+      const seconds = BUILD_SECONDS[level + 1] ?? 0;
+      setGameText(row.status, seconds === 0
+        ? gameMessage('Сразу', 'Immediately')
+        : gameMessage('{duration}', '{duration}'), { duration: gameDuration(seconds) });
+    } else if (block === 'locked') setGameText(row.status, gameMessage(
+      'Нужно Жильё ур. {level}',
+      'Requires Housing lvl {level}',
+    ), { level: BUILDINGS[id].unlockHq });
     else setGameText(row.status, UPGRADE_REASON_MESSAGE[block]);
   }
 
@@ -1451,25 +1718,6 @@ export class CampHud {
   suggestWorld(text: string): void {
     this.taskNudge = { kind: 'world', text };
     if (this.last !== null) this.syncTask(this.last.camp);
-  }
-
-  /**
-   * Цена и срок одной строкой. Первый уровень мгновенен (§20.2), и «· 0 с»
-   * читалось бы как поломка таймера: ноль в интерфейсе всегда выглядит
-   * ошибкой, поэтому он называется словом.
-   *
-   * Ветка «бесплатно» осталась не про здания — у всех уровней есть цена
-   * (§20.3), — а про то, что строка обязана уцелеть, если цена когда-нибудь
-   * окажется пустой: молчащий ценник хуже честного слова.
-   */
-  private priceLine(level: number): string {
-    const cost = this.costLine(level);
-    const seconds = BUILD_SECONDS[level] ?? 0;
-    const price = cost === '' ? gameText(gameMessage('бесплатно', 'free')) : cost;
-    const duration = seconds === 0
-      ? gameText(gameMessage('сразу', 'immediately'))
-      : gameText(gameMessage('{duration}', '{duration}'), { duration: gameDuration(seconds) });
-    return `${price} · ${duration}`;
   }
 
   /**
