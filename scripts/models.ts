@@ -804,30 +804,45 @@ const CASTLE: Pack = {
    * лестница, арка ворот, ярусы башни и два знамени. Что список и словарь
    * не разошлись, проверяет `castle.rules.ts`.
    *
-   * Вторые варианты тройника и яруса с дверью не взяты: они стоили бы
-   * шестьсот треугольников у каждого игрока за разнообразие, которого
-   * в кадре не видно.
+   * Дверной ярус был взят, когда у него появилась семантика: только первый
+   * этаж донжона, никогда башня на стене. Открытый ярус и крыша с окнами
+   * меняют силуэт, лестница с перилами — маршрут во дворе, а подъёмный мост
+   * называет вход ещё до арки. Это не фоновые варианты: каждый отвечает на свой
+   * вопрос генератора.
    *
-   * Осадные машины не взяты ни одна: почти половина треугольников набора
-   * лежит в них, а осады в игре нет.
+   * Второй слой набора работает уже не как внешнее кольцо: шестигранные
+   * башни задают стиль силуэта, узкие стены делят двор, прямой мост держит
+   * подход над рвом, а скалы с деревьями площадка мира ставит за дозором.
+   * Осадные машины по-прежнему не взяты: осады в игре нет.
    */
   adopted: [
     // Формы стыка: одиночная, тупик, прямая, угол, тройник.
     'tower-square',
     'wall-to-narrow',
     'wall', 'wall-pillar',
-    'wall-corner', 'wall-corner-slant', 'wall-corner-half-tower',
+    'wall-corner', 'wall-corner-slant', 'wall-corner-half', 'wall-corner-half-tower',
     'wall-half',
-    // Лестница со двора и проезд ворот со створкой.
-    'wall-narrow-stairs',
-    'tower-square-arch', 'gate',
+    // Лестницы и внутренние укрепления двора.
+    'wall-narrow-stairs', 'wall-narrow-stairs-rail', 'stairs-stone', 'stairs-stone-square',
+    'wall-narrow', 'wall-doorway', 'wall-half-modular', 'wall-narrow-gate',
+    'wall-narrow-wood', 'wall-narrow-wood-fence',
+    // Проезд: арка, три створки, подъёмное полотно и каменная опора над рвом.
+    'tower-square-arch', 'gate', 'door', 'metal-gate',
+    'bridge-draw', 'bridge-straight', 'bridge-straight-pillar',
     // Башня: этаж, ярусы, шапка и крыши.
     'tower-square-base',
-    'tower-square-mid', 'tower-square-mid-windows',
+    'tower-square-mid', 'tower-square-mid-windows', 'tower-square-mid-open', 'tower-square-mid-door',
     'tower-square-top',
     'tower-square-top-roof', 'tower-square-top-roof-high', 'tower-square-top-roof-rounded',
-    // Знамёна: на донжоне и на угловых башенках.
-    'flag', 'flag-pennant',
+    'tower-square-top-roof-high-windows',
+    // Отдельный стиль угловых башен со своими высотами ярусов.
+    'tower-hexagon-base', 'tower-hexagon-mid',
+    'tower-hexagon-top', 'tower-hexagon-top-wood',
+    'tower-hexagon-roof', 'tower-hexagon-roof-secondary',
+    // Знамёна: на донжоне, башенках и внешней плоскости стен.
+    'flag', 'flag-wide', 'flag-pennant', 'flag-banner-short', 'flag-banner-long',
+    // Окружение выбирает генератор площадки мира, а не план здания.
+    'rocks-large', 'rocks-small', 'tree-large', 'tree-small',
   ],
   data: { file: 'src/render/castle.data.ts', prefix: 'CASTLE', type: 'CastlePart' },
 };
