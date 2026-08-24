@@ -1,5 +1,7 @@
 import { play } from '../core/audio';
 import { cloudLink } from '../core/cloud';
+import { clearGameText, setGameAttribute, setGameText } from '../i18n/game';
+import { gameMessages } from '../i18n/gameMessages';
 import { revealCard } from './cardReveal';
 
 /**
@@ -15,16 +17,16 @@ import { revealCard } from './cardReveal';
  */
 const CARDS = {
   in: {
-    title: 'Вход',
-    lead: 'Лагерь хранится за аккаунтом — ссылка придёт на почту',
-    act: 'Прислать ссылку',
-    swap: 'У меня нет аккаунта',
+    title: gameMessages.authSignInTitle,
+    lead: gameMessages.authSignInLead,
+    act: gameMessages.authSignInSubmit,
+    swap: gameMessages.authSignInSwap,
   },
   up: {
-    title: 'Регистрация',
-    lead: 'Аккаунт сохранит лагерь между устройствами',
-    act: 'Завести аккаунт',
-    swap: 'У меня есть аккаунт',
+    title: gameMessages.authSignUpTitle,
+    lead: gameMessages.authSignUpLead,
+    act: gameMessages.authSignUpSubmit,
+    swap: gameMessages.authSignUpSwap,
   },
 } as const;
 
@@ -79,12 +81,17 @@ export class AuthCard {
   private paint(): void {
     const c = CARDS[this.mode];
     this.card.innerHTML = `
-      <h2>${c.title}</h2>
-      <p class="sp-note">${c.lead}</p>
-      <input type="email" data-in="email" placeholder="Почта" autocomplete="email">
+      <h2></h2>
+      <p class="sp-note"></p>
+      <input type="email" data-in="email" autocomplete="email">
       <p class="auth-note warn"></p>
-      <button type="button" data-act="go">${c.act}</button>
-      <button type="button" class="ghost" data-act="swap">${c.swap}</button>`;
+      <button type="button" data-act="go"></button>
+      <button type="button" class="ghost" data-act="swap"></button>`;
+    setGameText(this.card.querySelector('h2') as HTMLElement, c.title);
+    setGameText(this.card.querySelector('.sp-note') as HTMLElement, c.lead);
+    setGameAttribute(this.card.querySelector('[data-in="email"]') as HTMLInputElement, 'placeholder', gameMessages.authEmail);
+    setGameText(this.card.querySelector('[data-act="go"]') as HTMLButtonElement, c.act);
+    setGameText(this.card.querySelector('[data-act="swap"]') as HTMLButtonElement, c.swap);
   }
 
   private async submit(): Promise<void> {
@@ -92,18 +99,19 @@ export class AuthCard {
     const email = this.card.querySelector('[data-in="email"]');
     const note = this.card.querySelector('.auth-note');
     if (!(email instanceof HTMLInputElement) || email.value === '') return;
-    if (note !== null) note.textContent = 'Письмо собирается…';
+    if (note !== null) setGameText(note, gameMessages.authSending);
     this.busy = true;
     const refusal = await cloudLink(email.value, this.mode === 'up');
     this.busy = false;
     if (note === null) return;
     if (refusal !== null) {
+      clearGameText(note);
       note.textContent = refusal;
       return;
     }
     play('tap');
     // Дальше всё случится в письме: ссылка вернёт в игру уже вошедшим,
     // а эта вкладка узнает о сессии сама и уберёт карточку.
-    note.textContent = 'Ссылка отправлена — откройте письмо';
+    setGameText(note, gameMessages.authSent);
   }
 }

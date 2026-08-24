@@ -1,4 +1,6 @@
 import type { CampState } from '../sim/camp';
+import { clearGameAttribute, clearGameText, setGameAttribute, setGameText } from '../i18n/game';
+import { gameMessages } from '../i18n/gameMessages';
 import { residentUuid } from '../sim/residents';
 import {
   CLAN_BUILD_SECONDS,
@@ -7,6 +9,18 @@ import {
   clanCanAfford,
   type ClanBuildingKind,
 } from '../sim/clan';
+
+const BUILDING_BUTTON = {
+  hall: gameMessages.clanBuildHall,
+  store: gameMessages.clanBuildStore,
+  workshop: gameMessages.clanBuildWorkshop,
+} as const;
+
+const BUILDING_PROGRESS = {
+  hall: gameMessages.clanBuildHallProgress,
+  store: gameMessages.clanBuildStoreProgress,
+  workshop: gameMessages.clanBuildWorkshopProgress,
+} as const;
 
 export interface ClanBuildBarCallbacks {
   onSelect(kind: ClanBuildingKind | null): void;
@@ -21,6 +35,7 @@ export class ClanBuildBar {
   private readonly resources: HTMLElement;
   private readonly progress: HTMLElement;
   private readonly workers: HTMLElement;
+  private leaderNote = false;
 
   constructor(parent: HTMLElement, private readonly cb: ClanBuildBarCallbacks) {
     this.root = document.createElement('section');
@@ -29,9 +44,9 @@ export class ClanBuildBar {
     const head = document.createElement('div');
     head.className = 'row cb-head';
     const title = document.createElement('b');
-    title.textContent = 'Стройка клана';
+    setGameText(title, gameMessages.clanBuildTitle);
     const hint = document.createElement('span');
-    hint.textContent = 'Выберите здание, затем место 2×2';
+    setGameText(hint, gameMessages.clanBuildHint);
     head.append(title, hint);
 
     const list = document.createElement('div');
@@ -40,7 +55,7 @@ export class ClanBuildBar {
       const button = document.createElement('button');
       button.className = 'card';
       const building = CLAN_BUILDINGS[kind];
-      button.textContent = `${building.name} · Д ${building.cost.wood} · К ${building.cost.stone} · Ж ${building.cost.iron}`;
+      setGameText(button, BUILDING_BUTTON[kind], building.cost);
       button.addEventListener('click', () => {
         const selected = button.getAttribute('aria-pressed') === 'true';
         this.cb.onSelect(selected ? null : kind);
@@ -68,53 +83,70 @@ export class ClanBuildBar {
     const buildings = location?.buildings ?? [];
     const construction = location?.construction ?? null;
     const stock = location?.resources;
-    this.resources.textContent = stock === undefined
-      ? ''
-      : `Склад: дерево ${stock.wood} · камень ${stock.stone} · железо ${stock.iron}`;
+    if (stock === undefined) {
+      clearGameText(this.resources);
+      this.resources.textContent = '';
+    } else setGameText(this.resources, gameMessages.clanBuildResources, stock);
     for (const [kind, button] of this.buttons) {
       const built = buildings.some((b) => b.kind === kind);
       const current = construction?.kind === kind;
       const affordable = location === undefined || clanCanAfford(location, kind);
       button.disabled = camp.clan.leader !== true || built || construction !== null;
       button.setAttribute('aria-pressed', String(selected === kind));
-      button.title = built ? 'Уже построено'
-        : current ? 'Сейчас строится'
-          : construction !== null ? 'Сначала закончите текущую стройку'
-            : camp.clan.leader !== true ? 'Строить может глава'
-              : !affordable ? 'На складе клана не хватает ресурсов' : '';
+      const title = built ? gameMessages.clanBuildBuilt
+        : current ? gameMessages.clanBuildCurrent
+          : construction !== null ? gameMessages.clanBuildFinishCurrent
+            : camp.clan.leader !== true ? gameMessages.clanBuildLeaderOnly
+              : !affordable ? gameMessages.clanBuildResourcesMissing : null;
+      if (title === null) clearGameAttribute(button, 'title');
+      else setGameAttribute(button, 'title', title);
     }
-    this.progress.textContent = construction === null
-      ? 'Сейчас стройки нет'
-      : `${CLAN_BUILDINGS[construction.kind].name}: ${Math.floor(construction.work / 60)} / ${CLAN_BUILD_SECONDS / 60} мин работы`;
+    if (construction === null) setGameText(this.progress, gameMessages.clanBuildNone);
+    else setGameText(this.progress, BUILDING_PROGRESS[construction.kind], {
+      done: Math.floor(construction.work / 60),
+      total: CLAN_BUILD_SECONDS / 60,
+    });
     this.workers.replaceChildren();
     const workerTitle = document.createElement('b');
-    workerTitle.textContent = 'Рабочие на стройке';
+    setGameText(workerTitle, gameMessages.clanBuildWorkers);
     this.workers.append(workerTitle);
     const assigned = new Set(location?.builders ?? []);
     for (const resident of camp.residents) {
       const id = residentUuid(resident);
       const button = document.createElement('button');
       const works = assigned.has(id);
-      button.textContent = `${resident.name} · ${works ? 'строит' : 'в личном лагере'}`;
+      setGameText(button, works ? gameMessages.clanBuildWorkerAssigned : gameMessages.clanBuildWorkerCamp, {
+        name: resident.name,
+      });
       button.setAttribute('aria-pressed', String(works));
       button.disabled = construction === null || resident.hunt !== undefined;
-      button.title = resident.hunt !== undefined ? 'Житель сейчас на охоте'
-        : construction === null ? 'Сначала начните стройку' : '';
+      const title = resident.hunt !== undefined ? gameMessages.clanBuildWorkerHunting
+        : construction === null ? gameMessages.clanBuildStartFirst : null;
+      if (title === null) clearGameAttribute(button, 'title');
+      else setGameAttribute(button, 'title', title);
       button.addEventListener('click', () => this.cb.onBuilder(id, !works));
       this.workers.append(button);
     }
     if (camp.residents.length === 0) {
       const empty = document.createElement('span');
       empty.className = 'dim';
-      empty.textContent = 'В личном лагере пока нет жителей';
+      setGameText(empty, gameMessages.clanBuildNoResidents);
       this.workers.append(empty);
     }
-    if (camp.clan.leader !== true) this.note.textContent = 'Размещать здания может только глава клана';
-    else if (this.note.textContent === 'Размещать здания может только глава клана') this.note.textContent = '';
+    if (camp.clan.leader !== true) {
+      setGameText(this.note, gameMessages.clanBuildPlaceLeader);
+      this.leaderNote = true;
+    } else if (this.leaderNote) {
+      clearGameText(this.note);
+      this.note.textContent = '';
+      this.leaderNote = false;
+    }
   }
 
   setReason(reason: string): void {
+    clearGameText(this.note);
     this.note.textContent = reason;
+    this.leaderNote = false;
   }
 
   setVisible(visible: boolean): void {

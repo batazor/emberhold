@@ -2,6 +2,12 @@ import { i18n, type Messages } from '@lingui/core';
 import { legacyPatterns } from './legacy';
 
 type Language = 'en' | 'ru';
+type MessageValues = Readonly<Record<string, string | number>>;
+interface RuntimeMessage {
+  readonly id: string;
+  readonly message: string;
+  readonly values?: MessageValues;
+}
 
 const STORAGE_KEY = 'emberhold/language';
 const LANGUAGES: readonly Language[] = ['en', 'ru'];
@@ -32,6 +38,24 @@ let current: Language = read();
 let activation = 0;
 
 const normalized = (text: string): string => text.replace(/\s+/g, ' ').trim();
+const interpolate = (source: string, values: MessageValues = {}): string =>
+  source.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) => String(values[name] ?? whole));
+
+function message(descriptor: Pick<RuntimeMessage, 'id' | 'message'>, values?: MessageValues): string {
+  if (!loaded.has(current) || current === 'ru') return interpolate(descriptor.message, values);
+  return i18n._(descriptor.id, values);
+}
+
+function readMessage(value: string | null): RuntimeMessage | null {
+  if (value === null) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<RuntimeMessage>;
+    if (typeof parsed.id !== 'string' || typeof parsed.message !== 'string') return null;
+    return parsed as RuntimeMessage;
+  } catch {
+    return null;
+  }
+}
 
 const patternEntries = legacyPatterns.map(({ source }) => {
   const holes = [...source.matchAll(/ZXQPH(\d+)QXZ/g)].map((match) => Number(match[1]));
@@ -67,7 +91,7 @@ function translate(text: string): string {
 
 function textNode(node: Node): void {
   const parent = node.parentElement;
-  if (parent === null || parent.closest('script,style,noscript,code,pre,[translate="no"]') !== null) return;
+  if (parent === null || parent.closest('script,style,noscript,code,pre,[translate="no"],[data-lingui-text]') !== null) return;
   const value = node.nodeValue ?? '';
   let source = original.get(node);
   const previous = rendered.get(node);
@@ -82,11 +106,29 @@ function textNode(node: Node): void {
 
 function element(node: Element): void {
   if (node.closest('[translate="no"]') !== null) return;
+  const explicitText = readMessage(node.getAttribute('data-lingui-text'));
+  if (explicitText !== null) {
+    const next = message(explicitText, explicitText.values);
+    if (node.textContent !== next) node.textContent = next;
+  }
+  let explicitAttributes: Record<string, RuntimeMessage> = {};
+  const rawAttributes = node.getAttribute('data-lingui-attributes');
+  if (rawAttributes !== null) {
+    try {
+      explicitAttributes = JSON.parse(rawAttributes) as Record<string, RuntimeMessage>;
+    } catch {}
+  }
   const stored = original.get(node);
   const saved: Record<string, string> = typeof stored === 'object' && stored !== null ? stored : {};
   const last = rendered.get(node);
   const painted: Record<string, string> = typeof last === 'object' && last !== null ? last : {};
   for (const name of ATTRIBUTES) {
+    const explicit = explicitAttributes[name];
+    if (explicit !== undefined) {
+      const next = message(explicit, explicit.values);
+      if (node.getAttribute(name) !== next) node.setAttribute(name, next);
+      continue;
+    }
     if (!node.hasAttribute(name)) continue;
     const value = node.getAttribute(name) ?? '';
     let source: string | undefined = saved[name];
@@ -135,7 +177,7 @@ function observe(doc: Document = document): void {
     childList: true,
     characterData: true,
     attributes: true,
-    attributeFilter: [...ATTRIBUTES],
+    attributeFilter: [...ATTRIBUTES, 'data-lingui-text', 'data-lingui-attributes'],
   });
   observed.set(doc, observer);
 }
@@ -201,6 +243,7 @@ window.EmberholdLanguage = {
   },
   set,
   toggle,
+  message,
   translate,
   localize,
   observe,
