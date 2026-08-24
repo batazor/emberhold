@@ -29,6 +29,7 @@ import {
   STAIR_PARTS,
   STRAIGHT,
   WALK,
+  WALL_BANNERS,
   WALL_TOP,
   CAP,
   TOWER,
@@ -65,6 +66,24 @@ const expanded = Array.from({ length: 128 }, (_, i) => generateCastle(i + 1));
 const key = (c: Castle, x: number, z: number): number => z * c.width + x;
 const isRing = (c: Castle, x: number, z: number): boolean =>
   c.ring.some((s) => s.x === x && s.z === z);
+
+const jointAt = (c: Castle, spot: Spot): Joint => jointOf(DIRS
+  .map((d, i) => isRing(c, spot.x + d[0]!, spot.z + d[1]!) ? i : -1)
+  .filter((i) => i >= 0));
+
+/** Длина прямого фасада, в котором стоит клетка кольца. */
+function straightRunAt(c: Castle, at: number): number {
+  if (jointAt(c, c.ring[at]!) !== 'прямая') return 0;
+  let length = 1;
+  for (const direction of [-1, 1]) {
+    for (let step = 1; step < c.ring.length; step++) {
+      const spot = c.ring[(at + c.ring.length + direction * step) % c.ring.length]!;
+      if (jointAt(c, spot) !== 'прямая') break;
+      length++;
+    }
+  }
+  return length;
+}
 
 describe('Замок: словарь деталей взят из обмера', () => {
   test('каждая деталь генератора есть в каталоге набора', () => {
@@ -292,6 +311,89 @@ describe('Башня: апгрейд идёт только вверх', () => {
       const top = Math.max(...tower.map((p) => p.y));
       assert.ok(top >= FLOOR, `сид ${c.seed}: донжон в один ярус`);
       assert.ok(top <= FLOOR * TOWER_MAX + 0.001, `сид ${c.seed}: донжон выше потолка`);
+    }
+  });
+});
+
+describe('Замок: детали выбираются архитектурой, а не по одной случайности', () => {
+  test('ворота стоят в середине самого длинного прямого фасада', () => {
+    for (const c of expanded) {
+      const gateAt = c.ring.findIndex((spot) => keyOf(spot) === keyOf(c.gate));
+      const gateRun = straightRunAt(c, gateAt);
+      const longest = Math.max(...c.ring.map((_, at) => straightRunAt(c, at)));
+      assert.equal(gateRun, longest, `сид ${c.seed}: ворота на фасаде ${gateRun}, самый длинный ${longest}`);
+
+      let left = 0;
+      let right = 0;
+      while (jointAt(c, c.ring[(gateAt - left - 1 + c.ring.length) % c.ring.length]!) === 'прямая') left++;
+      while (jointAt(c, c.ring[(gateAt + right + 1) % c.ring.length]!) === 'прямая') right++;
+      assert.ok(Math.abs(left - right) <= 1, `сид ${c.seed}: ворота сдвинуты: ${left}/${right}`);
+    }
+  });
+
+  test('ворота обрамлены контрфорсами, а внешние углы усилены башнями', () => {
+    for (const c of expanded) {
+      const gateAt = c.ring.findIndex((spot) => keyOf(spot) === keyOf(c.gate));
+      for (const offset of [-1, 1]) {
+        const spot = c.ring[(gateAt + c.ring.length + offset) % c.ring.length]!;
+        const piece = c.pieces.find((p) => p.x === spot.x && p.z === spot.z && p.y === 0);
+        assert.equal(piece?.model, 'wall-pillar', `сид ${c.seed}: у ворот нет опоры`);
+      }
+
+      const yard = new Set(c.yard.map(keyOf));
+      const outer = c.ring.filter((spot) => jointAt(c, spot) === 'угол'
+        && DIRS.every(([dx, dz]) => !yard.has(`${spot.x + dx}:${spot.z + dz}`)));
+      assert.deepEqual(c.towers.map(keyOf).sort(), outer.map(keyOf).sort(), `сид ${c.seed}: башни не на внешних углах`);
+      for (const spot of outer) {
+        const models = c.pieces.filter((p) => p.x === spot.x && p.z === spot.z).map((p) => p.model);
+        const expected = c.towerStyle === 'шестигранные' ? HEX_TOWER.base : TOWER.base;
+        assert.ok(models.includes(expected), `сид ${c.seed}: внешний угол ${keyOf(spot)} не усилен`);
+      }
+    }
+  });
+
+  test('ворота, мост и внутреннее укрепление продолжают один стиль', () => {
+    let perpendicular = 0;
+    for (const c of expanded) {
+      const leaf = c.pieces.find((p) => (GATE_LEAVES as readonly string[]).includes(p.model))!;
+      const expectedLeaf = c.towerStyle === 'шестигранные'
+        ? 'metal-gate'
+        : Math.min(c.width, c.depth) <= 6 ? 'door' : 'gate';
+      assert.equal(leaf.model, expectedLeaf, `сид ${c.seed}: створка не из стиля`);
+      const bridge = c.pieces.find((p) => (FIXED_BRIDGES as readonly string[]).includes(p.model))!;
+      assert.equal(
+        bridge.model,
+        expectedLeaf === 'metal-gate' ? 'bridge-straight-pillar' : 'bridge-straight',
+        `сид ${c.seed}: мост не продолжает ворота`,
+      );
+      const inner = c.pieces.filter((p) => p.role === 'укрепление');
+      const family = c.towerStyle === 'квадратные' ? INNER_WALLS.stone : INNER_WALLS.wood;
+      assert.ok(inner.every((p) => (family as readonly string[]).includes(p.model)), `сид ${c.seed}: внутренний стиль смешан`);
+
+      const keep = c.pieces.find((p) => p.model === TOWER.keepBase);
+      const gateInside = c.yard.find((s) => Math.abs(s.x - c.gate.x) + Math.abs(s.z - c.gate.z) === 1);
+      if (keep !== undefined && gateInside !== undefined && inner.length === 2) {
+        const axisX = Math.abs(keep.x - gateInside.x) >= Math.abs(keep.z - gateInside.z);
+        const wallAlongZ = inner[0]!.x === inner[1]!.x;
+        if (axisX === wallAlongZ) perpendicular++;
+      }
+    }
+    assert.ok(perpendicular >= expanded.length * 0.9, `поперёк подхода стоят только ${perpendicular}/${expanded.length}`);
+  });
+
+  test('шапка и крыша шестигранной башни образуют пару, баннеры — фасадную пару', () => {
+    for (const c of expanded) {
+      if (c.towerStyle === 'шестигранные') {
+        for (const spot of c.towers) {
+          const models = c.pieces.filter((p) => p.x === spot.x && p.z === spot.z).map((p) => p.model);
+          const top = HEX_TOWER.tops.findIndex((model) => models.includes(model));
+          const roof = HEX_TOWER.roofs.findIndex((model) => models.includes(model));
+          assert.equal(roof, top, `сид ${c.seed}: у башни ${keyOf(spot)} чужая крыша`);
+        }
+      }
+      const banners = c.pieces.filter((p) => (WALL_BANNERS as readonly string[]).includes(p.model));
+      assert.equal(banners.length, 2, `сид ${c.seed}: фасад не получил пару баннеров`);
+      assert.equal(new Set(banners.map((p) => p.model)).size, 1, `сид ${c.seed}: баннеры из разных серий`);
     }
   });
 });

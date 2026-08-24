@@ -171,6 +171,7 @@ describe('Замок на карте: чего в нём нет', () => {
   });
 
   test('между лесом и стеной есть поле: замок видно целиком', () => {
+    assert.equal(FIELD, 10, 'свободный пояс снова сжался до прежних шести клеток');
     for (const site of sites) {
       const { loc, castle, at } = site;
       assert.ok(at.x >= WOOD + FIELD, `сид ${loc.seed}: замок упёрся в лес по x`);
@@ -183,6 +184,7 @@ describe('Замок на карте: чего в нём нет', () => {
         at.z + castle.depth * CASTLE_CELL <= loc.size - WOOD - FIELD,
         `сид ${loc.seed}: замок вылез в лес по z`,
       );
+      assert.ok(loc.size >= 38, `сид ${loc.seed}: карта ${loc.size} — вокруг замка снова тесно`);
     }
   });
 
@@ -243,6 +245,17 @@ describe('Замок на карте: чего в нём нет', () => {
 });
 
 describe('Замок на карте: дорога называет маршрут', () => {
+  test('подход пересекает всё расширенное поле, а не обрывается у прежней границы', () => {
+    const required = Math.ceil((FIELD - 1) / CASTLE_CELL);
+    for (const site of sites) {
+      const outside = new Set(site.roads
+        .filter((road) => !site.castle.ring.some((s) => s.x === road.x && s.z === road.z)
+          && !site.castle.yard.some((s) => s.x === road.x && s.z === road.z))
+        .map((road) => `${road.x}:${road.z}`));
+      assert.ok(outside.size >= required, `сид ${site.loc.seed}: подход ${outside.size}/${required}`);
+    }
+  });
+
   test('дорога — одна четырёхсвязная цепь от подхода до двора торговца', () => {
     for (const site of sites) {
       const { roads, loc } = site;
