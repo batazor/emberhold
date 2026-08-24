@@ -7,8 +7,6 @@ import {
   ARROWS_PER_CONTAINER,
   BANDAGE_HEAL,
   HUNGER_BITE,
-  MIN_DAMAGE,
-  MIN_DAMAGE_SHARE,
   RANGED_MELEE_PENALTY,
   HERO_SPEED,
   TIER_RISK,
@@ -29,6 +27,8 @@ import {
 import type { HeroLoadout } from './heroes';
 import { NO_MODS, gearMods } from './gear';
 import type { GearState, Offhand } from './gear';
+import { protectionOf } from './protection';
+import type { ProtectionResult } from './protection';
 import {
   CONSUMABLES,
   RATION_FOOD,
@@ -52,11 +52,13 @@ import {
   createBattle,
   current,
   enemyPlan,
+  forecastRound,
 } from './battle';
-import type { BattleAction, BattleUnit } from './battle';
+import type { BattleAction, BattleForecast, BattleUnit } from './battle';
 import { keepApart } from './crowd';
 import { hasLineOfSight, idx } from './grid';
 import { hexToWorld } from './hex';
+import type { Hex } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
 import type {
   Cell,
@@ -312,6 +314,11 @@ export function createRaid(opts: RaidOptions): RaidState {
     lastHitBy: null,
     lastWoundFrom: null,
     damageTaken: 0,
+    guardTurns: 0,
+    guardPrevented: 0,
+    shieldPushes: 0,
+    intercepts: 0,
+    dodges: 0,
     fights: 0,
     joined: 0,
     kills: 0,
@@ -697,8 +704,7 @@ function stepMovement(state: RaidState, dt: number): void {
  * MIN_DAMAGE держит нижнюю границу: неуязвимости не существует
  * по построению, а не по настройке.
  */
-export const damageOf = (attack: number, defense: number): number =>
-  Math.max(MIN_DAMAGE, attack * MIN_DAMAGE_SHARE, attack - defense / 2);
+export { damageOf } from './protection';
 
 function stepContact(state: RaidState, dt: number, vision: number): void {
   const { hero, loc } = state;
@@ -980,6 +986,7 @@ function openBattle(state: RaidState): void {
       attack: f.loadout.attack + f.mods.attack,
       defense: f.loadout.defense + f.mods.defense,
       agility: f.loadout.agility,
+      hasShield: f.mods.hasShield,
     })),
     engaged.map((e) => ({ id: e.id, kind: e.kind, level: e.level, x: e.x, z: e.z, hp: e.hp })),
     // Сид боя — сид локации плюс номер стычки: броски уворота (§11.3)
@@ -1141,6 +1148,7 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
   const heroUnit = battle.units.find((u) => u.id === HERO_UNIT);
   const woundsBefore = heroUnit?.hp ?? 0;
 
+  const playAt = state.plays.length;
   const ok = apply(
     battle, state.loc.size, state.loc.blocked, action,
     (from, to) => damageBetween(state, from, to),
@@ -1148,6 +1156,15 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
     state.plays,
   );
   if (!ok) return false;
+
+  if (unit.side === 'hero' && action.kind === 'guard') state.guardTurns += 1;
+  for (const play of state.plays.slice(playAt)) {
+    if (play.kind !== 'strike' || play.target >= 0) continue;
+    state.guardPrevented += play.preventedByGuard;
+    if (play.pushedTo !== undefined) state.shieldPushes += 1;
+    if (play.interceptedFor !== undefined) state.intercepts += 1;
+    if (play.dodged) state.dodges += 1;
+  }
 
   if (heroUnit !== undefined && heroUnit.hp < woundsBefore) {
     state.damageTaken += woundsBefore - heroUnit.hp;
@@ -1179,20 +1196,32 @@ function applyBattle(state: RaidState, action: BattleAction): boolean {
 
 /**
  * §11.3 — урон считается теми же правилами, что и вне боя: у противника
- * очки стойкости, у героя целые раны через пробой. Пошаговость меняет,
+ * одна шкала HP и одна формула для обеих сторон. Пошаговость меняет,
  * когда бьют, а не как считается удар.
  */
-function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): number {
+function damageBetween(state: RaidState, from: BattleUnit, to: BattleUnit): ProtectionResult {
   if (from.side === 'hero') {
     // Пустой колчан бьёт слабее (§14.3) — и колчан того, кто бьёт, а не
     // ведущего: с отрядом «свой» перестал означать «единственный».
     const f = fighterOf(state, from);
     const dry = f !== undefined && f.loadout.ranged && f.arrows <= 0;
-    return from.attack * (dry ? RANGED_MELEE_PENALTY : 1);
+    return protectionOf(from.attack * (dry ? RANGED_MELEE_PENALTY : 1), to.defense);
   }
   // Защита берётся у того, кого бьют, а не у стороны: трое бойцов держат
   // удар по-разному, и это и есть смысл характеристики.
-  return damageOf(from.attack, to.defense);
+  return protectionOf(from.attack, to.defense);
+}
+
+/** Прогноз до конца круга — та же математика, что у настоящего удара. */
+export function battleForecast(state: RaidState, stand?: Hex): BattleForecast | null {
+  if (state.battle === null) return null;
+  return forecastRound(
+    state.battle,
+    state.loc.size,
+    state.loc.blocked,
+    (from, to) => damageBetween(state, from, to),
+    stand,
+  );
 }
 
 /**
@@ -1294,6 +1323,11 @@ export interface RaidResult {
    */
   readonly cause: RaidCause;
   readonly damageTaken: number;
+  readonly guardTurns: number;
+  readonly guardPrevented: number;
+  readonly shieldPushes: number;
+  readonly intercepts: number;
+  readonly dodges: number;
   readonly fights: number;
   readonly kills: number;
   /** Опыт, заработанный именно победами в боях. */
@@ -1369,6 +1403,11 @@ export function raidResult(state: RaidState): RaidResult {
     fired: [...state.fired],
     cause: raidCause(state),
     damageTaken: state.damageTaken,
+    guardTurns: state.guardTurns,
+    guardPrevented: state.guardPrevented,
+    shieldPushes: state.shieldPushes,
+    intercepts: state.intercepts,
+    dodges: state.dodges,
     fights: state.fights,
     kills: state.kills,
     combatXp: state.combatXp,

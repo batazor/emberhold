@@ -46,8 +46,8 @@ import type { RigClipName } from './rigged';
 import { RIG_CLIPS } from './rig.data';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
-import type { BattlePlay } from '../sim/battle';
-import { followSpots } from '../sim/raid';
+import type { BattleForecast, BattlePlay } from '../sim/battle';
+import { battleForecast, followSpots } from '../sim/raid';
 import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
@@ -376,6 +376,13 @@ export class RaidView {
    * не меняется, тап остаётся тапом.
    */
   private hoverHex: Hex | null = null;
+  /** Прогноз каждой клетки заметно тяжелее раскраски кольца, поэтому он
+   *  пересчитывается на изменение состояния боя, а не на каждый кадр. */
+  private threatGridKey = '';
+  private threatSafe: Hex[] = [];
+  private threatDanger: Hex[] = [];
+  private threatPreviewKey = '';
+  private threatPreview: BattleForecast | null = null;
   /**
    * §11.3 — показ боя. Очередь протокола (`RaidState.plays`) и текущий ход:
    * пока они не пусты, положение и клипы бойцов ведёт показ, а не симуляция —
@@ -2528,6 +2535,8 @@ export class RaidView {
     if (now.play.kind === 'move') {
       const last = now.play.path[now.play.path.length - 1];
       if (last !== undefined) this.restHex.set(now.play.unit, last);
+    } else if (now.play.kind === 'strike' && now.play.pushedTo !== undefined) {
+      this.restHex.set(now.play.unit, now.play.pushedTo);
     }
   }
 
@@ -2731,6 +2740,11 @@ export class RaidView {
   private syncGrid(state: RaidState): void {
     const battle = state.battle;
     if (battle === null) {
+      this.threatGridKey = '';
+      this.threatSafe = [];
+      this.threatDanger = [];
+      this.threatPreviewKey = '';
+      this.threatPreview = null;
       this.hexGrid.hide();
       return;
     }
@@ -2745,18 +2759,36 @@ export class RaidView {
     if (this.battleBusy()) {
       const acting = this.playNow?.play.unit;
       const at = acting === undefined ? undefined : this.restHex.get(acting);
-      this.hexGrid.show({ move: [], stand: at === undefined ? [] : [at], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: at === undefined ? [] : [at], target: [], hover: [] });
       return;
     }
     // Сетка показывается только на ходу героя. На чужом ходу она молчит:
     // подсвечивать чужие возможности — значит просить игрока читать то,
     // на что он всё равно не влияет.
     if (unit.side !== 'hero') {
-      this.hexGrid.show({ move: [], stand: [unit.hex], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: [unit.hex], target: [], hover: [] });
       return;
     }
     const { size, blocked } = this.loc;
     const move: Hex[] = [...moves(battle, size, blocked, unit).values()].map((s) => s.hex);
+    const threatKey = [
+      battle.round,
+      battle.at,
+      ...battle.units.map((u) =>
+        `${u.id}:${u.hp}:${u.hex.q},${u.hex.r}:${Number(u.moved)}${Number(u.acted)}${Number(u.guarding)}`),
+      ...move.map((h) => `${h.q},${h.r}`),
+    ].join('|');
+    if (threatKey !== this.threatGridKey) {
+      this.threatGridKey = threatKey;
+      this.threatSafe = [];
+      this.threatDanger = [];
+      for (const h of move) {
+        const forecast = battleForecast(state, h);
+        (forecast !== null && forecast.damage === 0 ? this.threatSafe : this.threatDanger).push(h);
+      }
+    }
+    const safe = this.threatSafe;
+    const danger = this.threatDanger;
     const target: Hex[] = targets(battle, size, blocked, unit).map((u) => u.hex);
     // Наведение показывается только там, куда можно: подсвеченный гекс,
     // на который нельзя шагнуть, обещает ход, которого не будет.
@@ -2764,7 +2796,7 @@ export class RaidView {
     const onTarget = target.some((h) => `${h.q},${h.r}` === key);
     const canGo = move.some((h) => `${h.q},${h.r}` === key);
     const hover = this.hoverHex !== null && (canGo || onTarget) ? [this.hoverHex] : [];
-    this.hexGrid.show({ move, stand: [unit.hex], target, hover });
+    this.hexGrid.show({ move: [], safe, danger, stand: [unit.hex], target, hover });
   }
 
   /**
@@ -2777,6 +2809,29 @@ export class RaidView {
 
   clearHover(): void {
     this.hoverHex = null;
+  }
+
+  /** Контекстный прогноз HUD. Кэш нужен потому, что main синхронизирует DOM
+   *  каждый кадр, а путь противников меняется только вместе с боем/наведением. */
+  battlePreview(state: RaidState): BattleForecast | null {
+    const battle = state.battle;
+    if (battle === null) return null;
+    const hover = this.hoverHex;
+    const key = [
+      battle.round,
+      battle.at,
+      battle.rolls,
+      hover === null ? '-' : `${hover.q},${hover.r}`,
+      ...battle.units.map((u) =>
+        `${u.id}:${u.hp}:${u.hex.q},${u.hex.r}:${Number(u.moved)}${Number(u.acted)}${Number(u.guarding)}`),
+    ].join('|');
+    if (key !== this.threatPreviewKey) {
+      this.threatPreviewKey = key;
+      this.threatPreview = hover === null
+        ? battleForecast(state)
+        : battleForecast(state, hover) ?? battleForecast(state);
+    }
+    return this.threatPreview;
   }
 
   /** Подсветить клетку. Кольцо пульсирует, пока кадр не сменится: статичное
