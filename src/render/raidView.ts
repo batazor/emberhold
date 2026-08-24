@@ -67,7 +67,7 @@ import { chestGeometry, dungeonMaterial } from './dungeon';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
-import { PALETTE } from './palette';
+import { MATERIAL, PALETTE } from './palette';
 import type { Bubble } from './bubbles';
 
 /**
@@ -712,6 +712,7 @@ export class RaidView {
         }
       };
       for (const spot of keep.castle.yard) mark(spot.x, spot.z);
+      for (const spot of keep.castle.moat) mark(spot.x, spot.z);
       // Только основание: ярусы башни и шапка ворот стоят выше нуля
       // и на вопрос «что под ними на земле» не отвечают.
       for (const piece of keep.castle.pieces) if (piece.y === 0) mark(piece.x, piece.z);
@@ -1018,7 +1019,7 @@ export class RaidView {
   }
 
   /**
-   * Замок (§6.1.6). Деталей в кадре под сотню, а моделей два десятка, поэтому
+   * Замок (§6.1.6). Деталей в кадре под сотню, а моделей пять десятков, поэтому
    * рисуется он одной InstancedMesh на модель: сто мешей стоили бы сто вызовов
    * отрисовки за то же изображение.
    *
@@ -1028,8 +1029,35 @@ export class RaidView {
    * и вторая копия этих правил в рендере разошлась бы с первой молча.
    */
   private buildCastle(site: CastleSite): void {
+    // Вода рва — клетки плана, а не текстура земли. Небольшой зазор между
+    // квадратами оставляет читаемой форму внешнего пояса и не даёт им спорить
+    // глубиной с грунтом локации.
+    if (site.castle.moat.length > 0) {
+      const geometry = this.track(new THREE.PlaneGeometry(CASTLE_SCALE * 0.96, CASTLE_SCALE * 0.96));
+      geometry.rotateX(-Math.PI / 2);
+      const material = this.track(new THREE.MeshLambertMaterial({
+        color: MATERIAL['краска-синяя'],
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+      }));
+      const water = new THREE.InstancedMesh(geometry, material, site.castle.moat.length);
+      const at = new THREE.Object3D();
+      site.castle.moat.forEach((spot, i) => {
+        at.position.set(
+          site.at.x + spot.x * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+          0.025,
+          site.at.z + spot.z * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+        );
+        at.updateMatrix();
+        water.setMatrixAt(i, at.matrix);
+      });
+      water.renderOrder = 1;
+      this.group.add(water);
+    }
+
     const byModel = new Map<string, typeof site.castle.pieces[number][]>();
-    for (const piece of site.castle.pieces) {
+    for (const piece of [...site.castle.pieces, ...site.surroundings]) {
       // Мощение двора не рисуется: под замком уже лежит земля локации,
       // и вторая плита поверх неё дала бы z-fighting, а не пол.
       if (piece.role === 'двор') continue;

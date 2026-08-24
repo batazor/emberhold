@@ -20,8 +20,13 @@ import {
   CORNER,
   DIRS,
   FLOOR,
+  FIXED_BRIDGES,
+  FREE_STAIRS,
+  GATE_LEAVES,
+  HEX_TOWER,
+  INNER_WALLS,
   PARTS,
-  STAIRS,
+  STAIR_PARTS,
   STRAIGHT,
   WALK,
   WALL_TOP,
@@ -55,6 +60,7 @@ const catalog = JSON.parse(
 const measured = new Map(catalog.models.map((m) => [m.name, m]));
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337];
 const castles = SEEDS.map(generateCastle);
+const expanded = Array.from({ length: 128 }, (_, i) => generateCastle(i + 1));
 
 const key = (c: Castle, x: number, z: number): number => z * c.width + x;
 const isRing = (c: Castle, x: number, z: number): boolean =>
@@ -70,7 +76,7 @@ describe('Замок: словарь деталей взят из обмера',
   });
 
   test('объявленные открытые рёбра совпадают с измеренными', () => {
-    const declared: readonly Part[] = [...Object.values(PARTS).flat(), STAIRS];
+    const declared: readonly Part[] = [...Object.values(PARTS).flat(), ...STAIR_PARTS];
     for (const part of declared) {
       const model = measured.get(part.model);
       assert.ok(model !== undefined, `детали «${part.model}» в каталоге нет`);
@@ -95,7 +101,7 @@ describe('Замок: словарь деталей взят из обмера',
   test('деталь стены входит в клетку набора', () => {
     // Угол с башенкой — единственный, кому положено вылезать: он занимает
     // полторы клетки, и вылезает наружу, а не во двор.
-    for (const part of [...STRAIGHT, ...CORNER, STAIRS]) {
+    for (const part of [...STRAIGHT, ...CORNER, ...STAIR_PARTS]) {
       const size = measured.get(part.model)!.size;
       const limit = part.model === 'wall-corner-half-tower' ? 1.5 : 1.06;
       assert.ok(size[0]! <= limit && size[2]! <= limit, `«${part.model}»: ${size[0]}×${size[2]}`);
@@ -193,7 +199,8 @@ describe('Башня: апгрейд идёт только вверх', () => {
   test('уровень — это число этажей, и каждый добавляет ровно один', () => {
     for (const level of LEVELS) {
       const tower = buildTower({ x: 4, z: 4 }, level);
-      const floors = tower.filter((p) => p.model === TOWER.base || TOWER.body.includes(p.model as never));
+      const floors = tower.filter((p) =>
+        p.model === TOWER.base || p.model === TOWER.keepBase || TOWER.body.includes(p.model as never));
       assert.equal(floors.length, level, `уровень ${level}: этажей ${floors.length}`);
       const cap = tower[tower.length - 1]!;
       assert.ok(
@@ -289,6 +296,84 @@ describe('Башня: апгрейд идёт только вверх', () => {
   });
 });
 
+describe('Замок: расширенные семейства набора имеют работу', () => {
+  test('квадратный и шестигранный стили встречаются, семейство гексагона используется целиком', () => {
+    assert.ok(expanded.some((c) => c.towerStyle === 'квадратные'));
+    assert.ok(expanded.some((c) => c.towerStyle === 'шестигранные'));
+    const used = new Set(expanded.flatMap((c) => c.pieces.map((p) => p.model)));
+    for (const model of [HEX_TOWER.base, HEX_TOWER.body, ...HEX_TOWER.tops, ...HEX_TOWER.roofs]) {
+      assert.ok(used.has(model), `шестигранная деталь «${model}» не появляется`);
+    }
+    for (const c of expanded.filter((castle) => castle.towerStyle === 'шестигранные')) {
+      assert.ok(c.towers.length > 0, `сид ${c.seed}: стиль есть, башен нет`);
+      assert.ok(c.towers.every((spot) => c.pieces.some((p) =>
+        p.x === spot.x && p.z === spot.z && p.model === HEX_TOWER.base)));
+    }
+  });
+
+  test('узкие и деревянные укрепления появляются во дворе и не подменяют внешнюю стену', () => {
+    const innerModels = [...INNER_WALLS.stone, ...INNER_WALLS.wood] as readonly string[];
+    const used = new Set<string>();
+    for (const c of expanded) {
+      const inner = c.pieces.filter((p) => p.role === 'укрепление');
+      assert.equal(inner.length, 2, `сид ${c.seed}: внутреннее укрепление не из двух клеток`);
+      for (const p of inner) {
+        used.add(p.model);
+        assert.ok(innerModels.includes(p.model), `сид ${c.seed}: «${p.model}» не внутренняя стена`);
+        assert.ok(c.yard.some((s) => s.x === p.x && s.z === p.z), `сид ${c.seed}: укрепление вне двора`);
+        assert.ok(!isRing(c, p.x, p.z), `сид ${c.seed}: укрепление подменило кольцо`);
+      }
+    }
+    for (const model of innerModels) assert.ok(used.has(model), `«${model}» не появляется`);
+  });
+
+  test('ворота используют все три створки, а каменный мост лежит в клетке рва на уровне дороги', () => {
+    const leaves = new Set<string>();
+    const fixed = new Set<string>();
+    for (const c of expanded) {
+      const leaf = c.pieces.filter((p) => (GATE_LEAVES as readonly string[]).includes(p.model));
+      assert.equal(leaf.length, 1, `сид ${c.seed}: створок ${leaf.length}`);
+      leaves.add(leaf[0]!.model);
+      const bridges = c.pieces.filter((p) => (FIXED_BRIDGES as readonly string[]).includes(p.model));
+      assert.equal(bridges.length, 1, `сид ${c.seed}: прямых мостов ${bridges.length}`);
+      const bridge = bridges[0]!;
+      fixed.add(bridge.model);
+      assert.ok(c.moat.some((s) => s.x === bridge.x && s.z === bridge.z), `сид ${c.seed}: мост не над рвом`);
+      assert.equal(Math.round((bridge.y + measured.get(bridge.model)!.deck!) * 100), 0, `сид ${c.seed}: настил висит`);
+    }
+    assert.deepEqual([...leaves].sort(), [...GATE_LEAVES].sort());
+    assert.deepEqual([...fixed].sort(), [...FIXED_BRIDGES].sort());
+  });
+
+  test('отдельные лестницы и настенные баннеры используют обе модели', () => {
+    const stairs = new Set<string>();
+    const banners = new Set<string>();
+    for (const c of expanded) {
+      for (const p of c.pieces) {
+        if ((FREE_STAIRS as readonly string[]).includes(p.model)) stairs.add(p.model);
+        if (p.model === 'flag-banner-short' || p.model === 'flag-banner-long') banners.add(p.model);
+      }
+      assert.ok(c.pieces.some((p) => p.model === 'flag-banner-short' || p.model === 'flag-banner-long'));
+    }
+    assert.deepEqual([...stairs].sort(), [...FREE_STAIRS].sort());
+    assert.deepEqual([...banners].sort(), ['flag-banner-long', 'flag-banner-short']);
+  });
+
+  test('ров окружает след замка непрерывным внешним поясом', () => {
+    for (const c of expanded) {
+      const inside = new Set([...c.ring, ...c.yard].map(keyOf));
+      const moat = new Set(c.moat.map(keyOf));
+      for (const spot of c.ring) {
+        const touches = [-1, 0, 1].some((dx) => [-1, 0, 1].some((dz) =>
+          (dx !== 0 || dz !== 0) && moat.has(`${spot.x + dx}:${spot.z + dz}`)));
+        assert.ok(touches,
+          `сид ${c.seed}: у стены ${spot.x},${spot.z} нет рва`);
+      }
+      assert.ok(c.moat.every((s) => !inside.has(keyOf(s))), `сид ${c.seed}: вода попала внутрь`);
+    }
+  });
+});
+
 describe('Замок: стена — замкнутая цепь', () => {
   test('соседи по списку — соседи по сетке, и кольцо смыкается', () => {
     for (const c of castles) {
@@ -320,9 +405,9 @@ describe('Замок: стена — замкнутая цепь', () => {
       );
       const perCell = new Map<number, number>();
       for (const p of ground) {
-        // Ворота — арка и створка в одной клетке: створка не деталь стены,
-        // она в проезде.
-        if (p.model === 'gate') continue;
+        // Ворота — арка, створка и мост в одной клетке. Створка
+        // и мост — проезд, а не вторая деталь стены.
+        if ((p.role === 'ворота' && p.model !== 'tower-square-arch') || p.role === 'мост') continue;
         perCell.set(key(c, p.x, p.z), (perCell.get(key(c, p.x, p.z)) ?? 0) + 1);
       }
       assert.equal(perCell.size, c.ring.length, `сид ${c.seed}: клетка кольца осталась пустой`);
@@ -356,6 +441,7 @@ describe('Замок: поворот выведен, а не подобран', 
     for (const c of castles) {
       for (const p of c.pieces) {
         if (p.role !== 'лестница') continue;
+        if ((FREE_STAIRS as readonly string[]).includes(p.model)) continue;
         const open = measured.get(p.model)!.open;
         const out = DIRS.map((_, dir) => dir).filter((dir) => open[dir] === true);
         assert.equal(out.length, 1, `«${p.model}»: ходов ${out.length}, ожидался один`);
@@ -382,6 +468,26 @@ describe('Замок: двор, ворота и ярусы', () => {
       const a = DIRS[dirs[0]!]!;
       const b = DIRS[dirs[1]!]!;
       assert.ok(a[0] === -b[0]! && a[1] === -b[1]!, `сид ${c.seed}: ворота встали в угол`);
+    }
+  });
+
+  test('подъёмный мост один и лежит от ворот наружу', () => {
+    for (const c of castles) {
+      const bridges = c.pieces.filter((p) => p.model === 'bridge-draw');
+      assert.equal(bridges.length, 1, `сид ${c.seed}: мостов ${bridges.length}`);
+      const bridge = bridges[0]!;
+      assert.equal(bridge.x, c.gate.x, `сид ${c.seed}: мост уехал от ворот`);
+      assert.equal(bridge.z, c.gate.z, `сид ${c.seed}: мост уехал от ворот`);
+
+      const inward = DIRS.findIndex((dir) =>
+        c.yard.some((s) => s.x === c.gate.x + dir[0] && s.z === c.gate.z + dir[1]));
+      assert.ok(inward >= 0, `сид ${c.seed}: у ворот нет двора`);
+      const open = measured.get(bridge.model)!.open;
+      const direction = open.findIndex(Boolean);
+      assert.ok(direction >= 0, `сид ${c.seed}: у моста нет направления`);
+      const outward = turnDir(direction, bridge.turn);
+      const opposite = [1, 0, 3, 2] as const;
+      assert.equal(outward, opposite[inward], `сид ${c.seed}: мост лежит во двор`);
     }
   });
 
@@ -438,12 +544,30 @@ describe('Замок: двор, ворота и ярусы', () => {
   test('донжон и лестница стоят во дворе, а не в кольце', () => {
     for (const c of castles) {
       for (const p of c.pieces) {
-        if (p.role !== 'башня' && p.role !== 'лестница' && p.role !== 'двор') continue;
+        if (p.role !== 'башня' && p.role !== 'лестница' && p.role !== 'двор' && p.role !== 'укрепление') continue;
+        if (p.role === 'башня' && isRing(c, p.x, p.z)) continue;
         assert.ok(
           c.yard.some((s) => s.x === p.x && s.z === p.z),
           `сид ${c.seed}: «${p.model}» в ${p.x},${p.z} стоит не во дворе`,
         );
       }
+    }
+  });
+
+  test('у донжона есть вход на земле, а у башен стены его нет', () => {
+    for (const c of castles) {
+      const entrances = c.pieces.filter((p) => p.model === TOWER.keepBase);
+      assert.equal(entrances.length, 1, `сид ${c.seed}: входов донжона ${entrances.length}`);
+      const entrance = entrances[0]!;
+      assert.equal(entrance.y, 0, `сид ${c.seed}: дверь донжона не на земле`);
+      assert.ok(
+        c.yard.some((s) => s.x === entrance.x && s.z === entrance.z),
+        `сид ${c.seed}: вход донжона не во дворе`,
+      );
+      assert.ok(
+        c.pieces.filter((p) => isRing(c, p.x, p.z)).every((p) => p.model !== TOWER.keepBase),
+        `сид ${c.seed}: дверь попала на башню стены`,
+      );
     }
   });
 
@@ -456,21 +580,22 @@ describe('Замок: двор, ворота и ярусы', () => {
     }
   });
 
-  test('ярусы башни стоят на измеренных высотах, а не в воздухе', () => {
+  test('ярусы каждой башни стоят друг на друге по измеренной высоте', () => {
     for (const c of castles) {
-      const tower = c.pieces.filter((p) => p.role === 'башня').sort((a, b) => a.y - b.y);
-      if (tower.length === 0) continue;
-      assert.equal(tower[0]!.y, 0, `сид ${c.seed}: донжон начинается не с земли`);
-      for (let i = 1; i < tower.length; i++) {
-        const below = tower[i - 1]!;
-        const gap = Math.round((tower[i]!.y - below.y) * 100) / 100;
-        assert.ok(gap === 0 || gap === FLOOR, `сид ${c.seed}: ярус поднят на ${gap}, а этаж ${FLOOR}`);
-        if (gap === FLOOR) {
-          assert.equal(
-            measured.get(below.model)!.size[1],
-            FLOOR,
-            `сид ${c.seed}: под ярусом стоит «${below.model}» высотой не в этаж`,
-          );
+      const cells = new Map<string, typeof c.pieces[number][]>();
+      for (const p of c.pieces.filter((piece) => piece.role === 'башня')) {
+        const list = cells.get(`${p.x}:${p.z}`) ?? [];
+        list.push(p);
+        cells.set(`${p.x}:${p.z}`, list);
+      }
+      for (const [spot, tower] of cells) {
+        tower.sort((a, b) => a.y - b.y);
+        assert.equal(tower[0]!.y, 0, `сид ${c.seed}: башня ${spot} начинается не с земли`);
+        for (let i = 1; i < tower.length; i++) {
+          const below = tower[i - 1]!;
+          const expected = Math.round((below.y + measured.get(below.model)!.size[1]!) * 100) / 100;
+          const actual = Math.round(tower[i]!.y * 100) / 100;
+          assert.equal(actual, expected, `сид ${c.seed}: над «${below.model}» остался зазор`);
         }
       }
     }

@@ -25,7 +25,22 @@ import { FOLK_MODELS, FOLK_SLOTS } from './folk.data';
 import { FOREST_SLOTS } from './forest.data';
 import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
 import { CASTLE_SCALE, castleGeometry } from './castle';
-import { PARTS, STAIRS, TOWER, TOWER_MAX, WALK, WALL_TOP, towerHeight } from '../sim/castle';
+import {
+  CASTLE_SURROUNDINGS,
+  FIXED_BRIDGES,
+  FREE_STAIRS,
+  GATE_LEAVES,
+  HEX_TOWER,
+  INNER_WALLS,
+  PARTS,
+  STAIR_PARTS,
+  TOWER,
+  TOWER_MAX,
+  WALL_BANNERS,
+  WALK,
+  WALL_TOP,
+  towerHeight,
+} from '../sim/castle';
 import { ELEVATION } from './scene';
 import {
   CASTLE_SLOT_ORDER,
@@ -399,11 +414,25 @@ describe('Артбук: замок', () => {
   test('каждая деталь конструктора запечена в бандл', () => {
     const named = [
       ...Object.values(PARTS).flat().map((p) => p.model),
-      STAIRS.model,
+      ...STAIR_PARTS.map((p) => p.model),
       TOWER.base,
+      TOWER.keepBase,
       TOWER.cap,
       ...TOWER.body,
       ...TOWER.roofs,
+      ...TOWER.flags,
+      HEX_TOWER.base,
+      HEX_TOWER.body,
+      ...HEX_TOWER.tops,
+      ...HEX_TOWER.roofs,
+      ...INNER_WALLS.stone,
+      ...INNER_WALLS.wood,
+      ...GATE_LEAVES,
+      ...FREE_STAIRS,
+      ...FIXED_BRIDGES,
+      ...WALL_BANNERS,
+      ...CASTLE_SURROUNDINGS,
+      'bridge-draw',
     ];
     for (const model of named) {
       assert.ok(
@@ -565,10 +594,11 @@ describe('Артбук: замок', () => {
     const source = readFileSync(new URL('./castle.data.ts', import.meta.url), 'utf8');
     const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
     const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
-    // Потолок посчитан, а не выбран: это всё, что взято сейчас, округлённое
-    // вверх до десятка. Упереться в него можно один раз — за ним не «ещё одна
-    // деталь», а решение брать из набора больше.
-    assert.ok(kb <= 40, `набор замка: ${kb} КБ gzip > 40 КБ`);
+    // После второго прохода набор закрывает не только внешнее кольцо, но ещё
+    // ров, внутренние укрепления, второй стиль башен и собственное окружение.
+    // Фактический размер округлён вверх до десятка; следующий рост снова
+    // потребует осознанно поднять этот потолок.
+    assert.ok(kb <= 70, `набор замка: ${kb} КБ gzip > 70 КБ`);
   });
 
   test('геометрия детали приходит в клетку локации, а не в единицы набора', () => {
