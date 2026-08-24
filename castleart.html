@@ -1,4 +1,51 @@
 <meta charset="utf-8">
+<script>
+(() => {
+  if (location.protocol !== 'file:') return;
+
+  /*
+   * Артбук читает TS-модули, каталоги и GLB, поэтому из file:// браузер
+   * принципиально не может его собрать. Ищем Vite именно этого worktree:
+   * /@fs отдаст маркер только серверу, чей root содержит открытый файл.
+   * Это важно, когда Codex держит несколько worktree на соседних портах.
+   */
+  const page = location.pathname.split('/').pop() || 'castleart.html';
+  const dir = decodeURIComponent(new URL('.', location.href).pathname);
+  let redirected = false;
+
+  const showHelp = () => {
+    if (redirected) return;
+    const render = () => {
+      const warn = document.getElementById('warn');
+      if (!warn || redirected) return;
+      const command = document.createElement('code');
+      command.textContent = 'npm run dev';
+      warn.replaceChildren(
+        document.createTextNode('Артбук нельзя открыть как обычный файл. Запустите '),
+        command,
+        document.createTextNode(' в папке проекта и обновите эту страницу — она сама найдёт сервер.'),
+      );
+      warn.style.display = '';
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render, {once:true});
+    else render();
+  };
+
+  for (let port = 5173; port <= 5199; port++) {
+    const probe = document.createElement('link');
+    probe.rel = 'stylesheet';
+    probe.href = new URL('/@fs' + dir + 'artbook-mobile.css?direct', `http://127.0.0.1:${port}`).href;
+    probe.onload = () => {
+      if (redirected) return;
+      redirected = true;
+      location.replace(`http://127.0.0.1:${port}/${encodeURIComponent(page)}`);
+    };
+    probe.onerror = () => probe.remove();
+    document.head.append(probe);
+  }
+  setTimeout(showHelp, 1200);
+})();
+</script>
 <script type="module" src="/src/i18n/browser.ts"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Набор моделей: замок</title>
@@ -482,7 +529,9 @@ try{
   );
   earlierSlots = new Set(others.flatMap((o) => o.slots ?? []));
 }catch(e){
-  fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /castleart.html. ' + e);
+  if(location.protocol !== 'file:'){
+    fail('Не удалось загрузить файлы артбука. ' + e);
+  }
   throw e;
 }
 
