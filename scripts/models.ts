@@ -283,15 +283,25 @@ const DUNGEON: Pack = {
   fallback: 'stone',
   categoryOf: (name) => DUNGEON_CATEGORIES[name.split('_')[0]!] ?? 'Прочее',
   /**
-   * Две модели — сундуки, запечённые закрытыми (крышка вливается в корпус:
-   * модель здесь — файл, а не узел). Простой — хранилище лагеря и замка,
-   * золотой — редкая находка яруса 3. Остальные модели набора по-прежнему
-   * не едут: предмет заводится вместе с механикой, которая его показывает.
+   * Сундуки остаются предметами, а модульные полы, стены, колонны и лестницы
+   * теперь собирают визуальный слой яруса поверх проходимости симуляции.
+   * Берём только детали, для которых есть правило размещения: так расширение
+   * набора не превращается в неиспользуемый вес у каждого игрока.
    */
   // Связка колец — значок кольца §14: своей модели у кольца нет ни в одном
   // наборе, а на игровой камере оно мельче пикселя. В списке Мастерской
   // оно живёт значком, и берётся ради него одного.
-  adopted: ['chest', 'chest_gold', 'keyring'],
+  adopted: [
+    'chest', 'chest_gold', 'keyring',
+    'floor_dirt_small_A', 'floor_dirt_small_B', 'floor_dirt_small_C', 'floor_dirt_small_D',
+    'floor_tile_small', 'floor_tile_small_broken_A', 'floor_tile_small_broken_B',
+    'floor_tile_small_corner', 'floor_tile_small_decorated',
+    'floor_wood_small', 'floor_wood_small_dark',
+    'wall', 'wall_arched', 'wall_pillar', 'wall_window_closed', 'wall_archedwindow_gated',
+    'wall_half', 'wall_half_endcap', 'wall_half_endcap_sloped',
+    'pillar', 'pillar_decorated',
+    'stairs_narrow', 'stairs_wall_left', 'stairs_wall_right',
+  ],
   data: { file: 'src/render/dungeon.data.ts', prefix: 'DUNGEON', type: 'Dungeon' },
 };
 
