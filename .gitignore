@@ -1,5 +1,6 @@
 node_modules/
 dist/
+src/locales/*/messages.js
 .DS_Store
 *.local
 supabase/.temp/
