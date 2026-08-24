@@ -1226,10 +1226,12 @@ const BUILDER: Pack = {
   grey: 0,
   categoryOf: builderCategory,
   /**
-   * Пусто: набор измерен, решение не принято (§6.1.9). Что куда подходит —
-   * там же, таблицей; в бандл пока не едет ни одна модель.
+   * Малые готовые постройки наполняют двор замка: их след около 2×2 мировых
+   * клеток и точно совпадает с одной клеткой плана Kenney. Плитки местности
+   * и собственный готовый замок набора по-прежнему не нужны.
    */
-  adopted: [],
+  adopted: ['archeryrange', 'barracks', 'house', 'market', 'well'],
+  data: { file: 'src/render/builder.data.ts', prefix: 'BUILDER', type: 'BuilderPart' },
 };
 
 /**

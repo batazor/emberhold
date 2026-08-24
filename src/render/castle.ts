@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { bakedGeometry, bakedMaterial, type Fit } from './baked';
+import { BUILDER_MODELS, BUILDER_SLOTS } from './builder.data';
+import type { BuilderPartModelName } from './builder.data';
 import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
-import type { CastlePartModelName } from './castle.data';
+import type { CastlePartModelName as KenneyCastlePartModelName } from './castle.data';
 import { CASTLE_CELL } from '../sim/castle';
-import { CASTLE_PALETTE } from './palette';
+import { BUILDER_PALETTE, CASTLE_PALETTE } from './palette';
 
 /**
  * Детали набора Kenney Castle Kit в виде геометрии three (§6.1.6). Распаковка
@@ -15,8 +17,13 @@ if (CASTLE_PALETTE.length !== CASTLE_SLOTS.length) {
     `палитра замка рассинхронизирована: слотов ${CASTLE_SLOTS.length}, цветов ${CASTLE_PALETTE.length}`,
   );
 }
+if (BUILDER_PALETTE.length !== BUILDER_SLOTS.length) {
+  throw new Error(
+    `палитра зданий рассинхронизирована: слотов ${BUILDER_SLOTS.length}, цветов ${BUILDER_PALETTE.length}`,
+  );
+}
 
-export type { CastlePartModelName };
+export type CastlePartModelName = KenneyCastlePartModelName | BuilderPartModelName;
 
 /**
  * Масштаб приходит из симуляции: она раскладывает замок по клеткам локации,
@@ -32,13 +39,23 @@ export const CASTLE_SCALE = CASTLE_CELL;
  * ярусы башни разной высоты, и выравнивание по высоте развалило бы стык.
  */
 const FIT: Fit = { scale: CASTLE_SCALE, shift: [0, 0, 0] };
+// Объекты Builder уже имеют след около 2×2, тогда как Kenney — 1×1.
+const BUILDER_FIT: Fit = { scale: CASTLE_SCALE / 2, shift: [0, 0, 0] };
 
 const cache = new Map<string, THREE.BufferGeometry>();
 
 export function castleGeometry(name: CastlePartModelName): THREE.BufferGeometry {
   const hit = cache.get(name);
   if (hit !== undefined) return hit;
-  const geometry = bakedGeometry([{ model: CASTLE_MODELS[name], palette: CASTLE_PALETTE }], FIT);
+  const geometry = name in BUILDER_MODELS
+    ? bakedGeometry([{
+        model: BUILDER_MODELS[name as BuilderPartModelName],
+        palette: BUILDER_PALETTE,
+      }], BUILDER_FIT)
+    : bakedGeometry([{
+        model: CASTLE_MODELS[name as KenneyCastlePartModelName],
+        palette: CASTLE_PALETTE,
+      }], FIT);
   cache.set(name, geometry);
   return geometry;
 }

@@ -112,8 +112,9 @@
     Здесь предмет — <b>деталь конструктора</b>, и вопрос к ней другой: <b>чем она стыкуется
     с соседней</b>. Ответ на него измерен так же, как раньше мерялся цвет, и из этого
     замера собран генератор — он внизу страницы, и он живой.</p>
-  <p class="lede"><b>Пятьдесят одна модель едет в игру</b>: внешнее кольцо, два стиля
-    башен, внутренние укрепления, оснащённые ворота, лестницы, знамёна, мосты и окружение.
+  <p class="lede"><b>Пятьдесят шесть моделей едут в игру</b>: внешнее кольцо, два стиля
+    башен, внутренние укрепления, оснащённые ворота, лестницы, знамёна, мосты и окружение,
+    а также пять зданий KayKit Medieval Builder — казарма, стрельбище, дом, рынок и колодец.
     Осадные машины не взяты ни одна — в них лежит почти половина треугольников набора,
     а осады в игре нет.</p>
   <p class="lede"><b>Замок населён, и в три голоса.</b> Отряд из четверых обходит
@@ -295,6 +296,11 @@
       в середину самого длинного фасада и получают пару контрфорсов и баннеров;
       внешние углы усиливаются башнями, а остальные детали держат один ритм стены.
       Внутреннее укрепление ставится поперёк подхода к донжону, не перерезая двор.</p>
+    <p>После донжона генератор собирает внутри небольшой квартал. Военный стиль
+      начинает с казармы и стрельбища, гражданский — с дома и рынка; колодец
+      занимает центральную свободную зону. Компактный двор получает хотя бы одно
+      здание, большой — три–четыре. Каждая дверь развёрнута в свободный проход,
+      а путь от ворот и место для внутреннего укрепления сохраняются.</p>
     <p>Карта места оставляет между замком и лесом <b>десять клеток поля с каждой
       стороны</b> вместо шести. Подход продолжает дорогу через весь новый пояс,
       а скалы и деревья отнесены к его внешней кромке — свободное место остаётся
@@ -444,6 +450,8 @@ const PACK = './assets/kenney-castle-kit/';
 const CATALOG = PACK + 'catalog.json';
 const GLB = PACK + 'glb/';
 const ATLAS = PACK + 'colormap.png';
+const BUILDER_PACK = './assets/kaykit-builder/';
+const BUILDER_GLB = BUILDER_PACK + 'glb/objects/';
 /** Прежние наборы — чтобы «слот занят впервые» считался, а не утверждался. */
 const EARLIER = ['kaykit-forest', 'kaykit-dungeon', 'kaykit-skeletons', 'kaykit-adventurers', 'kaykit-resources'];
 
@@ -453,7 +461,7 @@ function fail(text){
   w.style.display = '';
 }
 
-let MATERIAL, cat, earlierSlots, castleMod;
+let MATERIAL, cat, builderCat, earlierSlots, castleMod;
 try{
   // Палитра и генератор берутся из самих модулей игры: копия списка или копия
   // правила разошлись бы молча, а страница именно про то, что список один
@@ -461,6 +469,7 @@ try{
   MATERIAL = (await import('/src/render/palette.ts')).MATERIAL;
   castleMod = await import('/src/sim/castle.ts');
   cat = await (await fetch(CATALOG)).json();
+  builderCat = await (await fetch(BUILDER_PACK + 'catalog.json')).json();
   const others = await Promise.all(
     EARLIER.map((dir) => fetch('./assets/' + dir + '/catalog.json').then((r) => r.json())),
   );
@@ -487,7 +496,8 @@ const models = (n) => n + ' ' + plural(n, 'модель', 'модели', 'мо�
 const cells = (n) => n + ' ' + plural(n, 'клетка', 'клетки', 'клеток');
 const parts = (n) => n + ' ' + plural(n, 'деталь', 'детали', 'деталей');
 
-const byName = new Map(cat.models.map((m) => [m.name, m]));
+const byName = new Map([...cat.models, ...builderCat.models].map((m) => [m.name, m]));
+const builderNames = new Set(builderCat.models.map((m) => m.name));
 
 /* ---------- атлас ---------- */
 let atlas = null, atlasWaiting = null;
@@ -786,7 +796,7 @@ function loadModel(name){
 }
 
 async function readModel(name){
-  const {gltf, dv} = await loadDoc(GLB + name + '.glb');
+  const {gltf, dv} = await loadDoc((builderNames.has(name) ? BUILDER_GLB : GLB) + name + '.glb');
   const read = (index) => {
     const acc = gltf.accessors[index], bv = gltf.bufferViews[acc.bufferView];
     const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
@@ -805,10 +815,12 @@ async function readModel(name){
     const node = gltf.nodes[at];
     const world = mul(parent, local(node));
     if(node.mesh !== undefined) for(const prim of gltf.meshes[node.mesh].primitives){
-      const pos = read(prim.attributes.POSITION), uv = read(prim.attributes.TEXCOORD_0), idx = read(prim.indices);
+      const pos = read(prim.attributes.POSITION);
+      const uv = prim.attributes.TEXCOORD_0 === undefined ? null : read(prim.attributes.TEXCOORD_0);
+      const idx = read(prim.indices);
       for(let i = 0; i < idx.length; i += 3){
         tris.push([0, 1, 2].map(k => apply(world, pos[idx[i+k]])));
-        uvs.push([
+        if(uv !== null) uvs.push([
           (uv[idx[i]][0] + uv[idx[i+1]][0] + uv[idx[i+2]][0]) / 3,
           (uv[idx[i]][1] + uv[idx[i+1]][1] + uv[idx[i+2]][1]) / 3,
         ]);
@@ -827,6 +839,12 @@ for(const m of cat.models){
   const raw = atob(m.slot);
   const list = new Uint8Array(raw.length);
   for(let i = 0; i < raw.length; i++){ list[i] = raw.charCodeAt(i); slotTris[list[i]]++; }
+  slots.set(m.name, list);
+}
+for(const m of builderCat.models){
+  const raw = atob(m.slot);
+  const list = new Uint8Array(raw.length);
+  for(let i = 0; i < raw.length; i++) list[i] = raw.charCodeAt(i);
   slots.set(m.name, list);
 }
 const colorOfSlot = (name) => MATERIAL[name];
@@ -1011,7 +1029,8 @@ let seed = 7;
 
 const ROLE_COLOR = {
   'стена':'#8a8a7e', 'угол':'#c6c6b6', 'ворота':'#dfa53c',
-  'башня':'#7d8892', 'лестница':'#b06b45', 'знамя':'#d83f35',
+  'мост':'#6792a5', 'башня':'#7d8892', 'лестница':'#b06b45',
+  'знамя':'#d83f35', 'укрепление':'#6f705f', 'здание':'#d4a15d',
 };
 
 /** Поворот на четверть вокруг вертикали: (x, z) → (z, −x). */
@@ -1039,12 +1058,15 @@ async function renderPieces(canvas, pieces){
   for(const piece of shown){
     const geom = loaded.get(piece.model);
     const list = slots.get(piece.model);
+    const modelCat = builderNames.has(piece.model) ? builderCat : cat;
+    const modelScale = builderNames.has(piece.model) ? 0.5 : 1;
     for(let i = 0; i < geom.tris.length; i++){
       tris.push(geom.tris[i].map((v) => {
         const r = spin(v, piece.turn);
-        return [r[0] + piece.x * cell, r[1] + piece.y, r[2] + piece.z * cell];
+        return [r[0] * modelScale + piece.x * cell, r[1] * modelScale + piece.y,
+          r[2] * modelScale + piece.z * cell];
       }));
-      colors.push(hex(colorOfSlot(cat.slots[list[i]])));
+      colors.push(hex(colorOfSlot(modelCat.slots[list[i]])));
     }
   }
   draw(canvas, tris, colors);

@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   CORNER,
+  COURTYARD_BUILDINGS,
   DIRS,
   FLOOR,
   FIXED_BRIDGES,
@@ -59,6 +60,10 @@ const catalog = JSON.parse(
 ) as { module: { cell: number }; models: readonly CatalogModel[] };
 
 const measured = new Map(catalog.models.map((m) => [m.name, m]));
+const builderCatalog = JSON.parse(
+  readFileSync(new URL('../../assets/kaykit-builder/catalog.json', import.meta.url), 'utf8'),
+) as { models: readonly CatalogModel[] };
+const builderMeasured = new Map(builderCatalog.models.map((m) => [m.name, m]));
 const SEEDS = [1, 2, 3, 7, 42, 1337, 90210, 2718, 555, 31337];
 const castles = SEEDS.map(generateCastle);
 const expanded = Array.from({ length: 128 }, (_, i) => generateCastle(i + 1));
@@ -89,7 +94,10 @@ describe('Замок: словарь деталей взят из обмера',
   test('каждая деталь генератора есть в каталоге набора', () => {
     for (const castle of castles) {
       for (const p of castle.pieces) {
-        assert.ok(measured.has(p.model), `сид ${castle.seed}: детали «${p.model}» в наборе нет`);
+        assert.ok(
+          measured.has(p.model) || builderMeasured.has(p.model),
+          `сид ${castle.seed}: детали «${p.model}» ни в одном наборе нет`,
+        );
       }
     }
   });
@@ -398,6 +406,78 @@ describe('Замок: детали выбираются архитектурой
   });
 });
 
+describe('Замок: двор наполнен зданиями, но остаётся двором', () => {
+  const buildingModels = Object.values(COURTYARD_BUILDINGS).flat() as readonly string[];
+  const solidRoles = new Set(['башня', 'лестница', 'укрепление', 'здание']);
+
+  test('компактный замок получает здание, большой — небольшой квартал', () => {
+    for (const c of expanded) {
+      const buildings = c.pieces.filter((p) => p.role === 'здание');
+      assert.ok(buildings.length >= 1 && buildings.length <= 4, `сид ${c.seed}: зданий ${buildings.length}`);
+      if (c.yard.length >= 18) {
+        assert.ok(buildings.length >= 3, `сид ${c.seed}: большой двор пуст — зданий ${buildings.length}`);
+      }
+      assert.equal(
+        buildings[0]!.model,
+        c.towerStyle === 'шестигранные' ? 'barracks' : 'house',
+        `сид ${c.seed}: главное здание не продолжает стиль`,
+      );
+    }
+  });
+
+  test('все пять моделей имеют работу и не накладываются на конструкцию', () => {
+    const used = new Set<string>();
+    for (const c of expanded) {
+      const occupied = new Set<string>();
+      for (const piece of c.pieces.filter((p) => solidRoles.has(p.role))) {
+        const cell = keyOf(piece);
+        // Ярусы одной башни намеренно совпадают; любая другая пара — никогда.
+        if (piece.role === 'башня' && occupied.has(cell)) continue;
+        assert.ok(!occupied.has(cell), `сид ${c.seed}: «${piece.model}» наложена на занятую клетку ${cell}`);
+        occupied.add(cell);
+      }
+      for (const piece of c.pieces.filter((p) => p.role === 'здание')) {
+        used.add(piece.model);
+        assert.ok(buildingModels.includes(piece.model), `сид ${c.seed}: неизвестное здание «${piece.model}»`);
+        assert.ok(c.yard.some((spot) => keyOf(spot) === keyOf(piece)), `сид ${c.seed}: здание вне двора`);
+      }
+    }
+    assert.deepEqual([...used].sort(), [...buildingModels].sort());
+  });
+
+  test('фасад каждого здания смотрит в свободную клетку, проходы не распадаются', () => {
+    for (const c of expanded) {
+      const busy = new Set(c.pieces
+        .filter((piece) => solidRoles.has(piece.role))
+        .filter((piece) => !(piece.role === 'башня' && isRing(c, piece.x, piece.z)))
+        .map(keyOf));
+      const free = new Set(c.yard.map(keyOf).filter((cell) => !busy.has(cell)));
+      const first = c.yard.find((spot) => free.has(keyOf(spot)));
+      assert.ok(first !== undefined, `сид ${c.seed}: застройка съела весь двор`);
+      const seen = new Set([keyOf(first)]);
+      const queue = [first];
+      while (queue.length > 0) {
+        const spot = queue.pop()!;
+        for (const [dx, dz] of DIRS) {
+          const next = { x: spot.x + dx, z: spot.z + dz };
+          if (!free.has(keyOf(next)) || seen.has(keyOf(next))) continue;
+          seen.add(keyOf(next));
+          queue.push(next);
+        }
+      }
+      assert.equal(seen.size, free.size, `сид ${c.seed}: здания рассекли двор`);
+      for (const building of c.pieces.filter((piece) => piece.role === 'здание')) {
+        const front = turnDir(2, building.turn);
+        const door = {
+          x: building.x + DIRS[front]![0],
+          z: building.z + DIRS[front]![1],
+        };
+        assert.ok(free.has(keyOf(door)), `сид ${c.seed}: фасад «${building.model}» смотрит в препятствие`);
+      }
+    }
+  });
+});
+
 describe('Замок: расширенные семейства набора имеют работу', () => {
   test('квадратный и шестигранный стили встречаются, семейство гексагона используется целиком', () => {
     assert.ok(expanded.some((c) => c.towerStyle === 'квадратные'));
@@ -646,7 +726,13 @@ describe('Замок: двор, ворота и ярусы', () => {
   test('донжон и лестница стоят во дворе, а не в кольце', () => {
     for (const c of castles) {
       for (const p of c.pieces) {
-        if (p.role !== 'башня' && p.role !== 'лестница' && p.role !== 'двор' && p.role !== 'укрепление') continue;
+        if (
+          p.role !== 'башня'
+          && p.role !== 'лестница'
+          && p.role !== 'двор'
+          && p.role !== 'укрепление'
+          && p.role !== 'здание'
+        ) continue;
         if (p.role === 'башня' && isRing(c, p.x, p.z)) continue;
         assert.ok(
           c.yard.some((s) => s.x === p.x && s.z === p.z),
