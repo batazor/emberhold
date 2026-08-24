@@ -4,6 +4,7 @@ import {
   CLAN_BUILD_SECONDS,
   CLAN_BUILDINGS,
   CLAN_BUILDING_ORDER,
+  clanCanAfford,
   type ClanBuildingKind,
 } from '../sim/clan';
 
@@ -38,7 +39,8 @@ export class ClanBuildBar {
     for (const kind of CLAN_BUILDING_ORDER) {
       const button = document.createElement('button');
       button.className = 'card';
-      button.textContent = CLAN_BUILDINGS[kind].name;
+      const building = CLAN_BUILDINGS[kind];
+      button.textContent = `${building.name} · Д ${building.cost.wood} · К ${building.cost.stone} · Ж ${building.cost.iron}`;
       button.addEventListener('click', () => {
         const selected = button.getAttribute('aria-pressed') === 'true';
         this.cb.onSelect(selected ? null : kind);
@@ -72,12 +74,14 @@ export class ClanBuildBar {
     for (const [kind, button] of this.buttons) {
       const built = buildings.some((b) => b.kind === kind);
       const current = construction?.kind === kind;
+      const affordable = location === undefined || clanCanAfford(location, kind);
       button.disabled = camp.clan.leader !== true || built || construction !== null;
       button.setAttribute('aria-pressed', String(selected === kind));
       button.title = built ? 'Уже построено'
         : current ? 'Сейчас строится'
           : construction !== null ? 'Сначала закончите текущую стройку'
-            : camp.clan.leader !== true ? 'Строить может глава' : '';
+            : camp.clan.leader !== true ? 'Строить может глава'
+              : !affordable ? 'На складе клана не хватает ресурсов' : '';
     }
     this.progress.textContent = construction === null
       ? 'Сейчас стройки нет'

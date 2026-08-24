@@ -94,11 +94,41 @@ export const CLAN_BUILDING_ORDER: readonly ClanBuildingKind[] = ['hall', 'store'
 export const CLAN_BUILDINGS: Readonly<Record<ClanBuildingKind, {
   readonly name: string;
   readonly model: BuildingId;
+  readonly cost: ClanResources;
 }>> = {
-  hall: { name: 'Клановый штаб', model: 'hq' },
-  store: { name: 'Клановый склад', model: 'storage' },
-  workshop: { name: 'Клановая мастерская', model: 'forge' },
+  hall: {
+    name: 'Клановый штаб', model: 'hq', cost: { wood: 7, stone: 5, iron: 1 },
+  },
+  store: {
+    name: 'Клановый склад', model: 'storage', cost: { wood: 5, stone: 6, iron: 2 },
+  },
+  workshop: {
+    name: 'Клановая мастерская', model: 'forge', cost: { wood: 3, stone: 4, iron: 12 },
+  },
 };
+
+export const CLAN_RESOURCE_ORDER: readonly ClanResourceKind[] = ['wood', 'stone', 'iron'];
+export const CLAN_RESOURCE_NAME: Readonly<Record<ClanResourceKind, string>> = {
+  wood: 'дерева',
+  stone: 'камня',
+  iron: 'железа',
+};
+
+export function clanCanAfford(location: ClanLocation, kind: ClanBuildingKind): boolean {
+  const cost = CLAN_BUILDINGS[kind].cost;
+  return CLAN_RESOURCE_ORDER.every((resource) => location.resources[resource] >= cost[resource]);
+}
+
+export function clanResourceShortage(camp: CampState, kind: ClanBuildingKind): string {
+  const location = ensureClanLocation(camp);
+  if (location === null) return CLAN_BUILD_REASON['no-clan'];
+  const cost = CLAN_BUILDINGS[kind].cost;
+  const missing = CLAN_RESOURCE_ORDER
+    .map((resource) => ({ resource, amount: Math.max(0, cost[resource] - location.resources[resource]) }))
+    .filter(({ amount }) => amount > 0)
+    .map(({ resource, amount }) => `${CLAN_RESOURCE_NAME[resource]} ${amount}`);
+  return missing.length === 0 ? CLAN_BUILD_REASON.resources : `Не хватает: ${missing.join(' · ')}`;
+}
 
 /** Стабильный сид: одна и та же запись клана всегда даёт ту же опушку. */
 function clanLocationSeed(name: string, at: number): number {
@@ -134,13 +164,14 @@ export function ensureClanLocation(camp: CampState): ClanLocation | null {
 }
 
 export type ClanBuildBlock =
-  | 'ok' | 'no-clan' | 'leader' | 'built' | 'construction' | 'tree' | 'busy' | 'hero';
+  | 'ok' | 'no-clan' | 'leader' | 'built' | 'construction' | 'resources' | 'tree' | 'busy' | 'hero';
 
 export const CLAN_BUILD_REASON: Record<Exclude<ClanBuildBlock, 'ok'>, string> = {
   'no-clan': 'Сначала нужен клан',
   leader: 'Размещать здания может только глава клана',
   built: 'Это здание уже построено',
   construction: 'У клана уже есть текущая стройка',
+  resources: 'На складе клана не хватает ресурсов',
   tree: 'Здесь лес или край опушки',
   busy: 'Место занято другим зданием',
   hero: 'На месте стройки стоит герой',
@@ -161,6 +192,7 @@ export function clanBuildBlock(
     return 'built';
   }
   if (location.construction !== null) return 'construction';
+  if (!clanCanAfford(location, kind)) return 'resources';
   const blocked = unpackGlade(location.glade);
   for (let dz = 0; dz < 2; dz++) {
     for (let dx = 0; dx < 2; dx++) {
@@ -191,6 +223,8 @@ export function placeClanBuilding(
   const block = clanBuildBlock(camp, kind, cell, hero);
   if (block !== 'ok') return block;
   const location = camp.clan!.location!;
+  const cost = CLAN_BUILDINGS[kind].cost;
+  for (const resource of CLAN_RESOURCE_ORDER) location.resources[resource] -= cost[resource];
   location.construction = { kind, x: cell.x, z: cell.z, work: 0 };
   location.builders = [];
   location.workedAt = now;
