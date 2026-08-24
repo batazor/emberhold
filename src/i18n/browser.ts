@@ -56,7 +56,11 @@ function translate(text: string): string {
     pattern.holes.forEach((hole, index) => {
       values[`value${hole}`] = translate(match[index + 1] ?? '');
     });
-    return leading + i18n._(pattern.id, values) + trailing;
+    const translated = i18n._(pattern.id, values);
+    // A broad legacy pattern (for example "{value0} из {value1}") must not
+    // produce hybrids such as "вернулся from вылазки" when either captured
+    // fragment is still unknown. Keep the complete Russian phrase instead.
+    if (!CYRILLIC.test(translated)) return leading + translated + trailing;
   }
   return text;
 }

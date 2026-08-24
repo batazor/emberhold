@@ -648,5 +648,8 @@ export const legacyPatterns: readonly LegacyPattern[] = [
   },
   {
     "source": "— Я ZXQPH0QXZ. Сижу у огня, жду попутчиков."
-  }
+  },
+  {
+    "source": "оси: ZXQPH0QXZ · ZXQPH1QXZ · ZXQPH2QXZ"
+  },
 ];
