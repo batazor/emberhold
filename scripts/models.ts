@@ -983,6 +983,40 @@ const GRAVEYARD: Pack = {
   data: { file: 'src/render/graveyard.data.ts', prefix: 'GRAVEYARD', type: 'GraveyardPart' },
 };
 
+/**
+ * Палатка Kenney Survival Kit 2.0. Набор отдаёт её не одним мешем, а тремя
+ * совместимыми деталями: каркас, половина полотна и полное полотно. Именно
+ * поэтому в игру берутся все три — половина показывает стройку в прологе,
+ * полное полотно заменяет её после отдельного действия «построить».
+ *
+ * Атлас устроен так же, как у остальных новых наборов Kenney: восемь колонок
+ * на четыре ряда. Окна оставлены общими с Castle Kit, чтобы одинаковые
+ * цвета автора ложились в одинаковые материалы игры.
+ */
+const SURVIVAL: Pack = {
+  id: 'survival',
+  title: 'Kenney Survival Kit 2.0',
+  dir: 'assets/kenney-survival-kit',
+  atlas: 'colormap.png',
+  sources: ['glb'],
+  ramps: [
+    { id: 'wood', title: 'каркас', slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет'], hue: [8, 20.6], sat: [0.3, 1] },
+    // Светлое охристое полотно — ткань, но в палитре лагеря оно совпадает
+    // с тёплым концом дерева и соломой. Серый камень делал готовую палатку
+    // почти чёрной в ночном кадре пролога.
+    { id: 'canvas', title: 'полотно', slots: ['солома', 'соль-тень', 'соль', 'соль-свет'], hue: [20.6, 50], sat: [0.15, 1] },
+  ],
+  slots: ['земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома', 'соль-тень', 'соль', 'соль-свет'],
+  range: 'used',
+  fallback: 'canvas',
+  grid: { cols: 8, rows: 4 },
+  grey: 0.005,
+  categoryOf: () => 'Палатка',
+  adopted: ['tent', 'tent-canvas-half', 'tent-canvas'],
+  data: { file: 'src/render/survival.data.ts', prefix: 'SURVIVAL', type: 'Survival' },
+  license: 'CC0 1.0',
+};
+
 /** Категория оружия — по первому слову имени файла набора. */
 const WEAPON_CATEGORIES: Record<string, string> = {
   sword: 'Мечи', dagger: 'Мечи',
@@ -1731,7 +1765,7 @@ const STONE_GOLEM: Pack = {
 };
 
 const PACKS: readonly Pack[] =
-  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, WEAPONS, TOOLS, BUILDER, FOLK, CAMP, PROPS, VILLAGER, VILLAGE, FOX, MINOTAUR, STONE_GOLEM];
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, SURVIVAL, WEAPONS, TOOLS, BUILDER, FOLK, CAMP, PROPS, VILLAGER, VILLAGE, FOX, MINOTAUR, STONE_GOLEM];
 
 /* ---------- png ---------- */
 

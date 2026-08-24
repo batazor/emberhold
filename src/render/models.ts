@@ -26,6 +26,7 @@ import { graveyardGeometry } from './graveyard';
 import { hutParts } from './hut';
 import { skeletonGeometry, skeletonParts } from './skeleton';
 import { foxGeometry } from './fox';
+import { survivalTentGeometry } from './survival';
 
 /**
  * Модели из артбука. Формы взяты из `artbook.html` (раздел 03 — здания,
@@ -482,6 +483,7 @@ const hutLodge = (): THREE.BufferGeometry =>
   hutParts({ door: 'plank', window: 'cross' }, HUT_HEIGHT).body.clone();
 
 export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry => {
+  if (id === 'hq' && stageOf(level) === 0) return survivalTentGeometry('complete').clone();
   if (id === 'hq' && stageOf(level) === 1) return hutLodge();
   return merge(BUILDING_STAGES[id][stageOf(level)]());
 };

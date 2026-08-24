@@ -71,6 +71,7 @@ import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
 import { MATERIAL, PALETTE } from './palette';
 import type { Bubble } from './bubbles';
+import { survivalTentGeometry } from './survival';
 
 /**
  * Вид вылазки: строит меши из состояния и синхронизирует их каждый кадр.
@@ -1750,9 +1751,12 @@ export class RaidView {
    * накрывало соседей слева и сверху, свободных по данным, — палатка жильца
    * садилась туда по правилам и оказывалась «под шатром».
    */
-  place(id: BuildingId, x: number, z: number, level = 1): void {
+  place(id: BuildingId, x: number, z: number, level = 1, underConstruction = false): void {
     if (this.placed.has(id)) return;
-    const mesh = new THREE.Mesh(this.track(buildingGeometry(id, level)), this.blocking);
+    const geometry = id === 'hq' && underConstruction
+      ? survivalTentGeometry('building').clone()
+      : buildingGeometry(id, level);
+    const mesh = new THREE.Mesh(this.track(geometry), this.blocking);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.scale.setScalar(BUILDING_SCALE);

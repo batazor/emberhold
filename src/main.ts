@@ -486,6 +486,12 @@ let wiped = false;
  * кто уже решил остаться, — значит, крыша идёт первой.
  */
 let placing: BuildingId | null = null;
+/**
+ * Выбранное место палатки до отдельного действия «построить». В этот момент
+ * сцена показывает каркас с половиной полотна из Kenney Survival Kit; клетка
+ * уже занята, но дерево ещё в сумке и костёр ставить рано.
+ */
+let tentUnderConstruction: Cell | null = null;
 const PITCH_ORDER: readonly BuildingId[] = ['hq', 'kitchen'];
 const PITCH_HINT: Partial<Record<BuildingId, string>> = {
   hq: 'Выберите место для палатки',
@@ -3794,21 +3800,23 @@ function tryPlace(cell: Cell): void {
     return;
   }
 
+  // Выбор клетки и стройка палатки — два разных действия. После первого
+  // остаётся видимая строительная стадия; только тап по ней натянет полотно,
+  // спишет дерево и поведёт дальше к костру.
+  if (placing === 'hq') {
+    raidView?.place('hq', cell.x, cell.z, 1, true);
+    play('build');
+    pitched.push(cell);
+    tentUnderConstruction = cell;
+    placing = null;
+    raidView?.hideSite();
+    setHint('Коснитесь каркаса, чтобы построить палатку');
+    return;
+  }
+
   raidView?.place(placing, cell.x, cell.z);
   play('build');
   pitched.push(cell);
-  // Вместе с палаткой встаёт её кладовая — первый сундук (`chests.ts`).
-  // Бесплатно и здесь, а не в лагере: прибавка к рюкзаку показывается
-  // в кадре, где игрок только что познакомился с рюкзаком. Сейв, начатый
-  // до сундуков, уже получил свой при чтении — второго не полагается.
-  if (placing === 'hq' && camp.chests.length === 0 && gladeChest === null) {
-    const spot = chestSiteNear(raid.loc, pitched, raid.hero, cell);
-    if (spot !== null) {
-      gladeChest = spot;
-      raidView?.setChests([spot]);
-      raid.events.push(`Сундук у палатки: кладовая +${CHEST_BONUS}`);
-    }
-  }
   // Палатка встаёт из принесённого: бруски уходят из сумки на глазах,
   // на той же полосе, в которую их только что клали. Ради этой секунды
   // сбор в прологе и заведён — «здание стоит принесённого» показывается
@@ -3819,7 +3827,7 @@ function tryPlace(cell: Cell): void {
   // Оба здания лагеря стоят дерева, и оба берут не больше, чем собрано:
   // пролог показывает цену, но за неё не запирает (§16.1). Запирает лагерная
   // экономика (§20.3), и там цена настоящая.
-  const price = placing === 'hq' ? TENT_WOOD : KITCHEN_WOOD;
+  const price = KITCHEN_WOOD;
   const paid = Math.min(price, raid.bag.wood);
   raid.bag.wood -= paid;
   raid.bagTotal -= paid;
@@ -3838,6 +3846,35 @@ function tryPlace(cell: Cell): void {
     return;
   }
   startPlacing(next);
+}
+
+/**
+ * Завершить палатку после выбора места. Строительная версия заменяется
+ * готовой тем же мешем `placed.hq`, поэтому ни след, ни раскладка не прыгают.
+ */
+function finishTent(): void {
+  if (raid === null || tentUnderConstruction === null) return;
+  const cell = tentUnderConstruction;
+  tentUnderConstruction = null;
+
+  const paid = Math.min(TENT_WOOD, raid.bag.wood);
+  raid.bag.wood -= paid;
+  raid.bagTotal -= paid;
+  raidView?.setLevel('hq', 1);
+  play('build');
+
+  // Кладовая появляется вместе с готовой палаткой, не рядом с недостроенным
+  // каркасом: бонус рюкзака — результат стройки, а не выбора клетки.
+  if (camp.chests.length === 0 && gladeChest === null) {
+    const spot = chestSiteNear(raid.loc, pitched, raid.hero, cell);
+    if (spot !== null) {
+      gladeChest = spot;
+      raidView?.setChests([spot]);
+      raid.events.push(`Сундук у палатки: кладовая +${CHEST_BONUS}`);
+    }
+  }
+
+  startPlacing('kitchen');
 }
 
 /* ---------- вырубка (§13.3) ---------- */
@@ -4040,9 +4077,10 @@ function stepMining(dt: number): void {
  */
 function stepGladeCamp(dt: number): void {
   if (raid === null) return;
-  // Пока лагерь ещё ставится, кадром распоряжается выбор места: его подсказка
-  // («Теперь костёр») не должна перебиваться отдыхом.
-  if (placing !== null) return;
+  // Пока лагерь ещё ставится, кадром распоряжается выбор места или отдельная
+  // стройка палатки: их подсказки не должны перебиваться отдыхом, а три
+  // бруска в сумке не должны случайно засчитаться улучшением недостроя.
+  if (placing !== null || tentUnderConstruction !== null) return;
   const near = nearCamp(pitched, raid.hero);
 
   if (!upgraded && near && raid.bag.wood >= UPGRADE_WOOD) {
@@ -4192,6 +4230,7 @@ function toGlade(): void {
   gladeHint = '';
   ear.reset(raid);
   placing = null;
+  tentUnderConstruction = null;
   pitched.length = 0;
   gladeChest = null;
   raidView.hideSite();
@@ -5146,6 +5185,16 @@ canvas.addEventListener('pointerdown', (e) => {
     // что у наведения выше и у перестановки зданий (`moveSelected`).
     tryPlace({ x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) });
     return;
+  }
+  // После выбора места следующий осмысленный тап — по строительной версии
+  // палатки. Запас вокруг следа такой же, как у готовых зданий на поляне:
+  // на телефоне не требуется попадать в тонкую стойку каркаса.
+  if (tentUnderConstruction !== null) {
+    const center = { x: tentUnderConstruction.x + 0.5, z: tentUnderConstruction.z + 0.5 };
+    if (Math.hypot(hit.x - center.x, hit.z - center.z) <= 1.9) {
+      finishTent();
+      return;
+    }
   }
   if (raid === null || raid.status !== 'running') return;
 
