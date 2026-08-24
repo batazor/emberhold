@@ -15,6 +15,7 @@
     "measure": "tsx scripts/measure.ts",
     "survive": "tsx scripts/survive.ts",
     "combat": "tsx scripts/combat.ts",
+    "protection": "tsx scripts/protection.ts",
     "power": "tsx scripts/power.ts",
     "model": "tsx scripts/model.ts",
     "optimal": "tsx scripts/optimal.ts",

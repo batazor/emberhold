@@ -286,7 +286,7 @@ import { CampPrompt } from './ui/campPrompt';
 import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
 import { BattleHud } from './ui/battleHud';
-import { commandBattle, inBattle, partyByUnit } from './sim/raid';
+import { battleForecast, commandBattle, inBattle, partyByUnit } from './sim/raid';
 import { current, moves, targets, unitAt } from './sim/battle';
 import { worldToHex, hexKey, hexToWorld } from './sim/hex';
 import { mulberry32 } from './core/rng';
@@ -6457,6 +6457,11 @@ startLoop({
           damageTaken: result.damageTaken,
           fights: result.fights,
           kills: result.kills,
+          guardTurns: result.guardTurns,
+          guardPrevented: result.guardPrevented,
+          shieldPushes: result.shieldPushes,
+          intercepts: result.intercepts,
+          dodges: result.dodges,
         });
         hud.setVisible(false);
         // Кадр 8: в первый раз выбора нет — путь ведёт в лагерь, иначе
@@ -6540,7 +6545,10 @@ startLoop({
         battleHud.setVisible(true);
         // Пока показ дочитывает прошлые ходы, панель молчит: предлагать ход
         // в бой, которого игрок ещё не увидел, — значит звать ходить вслепую.
-        battleHud.sync(raid.battle, canHit, partyByUnit(raid), battleBusy);
+        const preview = raidView === null
+          ? battleForecast(raid)
+          : raidView.battlePreview(raid);
+        battleHud.sync(raid.battle, canHit, partyByUnit(raid), battleBusy, preview);
       } else {
         battleHud.setVisible(false);
       }

@@ -47,7 +47,7 @@ export const GEAR: Record<GearSlot, GearDef> = {
   armor: {
     slot: 'armor',
     name: 'Стёганая куртка',
-    effect: (l) => `Ран ${armorWounds(l) > 0 ? `+${armorWounds(l)}` : '+0'}`,
+    effect: (l) => `HP ${armorWounds(l) > 0 ? `+${armorWounds(l)}` : '+0'}`,
     tradeoff: 'С ур. 3 тяжёлая: шаг дороже на 15%',
   },
   torch: {
@@ -139,10 +139,11 @@ export const torchVision = (level: number): number => (level >= 4 ? 2 : level >=
  * бы отдать ему обе стороны сделки разом, а фонарю — только обзор, и обещание
  * §14.2 «ни один не лучше» перестало бы быть правдой.
  *
- * Растёт линейно, а не порогами: пороги нужны там, где величина целая
- * и читается штуками (раны §11.3). Защита не читается штуками вовсе.
+ * Заслон теперь ещё отталкивает и перехватывает удар, поэтому прежние +2
+ * за уровень вместе с активной механикой вытесняли фонарь. Полторы единицы
+ * оставляют пассивное смягчение, а главную цену щита переносят в позицию.
  */
-export const shieldDefense = (level: number): number => 2 * Math.max(0, level);
+export const shieldDefense = (level: number): number => 1.5 * Math.max(0, level);
 
 /** Прибавка к рюкзаку. Уровень Склада даёт больше — сумка догоняет, не заменяет. */
 export const bagCapacity = (level: number): number => Math.max(0, level);
@@ -218,6 +219,8 @@ export interface GearMods {
    * получить два источника правды о том, кто кого бьёт.
    */
   readonly defense: number;
+  /** Число Защиты не доказывает наличие щита: герой может вырасти в стате. */
+  readonly hasShield: boolean;
   /** §14.3 — вместимость колчана. У ближника не значит ничего. */
   readonly arrows: number;
 }
@@ -257,6 +260,7 @@ export function gearMods(gear: GearState, offhand: Offhand = 'torch'): GearMods 
     vision: shield ? 0 : torchVision(gear.torch),
     risk: 1 - ringRisk(gear.ring),
     defense: shield ? shieldDefense(gear.torch) : 0,
+    hasShield: shield,
     arrows: bowQuiver(gear.weapon),
   };
 }

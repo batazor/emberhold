@@ -192,6 +192,11 @@ export function playSession(seed: number): SessionResult {
       damageTaken: raid.damageTaken,
       fights: raid.fights,
       kills: raid.kills,
+      guardTurns: raid.guardTurns,
+      guardPrevented: raid.guardPrevented,
+      shieldPushes: raid.shieldPushes,
+      intercepts: raid.intercepts,
+      dodges: raid.dodges,
     });
     for (const id of raid.fired) track({ t: 'consumable', at: now, id, phase: 'fire' });
     // Кладовая конечна (§13.6): бот складывает добычу тем же входом, что
