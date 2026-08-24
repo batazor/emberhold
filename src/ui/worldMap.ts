@@ -245,14 +245,14 @@ export interface WorldMapCallbacks {
 export type EntryBlock = 'ok' | 'kitchen' | 'onb';
 
 const ENTRY_REASON = {
-  kitchen: gameMessage('Провианта не хватит на такую глубину — нужна Кухня выше'),
-  onb: gameMessage('Первая вылазка идёт в другое место — оно одно горит на карте'),
+  kitchen: gameMessage('Провианта не хватит на такую глубину — нужна Кухня выше', 'Not enough provisions for this depth—upgrade the Kitchen'),
+  onb: gameMessage('Первая вылазка идёт в другое место — оно одно горит на карте', 'The first raid starts elsewhere—the available location is highlighted on the map'),
 };
 
 const SORTIE_REASON_MESSAGE = {
-  slot: gameMessage('Отряд уже в пути'),
-  tier: gameMessage('Глубже Яруса 1 отряд один не ходит'),
-  hero: gameMessage('Идти некому — все заняты'),
+  slot: gameMessage('Отряд уже в пути', 'A party is already away'),
+  tier: gameMessage('Глубже Яруса 1 отряд один не ходит', 'A party cannot venture beyond Tier 1 alone'),
+  hero: gameMessage('Идти некому — все заняты', 'No one is available—everyone is busy'),
 } as const;
 
 /**
@@ -789,13 +789,13 @@ export class WorldMap {
       `<b class="${fx.risk > 0 ? 'bad' : ''}">${gameMarkup(
         gameMessage('ставка {stake}%', 'risk {stake}%'), { stake: Math.round(stake * 100) },
       )}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча'))}</span>` +
-      `<b class="${mul < 1 ? 'bad' : 'good'}">×${mul.toFixed(1).replace('.', ',')}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча', 'Loot'))}</span>` +
+      `<b class="${mul < 1 ? 'bad' : 'good'}">×${document.documentElement.lang === 'ru' ? mul.toFixed(1).replace('.', ',') : mul.toFixed(1)}</b></div>` +
       // §13 — что здесь падает. Ставка называет цену яруса, а довод за него
       // до сих пор не называл никто: железо идёт с первого, кристалл со
       // второго, и узнать это можно было только сходив. Ставку игрок читает
       // до входа — награда обязана читаться там же.
-      `<div class="row line"><span>${gameMarkup(gameMessage('Падает'))}</span><b>${lootLine(node.tier)}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Падает', 'Yields'))}</span><b>${lootLine(node.tier)}</b></div>` +
       // §30.6 — кто ещё сюда ходил. Строка появляется только тогда, когда
       // соседи были: «заходов 0» — это не сведение, а шум, и стоять
       // на карточке ему незачем. Имён нет: решение здесь одно — идти или
@@ -805,15 +805,15 @@ export class WorldMap {
       // «2 захода» против «5 заходов» — три формы ради одной цифры,
       // и падеж здесь взялся бы ниоткуда ровно так же, как у имён (§0.1).
       (state.others > 0
-        ? `<div class="row line"><span>${gameMarkup(gameMessage('Заходы соседей'))}</span>` +
+        ? `<div class="row line"><span>${gameMarkup(gameMessage('Заходы соседей', 'Neighbor runs'))}</span>` +
           `<b class="bad">${state.others}</b></div>`
         : '') +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
       // §4 — кланы «растут», и до этой строки рост считался, но не показывался
       // нигде. Уровень — та самая таблица развития, свёрнутая до одного
       // числа: имя рабочее (§0.1), а «ур.» читается без легенды.
       (clan === null || state.clan === null
-        ? `<b class="good">${gameMarkup(gameMessage('никого'))}</b>`
+        ? `<b class="good">${gameMarkup(gameMessage('никого', 'no one'))}</b>`
         : `<b style="color:${clan.color}">${worldText(clan.name)} · ${gameMarkup(
           gameMessage('ур. {level}', 'lvl {level}'), { level: clanState(state.clan, this.now).level },
         )}</b>`) +
@@ -833,7 +833,7 @@ export class WorldMap {
       'Ещё один заход вернётся через {duration}',
       'Another run becomes available in {duration}',
     ), { duration: gameDuration(state.restShifts * SHIFT_SEC) });
-    else setGameText(this.note, gameMessage('Полная жила: три захода'));
+    else setGameText(this.note, gameMessage('Полная жила: три захода', 'Full vein: three runs'));
 
     // Кнопка называется действием, а не местом: имя локации склоняется,
     // а имена в прототипе рабочие (§0.1) и меняются без предупреждения.
@@ -847,7 +847,7 @@ export class WorldMap {
     const hot = stake >= DANGER_STAKE;
     setGameText(this.go, hot
       ? gameMessage('Войти · ставка {stake}%', 'Enter · risk {stake}%')
-      : gameMessage('Войти'), { stake: Math.round(stake * 100) });
+      : gameMessage('Войти', 'Enter'), { stake: Math.round(stake * 100) });
     this.go.classList.toggle('danger', hot && block === 'ok');
     this.go.disabled = block !== 'ok';
     // Отказ говорит причиной и перебивает срок восстановления: игроку сейчас
@@ -891,13 +891,13 @@ export class WorldMap {
   private paintLiveCard(live: LiveCamp): void {
     this.card.innerHTML =
       `<div class="row t"><b style="color:${LIVE_COLOR}">${live.clan ?? NO_CLAN}</b>` +
-      `<i>${gameMarkup(gameMessage('сосед'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Сила'))}</span>` +
+      `<i>${gameMarkup(gameMessage('сосед', 'neighbor'))}</i></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Сила', 'Power'))}</span>` +
       `<b style="color:${LIVE_COLOR}">${live.power}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Жильё'))}</span><b>${gameMarkup(
+      `<div class="row line"><span>${gameMarkup(gameMessage('Жильё', 'Housing'))}</span><b>${gameMarkup(
         gameMessage('ур. {level}', 'lvl {level}'), { level: live.level },
       )}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Народу'))}</span><b>${live.folk}</b></div>`;
+      `<div class="row line"><span>${gameMarkup(gameMessage('Народу', 'People'))}</span><b>${live.folk}</b></div>`;
     if (live.clan === null) setGameText(this.note, gameMessage(
       'Живой сосед. Клана у него нет — в таблице он стоит без имени.',
       'A live neighbor. They have no clan, so they appear unnamed in the standings.',
@@ -914,21 +914,21 @@ export class WorldMap {
     const rows = standings(camp, this.now, camp.clan?.name ?? null, this.live);
     const place = yourPlace(rows);
     this.card.innerHTML =
-      `<div class="row t"><b>${camp.clan?.name ?? gameMarkup(gameMessage('Ваш лагерь'))}</b>` +
-      `<i>${gameMarkup(gameMessage('лагерь'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Сила'))}</span>` +
+      `<div class="row t"><b>${camp.clan?.name ?? gameMarkup(gameMessage('Ваш лагерь', 'Your camp'))}</b>` +
+      `<i>${gameMarkup(gameMessage('лагерь', 'camp'))}</i></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Сила', 'Power'))}</span>` +
       `<b style="color:${OWN_CAMP_COLOR}">${campPower(camp)}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Жильё'))}</span><b>${gameMarkup(
+      `<div class="row line"><span>${gameMarkup(gameMessage('Жильё', 'Housing'))}</span><b>${gameMarkup(
         gameMessage('ур. {level}', 'lvl {level}'), { level: campLevel(camp) },
       )}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Народу'))}</span><b>${1 + camp.residents.length}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('В таблице'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Народу', 'People'))}</span><b>${1 + camp.residents.length}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('В таблице', 'Standing'))}</span>` +
       `<b class="${place === 1 ? 'good' : ''}">${gameMarkup(
         gameMessage('{place} из {total}', '{place} of {total}'), { place, total: rows.length },
       )}</b></div>` +
       (camp.clan === null || camp.clan === undefined
         ? ''
-        : `<div class="row line"><span>${gameMarkup(gameMessage('Клан'))}</span><b>${camp.clan.name}</b></div>`);
+        : `<div class="row line"><span>${gameMarkup(gameMessage('Клан', 'Clan'))}</span><b>${camp.clan.name}</b></div>`);
     // Сила — число выведенное (`sim/standing.ts`), и строка обязана называть,
     // из чего оно: иначе это цифра без ориентира, то есть повод для спора.
     //
@@ -952,13 +952,13 @@ export class WorldMap {
     const at = state.nodes[0];
     const where = at === undefined ? null : this.region.nodes[at];
     this.card.innerHTML =
-      `<div class="row t"><b style="color:${clan.color}">${worldText(clan.name)}</b><i>${gameMarkup(gameMessage('фракция'))}</i></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Сила'))}</span>` +
+      `<div class="row t"><b style="color:${clan.color}">${worldText(clan.name)}</b><i>${gameMarkup(gameMessage('фракция', 'faction'))}</i></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Сила', 'Power'))}</span>` +
       `<b style="color:${clan.color}">${clanPower(clanGrowth(id, this.now))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Лагерь'))}</span><b>${gameMarkup(
+      `<div class="row line"><span>${gameMarkup(gameMessage('Лагерь', 'Camp'))}</span><b>${gameMarkup(
         gameMessage('ур. {level}', 'lvl {level}'), { level: state.level },
       )}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Сегодня работает'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Сегодня работает', 'Working today'))}</span>` +
       (where === undefined || where === null
         ? `<b class="good">${gameMarkup(gameMessage('нигде', 'nowhere'))}</b>`
         : `<b class="bad">${worldText(where.name)}</b>`) +
@@ -966,8 +966,8 @@ export class WorldMap {
     // Почему это важно игроку, а не просто любопытно: занятая точка тратит
     // богатство (§4), и читается строка выше именно так.
     setGameText(this.note, where === null
-      ? gameMessage('Фракция мира. Сегодня её людей на точках не видно.')
-      : gameMessage('Пока они там, точка тратит богатство — заход туда обойдётся дешевле по добыче.'));
+      ? gameMessage('Фракция мира. Сегодня её людей на точках не видно.', 'A world faction. None of its people are visible at locations today.')
+      : gameMessage('Пока они там, точка тратит богатство — заход туда обойдётся дешевле по добыче.', 'While they are there, the location loses richness, so your run will yield less loot.'));
   }
 
   /**
@@ -989,7 +989,7 @@ export class WorldMap {
     });
     this.send.disabled = block !== 'ok';
     if (block === 'ok') setGameText(this.sendNote, gameMessage('добыча ×{share}', 'loot ×{share}'), {
-      share: SHARE_TEXT,
+      share: document.documentElement.lang === 'ru' ? SHARE_TEXT : SHARE_TEXT.replace(',', '.'),
     });
     else setGameText(this.sendNote, SORTIE_REASON_MESSAGE[block]);
   }
@@ -1007,11 +1007,11 @@ export class WorldMap {
    */
   private paintGraveCard(node: WorldNode): void {
     this.card.innerHTML =
-      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка'))}</i></div>` +
+      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка', 'exploration'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
       `<b>${gameMarkup(gameMessage('ограда, могилы, склеп', 'fence, graves, crypt'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча'))}</span><b>${gameMarkup(gameMessage('нет'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча', 'Loot'))}</span><b>${gameMarkup(gameMessage('нет', 'none'))}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
       `<b class="bad">${gameMarkup(gameMessage('привидения', 'ghosts'))}</b></div>`;
     setGameText(this.note, gameMessage(
       'Прогулка: добычи нет. Привидение медленнее вас — от него можно уйти.',
@@ -1031,13 +1031,13 @@ export class WorldMap {
    */
   private paintKeepCard(node: WorldNode): void {
     this.card.innerHTML =
-      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('постройка'))}</i></div>` +
+      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('постройка', 'structure'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
       `<b>${gameMarkup(gameMessage('стены, башни, двор', 'walls, towers, courtyard'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь'))}</span>` +
-      `<b class="good">${gameMarkup(gameMessage('торговец'))}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
+      `<b class="good">${gameMarkup(gameMessage('торговец', 'trader'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Меняет на', 'Trades for'))}</span>` +
-      `<b>${gameMarkup(gameMessage('железо'))}</b></div>`;
+      `<b>${gameMarkup(gameMessage('железо', 'iron'))}</b></div>`;
     setGameText(this.note, gameMessage(
       'Прогулка: добычи и противников нет. Торговец во дворе, за воротами.',
       'Exploration: no loot or enemies. The trader is in the courtyard beyond the gate.',
@@ -1047,7 +1047,7 @@ export class WorldMap {
 
   private paintMinotaurKeepCard(node: WorldNode): void {
     this.card.innerHTML =
-      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('испытание'))}</i></div>` +
+      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('испытание', 'trial'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
       `<b>${gameMarkup(gameMessage('замок и золотой сундук', 'castle and golden chest'))}</b></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Охрана', 'Guards'))}</span>` +
@@ -1071,13 +1071,13 @@ export class WorldMap {
    */
   private paintTrailCard(node: WorldNode): void {
     this.card.innerHTML =
-      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка'))}</i></div>` +
+      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка', 'exploration'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
       `<b>${gameMarkup(gameMessage('тропа, развилки, тупики', 'trail, forks, dead ends'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча', 'Loot'))}</span>` +
       `<b>${gameMarkup(gameMessage('дерево и камень', 'wood and stone'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь'))}</span>` +
-      `<b class="good">${gameMarkup(gameMessage('никого'))}</b></div>`;
+      `<div class="row line"><span>${gameMarkup(gameMessage('Кто здесь', 'Who is here'))}</span>` +
+      `<b class="good">${gameMarkup(gameMessage('никого', 'no one'))}</b></div>`;
     setGameText(this.note, gameMessage(
       'Прогулка: тропа виляет и раздваивается, выходы на обоих концах. Лес рубят, валуны бьют — противников нет.',
       'Exploration: the trail twists and forks, with exits at both ends. Chop trees and break boulders — there are no enemies.',
@@ -1096,19 +1096,19 @@ export class WorldMap {
   private paintPrizeCard(node: WorldNode): void {
     const spun = this.camp?.wheelDay === dayAt(this.now);
     this.card.innerHTML =
-      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('аттракцион'))}</i></div>` +
+      `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('аттракцион', 'attraction'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What is there'))}</span>` +
       `<b>${gameMarkup(gameMessage('колесо призов', 'prize wheel'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча'))}</span>` +
-      `<b>${gameMarkup(gameMessage('кристаллы'))}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Прокрутка'))}</span>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Добыча', 'Loot'))}</span>` +
+      `<b>${gameMarkup(gameMessage('кристаллы', 'crystals'))}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Прокрутка', 'Spin'))}</span>` +
       (spun
         ? `<b class="bad">${gameMarkup(gameMessage('сегодня уже была', 'already used today'))}</b>`
         : `<b class="good">${gameMarkup(gameMessage('одна в день, сегодня не тратилась', 'once per day, unused today'))}</b>`) +
       '</div>';
     setGameText(this.note, spun
-      ? gameMessage('Колесо уже крутили — новая прокрутка завтра, с новым регионом.')
-      : gameMessage('Дёрните рычаг — сколько выпадет, столько кристаллов и заберёте.'));
+      ? gameMessage('Колесо уже крутили — новая прокрутка завтра, с новым регионом.', 'The wheel has already been spun. A new spin arrives tomorrow with the new region.')
+      : gameMessage('Дёрните рычаг — сколько выпадет, столько кристаллов и заберёте.', 'Pull the lever and keep however many crystals come up.'));
     this.walkButton(node);
     // Поверх общего правила прогулок: сегодняшняя прокрутка потрачена —
     // и идти незачем, кнопка говорит об этом запертостью, а строка выше —
@@ -1127,7 +1127,7 @@ export class WorldMap {
    * неоткуда, и заперта она может быть только кадром раскадровки.
    */
   private walkButton(node: WorldNode): void {
-    setGameText(this.go, gameMessage('Пойти'));
+    setGameText(this.go, gameMessage('Пойти', 'Go'));
     this.go.classList.remove('danger');
     this.go.disabled = this.entryBlock(node) !== 'ok';
   }

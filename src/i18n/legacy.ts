@@ -652,4 +652,19 @@ export const legacyPatterns: readonly LegacyPattern[] = [
   {
     "source": "оси: ZXQPH0QXZ · ZXQPH1QXZ · ZXQPH2QXZ"
   },
+  {
+    "source": "— Я ZXQPH0QXZ. Лес мой, топор мой."
+  },
+  {
+    "source": "Наём: монеты ZXQPH0QXZ"
+  },
+  {
+    "source": "Наём: монеты ZXQPH0QXZ · Монет на уговор не хватает"
+  },
+  {
+    "source": "ZXQPH0QXZ нанят · монеты −ZXQPH1QXZ"
+  },
+  {
+    "source": "ZXQPH0QXZ: добывать пищу"
+  },
 ];

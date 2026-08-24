@@ -20,8 +20,10 @@ import { termLine } from '../sim/castleGuest';
 import type { GuestOrigin, GuestSeek, GuestTerm } from '../sim/castleGuest';
 import { MAX_NAME, SELF_ANSWERS, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
+
+import type { HireBlock, WoodsmanPost, WoodsmanTalk } from '../sim/woodsman';
 import { avatarSvg } from './avatar';
-import { gameMessage, setGameText, type GameMessageValues } from '../i18n/game';
+import { gameMessage, gameText, setGameText, type GameMessageValues } from '../i18n/game';
 import type { GameMessage } from '../i18n/gameMessages';
 
 const selfCopy: Record<SelfAnswer, { label: GameMessage; hint: GameMessage }> = {
@@ -60,6 +62,11 @@ export interface MeetPanelCallbacks {
   onAdvance(): void;
   onInvite(): void;
 }
+
+/** Почему лесника не нанять (`sim/woodsman.ts`): слова причины — в панели. */
+const HIRE_REASON_MESSAGE = {
+  coins: gameMessage('Монет на уговор не хватает', 'Not enough coins for the deal'),
+} as const;
 
 export class MeetPanel {
   private readonly root: HTMLElement;
@@ -221,6 +228,69 @@ export class MeetPanel {
     );
   }
 
+  /**
+   * Наём лесника у стен замка (`sim/woodsman.ts`, §6.1.6.3). Панель та же,
+   * что у знакомства и у гостя, и по той же причине без кнопки «закрыть»:
+   * отойти можно в любой момент. Кадра два, тапов столько же.
+   *
+   * Лицо рисуется ремеслом, а не тем, с чем человек пришёл: у поста стоит
+   * лесник, и в кружке он обязан быть лесником — тем же, каким войдёт
+   * в лагерь (`residentLook`).
+   */
+  showWoodsman(post: WoodsmanPost, state: WoodsmanTalk, price: number, block: HireBlock): void {
+    this.root.style.display = state.step === 'кончено' ? 'none' : 'flex';
+    if (state.step === 'кончено') return;
+
+    this.buttons.replaceChildren();
+    this.field.style.display = 'none';
+    this.goods.style.display = 'none';
+    const face = `лесник/${post.who.seed}`;
+    if (this.face.dataset['who'] !== face) {
+      this.face.dataset['who'] = face;
+      this.face.innerHTML = avatarSvg('лесник', post.who.seed);
+    }
+
+    if (state.step === 'кто') {
+      setGameText(
+        this.line,
+        gameMessage('— Я {name}. Лес мой, топор мой.', '— I am {name}. The forest is mine, the axe is mine.'),
+        { name: post.who.name },
+      );
+      this.act(gameMessage('Спросить о цене', 'Ask about the price'), () => this.cb.onAdvance());
+      return;
+    }
+
+    setGameText(this.line, gameMessage(
+      '— Найми — буду валить твой лес. Кормить будешь ты.',
+      '— Hire me and I will fell your forest. Feeding me is on you.',
+    ));
+    // Цена и то, чего не хватает, — одной строкой: игрок должен видеть
+    // и сколько просят, и почему нельзя, а не гадать по погасшей кнопке.
+    if (block === 'ok') {
+      setGameText(this.goods, gameMessage('Наём: монеты {price}', 'Hire: coins {price}'), { price });
+    } else {
+      setGameText(
+        this.goods,
+        gameMessage('Наём: монеты {price} · {reason}', 'Hire: coins {price} · {reason}'),
+        { price, reason: gameText(HIRE_REASON_MESSAGE[block]) },
+      );
+    }
+    this.goods.style.display = 'block';
+    const hire = this.act(
+      gameMessage('Нанять', 'Hire'),
+      () => this.cb.onInvite(),
+      block === 'ok'
+        ? gameMessage(
+            'Вдвое быстрее на дереве; ест и работает, только пока есть крыша',
+            'Twice as fast on wood; eats like everyone and works only while he has a roof',
+          )
+        : gameMessage('Нанять не на что — приходи с монетами', 'Nothing to hire with — come back with coins'),
+    );
+    // Кнопка гаснет, а не отказывает нажатием: цена названа рядом, и жать
+    // на «нанять» с пустым кошельком незачем.
+    hire.disabled = block !== 'ok';
+  }
+
   /** Фокус в поле — отдельным вызовом: телефон открывает клавиатуру только
    *  по жесту игрока, и дёргать её на каждой перерисовке нельзя. */
   focusName(): void {
@@ -237,7 +307,12 @@ export class MeetPanel {
     return this.root.style.display !== 'none';
   }
 
-  private act(label: GameMessage, onClick: () => void, hint?: GameMessage, values?: GameMessageValues): void {
+  private act(
+    label: GameMessage,
+    onClick: () => void,
+    hint?: GameMessage,
+    values?: GameMessageValues,
+  ): HTMLButtonElement {
     const button = document.createElement('button');
     setGameText(button, label, values);
     // Пояснение внутри кнопки, а не рядом: выбор и его цена — одно касание.
@@ -248,5 +323,6 @@ export class MeetPanel {
     }
     button.addEventListener('click', onClick);
     this.buttons.append(button);
+    return button;
   }
 }

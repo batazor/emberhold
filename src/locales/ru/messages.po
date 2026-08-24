@@ -260,6 +260,12 @@ msgid "— на таком клип перестаёт быть ходьбой. 
 msgstr "— на таком клип перестаёт быть ходьбой. Герой Emberhold не ходит, он бежит: под 1,67 подходит только"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "— Найми — буду валить твой лес. Кормить будешь ты."
+msgstr "— Найми — буду валить твой лес. Кормить будешь ты."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "— не в первой сессии вообще."
 msgstr "— не в первой сессии вообще."
@@ -588,6 +594,11 @@ msgstr "— Я {name}."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "— Я {name}. Лес мой, топор мой."
+msgstr "— Я {name}. Лес мой, топор мой."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "— Я {name}. Сижу у огня, жду попутчиков."
 msgstr "— Я {name}. Сижу у огня, жду попутчиков."
 
@@ -595,6 +606,11 @@ msgstr "— Я {name}. Сижу у огня, жду попутчиков."
 #: locales/legacy-messages.ts
 msgid "— Я ZXQPH0QXZ."
 msgstr "— Я {value0}."
+
+#. js-lingui-explicit-id
+#: locales/legacy-messages.ts
+msgid "— Я ZXQPH0QXZ. Лес мой, топор мой."
+msgstr "— Я {value0}. Лес мой, топор мой."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -3318,6 +3334,11 @@ msgstr "{value0} надеть некуда."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
+msgid "ZXQPH0QXZ нанят · монеты −ZXQPH1QXZ"
+msgstr "{value0} нанят · монеты −{value1}"
+
+#. js-lingui-explicit-id
+#: locales/legacy-messages.ts
 msgid "ZXQPH0QXZ падёт"
 msgstr "{value0} падёт"
 
@@ -3405,6 +3426,11 @@ msgstr "{value0}: вернулся без добычи"
 #: locales/legacy-messages.ts
 msgid "ZXQPH0QXZ: вернулся без лис"
 msgstr "{value0}: вернулся без лис"
+
+#. js-lingui-explicit-id
+#: locales/legacy-messages.ts
+msgid "ZXQPH0QXZ: добывать пищу"
+msgstr "{value0}: добывать пищу"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -8969,6 +8995,18 @@ msgid "В кладовой не хватает на уговор"
 msgstr "В кладовой не хватает на уговор"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "В кладовой нет пищи · добытчик уже в поле"
+msgstr "В кладовой нет пищи · добытчик уже в поле"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "В кладовой нет пищи: голодные не работают"
+msgstr "В кладовой нет пищи: голодные не работают"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "В кладовой столько не наберётся"
 msgstr "В кладовой столько не наберётся"
@@ -9255,6 +9293,12 @@ msgstr "Ваше {worth} против его {ask} — сделка его ус�
 #: locales/legacy-messages.ts
 msgid "Вверх и светлее. Выход должен ощущаться облегчением, а не окончанием."
 msgstr "Вверх и светлее. Выход должен ощущаться облегчением, а не окончанием."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "Вдвое быстрее на дереве; ест и работает, только пока есть крыша"
+msgstr "Вдвое быстрее на дереве; ест и работает, только пока есть крыша"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -11735,6 +11779,11 @@ msgstr "Дерево против песчаника"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
+msgid "Дерево растёт в местах мира"
+msgstr "Дерево растёт в местах мира"
+
+#. js-lingui-explicit-id
+#: locales/legacy-messages.ts
 msgid "Дерево само себя не принесёт."
 msgstr "Дерево само себя не принесёт."
 
@@ -12036,9 +12085,15 @@ msgid "Добывайте пищу"
 msgstr "Добывайте пищу"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Добывать пищу"
 msgstr "Добывать пищу"
+
+#. js-lingui-explicit-id
+#: locales/legacy-messages.ts
+msgid "Добывать пищу некому — ягоды растут в местах мира"
+msgstr "Добывать пищу некому — ягоды растут в местах мира"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -18074,6 +18129,12 @@ msgid "момент выбран правилом"
 msgstr "момент выбран правилом"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "Монет на уговор не хватает"
+msgstr "Монет на уговор не хватает"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Монетизация отложена целиком. Важно лишь, чтобы её появление позже не потребовало переделки: камень и деньги — разные входы в один и тот же расчёт."
 msgstr "Монетизация отложена целиком. Важно лишь, чтобы её появление позже не потребовало переделки: камень и деньги — разные входы в один и тот же расчёт."
@@ -18521,6 +18582,26 @@ msgid "надет"
 msgstr "надет"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Наём: монеты {price}"
+msgstr "Наём: монеты {price}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Наём: монеты {price} · {reason}"
+msgstr "Наём: монеты {price} · {reason}"
+
+#. js-lingui-explicit-id
+#: locales/legacy-messages.ts
+msgid "Наём: монеты ZXQPH0QXZ"
+msgstr "Наём: монеты {value0}"
+
+#. js-lingui-explicit-id
+#: locales/legacy-messages.ts
+msgid "Наём: монеты ZXQPH0QXZ · Монет на уговор не хватает"
+msgstr "Наём: монеты {value0} · Монет на уговор не хватает"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Нажимайте клипы подряд — переход виден на самом персонаже."
 msgstr "Нажимайте клипы подряд — переход виден на самом персонаже."
@@ -18590,6 +18671,18 @@ msgstr "Накормите поселение"
 #: locales/legacy-messages.ts
 msgid "намеренно нет фасада"
 msgstr "намеренно нет фасада"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "Нанять"
+msgstr "Нанять"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "Нанять не на что — приходи с монетами"
+msgstr "Нанять не на что — приходи с монетами"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -27059,6 +27152,18 @@ msgid "собранный из клеток"
 msgstr "собранный из клеток"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "Собрать дерево"
+msgstr "Собрать дерево"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "Собрать пищу"
+msgstr "Собрать пищу"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "собрать сундук с крышкой внутри ящика"
 msgstr "собрать сундук с крышкой внутри ящика"
@@ -27421,6 +27526,12 @@ msgstr "Способ раскраски тот же, что у ресурсов,
 #: locales/legacy-messages.ts
 msgid "Спрайты меньше и дешевле в анимации"
 msgstr "Спрайты меньше и дешевле в анимации"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#: locales/legacy-messages.ts
+msgid "Спросить о цене"
+msgstr "Спросить о цене"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts

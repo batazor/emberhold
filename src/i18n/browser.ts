@@ -241,6 +241,10 @@ async function set(language: Language): Promise<void> {
   } catch {}
   syncToggles();
   await activate(language);
+  // Выбор человека, а не загрузка словаря: `-ready` приходит и на старте,
+  // и его слушают те, кому важен готовый каталог. Здесь событие про другое —
+  // игрок **выбрал**, — и по нему выбор уезжает в аккаунт (§6.2.7).
+  window.dispatchEvent(new CustomEvent('emberhold-language-changed', { detail: { language } }));
 }
 
 function toggle(parent: HTMLElement, className = ''): HTMLElement {
@@ -280,8 +284,15 @@ const embedded = window.self !== window.top;
 if (!embedded) observe(document);
 void activate(current);
 
+/**
+ * Плавающий переключатель — только для артбуков и страниц-замеров (§6.2.7).
+ * В самой игре его нет: угол экрана занят кадром, а язык живёт там же,
+ * где громкость и «Новая игра», — в настройках под шестернёй. Пустой хвост
+ * адреса — это и есть игра (`/`), поэтому он в списке наравне с `index.html`.
+ */
 const standalone = (): void => {
-  if (embedded || /^(index|artbooks)\.html$/.test(location.pathname.split('/').pop() ?? '')) return;
+  const page = location.pathname.split('/').pop() ?? '';
+  if (embedded || page === '' || /^(index|artbooks)\.html$/.test(page)) return;
   const style = document.createElement('style');
   style.textContent = `
     #emberhold-language { position:fixed; z-index:10000; top:max(10px,env(safe-area-inset-top)); right:10px;

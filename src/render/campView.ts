@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ripe } from '../sim/berries';
 import { blockingMaterial } from './blocking';
 import { RESIDENT_TOOL, RESIDENT_WORK_CLIP, buildingGeometry, dwellerParts, heroGeometry, heroParts } from './models';
-import { hasRoof } from '../sim/residents';
+import { hasRoof, residentLook } from '../sim/residents';
 import { Rigged } from './rigged';
 import { CAMP_SPEED } from '../sim/campWalk';
 import type { HeroClassId } from '../sim/heroes';
@@ -514,7 +514,7 @@ export class CampView {
       `${signature}|т${this.camp.tents.map((t) => `${t.x},${t.z}`).join(';')}` +
       `|с${this.camp.chests.map((c) => `${c.x},${c.z}`).join(';')}` +
       `|о${(this.camp.fires ?? []).map((f) => `${f.x},${f.z}`).join(';')}` +
-      `|ж${this.camp.residents.map((r) => `${r.look}:${r.rest ? 'отдых' : r.answer}`).join(';')}`;
+      `|ж${this.camp.residents.map((r) => `${residentLook(r)}:${r.rest ? 'отдых' : r.answer}`).join(';')}`;
     const area = campArea(this.camp.levels.hq);
     if (withTents === this.builtLevels && area === this.area) return;
     this.builtLevels = withTents;
@@ -611,7 +611,7 @@ export class CampView {
       // Отдыхающий стоит с пустыми руками — приказ «отдыхать» и есть
       // отложенный инструмент, и его должно быть видно без карточки.
       const rig = new Rigged(
-        dwellerParts(r.look, r.rest ? undefined : RESIDENT_TOOL[r.answer]),
+        dwellerParts(residentLook(r), r.rest ? undefined : RESIDENT_TOOL[r.answer]),
         this.blocking,
       );
       rig.root.scale.setScalar(VILLAGER_SCALE);

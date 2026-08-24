@@ -742,6 +742,22 @@ export function earnCoins(camp: CampState, amount: number): void {
 }
 
 /**
+ * Списать монеты. Возвращает, вышло ли: не хватило — не списано ничего,
+ * и половина цены не уходит.
+ *
+ * Заведено вместе со вторым стоком монеты (§6.1.6.3, наём лесника). Пока
+ * сток был один, списание жило внутри `speedup` строкой — и второй такой
+ * строкой начиналась бы пара мест, где `camp.coins` правят напрямую мимо
+ * `coinsOf`. Ровно то, чего `coinsOf` и заведён избегать.
+ */
+export function spendCoins(camp: CampState, cost: number): boolean {
+  const price = Math.max(0, Math.ceil(cost));
+  if (coinsOf(camp) < price) return false;
+  camp.coins = coinsOf(camp) - price;
+  return true;
+}
+
+/**
  * §20.5 — монеты за вход в игру: **десять в сутки, один раз**.
  *
  * Приток намеренно плоский и не зависит ни от глубины, ни от числа вылазок:
@@ -809,8 +825,7 @@ export function speedup(camp: CampState, now: number): boolean {
   const c = camp.construction;
   if (c === null) return false;
   const cost = speedupCost(c.endsAt - now, c.endsAt - c.startedAt);
-  if (coinsOf(camp) < cost) return false;
-  camp.coins = coinsOf(camp) - cost;
+  if (!spendCoins(camp, cost)) return false;
   camp.construction = { ...c, endsAt: now };
   completeIfDue(camp, now);
   return true;

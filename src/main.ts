@@ -25,6 +25,8 @@ import {
   speedup,
   setOffhand,
   claimDailyCoins,
+  coinsOf,
+  earnCoins,
   speedupCost,
   startUpgrade,
   upgradeBlock,
@@ -144,7 +146,9 @@ import {
   cloudCamp,
   cloudCamps,
   cloudNeighbours,
+  cloudLanguage,
   cloudOnSignIn,
+  cloudSetLanguage,
   cloudPull,
   cloudPush,
   cloudSortieClaim,
@@ -310,6 +314,17 @@ import { FanControl, installFan } from './features/fan';
 import type { FanPerson } from './features/fan';
 import { bindCampInput } from './features/campInput';
 import { createDirector } from './features/onboarding';
+import {
+  HIRE_REASON,
+  advanceHire,
+  woodsmenOf,
+  hireBlock,
+  hireWoodsman,
+  nextWoodsmanPrice,
+  startHireTalk,
+  woodsmanPostAt,
+} from './sim/woodsman';
+import type { WoodsmanPost, WoodsmanTalk } from './sim/woodsman';
 import { MeetPanel } from './ui/meetPanel';
 import type { MeetPanelCallbacks } from './ui/meetPanel';
 import { advance, answerSelf, generateSettler, giftOf, setHeroName, startMeet } from './sim/settler';
@@ -325,6 +340,7 @@ import {
   hasRoof,
   homeless,
   recallHunt,
+  residentLook,
   residentPhaseAt,
   residentState,
   roofs,
@@ -795,6 +811,70 @@ const campHud = new CampHud(app, {
     if (spot !== null) showPlacingSpot(spot);
   },
   /**
+   * Пойти и добыть то, чего не хватает (§13.3, §13.7).
+   *
+   * **Дерево герой берёт сам.** Лагерь стоит в лесу, лес поляны рубится
+   * (§13.3), и «не хватает дерева» здесь — не тупик, а невыполненная работа
+   * на десять секунд. Кнопка делает ровно то, что сделал бы тап по дереву:
+   * ведёт героя к ближайшему стволу и ставит его рубить. Ближайший —
+   * не к центру поляны, а **к самому герою**: за деревом ходят ногами,
+   * и дальний ствол стоил бы дороги, которую игрок не просил.
+   *
+   * **Пищу берёт добытчик.** §13.7 держит правило «пища не выпадает
+   * в находках вовсе»: её приносит жилец с приказом «Добывать пищу»,
+   * и другого источника в лагере нет. Приказ ставится первому, кто может
+   * работать; кому ставить — решает панель (`syncFoodTask`), а не эта
+   * функция: она выполняет, а не выбирает.
+   */
+  onGather: (kind) => {
+    if (kind === 'food') {
+      const at = camp.residents.findIndex(
+        (r) => r.hunt === undefined && !(r.answer === 'кормим' && !r.rest),
+      );
+      if (at < 0 || !assignWork(camp, at, 'кормим')) {
+        play('deny');
+        campHud.notify('Добывать пищу некому — ягоды растут в местах мира');
+        return;
+      }
+      play('build');
+      campHud.notify(`${camp.residents[at]!.name}: добывать пищу`);
+      // Тот же пересбор, что у приказа из карточки: инструмент в руке
+      // и маршрут рутины обязаны смениться сразу, а не к следующему заходу.
+      refreshResidentAssignment(at);
+      return;
+    }
+    // Кадр, в котором лес не рубится (площадка отладки, §6.2.5), отвечает
+    // картой, а не отказом: дерево в мире есть всегда, а «здесь нечего
+    // рубить» — это ровно то задание без выхода, ради которого кнопка
+    // и заведена.
+    if (raid === null || !raid.logging) {
+      campHud.notify('Дерево растёт в местах мира');
+      campHud.openSheet('tiers');
+      return;
+    }
+    // Ближайшее дерево к герою: поляна — кольцо леса вокруг площадки,
+    // и стволов у любого лагеря больше, чем нужно. Ищется перебором
+    // по локации, а не по снимку: срубленное уже не стоит.
+    let goal: Cell | null = null;
+    let best = Infinity;
+    for (let z = 0; z < raid.loc.size; z++) {
+      for (let x = 0; x < raid.loc.size; x++) {
+        if (!treeAt(raid.loc, { x, z })) continue;
+        const d = Math.hypot(raid.hero.x - x, raid.hero.z - z);
+        if (d >= best) continue;
+        best = d;
+        goal = { x, z };
+      }
+    }
+    if (goal === null) {
+      play('deny');
+      campHud.notify(CHOP_REASON.gone);
+      return;
+    }
+    campHud.close();
+    startChopping(goal);
+  },
+  /**
    * Сундук (`chests.ts`) — тот же жест, что палатка: карточка вооружает
    * палец, место выбирает игрок. Отказ звучит так же, как виден (§18.3).
    */
@@ -1209,7 +1289,7 @@ function characterPeople(): PersonTab[] {
     ...camp.residents.map((r) => ({
       key: `жилец:${r.seed}:${r.name}`,
       name: r.name,
-      look: r.look,
+      look: residentLook(r),
       seed: r.seed,
     })),
   ];
@@ -1288,7 +1368,7 @@ function characterSubject(): CharacterSubject | null {
     key: `жилец:${r.seed}:${r.name}`,
     name: r.name,
     kind: 'жилец',
-    look: r.look,
+    look: residentLook(r),
     seed: r.seed,
     status: roofed ? residentState(r) : 'без крыши',
     good: roofed,
@@ -1305,7 +1385,7 @@ function characterSubject(): CharacterSubject | null {
     ranged: false,
     // Инструмент — тот же, что у жильца в кадре (§6.1.14): занятие видно
     // по руке, и разбор обязан показывать ту же руку, а не пустую.
-    model: { kind: 'жилец', look: r.look, tool: r.rest ? null : RESIDENT_TOOL[r.answer] },
+    model: { kind: 'жилец', look: residentLook(r), tool: r.rest ? null : RESIDENT_TOOL[r.answer] },
     people: characterPeople(),
   };
 }
@@ -1396,7 +1476,7 @@ const heroFan = new FanControl({
     ...camp.residents.map((r, i): FanPerson => ({
       name: r.name,
       kind: 'жилец',
-      look: r.look,
+      look: residentLook(r),
       seed: r.seed,
       state: hasRoof(camp, i) ? residentState(r) : 'без крыши',
       busy: false,
@@ -1882,7 +1962,7 @@ function seatResidents(): void {
     if (chore !== undefined && chore !== null) {
       const at = choreAt(chore, campTime());
       return {
-        look: r.look,
+        look: residentLook(r),
         tool: RESIDENT_TOOL[r.answer],
         x: at.x,
         z: at.z,
@@ -1897,7 +1977,7 @@ function seatResidents(): void {
     busy.push(sit);
     seatedBodies.push({ x: sit.x + 0.5, z: sit.z + 0.5 });
     return {
-      look: r.look,
+      look: residentLook(r),
       // Инструмент занятия — и у костра: топор у дерева, кирка у камня,
       // у отдыхающего руки пустые (§6.1.14).
       ...(r.rest ? {} : { tool: RESIDENT_TOOL[r.answer] }),
@@ -2311,6 +2391,17 @@ const minotaurPanel = new MinotaurPanel(app, {
 const setHint = (text: string): void => hud.setHint(meetPanel.visible ? '' : text);
 
 /**
+ * Низ вылазки уступает разговору (§6.2.6). Панель разговора — пятый слой
+ * в том же нижнем углу, и о кнопках вылазки она не знает: две коробки
+ * налезали друг на друга, и первым это ловилось глазом, а не правилом.
+ *
+ * Считается по видимости панели, а не по числу открывших: разговоров
+ * четыре — знакомство, гость, лесник и минотавр, — и договориться между
+ * собой они не смогли бы, как и не смогли бы с подсказкой (`setHint`).
+ */
+const syncTalking = (): void => hud.setTalking(meetPanel.visible);
+
+/**
  * Настройки (§18.5). Живут во всех сборках, а не только в дев: громкость
  * нужна игроку, а не разработчику. «Новая игра» переехала сюда же из
  * дев-меню — сейв переживает перезагрузку, и стереть его из консоли нельзя:
@@ -2377,6 +2468,35 @@ void cloudUser().then((email) => {
   // §9 — с этого мига события пишутся на человека, а не на устройство:
   // иначе один игрок с телефона и с ноутбука считается двумя.
   if (email !== null) analyticsIdentify(email);
+  if (email !== null) void syncLanguage();
+});
+
+/**
+ * Язык и аккаунт (§6.2.7). Спрошенный один раз на регистрации, он обязан
+ * приезжать вместе с лагерем на любое устройство — иначе игрок отвечает
+ * на один и тот же вопрос заново с каждого телефона.
+ *
+ * Кто кого перебивает: **облако старше устройства**. Устройство помнит
+ * последний выбор в этом браузере, облако — выбор человека; чужой браузер
+ * с чужим умолчанием иначе молча переучивал бы аккаунт. Пустая строка
+ * в облаке — не спор, а первый вход: туда уезжает то, что выбрано здесь.
+ */
+async function syncLanguage(): Promise<void> {
+  const api = window.EmberholdLanguage;
+  if (api === undefined) return;
+  const saved = await cloudLanguage();
+  if (saved === null) {
+    await cloudSetLanguage(api.current);
+    return;
+  }
+  if (saved !== api.current) api.set(saved);
+}
+
+// Выбор языка в настройках или на карточке регистрации уезжает в облако
+// сразу: второй раз о нём не спросят ни здесь, ни на другом устройстве.
+addEventListener('emberhold-language-changed', () => {
+  const api = window.EmberholdLanguage;
+  if (api !== undefined) void cloudSetLanguage(api.current);
 });
 const authCard = new AuthCard(app);
 // Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
@@ -2388,6 +2508,7 @@ cloudOnSignIn(() => {
   void cloudUser().then((email) => {
     if (email !== null) analyticsIdentify(email);
   });
+  void syncLanguage();
   void syncCloud();
 });
 
@@ -3345,6 +3466,113 @@ function syncGuestMeet(): void {
 }
 
 /**
+ * Пост лесника у стен замка (`sim/woodsman.ts`, §6.1.6.3) и разговор с ним.
+ * Живёт при сцене, как гость: пост выводится из сида замка заново на каждом
+ * заходе, а переживает заход только нанятый — он вписан в жильцов лагеря.
+ * Хранить «нанят здесь» незачем: лесника нанимают сколько угодно раз,
+ * и второй у того же замка — не ошибка, а следующая цена.
+ */
+let woodsmanPost: WoodsmanPost | null = null;
+let woodsmanTalk: WoodsmanTalk | null = null;
+let woodsmanShown = false;
+/**
+ * Что показано в панели найма сейчас: кадр, цена и отказ. Панель
+ * перерисовывается на смену этой строки, а не каждый кадр: монеты меняются
+ * не только наймом (§20.5 — их дают за вход), и панель, застывшая на «монет
+ * не хватает» после того, как они появились, врала бы игроку.
+ */
+let woodsmanShownKey = '';
+
+/**
+ * Разговор с лесником: кадры листает игрок, наём списывает монеты
+ * (§20.5) и вписывает человека в жильцы. Палатку он с собой не приносит —
+ * в отличие от гостя, у которого хозяйство своё: лесник нанят, а не позван,
+ * и крышу ему обязан дать наниматель.
+ */
+function woodsmanCallbacks(): MeetPanelCallbacks {
+  const redraw = (): void => {
+    if (woodsmanPost === null || woodsmanTalk === null) return;
+    const price = nextWoodsmanPrice(camp);
+    const block = hireBlock(camp);
+    woodsmanShownKey = `${woodsmanTalk.step}:${price}:${block}`;
+    meetPanel.showWoodsman(woodsmanPost, woodsmanTalk, price, block);
+    setHint('');
+  };
+  return {
+    onName: () => {},
+    onAnswer: () => {},
+    onAdvance: () => {
+      if (woodsmanTalk === null) return;
+      advanceHire(woodsmanTalk);
+      redraw();
+    },
+    onInvite: () => {
+      if (woodsmanPost === null || woodsmanTalk === null) return;
+      const block = hireBlock(camp);
+      if (block !== 'ok') {
+        play('deny');
+        raid?.events.push(HIRE_REASON[block]);
+        return;
+      }
+      const price = nextWoodsmanPrice(camp);
+      const hired = hireWoodsman(camp, woodsmanPost);
+      if (hired === null) {
+        play('deny');
+        return;
+      }
+      woodsmanTalk.hired = true;
+      syncFarmUi();
+      persist();
+      play('build');
+      raid?.events.push(`${hired.name} нанят · монеты −${price}`);
+      // Хозяйство поста сворачивается вместе с ним: наняли человека —
+      // у стен не остаётся ни его, ни палатки, ни мишени.
+      raidView?.clearWoodsman();
+      advanceHire(woodsmanTalk);
+      meetPanel.hide();
+      woodsmanShown = false;
+    },
+  };
+}
+
+/**
+ * Разговор с лесником открывается подходом и гаснет уходом — тем же жестом,
+ * что лавка торговца (§13.5) и стоянка гостя (§6.1.6.2).
+ */
+function syncWoodsmanTalk(): void {
+  if (raid === null || woodsmanPost === null || woodsmanTalk === null) return;
+  if (woodsmanTalk.hired) {
+    if (woodsmanShown) {
+      woodsmanShown = false;
+      meetPanel.hide();
+    }
+    return;
+  }
+  const near =
+    Math.hypot(
+      raid.hero.x - woodsmanPost.stand.x,
+      raid.hero.z - woodsmanPost.stand.z,
+    ) <= 2.5;
+  if (!near) {
+    if (woodsmanShown) {
+      woodsmanShown = false;
+      woodsmanShownKey = '';
+      meetPanel.hide();
+    }
+    return;
+  }
+  const price = nextWoodsmanPrice(camp);
+  const block = hireBlock(camp);
+  const key = `${woodsmanTalk.step}:${price}:${block}`;
+  if (woodsmanShown && key === woodsmanShownKey) return;
+  woodsmanShown = true;
+  woodsmanShownKey = key;
+  meetOn = woodsmanCallbacks();
+  meetPanel.showWoodsman(woodsmanPost, woodsmanTalk, price, block);
+  setHint('');
+}
+
+/**
  * Замок (§6.1.6). Собирается тем же `createRaid`, что вылазка и пролог:
  * ходьба, шаг и камера обязаны считаться одинаково везде, иначе прогулка
  * научит игрока не тому, что его ждёт дальше.
@@ -3506,6 +3734,12 @@ function leaveWalkSites(): void {
   guestMeet = null;
   if (guestShown) meetPanel.hide();
   guestShown = false;
+  // Пост лесника — тем же правилом: он стоит у стен, а не в игре.
+  woodsmanPost = null;
+  woodsmanTalk = null;
+  if (woodsmanShown) meetPanel.hide();
+  woodsmanShown = false;
+  woodsmanShownKey = '';
 }
 
 function toMinotaurCastle(node: number, seed: number): boolean {
@@ -3652,6 +3886,16 @@ function toCastle(node: number, seed: number): boolean {
       guest.sit.z + 0.5,
       Math.atan2(guest.fire.x - (guest.sit.x + 0.5), guest.fire.z - (guest.sit.z + 0.5)),
     );
+  }
+  /**
+   * Пост лесника (§6.1.6.3). В отличие от гостя, условий у него нет: он
+   * стоит у каждого замка и каждый раз, потому что это услуга, а не находка,
+   * и редкостью цена ему не служит — ценой служит цена.
+   */
+  woodsmanPost = woodsmanPostAt(site);
+  if (woodsmanPost !== null) {
+    woodsmanTalk = startHireTalk();
+    raidView.putWoodsman('лесник', woodsmanPost);
   }
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
@@ -5813,6 +6057,37 @@ if (debugCastle !== null) {
     },
     watch: (t: number) => raidView?.setWatch(t),
     /**
+     * Пост лесника (§6.1.6.3): где он встал и во что обойдётся следующий.
+     * Наём отдаётся ручкой вместе с монетами: копить сотню входами, чтобы
+     * посмотреть кадр лагеря, — не проверка, а ожидание (§6.2.5 — отладка
+     * живёт в отладочной сцене и только в ней).
+     */
+    woodsman: () => (woodsmanPost === null ? null : {
+      tent: [woodsmanPost.tent.x, woodsmanPost.tent.z],
+      target: [woodsmanPost.target.x, woodsmanPost.target.z],
+      stand: [woodsmanPost.stand.x, woodsmanPost.stand.z],
+      who: woodsmanPost.who.name,
+      price: nextWoodsmanPrice(camp),
+      coins: coinsOf(camp),
+      hired: woodsmenOf(camp),
+    }),
+    /** Монеты в кошелёк: цена лесника — десять дней входов (§20.5),
+     *  и копить их ради проверки кадра значило бы не проверять его вовсе. */
+    coins: (n = 500) => {
+      earnCoins(camp, n);
+      return coinsOf(camp);
+    },
+    hire: () => {
+      if (woodsmanPost === null) return null;
+      earnCoins(camp, nextWoodsmanPrice(camp));
+      const who = hireWoodsman(camp, woodsmanPost);
+      if (who !== null) {
+        raidView?.clearWoodsman();
+        if (woodsmanTalk !== null) woodsmanTalk.hired = true;
+      }
+      return who;
+    },
+    /**
      * §13.8 — местные у кустов: кто вышел, к какому узлу и где он сейчас.
      * Печатается вместе с ответом формулы про тот же узел — вопрос
      * «разошлись ли кадр и число» задаётся ровно об этом, и отвечать
@@ -6178,7 +6453,7 @@ if (debugHas(debugParams, 'fan')) {
         ...camp.residents.map((r, i) => ({
           name: r.name,
           kind: 'жилец' as const,
-          look: r.look,
+          look: residentLook(r),
           seed: 100 + i,
           state: r.answer,
           asking: false,
@@ -6390,7 +6665,12 @@ startLoop({
         if (show) tradePanel.sync(camp, traderStock());
         // Гость у стен: разговор тем же жестом подхода, что лавка выше.
         syncGuestMeet();
+        // Пост лесника (§6.1.6.3) — тем же жестом и в том же кадре.
+        syncWoodsmanTalk();
       }
+      // Разговор открылся или закрылся — низ вылазки уступает или
+      // возвращается. Спрашивается панель, а не открывший её кадр.
+      syncTalking();
       if (minotaurNow !== null) {
         const enemy = minotaurNow.minotaur;
         const alive = enemy !== null && enemy.hp > 0;

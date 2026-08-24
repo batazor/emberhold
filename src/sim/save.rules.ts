@@ -227,6 +227,39 @@ describe('Сохранение', () => {
   });
 
   /**
+   * **Ремесло переживает перезагрузку** (§6.1.6.3). Лесник куплен за монеты,
+   * и потерянное при записи ремесло означало бы, что сотня монет ушла
+   * на обычные руки. Внешность у него своя, и мерить её пулом гуляющих
+   * (`DWELLER_LOOKS`) нельзя — по нему он не прочитался бы вовсе.
+   */
+  test('нанятый лесник возвращается лесником', () => {
+    const camp = createCamp();
+    camp.residents = [{
+      name: 'Гита', look: 'лесник', seed: 12345, answer: 'строим', rest: false, craft: 'лесник',
+    }];
+    save(camp, createRoster(), 1);
+    const back = load().camp.residents[0];
+    assert.equal(back?.craft, 'лесник', 'ремесло потеряно при перезагрузке');
+    assert.equal(back?.look, 'лесник', 'внешность нанятого не прочиталась');
+  });
+
+  /** Незнакомое ремесло не выбрасывает человека: он остаётся обычными руками. */
+  test('сейв с чужим ремеслом открывается, а ремесло отбрасывается', () => {
+    const camp = createCamp();
+    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 7, answer: 'строим', rest: false }];
+    save(camp, createRoster(), 1);
+    const raw = JSON.parse(localStorage.getItem('emberhold/save')!) as {
+      residents: { craft?: string }[];
+    };
+    raw.residents[0]!.craft = 'звездочёт';
+    localStorage.setItem('emberhold/save', JSON.stringify(raw));
+    const back = load().camp.residents;
+    assert.equal(back.length, 1, 'жилец пропал из-за незнакомого ремесла');
+    assert.equal(back[0]?.craft, undefined, 'чужое ремесло прочиталось как своё');
+    wipe();
+  });
+
+  /**
    * Сейв, записанный до того, как лицо появилось, не роняет игру и не выдаёт
    * жильцу случайное лицо: сид берётся из имени, а имя у жильца не меняется.
    */

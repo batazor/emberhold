@@ -32,7 +32,7 @@ import type { Visit } from '../sim/world';
 import type { LiveCamp } from '../sim/standing';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
-import { TENT_COST, homeless, homelessFolk, tentBlock } from '../sim/residents';
+import { TENT_COST, homeless, homelessFolk, residentLook, tentBlock } from '../sim/residents';
 import { clanTaskOpen } from '../sim/clan';
 import { avatarSvg } from './avatar';
 import { DailyPanel } from './dailyPanel';
@@ -91,6 +91,16 @@ export interface CampCallbacks {
   onOffhand(offhand: Offhand): void;
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
+  /**
+   * Пойти и добыть то, чего не хватает: дерево — топором по лесу поляны
+   * (§13.3), пищу — приказом добытчику (§13.7).
+   *
+   * Заведено потому, что задание без выхода — не задание. Строка «Не хватает
+   * дерева» с погасшей кнопкой сообщала беду и не предлагала ничего: игрок
+   * читал отказ и оставался с ним один. Теперь причина остаётся строкой,
+   * а кнопка ведёт к тому, чем причина лечится.
+   */
+  onGather(kind: 'wood' | 'food'): void;
   /** §30 — завести свой клан: строка задания открывает окно с именем. */
   onClan(): void;
   /** §29 — забрать сегодняшний подарок. Считает и зачисляет лагерь, а не
@@ -156,29 +166,46 @@ const isBuilding = (kind: SheetKind): kind is BuildingId =>
   kind !== null && BUILDING_ORDER.includes(kind as BuildingId);
 
 const TENT_REASON_MESSAGE = {
-  nobody: gameMessage('Все под крышей'),
-  resources: gameMessage('Не хватает дерева'),
-  area: gameMessage('На площадке нет места'),
+  nobody: gameMessage('Все под крышей', 'Everyone has shelter'),
+  resources: gameMessage('Не хватает дерева', 'Not enough wood'),
+  area: gameMessage('На площадке нет места', 'No room on the site'),
 } as const;
 
+/**
+ * Строки задания «добудь то, чего не хватает» (§13.3, §13.7). Лежат рядом
+ * с причинами палатки и сундука по той же причине, по какой те лежат здесь:
+ * слова панели живут в панели, а не в симуляции.
+ */
+const GATHER_WOOD_MESSAGE = gameMessage('Собрать дерево', 'Gather wood');
+const GATHER_FOOD_MESSAGE = gameMessage('Собрать пищу', 'Gather food');
+const SEND_FOR_FOOD_MESSAGE = gameMessage('Добывать пищу', 'Send for food');
+const FOOD_TASK_MESSAGE = gameMessage(
+  'В кладовой нет пищи: голодные не работают',
+  'The pantry is out of food: the hungry do not work',
+);
+const FOOD_TASK_BUSY_MESSAGE = gameMessage(
+  'В кладовой нет пищи · добытчик уже в поле',
+  'The pantry is out of food · the gatherer is already out',
+);
+
 const CHEST_REASON_MESSAGE = {
-  resources: gameMessage('Не хватает дерева'),
-  area: gameMessage('На площадке нет места'),
+  resources: gameMessage('Не хватает дерева', 'Not enough wood'),
+  area: gameMessage('На площадке нет места', 'No room on the site'),
 } as const;
 
 const UPGRADE_REASON_MESSAGE = {
-  max: gameMessage('Максимальный уровень'),
-  locked: gameMessage('Нужно Жильё ур. 2'),
-  'hq-cap': gameMessage('Жильё не пускает выше'),
-  'slot-busy': gameMessage('Слот занят другой стройкой'),
-  resources: gameMessage('Не хватает ресурсов'),
+  max: gameMessage('Максимальный уровень', 'Maximum level'),
+  locked: gameMessage('Нужно Жильё ур. 2', 'Requires Housing lvl 2'),
+  'hq-cap': gameMessage('Жильё не пускает выше', 'Housing level is too low'),
+  'slot-busy': gameMessage('Слот занят другой стройкой', 'The slot is occupied by another build'),
+  resources: gameMessage('Не хватает ресурсов', 'Not enough resources'),
 } as const;
 
 const GEAR_REASON_MESSAGE = {
-  'no-forge': gameMessage('Нужна Мастерская'),
-  max: gameMessage('Лучше не бывает'),
-  'forge-cap': gameMessage('Мастерская не тянет выше'),
-  resources: gameMessage('Не хватает железа'),
+  'no-forge': gameMessage('Нужна Мастерская', 'Requires a Workshop'),
+  max: gameMessage('Лучше не бывает', 'Maximum level'),
+  'forge-cap': gameMessage('Мастерская не тянет выше', 'Upgrade the Workshop first'),
+  resources: gameMessage('Не хватает железа', 'Not enough iron'),
 } as const;
 
 interface Row {
@@ -232,7 +259,7 @@ export class CampHud {
   private readonly taskWhy: HTMLElement;
   private readonly taskButton: HTMLButtonElement;
   /** Какое задание сейчас на строке: от него зависит, что делает кнопка. */
-  private taskDoes: 'tent' | 'clan' | 'chest' | 'shop' | 'world' = 'tent';
+  private taskDoes: 'tent' | 'clan' | 'chest' | 'shop' | 'world' | 'wood' | 'food' = 'tent';
   /** Разовая строка после оффлайн-вылазки: отчёт пришёл, дальше решение на карте. */
   private taskNudge: { kind: 'world'; text: string } | null = null;
 
@@ -337,6 +364,8 @@ export class CampHud {
       if (this.taskDoes === 'clan') this.cb.onClan();
       else if (this.taskDoes === 'chest') this.cb.onChest();
       else if (this.taskDoes === 'shop') this.openSheet('shop');
+      else if (this.taskDoes === 'wood') this.cb.onGather('wood');
+      else if (this.taskDoes === 'food') this.cb.onGather('food');
       else if (this.taskDoes === 'world') {
         this.taskNudge = null;
         this.openSheet('tiers');
@@ -357,7 +386,7 @@ export class CampHud {
     this.sheetTitle = document.createElement('b');
     this.sheetClose = document.createElement('button');
     this.sheetClose.className = 'ghost sheet-x';
-    setGameText(this.sheetClose, gameMessage('Закрыть'));
+    setGameText(this.sheetClose, gameMessage('Закрыть', 'Close'));
     this.sheetClose.addEventListener('click', () => this.close());
     head.append(this.sheetTitle, this.sheetClose);
     this.sheet.appendChild(head);
@@ -435,7 +464,7 @@ export class CampHud {
     this.chestStatus.className = 'dim';
     this.chestButton = document.createElement('button');
     this.chestButton.className = 'act';
-    setGameText(this.chestButton, gameMessage('Поставить'));
+    setGameText(this.chestButton, gameMessage('Поставить', 'Place'));
     // Лист закрывается, как у перестановки: дальше жест по земле, и сцена
     // обязана быть видна.
     this.chestButton.addEventListener('click', () => {
@@ -450,7 +479,7 @@ export class CampHud {
     // в карточке, а не отдельный режим редактирования лагеря.
     this.moveButton = document.createElement('button');
     this.moveButton.className = 'ghost move';
-    setGameText(this.moveButton, gameMessage('Переставить'));
+    setGameText(this.moveButton, gameMessage('Переставить', 'Move'));
     this.moveButton.addEventListener('click', () => {
       if (!isBuilding(this.open)) return;
       this.cb.onMove(this.open);
@@ -533,7 +562,7 @@ export class CampHud {
     // не улучшение постройки, а свой режим со своим жестом, и прятать её
     // внутрь карточки Штаба значило бы соврать про то, чем она является.
     const walls = document.createElement('button');
-    setGameText(walls, gameMessage('Строительство'));
+    setGameText(walls, gameMessage('Строительство', 'Building'));
     walls.addEventListener('click', () => {
       this.close();
       this.cb.onWalls();
@@ -543,13 +572,13 @@ export class CampHud {
     // пальца (`features/fan`) и стоит на экране постоянно. Лист открывался
     // ради одного вопроса — кем идти, — и на него теперь отвечает лицо
     // под пальцем, без листа и без второго касания.
-    const supplies = this.makeBarButton(gameMessage('Припасы'), 'shop');
+    const supplies = this.makeBarButton(gameMessage('Припасы', 'Supplies'), 'shop');
     this.suppliesButton = supplies;
     this.bar.append(
       walls,
-      this.makeActionButton(gameMessage('Жители'), () => this.cb.onResidents()),
+      this.makeActionButton(gameMessage('Жители', 'Residents'), () => this.cb.onResidents()),
       supplies,
-      this.makeBarButton(gameMessage('В мир'), 'tiers', true),
+      this.makeBarButton(gameMessage('В мир', 'World'), 'tiers', true),
     );
 
     // Значок стоит в пустом месте между полосами — там же, где сцена.
@@ -842,12 +871,12 @@ export class CampHud {
 
   private titleFor(kind: SheetKind): GameMessage | null {
     if (kind === null) return null;
-    if (kind === 'tiers') return gameMessage('Карта региона');
+    if (kind === 'tiers') return gameMessage('Карта региона', 'Region map');
     // Заголовок называет ту же кнопку, что открыла лист: «В вылазку» здесь
     // называло кнопку, которой больше нет.
-    if (kind === 'shop') return gameMessage('Припасы');
-    if (kind === 'store') return gameMessage('Кладовая');
-    if (kind === 'daily') return gameMessage('Подарок за вход');
+    if (kind === 'shop') return gameMessage('Припасы', 'Supplies');
+    if (kind === 'store') return gameMessage('Кладовая', 'Storage');
+    if (kind === 'daily') return gameMessage('Подарок за вход', 'Daily gift');
     return buildingMessage[kind];
   }
 
@@ -900,6 +929,9 @@ export class CampHud {
    */
   private syncTask(camp: CampState): void {
     const need = homeless(camp);
+    // Голод стоит сразу за крышей и перед всем прочим: без пищи не работает
+    // никто (§13.7), а сундук, клан и колчан ждут до вечера.
+    if (need === 0 && this.syncFoodTask(camp)) return;
     if (need === 0 && clanTaskOpen(camp)) {
       this.syncClanTask();
       return;
@@ -932,14 +964,10 @@ export class CampHud {
     const face = first === undefined ? '' : `${first.look}/${first.seed}`;
     if (this.taskFace.dataset['who'] !== face) {
       this.taskFace.dataset['who'] = face;
-      this.taskFace.innerHTML = first === undefined ? '' : avatarSvg(first.look, first.seed);
+      this.taskFace.innerHTML = first === undefined ? '' : avatarSvg(residentLook(first), first.seed);
       this.taskFace.style.display = first === undefined ? 'none' : '';
     }
     const block = tentBlock(camp);
-    setGameText(this.taskButton, gameMessage('Палатка · {cost}', 'Tent · {cost}'), {
-      cost: this.costLine(0, TENT_COST),
-    });
-    this.taskButton.disabled = block !== 'ok';
     // Название причины дописывается к поводу, а не заменяет его: игрок
     // должен видеть и что просят, и почему нельзя, — одно без другого
     // это либо задание без выхода, либо отказ без повода.
@@ -951,7 +979,45 @@ export class CampHud {
       task: gameText(taskMessage, taskValues),
       reason: gameText(TENT_REASON_MESSAGE[block]),
     });
+    /**
+     * Не хватает дерева — кнопка ведёт за деревом, а не гаснет. Лес поляны
+     * рубится тут же (§13.3), и «нет дерева» в лагере, стоящем в лесу, —
+     * это не тупик, а одна невыполненная работа. Прочие отказы (места нет,
+     * все под крышей) кнопку по-прежнему гасят: за них платят не топором.
+     */
+    if (block === 'resources') {
+      setGameText(this.taskButton, GATHER_WOOD_MESSAGE);
+      this.taskButton.disabled = false;
+      this.taskDoes = 'wood';
+      return;
+    }
+    setGameText(this.taskButton, gameMessage('Палатка · {cost}', 'Tent · {cost}'), {
+      cost: this.costLine(0, TENT_COST),
+    });
+    this.taskButton.disabled = block !== 'ok';
     this.taskDoes = 'tent';
+  }
+
+  /**
+   * Пустая кладовая по пище (§13.7). Стоит **за** крышей и **перед** прочими:
+   * голод останавливает работу всего лагеря, а сундук и клан ждут до вечера.
+   *
+   * Кнопка ведёт к тому, чем пища и берётся, — к добытчику: §13.7 держит
+   * правило «пищу приносит только жилец с приказом „Добывать пищу“».
+   * Если ставить приказ некому, строка ведёт в мир: ягоды растут в местах
+   * (§13.8), и там их берут руками.
+   */
+  private syncFoodTask(camp: CampState): boolean {
+    if (camp.resources.food > 0) return false;
+    this.task.style.display = 'flex';
+    this.hideTaskFace();
+    const feeder = camp.residents.some((r) => !r.rest && r.hunt === undefined && r.answer === 'кормим');
+    setGameText(this.taskWhy, feeder ? FOOD_TASK_BUSY_MESSAGE : FOOD_TASK_MESSAGE);
+    const canFeed = camp.residents.length > 0 && !feeder;
+    setGameText(this.taskButton, canFeed ? SEND_FOR_FOOD_MESSAGE : GATHER_FOOD_MESSAGE);
+    this.taskButton.disabled = false;
+    this.taskDoes = canFeed ? 'food' : 'world';
+    return true;
   }
 
   private hideTaskFace(): void {
@@ -974,8 +1040,8 @@ export class CampHud {
     this.task.style.display = 'flex';
     this.taskDoes = 'clan';
     this.hideTaskFace();
-    setGameText(this.taskWhy, gameMessage('Лагерь без имени: соседи уже в таблице'));
-    setGameText(this.taskButton, gameMessage('Создать клан'));
+    setGameText(this.taskWhy, gameMessage('Лагерь без имени: соседи уже в таблице', 'Your camp has no name, while neighbors are already in the standings'));
+    setGameText(this.taskButton, gameMessage('Создать клан', 'Create clan'));
     this.taskButton.disabled = false;
   }
 
@@ -1008,12 +1074,12 @@ export class CampHud {
     this.task.style.display = 'flex';
     this.taskDoes = 'shop';
     this.hideTaskFace();
-    if (canBuyArrows(camp, cap)) setGameText(this.taskWhy, gameMessage('Колчан пуст'));
+    if (canBuyArrows(camp, cap)) setGameText(this.taskWhy, gameMessage('Колчан пуст', 'The quiver is empty'));
     else setGameText(this.taskWhy, gameMessage(
       'Колчан пуст · нужно {cost}',
       'Quiver is empty · requires {cost}',
     ), { cost: this.costLine(0, ARROW_PACK_COST) });
-    setGameText(this.taskButton, gameMessage('Припасы'));
+    setGameText(this.taskButton, gameMessage('Припасы', 'Supplies'));
     this.taskButton.disabled = false;
     return true;
   }
@@ -1024,7 +1090,7 @@ export class CampHud {
     this.hideTaskFace();
     clearGameText(this.taskWhy);
     this.taskWhy.textContent = text;
-    setGameText(this.taskButton, gameMessage('В мир'));
+    setGameText(this.taskButton, gameMessage('В мир', 'World'));
     this.taskButton.disabled = false;
   }
 
@@ -1136,10 +1202,10 @@ export class CampHud {
       const taken = camp.loadout[i];
       const slot = document.createElement('button');
       slot.className = 'slot' + (taken === undefined ? ' empty' : '');
-      setGameText(slot, taken === undefined ? gameMessage('пусто') : consumableMessage[taken].name);
+      setGameText(slot, taken === undefined ? gameMessage('пусто', 'empty') : consumableMessage[taken].name);
       slot.disabled = taken === undefined;
       if (taken !== undefined) {
-        setGameAttribute(slot, 'title', gameMessage('Вернуть'));
+        setGameAttribute(slot, 'title', gameMessage('Вернуть', 'Return'));
         slot.addEventListener('click', () => this.cb.onRefundConsumable(i));
       }
       this.slots.appendChild(slot);
@@ -1166,7 +1232,7 @@ export class CampHud {
       row.button.dataset['mode'] = 'speedup';
       // §20.5 — последние пять минут бесплатны.
       setGameText(row.button, price === 0
-        ? gameMessage('Достроить')
+        ? gameMessage('Достроить', 'Finish')
         : gameMessage('Ускорить · монеты {coins}', 'Speed up · {coins} coins'), { coins: price });
       row.button.disabled = price > coinsOf(camp);
       return;
@@ -1176,11 +1242,11 @@ export class CampHud {
     // Уровень 0 — не «ур. 0», а пустое место: цифра тут врала бы.
     setGameText(row.level, level > 0
       ? gameMessage('ур. {level}', 'lvl {level}')
-      : gameMessage('не построена'), { level });
+      : gameMessage('не построена', 'not built'), { level });
     row.effect.textContent = BUILDINGS[id].effect(level);
     row.barWrap.style.display = 'none';
     row.button.dataset['mode'] = 'upgrade';
-    setGameText(row.button, level > 0 ? gameMessage('Улучшить') : gameMessage('Построить'));
+    setGameText(row.button, level > 0 ? gameMessage('Улучшить', 'Upgrade') : gameMessage('Построить', 'Build'));
     row.button.disabled = block !== 'ok';
     if (block === 'ok' || block === 'resources') setGameText(
       row.status,
@@ -1210,7 +1276,7 @@ export class CampHud {
     const block = chestBlock(camp);
     setGameText(this.chestName, camp.chests.length > 0
       ? gameMessage('Сундук ×{count}', 'Chest ×{count}')
-      : gameMessage('Сундук'), { count: camp.chests.length });
+      : gameMessage('Сундук', 'Chest'), { count: camp.chests.length });
     setGameText(this.chestEffect, gameMessage(
       'Кладовая +{bonus} за каждый',
       'Storage +{bonus} each',
@@ -1251,7 +1317,7 @@ export class CampHud {
         ? gameMessage('ур. {level} / {max}', 'lvl {level} / {max}')
         : gameMessage('—', '—'), { level, max: itemCap(camp.levels.forge) });
       row.effect.textContent = `${gearLine(slot, level)} · ${GEAR[slot].tradeoff}`;
-      setGameText(row.button, level > 0 ? gameMessage('Улучшить') : gameMessage('Выковать'));
+      setGameText(row.button, level > 0 ? gameMessage('Улучшить', 'Upgrade') : gameMessage('Выковать', 'Forge'));
       row.button.disabled = block !== 'ok';
       if (block === 'ok' || block === 'resources') setGameText(
         row.status,
@@ -1395,9 +1461,9 @@ export class CampHud {
   private priceLine(level: number): string {
     const cost = this.costLine(level);
     const seconds = BUILD_SECONDS[level] ?? 0;
-    const price = cost === '' ? gameText(gameMessage('бесплатно')) : cost;
+    const price = cost === '' ? gameText(gameMessage('бесплатно', 'free')) : cost;
     const duration = seconds === 0
-      ? gameText(gameMessage('сразу'))
+      ? gameText(gameMessage('сразу', 'immediately'))
       : gameText(gameMessage('{duration}', '{duration}'), { duration: gameDuration(seconds) });
     return `${price} · ${duration}`;
   }

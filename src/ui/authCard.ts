@@ -78,11 +78,24 @@ export class AuthCard {
     this.root.style.display = 'none';
   }
 
+  /**
+   * **Язык спрашивается на регистрации, и только на ней** (§6.2.7).
+   * Заводящий аккаунт приходит с чистого листа, и первый вопрос к нему —
+   * на каком языке говорить; входящему его не задают, потому что он на него
+   * уже отвечал, и ответ лежит в аккаунте (`cloudLanguage`).
+   *
+   * Переключатель — тот же, что в настройках и в артбуках (`i18n/browser.ts`),
+   * и меняет он язык **сразу**, вместе с самой карточкой: выбор, который
+   * ничего не делает до кнопки, читается формой, а не выбором.
+   */
   private paint(): void {
     const c = CARDS[this.mode];
     this.card.innerHTML = `
       <h2></h2>
       <p class="sp-note"></p>
+      ${this.mode === 'up'
+        ? `<div class="set-language"><span class="lbl" data-language-label></span><span data-slot="language"></span></div>`
+        : ''}
       <input type="email" data-in="email" autocomplete="email">
       <p class="auth-note warn"></p>
       <button type="button" data-act="go"></button>
@@ -92,6 +105,12 @@ export class AuthCard {
     setGameAttribute(this.card.querySelector('[data-in="email"]') as HTMLInputElement, 'placeholder', gameMessages.authEmail);
     setGameText(this.card.querySelector('[data-act="go"]') as HTMLButtonElement, c.act);
     setGameText(this.card.querySelector('[data-act="swap"]') as HTMLButtonElement, c.swap);
+    const label = this.card.querySelector('[data-language-label]');
+    if (label instanceof HTMLElement) setGameText(label, gameMessages.settingsLanguage);
+    // Кнопки языка ставит сам переключатель: своя копия разошлась бы
+    // с настройками подписями и состоянием.
+    const slot = this.card.querySelector('[data-slot="language"]');
+    if (slot instanceof HTMLElement) window.EmberholdLanguage?.toggle(slot);
   }
 
   private async submit(): Promise<void> {
