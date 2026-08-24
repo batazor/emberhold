@@ -1,5 +1,6 @@
 import type { CampState } from '../sim/camp';
-import { FARM_FOOD_GOAL } from '../sim/farm';
+import { formatDuration } from '../core/clock';
+import { FARM_FOOD_GOAL, farmStatus } from '../sim/farm';
 
 export type CampLocation = 'camp' | 'farm' | 'clan';
 
@@ -310,6 +311,7 @@ export class CampLocations {
   private sceneVisible = false;
   private camp: CampState | null = null;
   private active: CampLocation = 'camp';
+  private now = 0;
 
   constructor(parent: HTMLElement, cb: CampLocationsCallbacks) {
     this.root = document.createElement('nav');
@@ -354,9 +356,10 @@ export class CampLocations {
     this.paint();
   }
 
-  sync(camp: CampState, active: CampLocation): void {
+  sync(camp: CampState, active: CampLocation, now: number): void {
     this.camp = camp;
     this.active = active;
+    this.now = now;
     this.paint();
   }
 
@@ -374,6 +377,28 @@ export class CampLocations {
     this.clanButton.disabled = clan == null;
     this.clanButton.setAttribute('aria-pressed', String(this.active === 'clan'));
     this.clanButton.title = clan?.name ?? '';
-    this.farmState.textContent = farm?.unlocked === true ? '✦' : '🔒';
+    if (farm?.unlocked !== true) {
+      this.farmState.textContent = '🔒';
+      this.farmState.classList.remove('ready');
+      this.farmButton.title = 'Ферма закрыта';
+      this.farmButton.setAttribute('aria-label', 'Ферма закрыта');
+      return;
+    }
+
+    const status = farmStatus(farm, this.now);
+    this.farmState.classList.toggle('ready', status.ready > 0);
+    let title: string;
+    if (status.ready > 0) {
+      this.farmState.textContent = `готово: ${status.ready}`;
+      title = `Ферма · урожай готов: ${status.ready}`;
+    } else if (status.growing > 0 && status.nextReadyAt !== null) {
+      this.farmState.textContent = `растёт: ${status.growing}`;
+      title = `Ферма · растёт: ${status.growing} · урожай через ${formatDuration(Math.max(0, status.nextReadyAt - this.now))}`;
+    } else {
+      this.farmState.textContent = `грядок: ${status.active}`;
+      title = `Ферма · свободно грядок: ${status.empty}`;
+    }
+    this.farmButton.title = title;
+    this.farmButton.setAttribute('aria-label', title);
   }
 }

@@ -262,6 +262,7 @@ import { CampHud } from './ui/campHud';
 import type { FlyTarget } from './ui/campHud';
 import { CampLocations, FarmOnboarding } from './ui/farmOnboarding';
 import type { CampLocation } from './ui/farmOnboarding';
+import { FARM_CROP_TEXT, FarmCropPicker } from './ui/farmCrops';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import type { ReturnProgress } from './ui/returnScreen';
@@ -362,10 +363,23 @@ import type { Scene } from './features/scene';
 import { createRaidEar } from './features/raidAudio';
 import {
   FARM_FOOD_GOAL,
+  FARM_CROPS,
+  FARM_DEFAULT_CROP,
+  FARM_STARTING_PLOT_COUNT,
   advanceFarmOnboarding,
+  emptyFarmPlots,
+  farmPlantBlock,
+  farmPlotReadyAt,
+  farmPlotPhase,
+  farmStatus,
   gatherFarmFood,
+  harvestFarmPlot,
+  plantFarmPlot,
+  repeatReadyFarmPlots,
+  selectFarmCrop,
   startFarmOnboarding,
 } from './sim/farm';
+import { collectResidentFarmHarvest } from './sim/farmResidents';
 
 const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
@@ -431,11 +445,19 @@ const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark)
 const upkeep = payUpkeep(camp, awaySec);
 const clanWorkersOffline = clanBuilderIds(camp);
 advanceClanConstruction(camp, startedAt);
+const workingResidents = workingAfter(camp, upkeep.hungry);
 const worked = collectWork(
   camp,
   awaySec,
-  workingAfter(camp, upkeep.hungry),
+  workingResidents,
   startedAt,
+  clanWorkersOffline,
+);
+const farmHarvestOffline = collectResidentFarmHarvest(
+  camp,
+  loaded.watermark > 0 ? loaded.watermark : startedAt,
+  startedAt,
+  workingResidents,
   clanWorkersOffline,
 );
 // Охотники не получают одновременно обычную зарплату: сначала считается
@@ -548,6 +570,7 @@ let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
 let lastCampFrame = 0;
+let lastFarmStatusSecond = -1;
 let lastClanWorkCheck = startedAt;
 let selected: BuildingId | null = null;
 /** Кнопка «Палатка» вооружила выбор места: следующий тап ставит палатку. */
@@ -891,6 +914,29 @@ const farmOnboarding = new FarmOnboarding(app, {
 
 const campLocations = new CampLocations(app, {
   onSelect: (location) => switchCampLocation(location),
+});
+
+const farmCropPicker = new FarmCropPicker(app, {
+  onSelect: (crop) => {
+    const changed = selectFarmCrop(camp, crop);
+    syncFarmUi();
+    campHud.notify(`${FARM_CROP_TEXT[crop].name}: выбор для следующего посева`);
+    if (changed) persist();
+  },
+  onReturn: () => {
+    const result = repeatReadyFarmPlots(camp, clock.now());
+    if (result.harvested === 0) {
+      play('deny');
+      return;
+    }
+    play('pick');
+    farmView.sync(camp.farm, clock.now());
+    syncFarmUi();
+    campHud.notify(
+      `Собрано: ${result.harvested} · посеяно снова: ${result.replanted} · пища +${result.netFood}`,
+    );
+    persist();
+  },
 });
 
 /**
@@ -2770,7 +2816,20 @@ const quietFrame = (): boolean =>
 
 function syncFarmUi(): void {
   farmOnboarding.sync(camp);
-  campLocations.sync(camp, campLocation);
+  campLocations.sync(camp, campLocation, clock.now());
+  farmCropPicker.sync(camp, clock.now());
+}
+
+/** Первая строка Фермы отвечает на «что здесь сейчас делать». */
+function farmEntryHint(now: number): string {
+  const status = farmStatus(camp.farm, now);
+  if (status.ready > 0) return `Урожай готов: ${status.ready} · коснитесь спелой грядки`;
+  if (status.growing > 0 && status.nextReadyAt !== null) {
+    return `${status.growing} растёт · ближайший урожай через ${formatDuration(Math.max(60, status.nextReadyAt - now))}`;
+  }
+  const crop = camp.farm?.selectedCrop ?? FARM_DEFAULT_CROP;
+  const balance = FARM_CROPS[crop];
+  return `Выбрано: ${FARM_CROP_TEXT[crop].name} · ${formatDuration(balance.growSeconds)} · ${balance.seedFood} → ${balance.harvestFood} пищи`;
 }
 
 /** Сменить соседнюю локацию, не превращая Ферму в место мировой карты. */
@@ -2808,6 +2867,7 @@ function switchCampLocation(next: CampLocation): void {
     hidePlacingSpot();
   }
   farmView.group.visible = onFarm;
+  farmCropPicker.setVisible(onFarm);
   campView.group.visible = !onFarm && !inGladeCamp;
   if (inGladeCamp && raidView !== null) raidView.group.visible = !onFarm;
   campHud.close();
@@ -2816,9 +2876,12 @@ function switchCampLocation(next: CampLocation): void {
   closeCharacter();
   heroFan.setVisible(!onFarm && !quietFrame());
   if (onFarm) {
+    const now = clock.now();
+    farmView.sync(camp.farm, now);
     rig.lookAt(farmView.center.x, farmView.center.z, true);
     rig.setZoom(18, true);
     setNight(0.18);
+    campHud.notify(farmEntryHint(now));
   } else if (inGladeCamp && raid !== null) {
     rig.lookAt(raid.hero.x, raid.hero.z, true);
     rig.setZoom(20, true);
@@ -2838,6 +2901,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
     clanPlacing = null;
     clanBuildBar.setVisible(false);
     farmView.group.visible = false;
+    farmCropPicker.setVisible(false);
   }
   // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
   // палец поверх вылазки.
@@ -4228,6 +4292,11 @@ function notifyWorked(): void {
   if (worked.length > 0) {
     parts.push(worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · '));
   }
+  if (farmHarvestOffline.food > 0) {
+    parts.push(
+      `${farmHarvestOffline.helpers.join(', ')}: урожай ${farmHarvestOffline.plots} · пища ${farmHarvestOffline.food} · уход +${farmHarvestOffline.bonus}`,
+    );
+  }
   for (const report of huntReportsOffline) {
     parts.push(report.foxes === 0
       ? `${report.name}: охота без добычи`
@@ -4539,7 +4608,7 @@ function toPadCamp(): void {
   // и сказать о нём позже задания значило бы отдать строку тому, что ещё
   // только просят. Задание никуда не денется — оно живёт своей строкой
   // и не гаснет через четыре секунды.
-  if (worked.length > 0 && !workShown) {
+  if ((worked.length > 0 || farmHarvestOffline.food > 0) && !workShown) {
     notifyWorked();
   } else if (homeless(camp) > 0) {
     campHud.notify(
@@ -5035,9 +5104,59 @@ canvas.addEventListener('pointerdown', (e) => {
   play('tap');
   askTilt();
   idleSeconds = 0;
-  // Ферма пока сцена-награда: у неё нет жестов лагеря, и тап по грядке не
-  // должен двигать героя на скрытой площадке.
-  if (mode === 'camp' && campLocation === 'farm') return;
+  // Огород принимает один прямой жест: пустую грядку засевает, готовую
+  // собирает, растущая называет остаток. Жесты скрытого лагеря сюда не идут.
+  if (mode === 'camp' && campLocation === 'farm') {
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    const plot = hit === null ? null : farmView.plotAt(hit);
+    if (plot === null) {
+      campHud.notify('Коснитесь грядки у дорожки');
+      return;
+    }
+    const now = clock.now();
+    const phase = farmPlotPhase(camp, plot, now);
+    if (phase === 'locked') {
+      play('deny');
+      campHud.notify('Эта грядка откроется с развитием фермы');
+      return;
+    }
+    if (phase === 'empty') {
+      const crop = camp.farm?.selectedCrop ?? FARM_DEFAULT_CROP;
+      const balance = FARM_CROPS[crop];
+      const block = farmPlantBlock(camp, plot, crop);
+      if (block === 'food') {
+        play('deny');
+        campHud.notify(`Для посева нужна ${balance.seedFood} пища`);
+        return;
+      }
+      if (!plantFarmPlot(camp, plot, crop, now)) {
+        play('deny');
+        return;
+      }
+      play('pick');
+      campHud.notify(`${FARM_CROP_TEXT[crop].name} посеян · урожай через ${formatDuration(Math.max(60, farmPlotReadyAt(camp.farm!.plots[plot]!) - now))}`);
+      farmView.sync(camp.farm, now);
+      syncFarmUi();
+      persist();
+      return;
+    }
+    if (phase === 'growing') {
+      const planted = camp.farm?.plots[plot];
+      if (planted !== null && planted !== undefined) {
+        campHud.notify(`Урожай через ${formatDuration(Math.max(60, farmPlotReadyAt(planted) - now))}`);
+      }
+      return;
+    }
+    const gathered = harvestFarmPlot(camp, plot, now);
+    if (gathered > 0) {
+      play('pick');
+      campHud.notify(`+${gathered} · ${RESOURCE_NAME.food}`);
+      farmView.sync(camp.farm, now);
+      syncFarmUi();
+      persist();
+    }
+    return;
+  }
   // Клановая опушка — самостоятельное место: здесь пока есть только ходьба,
   // а жесты и панели личного лагеря не должны менять его из-за общего вида.
   if (mode === 'camp' && campLocation === 'clan' && inClanCamp) {
@@ -5447,8 +5566,9 @@ if (debugTier !== null || debugNode !== null) {
  * `?test=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
  *   Ровно та планировка, на которой видно все четыре ответа сразу — ход
  *   поверху, разрыв на башне, проезд под воротами и подъём.
- * `?test=farm-intro|farm-goal|farm-reward` — три состояния карточек пищи.
+ * `?test=farm-intro|farm-goal|farm-reward|farm-return` — состояния огорода.
  *   Текст и адаптивную раскладку можно проверять без прохождения пролога.
+ *   Последнее открывает четыре полосы и массовый повтор готового урожая.
  * `?test=character` — экран героя с опытом и свободным очком умения.
  * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
  *
@@ -5519,14 +5639,39 @@ if (debugCamp !== null) {
     camp.resources.iron = 100;
     camp.resources.crystal = 50;
   }
-  if (debugCamp === 'farm-intro' || debugCamp === 'farm-goal' || debugCamp === 'farm-reward') {
-    const reward = debugCamp === 'farm-reward';
+  if (
+    debugCamp === 'farm-intro' || debugCamp === 'farm-goal' ||
+    debugCamp === 'farm-reward' || debugCamp === 'farm-return'
+  ) {
+    const reward = debugCamp === 'farm-reward' || debugCamp === 'farm-return';
+    const returnAction = debugCamp === 'farm-return';
     camp.farm = {
       foodAtStart: 18,
       gatheredFood: reward ? FARM_FOOD_GOAL : debugCamp === 'farm-goal' ? 14 : 0,
       step: reward ? 'reward' : debugCamp === 'farm-goal' ? 'goal' : 'intro',
       unlocked: reward,
+      activePlots: returnAction ? 4 : FARM_STARTING_PLOT_COUNT,
+      selectedCrop: FARM_DEFAULT_CROP,
+      plots: emptyFarmPlots(),
     };
+    if (returnAction) {
+      const now = clock.now();
+      camp.farm.plots[0] = { plantedAt: now - FARM_CROPS.turnip.growSeconds, crop: 'turnip' };
+      camp.farm.plots[3] = { plantedAt: now - FARM_CROPS.barley.growSeconds, crop: 'barley' };
+      camp.farm.plots[1] = { plantedAt: now - FARM_CROPS.turnip.growSeconds / 2, crop: 'turnip' };
+    }
+    // Готовая ферма показывает не только культуры, но и связь с поручением:
+    // один настоящий помощник делает строку карточки проверяемой глазом.
+    if (reward && camp.residents.length === 0) {
+      admit(camp, {
+        name: 'Тихон',
+        look: 'поселенец',
+        seed: 33,
+        answer: 'кормим',
+        rest: false,
+      });
+      buildTent(camp);
+    }
   }
   if (debugCamp === 'staff') {
     camp.foxesCaught = 10;
@@ -6528,6 +6673,14 @@ startLoop({
     // Полосы прогресса — каждый кадр и в любой сцене: список сам пустеет
     // там, где работ нет, и чистить его отдельной веткой не нужно.
     syncWorkBars();
+    if (mode === 'camp' && camp.farm !== undefined) {
+      const farmSecond = Math.floor(clock.now());
+      if (farmSecond !== lastFarmStatusSecond) {
+        lastFarmStatusSecond = farmSecond;
+        campLocations.sync(camp, campLocation, farmSecond);
+        farmCropPicker.sync(camp, farmSecond);
+      }
+    }
 
     if (mode === 'title' && titleView !== null) {
       // Полная частота, а не 30 кадров лагеря: камеру здесь тянут пальцем,
@@ -6545,6 +6698,7 @@ startLoop({
       const farmDt = Math.min(0.1, (now - lastCampFrame) / 1000);
       lastCampFrame = now;
       const c = farmView.center;
+      farmView.sync(camp.farm, clock.now());
       rig.lookAt(c.x, c.z);
       rig.update(farmDt, c.x, c.z, 12);
       rig.render();

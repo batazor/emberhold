@@ -652,4 +652,73 @@ export const legacyPatterns: readonly LegacyPattern[] = [
   {
     "source": "оси: ZXQPH0QXZ · ZXQPH1QXZ · ZXQPH2QXZ"
   },
+  {
+    "source": "Коснитесь грядки · посев ZXQPH0QXZ пищи · сбор ZXQPH1QXZ"
+  },
+  {
+    "source": "Для посева нужна ZXQPH0QXZ пища"
+  },
+  {
+    "source": "Грядка засеяна · урожай через ZXQPH0QXZ"
+  },
+  {
+    "source": "Урожай через ZXQPH0QXZ"
+  },
+  {
+    "source": "Урожай готов: ZXQPH0QXZ · коснитесь спелой грядки"
+  },
+  {
+    "source": "ZXQPH0QXZ растёт · ближайший урожай через ZXQPH1QXZ"
+  },
+  {
+    "source": "Доступно грядок: ZXQPH0QXZ · посев ZXQPH1QXZ пищи · сбор ZXQPH2QXZ"
+  },
+  {
+    "source": "готово: ZXQPH0QXZ"
+  },
+  {
+    "source": "Ферма · урожай готов: ZXQPH0QXZ"
+  },
+  {
+    "source": "растёт: ZXQPH0QXZ"
+  },
+  {
+    "source": "Ферма · растёт: ZXQPH0QXZ · урожай через ZXQPH1QXZ"
+  },
+  {
+    "source": "грядок: ZXQPH0QXZ"
+  },
+  {
+    "source": "Ферма · свободно грядок: ZXQPH0QXZ"
+  },
+  {
+    "source": "ZXQPH0QXZ → ZXQPH1QXZ пищи"
+  },
+  {
+    "source": "чистыми +ZXQPH0QXZ"
+  },
+  {
+    "source": "ZXQPH0QXZ: ZXQPH1QXZ, ZXQPH2QXZ, ZXQPH3QXZ"
+  },
+  {
+    "source": "Выбрано: ZXQPH0QXZ · ZXQPH1QXZ · ZXQPH2QXZ → ZXQPH3QXZ пищи"
+  },
+  {
+    "source": "ZXQPH0QXZ посеян · урожай через ZXQPH1QXZ"
+  },
+  {
+    "source": "ZXQPH0QXZ: выбор для следующего посева"
+  },
+  {
+    "source": "Помогают: ZXQPH0QXZ · по 1 грядке · +ZXQPH1QXZ пищи"
+  },
+  {
+    "source": "ZXQPH0QXZ: урожай ZXQPH1QXZ · пища ZXQPH2QXZ · уход +ZXQPH3QXZ"
+  },
+  {
+    "source": "Собрать и повторить · ZXQPH0QXZ"
+  },
+  {
+    "source": "Собрано: ZXQPH0QXZ · посеяно снова: ZXQPH1QXZ · пища +ZXQPH2QXZ"
+  },
 ];

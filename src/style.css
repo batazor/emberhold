@@ -1118,7 +1118,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 
 #camp-locations {
   position: fixed; z-index: 16; left: 10px; top: calc(78px + env(safe-area-inset-top));
-  display: grid; width: 112px; gap: 7px; pointer-events: auto;
+  display: grid; width: 132px; gap: 7px; pointer-events: auto;
 }
 #camp-locations .cl-label {
   padding-left: 3px; color: var(--dim); font-size: 9px;
@@ -1137,9 +1137,73 @@ button[disabled] { opacity: 0.4; cursor: default; }
   background: linear-gradient(155deg, color-mix(in srgb, var(--gold) 25%, var(--panel)) 0 48%, var(--panel) 49%);
 }
 #camp-locations .cl-place b, #camp-locations .cl-place span { position: relative; z-index: 1; }
-#camp-locations .cl-place span { font-size: 11px; }
+#camp-locations .cl-place span { font-size: 10px; white-space: nowrap; }
+#camp-locations .cl-place.farm span.ready { color: var(--good); font-weight: 700; }
 #camp-locations .cl-place[aria-pressed="true"] { border-color: var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 22%, transparent); }
 #camp-locations .cl-place.locked { filter: saturate(0.45); opacity: 0.72; }
+
+/* ---------- огород: выбор следующего посева ---------- */
+#farm-crops {
+  position: fixed; z-index: 17; left: 50%; bottom: max(72px, calc(62px + env(safe-area-inset-bottom)));
+  transform: translateX(-50%); width: min(650px, calc(100% - 24px)); padding: 9px;
+  pointer-events: auto;
+}
+#farm-crops[hidden] { display: none !important; }
+#farm-crops > header {
+  gap: 12px; margin-bottom: 7px;
+}
+#farm-crops h2 { margin: 0; font-size: 14px; }
+#farm-crops header p { margin: 0; color: var(--dim); font-size: 10px; }
+#farm-crops .fc-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+#farm-crops .fc-card {
+  position: relative; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 9px;
+  min-height: 98px; padding: 6px; text-align: left; overflow: hidden;
+  background: color-mix(in srgb, var(--panel) 90%, var(--good));
+}
+#farm-crops .fc-card.selected {
+  border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold), 0 0 14px color-mix(in srgb, var(--gold) 20%, transparent);
+  background: color-mix(in srgb, var(--panel) 78%, var(--gold));
+}
+#farm-crops .fc-media { position: relative; display: block; min-width: 0; }
+#farm-crops .fc-media img {
+  display: block; width: 88px; height: 88px; object-fit: cover; border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+#farm-crops .fc-badge { position: absolute; left: 5px; top: 5px; padding: 2px 5px; font-size: 8px; }
+#farm-crops .fc-body { display: flex; flex-direction: column; min-width: 0; align-self: stretch; }
+#farm-crops .fc-body b { margin-top: 1px; font-size: 15px; }
+#farm-crops .fc-body small { margin-top: 2px; color: var(--dim); font-size: 9px; line-height: 1.25; }
+#farm-crops .fc-stats {
+  display: flex; flex-wrap: wrap; gap: 3px; margin-top: auto; padding-top: 5px;
+  font-size: 9px; font-variant-numeric: tabular-nums;
+}
+#farm-crops .fc-stats span {
+  padding: 2px 5px; white-space: nowrap;
+}
+#farm-crops .fc-stats span:last-child { color: var(--good); }
+#farm-crops .fc-footer { display: flex; gap: 7px; margin-top: 7px; }
+#farm-crops .fc-helpers {
+  flex: 1 1 auto; min-height: 28px; padding: 3px 7px; color: var(--dim);
+  font-size: 10px; background: var(--fill); border-radius: var(--r-chip);
+}
+#farm-crops .fc-helpers b { flex: 0 0 auto; color: var(--good); }
+#farm-crops .fc-return { flex: 0 0 auto; min-height: 28px; padding: 4px 10px; color: var(--good); }
+#farm-crops .fc-return[hidden] { display: none; }
+
+@media (max-width: 620px) {
+  #farm-crops { bottom: max(68px, calc(58px + env(safe-area-inset-bottom))); padding: 7px; }
+  #farm-crops > header { margin-bottom: 5px; }
+  #farm-crops header p, #farm-crops .fc-body small { display: none; }
+  #farm-crops .fc-card { grid-template-columns: 58px minmax(0, 1fr); gap: 6px; min-height: 70px; padding: 5px; }
+  #farm-crops .fc-media img { width: 58px; height: 58px; }
+  #farm-crops .fc-body b { font-size: 13px; }
+  #farm-crops .fc-stats { padding-top: 3px; font-size: 8px; }
+  #farm-crops .fc-stats span:last-child { display: none; }
+  #farm-crops .fc-footer { margin-top: 5px; gap: 5px; }
+  #farm-crops .fc-helpers { font-size: 8px; }
+  #farm-crops .fc-helpers b { display: none; }
+  #farm-crops .fc-return { max-width: 132px; padding: 4px 7px; font-size: 9px; }
+}
 
 #clan-build {
   position: fixed; z-index: 17; left: 50%; bottom: max(14px, env(safe-area-inset-bottom));
