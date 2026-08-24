@@ -1,117 +1,49 @@
 /**
- * Правила значков карты (`worldMap.ts`).
+ * Правила картинок глобальной карты (`worldMap.ts`).
  *
- * Проверяется не «красиво ли» — это решает глаз на карте и в `world.html`, —
- * а три обещания, которые ломаются молча: значки видов не сливаются друг
- * с другом, значок сидит в границах своего узла и не наступает на чужие
- * каналы, и рисунок масштабируется радиусом, а не пикселями.
- *
- * Замер вместо взгляда: канвас в Node не рисуется, поэтому значок
- * прослушивается — подставной контекст записывает вызовы пути, и сравниваются
- * записи, а не картинки.
+ * Canvas больше не собирает значки из линий: карта показывает семь PNG
+ * Kenney Cartography Pack. Здесь сторожатся обещания, которые легко сломать
+ * при следующей раздаче картинок: каждому виду назначен свой файл, файлы
+ * действительно являются retina-PNG набора, а рисунок остаётся внутри кольца.
  *
  * Запуск: npm run check
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import { KIND } from '../sim/world';
 import type { NodeKind } from '../sim/world';
-import { NODE_ICON, drawCampTent } from './worldMap';
-
-type Op = readonly (string | number)[];
-
-/** Записать путь значка: каждый вызов контекста — строка с аргументами. */
-function trace(draw: (ctx: CanvasRenderingContext2D) => void): Op[] {
-  const ops: Op[] = [];
-  const ctx = new Proxy(
-    {},
-    {
-      get: (_, prop: string) =>
-        (...args: number[]): void => {
-          ops.push([prop, ...args.map((v) => Math.round(v * 1e6) / 1e6)]);
-        },
-    },
-  ) as CanvasRenderingContext2D;
-  draw(ctx);
-  return ops;
-}
+import { CAMP_ICON_URL, MAP_ICON_DIAMETER, MAP_ICON_URL } from './worldMap';
 
 const KINDS = Object.keys(KIND) as NodeKind[];
 
-/** Как далеко от центра узла заходит запись пути, в долях радиуса. */
-function reach(ops: Op[], r: number): number {
-  let out = 0;
-  for (const [op, ...args] of ops) {
-    if (op === 'moveTo' || op === 'lineTo') {
-      out = Math.max(out, Math.abs(args[0] as number), Math.abs(args[1] as number));
-    } else if (op === 'arc') {
-      const [cx, cy, rad] = args as number[];
-      out = Math.max(out, Math.abs(cx!) + rad!, Math.abs(cy!) + rad!);
-    } else if (op === 'rect') {
-      const [bx, by, bw, bh] = args as number[];
-      out = Math.max(out, Math.abs(bx!), Math.abs(by!), Math.abs(bx! + bw!), Math.abs(by! + bh!));
-    }
-  }
-  return out / r;
+/** Размер PNG лежит в IHDR сразу после восьмибайтовой сигнатуры и длины. */
+function pngSize(url: string): readonly [number, number] {
+  const bytes = readFileSync(new URL(url));
+  assert.deepEqual(
+    [...bytes.subarray(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10],
+    `${url} — не PNG`,
+  );
+  return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
 }
 
-describe('Значки карты', () => {
-  /**
-   * Виды различимы силуэтом. Если два вида дают одну запись, форма перестаёт
-   * быть каналом (§4.2), и карта возвращается к легенде, которой у неё нет.
-   */
-  test('значки видов не сливаются друг с другом', () => {
-    const seen = new Map<string, string>();
-    for (const kind of KINDS) {
-      const key = JSON.stringify(trace((ctx) => NODE_ICON[kind](ctx, 0, 0, 100)));
-      const twin = seen.get(key);
-      assert.equal(twin, undefined, `${kind} и ${twin} нарисованы одинаково`);
-      seen.set(key, kind);
-    }
-    const tent = JSON.stringify(trace((ctx) => drawCampTent(ctx, 0, 0, 100)));
-    assert.equal(seen.get(tent), undefined, 'палатка лагеря совпала со значком узла');
+describe('Картинки глобальной карты', () => {
+  test('каждому виду назначен отдельный рисунок', () => {
+    assert.deepEqual(Object.keys(MAP_ICON_URL).sort(), [...KINDS].sort());
+    assert.equal(new Set(Object.values(MAP_ICON_URL)).size, KINDS.length);
+    assert.ok(!Object.values(MAP_ICON_URL).includes(CAMP_ICON_URL));
   });
 
-  /**
-   * Значок сидит в узле. Каналы узла разложены по местам (§4.2): глиф события
-   * в левом верху на 1,3r, флаг клана в правом от 0,95r. Значок, вылезший
-   * за 1,02r, наступает на чужой канал — и читается как он.
-   */
-  test('значок не выходит за кольцо узла', () => {
-    for (const kind of KINDS) {
-      const out = reach(trace((ctx) => NODE_ICON[kind](ctx, 0, 0, 100)), 100);
-      assert.ok(out <= 1.02, `${kind}: значок достаёт до ${out.toFixed(2)}r`);
+  test('в игру едут retina-файлы Kenney', () => {
+    for (const [kind, url] of Object.entries(MAP_ICON_URL)) {
+      assert.deepEqual(pngSize(url), [128, 128], `${kind}: не retina 128×128`);
     }
-    const tent = reach(trace((ctx) => drawCampTent(ctx, 0, 0, 100)), 100);
-    assert.ok(tent <= 1, `палатка вылезла из кольца лагеря: ${tent.toFixed(2)}r`);
+    assert.deepEqual(pngSize(CAMP_ICON_URL), [128, 128], 'палатка: не retina 128×128');
   });
 
-  /**
-   * Рисунок выводится из радиуса, а не из пикселей: карта живёт на любом
-   * экране, и константа в пикселях сломала бы значок молча — только на узком.
-   */
-  test('значок масштабируется радиусом', () => {
-    for (const kind of KINDS) {
-      const big = trace((ctx) => NODE_ICON[kind](ctx, 0, 0, 100));
-      const half = trace((ctx) => NODE_ICON[kind](ctx, 0, 0, 50));
-      // Делятся длины, но не углы: у дуги масштабом живут центр и радиус,
-      // а развёртка в радианах от размера не зависит.
-      const scaled = big.map(([op, ...args]) => [
-        op,
-        ...args.map((v, i) => (op === 'arc' && i >= 3 ? v : (v as number) / 2)),
-      ]);
-      assert.deepEqual(half, scaled, `${kind}: значок не в долях радиуса`);
-    }
-  });
-
-  /** Тот же вызов — та же запись: значок не зависит ни от чего, кроме входа. */
-  test('значок детерминирован', () => {
-    for (const kind of KINDS) {
-      assert.deepEqual(
-        trace((ctx) => NODE_ICON[kind](ctx, 7, 11, 13)),
-        trace((ctx) => NODE_ICON[kind](ctx, 7, 11, 13)),
-        `${kind}: значок поплыл между вызовами`,
-      );
-    }
+  test('рисунок остаётся внутри кольца и не наступает на служебные метки', () => {
+    assert.ok(MAP_ICON_DIAMETER > 1.4, 'рисунок слишком мелкий для карты');
+    assert.ok(MAP_ICON_DIAMETER <= 1.8, 'рисунок добрался до события или флага');
   });
 });
