@@ -141,6 +141,7 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import type { ResourceKind } from './sim/resources';
+import { claimSupplyBox, supplyClaimSeed } from './sim/lootboxClaim';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
   cloudCamp,
@@ -7071,6 +7072,10 @@ startLoop({
         // §13.6 — потолок кладовой: не поместившееся пропадает, и об этом
         // говорится. Молчаливая потеря добычи хуже самой потери.
         if (stash(camp, result.carried) > 0) campHud.notify(STORE_FULL);
+        const supplyClaim = counts && result.supplyBox
+          ? claimSupplyBox(camp, supplyClaimSeed(result.seed, camp.raids + 1))
+          : null;
+        if ((supplyClaim?.overflow ?? 0) > 0) campHud.notify(STORE_FULL);
         if (raid.foxesCaught > 0) {
           camp.foxesCaught = (camp.foxesCaught ?? 0) + raid.foxesCaught;
         }
@@ -7127,6 +7132,7 @@ startLoop({
           raidNode,
           clock.now(),
           progression,
+          supplyClaim,
         );
       }
       return;

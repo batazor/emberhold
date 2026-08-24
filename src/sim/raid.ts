@@ -274,6 +274,7 @@ export function createRaid(opts: RaidOptions): RaidState {
     foodMax: supply,
     bag: emptyResources(),
     bagTotal: 0,
+    supplyBox: false,
     // Рюкзак класса: Лучник −25%, Бандит +30% (§11.7). Не меньше единицы,
     // иначе на Складе ур. 1 Лучник не смог бы унести ничего.
     // Склад × класс, потом снаряжение: сумка прибавляет, оружие отнимает (§14).
@@ -552,11 +553,17 @@ function arriveAt(state: RaidState, cell: Cell): void {
       : Array.isArray(container.lockedBy) ? container.lockedBy : [container.lockedBy];
     if (locks.length > 0 && state.loc.enemies.some((e) => locks.includes(e.kind) && e.hp > 0)) {
       state.events.push('Золотой сундук остаётся заперт, пока хозяин жив');
-    } else if (state.bagTotal >= state.capacity) {
+    } else if (container.supply !== true && state.bagTotal >= state.capacity) {
       state.events.push('Рюкзак полон — контейнер не вскрыт');
     } else {
       container.opened = true;
       spend(state, state.containerFood);
+      if (container.supply === true) {
+        state.supplyBox = true;
+        state.events.push('Ларец снабжения · откроется после возвращения');
+        if (container.ambush !== undefined) springAmbush(state, container);
+        return;
+      }
       // §11.7 «Схрон» — находка щедрее, пока умение держится. Множитель
       // ложится на содержимое, а не на взятое: упереться в рюкзак он не мешает.
       const inside = skillActive(state, 'cache')
@@ -1309,6 +1316,8 @@ export interface RaidResult {
   readonly foodLeft: number;
   readonly tier: Tier;
   readonly seed: number;
+  /** Ларец доехал до лагеря. При провале найденный ларец теряется целиком. */
+  readonly supplyBox: boolean;
   readonly maxBack: number;
   readonly locMaxBack: number;
   readonly durationSec: number;
@@ -1397,6 +1406,7 @@ export function raidResult(state: RaidState): RaidResult {
     foodLeft: Math.max(0, Math.ceil(state.food)),
     tier: state.loc.tier,
     seed: state.loc.seed,
+    supplyBox: state.status === 'evacuated' && state.supplyBox,
     maxBack: state.maxBack,
     locMaxBack: locationDepth(state.loc),
     durationSec: state.elapsed,

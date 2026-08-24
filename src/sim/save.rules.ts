@@ -187,6 +187,7 @@ describe('Сохранение', () => {
     camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0 , infirmary: 0, yard: 0};
     camp.resources = { stone: 50, wood: 40, iron: 20, crystal: 3, food: 0 };
     camp.layout.kitchen = { x: 6, z: 3 };
+    camp.supplyPity = 7;
     assert.equal(startUpgrade(camp, 'storage', 500), true);
     save(camp, createRoster(), 777);
 
@@ -195,6 +196,7 @@ describe('Сохранение', () => {
     assert.deepEqual(back.resources, camp.resources);
     assert.deepEqual(back.layout.kitchen, { x: 6, z: 3 });
     assert.equal(back.construction?.building, 'storage');
+    assert.equal(back.supplyPity, 7, 'гарантия ларца сбросилась при перезапуске');
     assert.equal(watermark, 777);
     wipe();
   });

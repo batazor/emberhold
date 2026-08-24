@@ -31,6 +31,7 @@ import { buildChest, chestBlock } from './chests';
 import type { BuildingId, CampState } from './camp';
 import { CONSUMABLES, buyConsumable, cheapestAffordable } from './consumables';
 import { GEAR } from './gear';
+import { claimSupplyBox, supplyClaimSeed } from './lootboxClaim';
 import type { GearSlot } from './gear';
 import type { Resources } from './resources';
 import { events, setEvents, summarize, track } from './telemetry';
@@ -207,6 +208,7 @@ export function playSession(seed: number): SessionResult {
     // когда место кончается, как построил бы игрок за два дерева.
     if (storeFree(camp) < raid.carriedTotal && chestBlock(camp) === 'ok') buildChest(camp);
     stash(camp, raid.carried);
+    if (raid.supplyBox) claimSupplyBox(camp, supplyClaimSeed(raid.seed, camp.raids + 1));
     camp.raids += 1;
 
     // Экран возврата: что он предложил и что игрок выбрал. Предложений два
