@@ -136,7 +136,7 @@ describe('Хроника', () => {
     const idle: TelemetryEvent[] = [
       { t: 'onboarding', at: at(3), step: 'glade' },
       { t: 'session_start', at: at(3), awaySec: 60, timerLeftSec: null },
-      { t: 'exit', at: at(3), where: 'camp' },
+      { t: 'exit', at: at(3), where: 'camp', sec: 180 },
     ];
     assert.deepEqual(chronicle(idle), []);
   });

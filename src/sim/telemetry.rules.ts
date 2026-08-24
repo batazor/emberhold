@@ -87,9 +87,9 @@ describe('Телеметрия и экран возврата', () => {
 
   test('точка выхода из сессии считается по местам', () => {
     setEvents([
-      { t: 'exit', at: 0, where: 'raid' },
-      { t: 'exit', at: 1, where: 'camp' },
-      { t: 'exit', at: 2, where: 'camp' },
+      { t: 'exit', at: 0, where: 'raid', sec: 0 },
+      { t: 'exit', at: 1, where: 'camp', sec: 1 },
+      { t: 'exit', at: 2, where: 'camp', sec: 2 },
     ]);
     assert.deepEqual(summarize(events()).exits, { raid: 1, camp: 2, return: 0 });
   });

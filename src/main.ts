@@ -5278,10 +5278,12 @@ addEventListener('visibilitychange', () => {
   if (!document.hidden) return;
   // §9 — точка выхода из сессии. Пишется на уход, а не на закрытие вкладки:
   // события выгрузки на мобильных не гарантированы.
+  const leftAt = clock.now();
   track({
     t: 'exit',
-    at: clock.now(),
+    at: leftAt,
     where: returnScreen.visible ? 'return' : mode === 'raid' ? 'raid' : 'camp',
+    sec: Math.max(0, leftAt - startedAt),
   });
   persist();
 });
