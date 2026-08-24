@@ -288,7 +288,7 @@ import { CampPrompt } from './ui/campPrompt';
 import { SettingsMenu } from './ui/settings';
 import { Hud } from './ui/hud';
 import { BattleHud } from './ui/battleHud';
-import { commandBattle, inBattle, partyByUnit } from './sim/raid';
+import { battleForecast, commandBattle, inBattle, partyByUnit } from './sim/raid';
 import { current, moves, targets, unitAt } from './sim/battle';
 import { worldToHex, hexKey, hexToWorld } from './sim/hex';
 import { mulberry32 } from './core/rng';
@@ -5324,6 +5324,12 @@ let lastRender = performance.now();
 //
 // Кадры вылазки по-прежнему открываются в вылазке: они перезапуск не
 // переживают, и заставка посреди раскадровки уводила бы игрока из неё.
+// `?shield` даёт отладочному бою щит максимального уровня: телеграфы
+// Заслона должны быть проверяемы из одной и той же точки баланса.
+if (debugParams.has('shield')) {
+  camp.offhand = 'shield';
+  camp.gear.torch = Math.max(camp.gear.torch, 3);
+}
 if (onboarding.step === 'glade' || onboarding.step === 'done') {
   toTitle();
 } else if (!onboarding.inRaid || !toRaid(safestNode(clock.now()))) {
@@ -5353,7 +5359,8 @@ if (debugNode !== null) {
  * не проходя вылазку до драки. Открывает вылазку — ярус можно задать
  * через `?tier=N`, иначе берётся первый боевой узел, — и ставит героя
  * вплотную к противнику: контакт завязывается первым же тиком.
- * Значение выбирает вид: `?battle=mage`, `?battle=warrior`, `?battle=skeleton`.
+ * Значение выбирает вид: `?battle=mage`, `?battle=warrior`,
+ * `?battle=minotaur`, `?battle=golem`, `?battle=skeleton`.
  */
 const debugBattleKind = debugGet(debugParams, 'battle');
 if (debugBattleKind !== null) {
@@ -5369,11 +5376,16 @@ if (debugBattleKind !== null) {
       skeleton: 'minion',
       warrior: 'warrior',
       mage: 'mage',
+      minotaur: 'minotaur',
+      golem: 'stone-golem',
     };
     const want = KIND_BY_NAME[debugBattleKind];
     const foes = fightRaid.loc.enemies.filter((e) => e.hp > 0);
     const target = foes.find((e) => want !== undefined && e.kind === want) ?? foes[0];
     if (target !== undefined) {
+      // Отладочное имя — гарантия кадра, а не пожелание генератору:
+      // если в этой локации нужного вида нет, первый враг играет его роль.
+      if (want !== undefined) Object.assign(target, { kind: want });
       // Свободная клетка рядом с противником — герой встаёт на неё всем
       // отрядом: расстановку по гексам разведёт сам бой (`placeOn`).
       const { size, blocked } = fightRaid.loc;
@@ -6472,6 +6484,11 @@ startLoop({
           damageTaken: result.damageTaken,
           fights: result.fights,
           kills: result.kills,
+          guardTurns: result.guardTurns,
+          guardPrevented: result.guardPrevented,
+          shieldPushes: result.shieldPushes,
+          intercepts: result.intercepts,
+          dodges: result.dodges,
         });
         hud.setVisible(false);
         // Кадр 8: в первый раз выбора нет — путь ведёт в лагерь, иначе
@@ -6555,7 +6572,10 @@ startLoop({
         battleHud.setVisible(true);
         // Пока показ дочитывает прошлые ходы, панель молчит: предлагать ход
         // в бой, которого игрок ещё не увидел, — значит звать ходить вслепую.
-        battleHud.sync(raid.battle, canHit, partyByUnit(raid), battleBusy);
+        const preview = raidView === null
+          ? battleForecast(raid)
+          : raidView.battlePreview(raid);
+        battleHud.sync(raid.battle, canHit, partyByUnit(raid), battleBusy, preview);
       } else {
         battleHud.setVisible(false);
       }

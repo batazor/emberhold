@@ -63,6 +63,26 @@ describe('Телеметрия и экран возврата', () => {
     assert.equal(s.avgFights, 3);
   });
 
+  test('защита сводится по вылазкам, а старые записи получают нули', () => {
+    setEvents([
+      end({
+        at: 0,
+        guardTurns: 2,
+        guardPrevented: 6,
+        shieldPushes: 1,
+        intercepts: 1,
+        dodges: 3,
+      }),
+      end({ at: 1 }),
+    ]);
+    const s = summarize(events());
+    assert.equal(s.avgGuardTurns, 1);
+    assert.equal(s.avgGuardPrevented, 3);
+    assert.equal(s.avgShieldPushes, 0.5);
+    assert.equal(s.avgIntercepts, 0.5);
+    assert.equal(s.avgDodges, 1.5);
+  });
+
   test('§20.1 — считается доля возвратов с доступной покупкой', () => {
     setEvents([
       { t: 'return_screen', at: 0, canBuy: true, chose: 'build' },

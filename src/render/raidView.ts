@@ -21,7 +21,7 @@ import { FoxRig } from './fox';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
 import { roadPieces } from '../sim/roads';
-import { FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
+import { cryptGeometry, FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
 import type { GraveyardPartModelName } from './graveyard';
 import type { CastlePartModelName } from './castle';
 import type { CastleSite } from '../sim/castleSite';
@@ -37,7 +37,7 @@ import {
   type Garrison,
 } from '../sim/garrison';
 import type { DwellerLook } from '../sim/garrison';
-import type { GraveSite } from '../sim/graveSite';
+import { cryptStyleOf, type GraveSite } from '../sim/graveSite';
 import type { TrailSite } from '../sim/trailSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
@@ -46,8 +46,8 @@ import type { RigClipName } from './rigged';
 import { RIG_CLIPS } from './rig.data';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
-import type { BattlePlay } from '../sim/battle';
-import { followSpots } from '../sim/raid';
+import type { BattleForecast, BattlePlay } from '../sim/battle';
+import { battleForecast, followSpots } from '../sim/raid';
 import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
@@ -67,7 +67,7 @@ import { chestGeometry, dungeonMaterial } from './dungeon';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
-import { PALETTE } from './palette';
+import { MATERIAL, PALETTE } from './palette';
 import type { Bubble } from './bubbles';
 
 /**
@@ -376,6 +376,13 @@ export class RaidView {
    * не меняется, тап остаётся тапом.
    */
   private hoverHex: Hex | null = null;
+  /** Прогноз каждой клетки заметно тяжелее раскраски кольца, поэтому он
+   *  пересчитывается на изменение состояния боя, а не на каждый кадр. */
+  private threatGridKey = '';
+  private threatSafe: Hex[] = [];
+  private threatDanger: Hex[] = [];
+  private threatPreviewKey = '';
+  private threatPreview: BattleForecast | null = null;
   /**
    * §11.3 — показ боя. Очередь протокола (`RaidState.plays`) и текущий ход:
    * пока они не пусты, положение и клипы бойцов ведёт показ, а не симуляция —
@@ -712,6 +719,7 @@ export class RaidView {
         }
       };
       for (const spot of keep.castle.yard) mark(spot.x, spot.z);
+      for (const spot of keep.castle.moat) mark(spot.x, spot.z);
       // Только основание: ярусы башни и шапка ворот стоят выше нуля
       // и на вопрос «что под ними на земле» не отвечают.
       for (const piece of keep.castle.pieces) if (piece.y === 0) mark(piece.x, piece.z);
@@ -1018,7 +1026,7 @@ export class RaidView {
   }
 
   /**
-   * Замок (§6.1.6). Деталей в кадре под сотню, а моделей два десятка, поэтому
+   * Замок (§6.1.6). Деталей в кадре под сотню, а моделей пять десятков, поэтому
    * рисуется он одной InstancedMesh на модель: сто мешей стоили бы сто вызовов
    * отрисовки за то же изображение.
    *
@@ -1028,8 +1036,35 @@ export class RaidView {
    * и вторая копия этих правил в рендере разошлась бы с первой молча.
    */
   private buildCastle(site: CastleSite): void {
+    // Вода рва — клетки плана, а не текстура земли. Небольшой зазор между
+    // квадратами оставляет читаемой форму внешнего пояса и не даёт им спорить
+    // глубиной с грунтом локации.
+    if (site.castle.moat.length > 0) {
+      const geometry = this.track(new THREE.PlaneGeometry(CASTLE_SCALE * 0.96, CASTLE_SCALE * 0.96));
+      geometry.rotateX(-Math.PI / 2);
+      const material = this.track(new THREE.MeshLambertMaterial({
+        color: MATERIAL['краска-синяя'],
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+      }));
+      const water = new THREE.InstancedMesh(geometry, material, site.castle.moat.length);
+      const at = new THREE.Object3D();
+      site.castle.moat.forEach((spot, i) => {
+        at.position.set(
+          site.at.x + spot.x * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+          0.025,
+          site.at.z + spot.z * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+        );
+        at.updateMatrix();
+        water.setMatrixAt(i, at.matrix);
+      });
+      water.renderOrder = 1;
+      this.group.add(water);
+    }
+
     const byModel = new Map<string, typeof site.castle.pieces[number][]>();
-    for (const piece of site.castle.pieces) {
+    for (const piece of [...site.castle.pieces, ...site.surroundings]) {
       // Мощение двора не рисуется: под замком уже лежит земля локации,
       // и вторая плита поверх неё дала бы z-fighting, а не пол.
       if (piece.role === 'двор') continue;
@@ -1569,8 +1604,8 @@ export class RaidView {
    * ноль детали стоит в центре её клетки набора, а клетка набора покрывает
    * `FENCE_SCALE` клеток локации.
    *
-   * **Могилы, склеп и гроб** — предметы: у них никакой сетки нет, они стоят
-   * в клетке локации и приводятся высотой.
+   * **Могилы и гроб** — предметы и приводятся высотой. **Склеп** — цельная
+   * сборка в общем масштабе: иначе крыша и дверь разошлись бы с корпусом.
    *
    * **Лес и пеньки** по краю — тоже предметы, и порода у них своя, чтобы
    * кладбище не читалось той же поляной, с которой начинается игра.
@@ -1601,9 +1636,12 @@ export class RaidView {
     for (const [model, list] of byModel) {
       const fence = site.fence.some((p) => p.model === model);
       // Геометрия живёт в общем кэше graveyard.ts и переживает вид: её не track.
+      const crypt = cryptStyleOf(model);
       const geo = fence
         ? fenceGeometry(model as GraveyardPartModelName)
-        : graveyardGeometry(model as GraveyardPartModelName, MARK_HEIGHT[model] ?? 0.8);
+        : crypt === undefined
+          ? graveyardGeometry(model as GraveyardPartModelName, MARK_HEIGHT[model] ?? 0.8)
+          : cryptGeometry(crypt);
       const mesh = new THREE.InstancedMesh(geo, mat, list.length);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -2500,6 +2538,8 @@ export class RaidView {
     if (now.play.kind === 'move') {
       const last = now.play.path[now.play.path.length - 1];
       if (last !== undefined) this.restHex.set(now.play.unit, last);
+    } else if (now.play.kind === 'strike' && now.play.pushedTo !== undefined) {
+      this.restHex.set(now.play.unit, now.play.pushedTo);
     }
   }
 
@@ -2703,6 +2743,11 @@ export class RaidView {
   private syncGrid(state: RaidState): void {
     const battle = state.battle;
     if (battle === null) {
+      this.threatGridKey = '';
+      this.threatSafe = [];
+      this.threatDanger = [];
+      this.threatPreviewKey = '';
+      this.threatPreview = null;
       this.hexGrid.hide();
       return;
     }
@@ -2717,18 +2762,36 @@ export class RaidView {
     if (this.battleBusy()) {
       const acting = this.playNow?.play.unit;
       const at = acting === undefined ? undefined : this.restHex.get(acting);
-      this.hexGrid.show({ move: [], stand: at === undefined ? [] : [at], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: at === undefined ? [] : [at], target: [], hover: [], counter: [], covered: [] });
       return;
     }
     // Сетка показывается только на ходу героя. На чужом ходу она молчит:
     // подсвечивать чужие возможности — значит просить игрока читать то,
     // на что он всё равно не влияет.
     if (unit.side !== 'hero') {
-      this.hexGrid.show({ move: [], stand: [unit.hex], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: [unit.hex], target: [], hover: [], counter: [], covered: [] });
       return;
     }
     const { size, blocked } = this.loc;
     const move: Hex[] = [...moves(battle, size, blocked, unit).values()].map((s) => s.hex);
+    const threatKey = [
+      battle.round,
+      battle.at,
+      ...battle.units.map((u) =>
+        `${u.id}:${u.hp}:${u.hex.q},${u.hex.r}:${Number(u.moved)}${Number(u.acted)}${Number(u.guarding)}`),
+      ...move.map((h) => `${h.q},${h.r}`),
+    ].join('|');
+    if (threatKey !== this.threatGridKey) {
+      this.threatGridKey = threatKey;
+      this.threatSafe = [];
+      this.threatDanger = [];
+      for (const h of move) {
+        const forecast = battleForecast(state, h);
+        (forecast !== null && forecast.damage === 0 ? this.threatSafe : this.threatDanger).push(h);
+      }
+    }
+    const safe = this.threatSafe;
+    const danger = this.threatDanger;
     const target: Hex[] = targets(battle, size, blocked, unit).map((u) => u.hex);
     // Наведение показывается только там, куда можно: подсвеченный гекс,
     // на который нельзя шагнуть, обещает ход, которого не будет.
@@ -2736,7 +2799,19 @@ export class RaidView {
     const onTarget = target.some((h) => `${h.q},${h.r}` === key);
     const canGo = move.some((h) => `${h.q},${h.r}` === key);
     const hover = this.hoverHex !== null && (canGo || onTarget) ? [this.hoverHex] : [];
-    this.hexGrid.show({ move, stand: [unit.hex], target, hover });
+    const preview = this.battlePreview(state);
+    const counter = preview?.guardedThreats
+      .filter((threat) => threat.intent !== undefined)
+      .map((threat) => {
+        const last = threat.path[threat.path.length - 1];
+        return last ?? battle.units.find((u) => u.id === threat.attacker)?.hex;
+      })
+      .filter((h): h is Hex => h !== undefined) ?? [];
+    const covered = preview?.guardedThreats
+      .filter((threat) => threat.aimed !== threat.target)
+      .map((threat) => battle.units.find((u) => u.id === threat.aimed)?.hex)
+      .filter((h): h is Hex => h !== undefined) ?? [];
+    this.hexGrid.show({ move: [], safe, danger, stand: [unit.hex], target, hover, counter, covered });
   }
 
   /**
@@ -2749,6 +2824,29 @@ export class RaidView {
 
   clearHover(): void {
     this.hoverHex = null;
+  }
+
+  /** Контекстный прогноз HUD. Кэш нужен потому, что main синхронизирует DOM
+   *  каждый кадр, а путь противников меняется только вместе с боем/наведением. */
+  battlePreview(state: RaidState): BattleForecast | null {
+    const battle = state.battle;
+    if (battle === null) return null;
+    const hover = this.hoverHex;
+    const key = [
+      battle.round,
+      battle.at,
+      battle.rolls,
+      hover === null ? '-' : `${hover.q},${hover.r}`,
+      ...battle.units.map((u) =>
+        `${u.id}:${u.hp}:${u.hex.q},${u.hex.r}:${Number(u.moved)}${Number(u.acted)}${Number(u.guarding)}`),
+    ].join('|');
+    if (key !== this.threatPreviewKey) {
+      this.threatPreviewKey = key;
+      this.threatPreview = hover === null
+        ? battleForecast(state)
+        : battleForecast(state, hover) ?? battleForecast(state);
+    }
+    return this.threatPreview;
   }
 
   /** Подсветить клетку. Кольцо пульсирует, пока кадр не сменится: статичное

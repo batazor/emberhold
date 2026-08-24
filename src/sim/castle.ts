@@ -104,6 +104,7 @@ export const PARTS: Readonly<Record<Joint, readonly Part[]>> = {
   'угол': [
     part('wall-corner', 0, 3),
     part('wall-corner-slant', 0, 3),
+    part('wall-corner-half', 0, 3),
     part('wall-corner-half-tower', 1, 3),
   ],
   'тройник': [part('wall-half', 1, 2, 3)],
@@ -118,16 +119,65 @@ export const CORNER = PARTS['угол'];
 export const STAIRS = part('wall-narrow-stairs', 2);
 
 /**
- * Башня: нижний этаж, ярусы над ним и завершение. Ярусов два вида — глухой
- * и с окнами; выбор между ними ничего не значит и делается сидом, чтобы
- * две башни рядом не были близнецами.
+ * Лестница с перилами — тот же один ход, но открыт у модели в +z.
+ * Поворот по-прежнему выводит `fitTurn`: генератор не знает,
+ * с какой стороны автор нарисовал подъём.
+ */
+export const STAIRS_RAIL = part('wall-narrow-stairs-rail', 3);
+export const STAIR_PARTS: readonly Part[] = [STAIRS, STAIRS_RAIL];
+
+/**
+ * Башня: нижний этаж, ярусы над ним и завершение. Ярусы бывают глухими,
+ * с окнами и открытой галереей; выбор делается сидом, чтобы две башни рядом
+ * не были близнецами. Дверной нижний ярус отделен: он имеет смысл только у донжона.
  */
 export const TOWER = {
   base: 'tower-square-base',
-  body: ['tower-square-mid', 'tower-square-mid-windows'],
+  /** Дверь нужна только на земле донжона, а не на верхнем ярусе. */
+  keepBase: 'tower-square-mid-door',
+  body: ['tower-square-mid', 'tower-square-mid-windows', 'tower-square-mid-open'],
   cap: 'tower-square-top',
-  roofs: ['tower-square-top-roof', 'tower-square-top-roof-high', 'tower-square-top-roof-rounded'],
+  roofs: [
+    'tower-square-top-roof',
+    'tower-square-top-roof-high',
+    'tower-square-top-roof-rounded',
+    'tower-square-top-roof-high-windows',
+  ],
+  flags: ['flag', 'flag-wide'],
 } as const;
+
+/**
+ * Шестигранная башня — отдельное семейство, а не ещё один вариант квадратного
+ * яруса. У него своя высота основания (ровно высота стены) и короткий средний
+ * ярус, поэтому складывать его через `FLOOR` нельзя.
+ */
+export const HEX_TOWER = {
+  base: 'tower-hexagon-base',
+  body: 'tower-hexagon-mid',
+  tops: ['tower-hexagon-top', 'tower-hexagon-top-wood'],
+  roofs: ['tower-hexagon-roof', 'tower-hexagon-roof-secondary'],
+  baseHeight: 1.31,
+  bodyHeight: 0.46,
+  topHeight: [0.13, 0.46],
+  roofHeight: [0.83, 0.75],
+} as const;
+
+/** Узкие внутренние укрепления: каменная и деревянная семьи. */
+export const INNER_WALLS = {
+  stone: ['wall-narrow', 'wall-doorway', 'wall-half-modular', 'wall-narrow-gate'],
+  wood: ['wall-narrow-wood', 'wall-narrow-wood-fence'],
+} as const;
+
+/** Створки ворот. `gate` остаётся старым вариантом, два остальных — новые. */
+export const GATE_LEAVES = ['gate', 'door', 'metal-gate'] as const;
+
+/** Настенные знамёна, отдельные лестницы и мостовые опоры. */
+export const WALL_BANNERS = ['flag-banner-short', 'flag-banner-long'] as const;
+export const FREE_STAIRS = ['stairs-stone', 'stairs-stone-square'] as const;
+export const FIXED_BRIDGES = ['bridge-straight', 'bridge-straight-pillar'] as const;
+
+/** Модели окружения выбирает площадка мира, но рисует общий набор замка. */
+export const CASTLE_SURROUNDINGS = ['rocks-large', 'rocks-small', 'tree-large', 'tree-small'] as const;
 
 /** Высота зубцов над последним этажом. Измерена, как и всё остальное. */
 export const CAP = 0.3;
@@ -150,22 +200,53 @@ export const DECK: Readonly<Record<string, number | null>> = {
   'wall-pillar': 1.18,
   'wall-corner': 1.18,
   'wall-corner-slant': 1.18,
+  'wall-corner-half': 1.18,
   'wall-corner-half-tower': 1.31,
   'wall-half': 1.18,
   'wall-to-narrow': 1.18,
   'tower-square': 1.18,
   'wall-narrow-stairs': 1.18,
+  'wall-narrow-stairs-rail': 1.18,
   'tower-square-base': null,
+  'tower-square-mid-door': null,
   'tower-square-mid': null,
   'tower-square-mid-windows': null,
+  'tower-square-mid-open': 0.96,
   'tower-square-arch': null,
   'tower-square-top': 0.17,
   'tower-square-top-roof': 0.87,
   'tower-square-top-roof-high': null,
   'tower-square-top-roof-rounded': 0.79,
+  'tower-square-top-roof-high-windows': 1,
+  'tower-hexagon-base': null,
+  'tower-hexagon-mid': null,
+  'tower-hexagon-top': 0.09,
+  'tower-hexagon-top-wood': null,
+  'tower-hexagon-roof': 0.71,
+  'tower-hexagon-roof-secondary': 0.46,
+  'wall-narrow': 1.18,
+  'wall-doorway': 1.18,
+  'wall-half-modular': 1.18,
+  'wall-narrow-gate': 1.18,
+  'wall-narrow-wood': 1.15,
+  'wall-narrow-wood-fence': 1.15,
+  'stairs-stone': 0.51,
+  'stairs-stone-square': 0.51,
+  'bridge-draw': 0.03,
+  'bridge-straight': 1.04,
+  'bridge-straight-pillar': 1.04,
   'gate': 0.8,
+  'door': 0.44,
+  'metal-gate': null,
   'flag': null,
+  'flag-wide': null,
   'flag-pennant': null,
+  'flag-banner-short': 0.73,
+  'flag-banner-long': 2.12,
+  'rocks-large': 0.38,
+  'rocks-small': 0.3,
+  'tree-large': 1.68,
+  'tree-small': 1.21,
 };
 
 /** Настил детали или `null`. Незнакомая деталь — тоже `null`: не выдумываем. */
@@ -177,7 +258,7 @@ export function partOf(model: string): Part | undefined {
     const hit = bag.find((p) => p.model === model);
     if (hit !== undefined) return hit;
   }
-  return STAIRS.model === model ? STAIRS : undefined;
+  return STAIR_PARTS.find((p) => p.model === model);
 }
 
 /**
@@ -209,10 +290,19 @@ export function buildTower(
   level: number,
   rng: Rng = mulberry32(1),
   roof = false,
+  entrance = false,
+  entranceTurn?: number,
 ): Piece[] {
   const floors = Math.max(1, Math.min(TOWER_MAX, Math.round(level)));
   const out: Piece[] = [
-    { model: TOWER.base, x: spot.x, z: spot.z, y: 0, turn: 0, role: 'башня' },
+    {
+      model: entrance ? TOWER.keepBase : TOWER.base,
+      x: spot.x,
+      z: spot.z,
+      y: 0,
+      turn: entrance ? entranceTurn ?? randInt(rng, 4) : 0,
+      role: 'башня',
+    },
   ];
   for (let i = 1; i < floors; i++) {
     out.push({
@@ -230,6 +320,34 @@ export function buildTower(
     z: spot.z,
     y: FLOOR * floors,
     turn: 0,
+    role: 'башня',
+  });
+  return out;
+}
+
+/**
+ * Шестигранная башня стены. Основание уже высотой со всю стену; сид может
+ * добавить один короткий ярус, затем ставит деревянную или каменную шапку
+ * и одну из двух крыш. Высоты берутся из обмера семейства выше.
+ */
+export function buildHexTower(spot: Spot, rng: Rng = mulberry32(1), raised = false): Piece[] {
+  const out: Piece[] = [
+    { model: HEX_TOWER.base, x: spot.x, z: spot.z, y: 0, turn: 0, role: 'башня' },
+  ];
+  let y = HEX_TOWER.baseHeight;
+  if (raised) {
+    out.push({ model: HEX_TOWER.body, x: spot.x, z: spot.z, y, turn: randInt(rng, 4), role: 'башня' });
+    y += HEX_TOWER.bodyHeight;
+  }
+  const topAt = randInt(rng, HEX_TOWER.tops.length);
+  out.push({ model: HEX_TOWER.tops[topAt]!, x: spot.x, z: spot.z, y, turn: 0, role: 'башня' });
+  y += HEX_TOWER.topHeight[topAt]!;
+  out.push({
+    model: HEX_TOWER.roofs[randInt(rng, HEX_TOWER.roofs.length)]!,
+    x: spot.x,
+    z: spot.z,
+    y,
+    turn: randInt(rng, 4),
     role: 'башня',
   });
   return out;
@@ -288,11 +406,23 @@ export interface Piece {
   readonly y: number;
   /** Четверти поворота вокруг вертикали, 0..3. */
   readonly turn: number;
-  /** Зачем деталь стоит: стена, угол, ворота, башня, лестница, знамя. */
+  /** Зачем деталь стоит: конструкция, проход, украшение или окружение. */
   readonly role: Role;
 }
 
-export type Role = 'стена' | 'угол' | 'ворота' | 'башня' | 'лестница' | 'знамя' | 'двор';
+export type Role =
+  | 'стена'
+  | 'угол'
+  | 'ворота'
+  | 'мост'
+  | 'башня'
+  | 'лестница'
+  | 'знамя'
+  | 'укрепление'
+  | 'окружение'
+  | 'двор';
+
+export type TowerStyle = 'квадратные' | 'шестигранные';
 
 export interface Castle {
   readonly seed: number;
@@ -302,6 +432,9 @@ export interface Castle {
   readonly ring: readonly Spot[];
   readonly yard: readonly Spot[];
   readonly gate: Spot;
+  /** Внешний пояс воды; клетка ворот освобождена мостом. */
+  readonly moat: readonly Spot[];
+  readonly towerStyle: TowerStyle;
   /** Углы, которым достался угол с башенкой. */
   readonly towers: readonly Spot[];
   readonly pieces: readonly Piece[];
@@ -519,6 +652,27 @@ function shuffled<T>(rng: Rng, list: readonly T[]): T[] {
   return out;
 }
 
+/**
+ * Внешний пояс участка: расширяем занятый замком след на одну клетку по
+ * восьми направлениям и вычитаем сам след. Диагонали нужны, чтобы у углов
+ * воды не оставались квадратные прорехи.
+ */
+export function moatOf(ring: readonly Spot[], yard: readonly Spot[]): Spot[] {
+  const inside = new Set([...ring, ...yard].map(keyOf));
+  const moat = new Map<string, Spot>();
+  for (const spot of [...ring, ...yard]) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dz === 0) continue;
+        const next = { x: spot.x + dx, z: spot.z + dz };
+        const key = keyOf(next);
+        if (!inside.has(key)) moat.set(key, next);
+      }
+    }
+  }
+  return [...moat.values()].sort((a, b) => a.z - b.z || a.x - b.x);
+}
+
 /* ---------- конструктор ---------- */
 
 /** Что получилось из набора клеток. */
@@ -603,6 +757,10 @@ export function buildWall(
  */
 export function generateCastle(seed: number): Castle {
   const rng = mulberry32(seed);
+  // Стиль башен выбирается отдельным потоком: добавление варианта силуэта
+  // не должно молча переставлять ворота и донжон у уже знакомого сида.
+  const styleRng = mulberry32(seed ^ 0x48e7a6);
+  const towerStyle: TowerStyle = randInt(styleRng, 2) === 0 ? 'квадратные' : 'шестигранные';
   const width = 6 + randInt(rng, 4);
   const depth = 6 + randInt(rng, 4);
   const { wall, ring, yard } = plan(rng, width, depth);
@@ -612,10 +770,20 @@ export function generateCastle(seed: number): Castle {
   // одно, и второй его копии нет.
   const built = buildWall(ring, rng);
   const pieces: Piece[] = [...built.pieces];
-  const towers = built.joints
-    .filter((j) => j.model === 'wall-corner-half-tower')
-    .map((j) => j.spot);
   const kind = new Map(built.joints.map((j) => [at(width, j.spot.x, j.spot.z), j.joint]));
+  const corners = built.joints.filter((j) => j.joint === 'угол').map((j) => j.spot);
+  const towers: Spot[] = towerStyle === 'шестигранные'
+    ? corners
+    : built.joints.filter((j) => j.model === 'wall-corner-half-tower').map((j) => j.spot);
+
+  if (towerStyle === 'шестигранные') {
+    const towerKeys = new Set(towers.map(keyOf));
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const piece = pieces[i]!;
+      if (piece.y === 0 && towerKeys.has(keyOf(piece))) pieces.splice(i, 1);
+    }
+    towers.forEach((spot, i) => pieces.push(...buildHexTower(spot, styleRng, (i + seed) % 3 === 0)));
+  }
 
   /* ---------- ворота ---------- */
 
@@ -635,8 +803,39 @@ export function generateCastle(seed: number): Castle {
     if (pieces[i]!.x === gate.x && pieces[i]!.z === gate.z) pieces.splice(i, 1);
   }
   pieces.push({ model: 'tower-square-arch', x: gate.x, z: gate.z, y: 0, turn: 0, role: 'ворота' });
-  pieces.push({ model: 'gate', x: gate.x, z: gate.z, y: 0, turn: alongZ ? 0 : 1, role: 'ворота' });
+  pieces.push({
+    model: GATE_LEAVES[randInt(rng, GATE_LEAVES.length)]!,
+    x: gate.x,
+    z: gate.z,
+    y: 0,
+    turn: alongZ ? 0 : 1,
+    role: 'ворота',
+  });
   pieces.push({ model: 'tower-square-top', x: gate.x, z: gate.z, y: FLOOR, turn: 0, role: 'ворота' });
+
+  // Подъёмный мост лежит от центра ворот наружу. У модели ноль стоит
+  // на петле, а полотно уходит в −x; поэтому нужен только поворот,
+  // а не смещение, подобранное на глаз. Направление наружу — противоположно
+  // соседней клетке двора.
+  const inward = DIRS.findIndex((dir) => yard.some((s) => s.x === gate.x + dir[0] && s.z === gate.z + dir[1]));
+  const opposite = [1, 0, 3, 2] as const;
+  const outward = inward < 0 ? (alongZ ? 0 : 2) : opposite[inward]!;
+  const bridgeTurn = fitTurn([true, false, false, false], [outward]);
+  pieces.push({ model: 'bridge-draw', x: gate.x, z: gate.z, y: 0, turn: bridgeTurn, role: 'мост' });
+  const bridgeSpot = { x: gate.x + DIRS[outward]![0], z: gate.z + DIRS[outward]![1] };
+  const fixedBridge = FIXED_BRIDGES[randInt(rng, FIXED_BRIDGES.length)]!;
+  pieces.push({
+    model: fixedBridge,
+    x: bridgeSpot.x,
+    z: bridgeSpot.z,
+    // У прямого моста настил на 1,04: опускаем опоры так, чтобы настил
+    // совпал с дорогой и подъёмным полотном на нуле.
+    y: -DECK[fixedBridge]!,
+    turn: alongZ ? 1 : 0,
+    role: 'мост',
+  });
+  const moat = moatOf(ring, yard);
+  const gateInside = yard.find((s) => Math.abs(s.x - gate.x) + Math.abs(s.z - gate.z) === 1) ?? null;
 
   /* ---------- двор ---------- */
 
@@ -649,7 +848,7 @@ export function generateCastle(seed: number): Castle {
 
   // Лестница: клетка двора у прямой стены, ход выходит к этой стене.
   const landings = yard.filter((s) =>
-    DIRS.some((dir) => {
+    (gateInside === null || keyOf(s) !== keyOf(gateInside)) && DIRS.some((dir) => {
       const nx = s.x + dir[0];
       const nz = s.z + dir[1];
       return (
@@ -664,7 +863,6 @@ export function generateCastle(seed: number): Castle {
   // не запирает двор. Отказ тоже возможен: во дворе в одну клетку лестнице
   // места нет, и её просто не будет.
   const taken: Spot[] = [];
-  let stairs: Spot | null = null;
   for (const spot of shuffled(rng, landings)) {
     if (!yardPassable(width, yard, [spot])) continue;
     const toWall = DIRS.findIndex((dir) => {
@@ -672,14 +870,13 @@ export function generateCastle(seed: number): Castle {
       const nz = spot.z + dir[1];
       return nx >= 0 && nz >= 0 && nx < width && nz < depth && wall[at(width, nx, nz)];
     });
-    const turn = fitTurn(STAIRS.open, [toWall]);
+    const stair = STAIR_PARTS[randInt(rng, STAIR_PARTS.length)]!;
+    const turn = fitTurn(stair.open, [toWall]);
     if (turn < 0) continue;
-    pieces.push({ model: STAIRS.model, x: spot.x, z: spot.z, y: 0, turn, role: 'лестница' });
-    stairs = spot;
+    pieces.push({ model: stair.model, x: spot.x, z: spot.z, y: 0, turn, role: 'лестница' });
     taken.push(spot);
     break;
   }
-  void stairs;
 
   /* ---------- донжон ---------- */
 
@@ -690,27 +887,127 @@ export function generateCastle(seed: number): Castle {
   const keep = [...yard]
     .sort((a, b) => middle(a) - middle(b))
     .find((s) => !taken.some((t) => t.x === s.x && t.z === s.z)
+      && (gateInside === null || keyOf(s) !== keyOf(gateInside))
       && yardPassable(width, yard, [...taken, s])) ?? null;
   if (keep !== null) {
+    taken.push(keep);
+    // Отдельная каменная лестница стоит у входа донжона. Она выбирается
+    // только среди соседних свободных клеток и не имеет права рассечь двор.
+    const yardKeys = new Set(yard.map(keyOf));
+    let keepStep: Spot | null = null;
+    let entranceTurn: number | undefined;
+    for (const dir of shuffled(rng, [0, 1, 2, 3])) {
+      const spot = { x: keep.x + DIRS[dir]![0], z: keep.z + DIRS[dir]![1] };
+      if (!yardKeys.has(keyOf(spot)) || taken.some((s) => keyOf(s) === keyOf(spot))) continue;
+      if (gateInside !== null && keyOf(spot) === keyOf(gateInside)) continue;
+      if (!yardPassable(width, yard, [...taken, spot])) continue;
+      keepStep = spot;
+      // Дверь и высокий край лестницы в исходных моделях смотрят в +z.
+      entranceTurn = fitTurn([false, false, false, true], [dir]);
+      const toKeep = [1, 0, 3, 2][dir]!;
+      const stairTurn = fitTurn([false, false, false, true], [toKeep]);
+      pieces.push({
+        model: FREE_STAIRS[randInt(rng, FREE_STAIRS.length)]!,
+        x: spot.x,
+        z: spot.z,
+        y: 0,
+        turn: stairTurn,
+        role: 'лестница',
+      });
+      taken.push(spot);
+      break;
+    }
     // Донжон выше стены всегда: в один ярус он с ней сравнялся бы и перестал
     // быть донжоном. Крыша вместо зубцов — он не боевая площадка.
     const floors = 2 + randInt(rng, TOWER_MAX - 1);
-    pieces.push(...buildTower(keep, floors, rng, true));
+    pieces.push(...buildTower(keep, floors, rng, true, true, entranceTurn));
     pieces.push({
-      model: 'flag',
+      model: TOWER.flags[randInt(rng, TOWER.flags.length)]!,
       x: keep.x,
       z: keep.z,
       y: FLOOR * floors,
       turn: randInt(rng, 4),
       role: 'знамя',
     });
+    void keepStep;
+  }
+
+  /* ---------- внутреннее укрепление ---------- */
+
+  // Две соседние клетки дают маленькую поперечную стену, а не второе кольцо.
+  // Кандидат принимается только если вместе с лестницами и донжоном оставляет
+  // весь свободный двор одной областью.
+  const free = new Set(yard
+    .filter((s) => !taken.some((t) => keyOf(t) === keyOf(s)))
+    .filter((s) => gateInside === null || keyOf(s) !== keyOf(gateInside))
+    .map(keyOf));
+  const lines: { spots: readonly [Spot, Spot]; dir: number }[] = [];
+  for (const spot of yard) {
+    if (!free.has(keyOf(spot))) continue;
+    for (const dir of [1, 3]) {
+      const next = { x: spot.x + DIRS[dir]![0], z: spot.z + DIRS[dir]![1] };
+      if (free.has(keyOf(next))) lines.push({ spots: [spot, next], dir });
+    }
+  }
+  for (const line of shuffled(rng, lines)) {
+    if (!yardPassable(width, yard, [...taken, ...line.spots])) continue;
+    const family = randInt(rng, 2) === 0 ? INNER_WALLS.stone : INNER_WALLS.wood;
+    const turn = line.dir === 1 ? 1 : 0;
+    line.spots.forEach((spot, i) => pieces.push({
+      model: family[(i + randInt(rng, family.length)) % family.length]!,
+      x: spot.x,
+      z: spot.z,
+      y: 0,
+      turn,
+      role: 'укрепление',
+    }));
+    taken.push(...line.spots);
+    break;
   }
 
   // Знамёна на угловых башенках — на высоте верха стены, а не крыши: у угла
   // с башенкой крыши нет вовсе.
   for (const spot of towers) {
-    pieces.push({ model: 'flag-pennant', x: spot.x, z: spot.z, y: WALL_TOP, turn: 0, role: 'знамя' });
+    let y = WALL_TOP;
+    if (towerStyle === 'шестигранные') {
+      const roof = pieces.find((p) =>
+        p.x === spot.x && p.z === spot.z && (HEX_TOWER.roofs as readonly string[]).includes(p.model));
+      const roofAt = roof === undefined ? -1 : (HEX_TOWER.roofs as readonly string[]).indexOf(roof.model);
+      if (roof !== undefined && roofAt >= 0) y = roof.y + HEX_TOWER.roofHeight[roofAt]!;
+    }
+    pieces.push({ model: 'flag-pennant', x: spot.x, z: spot.z, y, turn: 0, role: 'знамя' });
   }
 
-  return { seed, width, depth, ring, yard, gate, towers, pieces };
+  // Настенные баннеры стоят на внешней плоскости прямых участков. Полклетки
+  // выводит их из камня на грань стены; дробная координата здесь намеренна.
+  const bannerSpots = shuffled(rng, ring.filter((s) =>
+    kind.get(at(width, s.x, s.z)) === 'прямая' && !(s.x === gate.x && s.z === gate.z)));
+  const bannerTarget = Math.min(bannerSpots.length, 1 + randInt(rng, 3));
+  const banners: Spot[] = [];
+  for (const spot of bannerSpots) {
+    if (banners.some((other) => Math.abs(other.x - spot.x) + Math.abs(other.z - spot.z) < 2)) continue;
+    banners.push(spot);
+    if (banners.length === bannerTarget) break;
+  }
+  for (const spot of banners) {
+    const outside = DIRS.findIndex((dir) => {
+      const x = spot.x + dir[0];
+      const z = spot.z + dir[1];
+      return !yard.some((s) => s.x === x && s.z === z) && !ring.some((s) => s.x === x && s.z === z);
+    });
+    if (outside < 0) continue;
+    const model = WALL_BANNERS[randInt(rng, WALL_BANNERS.length)]!;
+    pieces.push({
+      model,
+      x: spot.x + DIRS[outside]![0] * 0.51,
+      z: spot.z + DIRS[outside]![1] * 0.51,
+      // Оба полотна подвешены верхним краем к ходу стены. Длинное уходит
+      // основанием ниже земли, и видимой остаётся ровно фасадная часть.
+      y: WALL_TOP - (model === 'flag-banner-short' ? 0.78 : 2.17),
+      turn: outside < 2 ? 0 : 1,
+      role: 'знамя',
+    });
+  }
+
+  return { seed, width, depth, ring, yard, gate, moat, towerStyle, towers, pieces };
 }

@@ -20,6 +20,7 @@ import {
   battleOver,
   createBattle,
   enemyPlan,
+  forecastRound,
   current,
   initiative,
   movePerTurn,
@@ -41,12 +42,12 @@ const flat = () => 4;
  *  Ловкость героя нулевая, а уворот противника гасится на месте: старые
  *  инварианты проверяют удар, блок и очередь, и случайный промах в них —
  *  шум, а не предмет. Уворот проверяется своими тестами, со своим сидом. */
-function duo(kind: 'minion' | 'warrior' | 'mage' = 'minion', agility = 0, seed = 0): BattleState {
+function duo(kind: 'minion' | 'warrior' | 'mage' = 'minion', agility = 0, seed = 0, shield = false): BattleState {
   const c = hexToWorld({ q: 8, r: 8 });
   const e = hexToWorld({ q: 9, r: 8 });
   const state = createBattle(
     N, open(),
-    [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility }],
+    [{ id: -1, x: c.x, z: c.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility, hasShield: shield }],
     [{ id: 0, kind, level: 1, x: e.x, z: e.z, hp: ENEMY_STATS[kind].hp }],
     seed,
   );
@@ -204,6 +205,147 @@ describe('Пошаговый бой', () => {
     assert.equal(actor.guarding, true, 'блок снялся на чужом ходу');
     while (current(state)!.id !== actor.id) advance(state);
     assert.equal(actor.guarding, false, 'блок пережил собственный ход');
+  });
+
+  test('Заслон отталкивает первого ближнего атакующего', () => {
+    const state = duo('minion', 0, 0, true);
+    const hero = current(state)!;
+    const enemy = state.units.find((u) => u.side === 'enemy')!;
+    assert.equal(apply(state, N, open(), { kind: 'guard' }, flat, nameOf), true);
+    advance(state);
+    const before = { ...enemy.hex };
+    const plays: BattlePlay[] = [];
+    assert.equal(apply(state, N, open(), { kind: 'attack', target: hero.id }, flat, nameOf, plays), true);
+    assert.equal(hexDistance(hero.hex, enemy.hex), 2, 'враг не отодвинулся от щита');
+    assert.notDeepEqual(enemy.hex, before);
+    assert.equal(hero.braceReady, false, 'один Заслон оттолкнул дважды');
+    assert.ok(plays.some((p) => p.kind === 'strike' && p.pushedTo !== undefined));
+  });
+
+  test('щитоносец в Заслоне перехватывает первый удар по соседу', () => {
+    const a = hexToWorld({ q: 8, r: 8 });
+    const b = hexToWorld({ q: 8, r: 9 });
+    const e = hexToWorld({ q: 9, r: 9 });
+    const state = createBattle(
+      N, open(),
+      [
+        { id: -1, x: a.x, z: a.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true },
+        { id: -2, x: b.x, z: b.z, hp: 5, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 0, agility: 0 },
+      ],
+      [{ id: 0, kind: 'minion', level: 1, x: e.x, z: e.z, hp: 8 }],
+    );
+    const shield = state.units.find((u) => u.id === -1)!;
+    const ally = state.units.find((u) => u.id === -2)!;
+    shield.guarding = true;
+    shield.braceReady = true;
+    shield.interceptReady = true;
+    while (current(state)!.side !== 'enemy') advance(state);
+    const shieldHp = shield.hp;
+    const allyHp = ally.hp;
+    const enemyHex = { ...state.units.find((u) => u.side === 'enemy')!.hex };
+    const plays: BattlePlay[] = [];
+    assert.equal(apply(state, N, open(), { kind: 'attack', target: ally.id }, flat, nameOf, plays), true);
+    assert.ok(shield.hp < shieldHp, 'щитоносец не принял удар');
+    assert.equal(ally.hp, allyHp, 'урон прошёл в прикрытого');
+    assert.equal(shield.interceptReady, false);
+    assert.deepEqual(
+      state.units.find((u) => u.side === 'enemy')!.hex,
+      enemyHex,
+      'перехват через соседа не должен отбрасывать врага через две клетки',
+    );
+    assert.ok(plays.some((p) => p.kind === 'strike' && p.interceptedFor === ally.id));
+  });
+
+  test('прогноз не меняет бой и показывает цену Блока', () => {
+    const state = duo();
+    const before = JSON.stringify(state);
+    const forecast = forecastRound(state, N, open(), flat);
+    assert.notEqual(forecast, null);
+    assert.equal(forecast!.damage, 4);
+    assert.equal(forecast!.guardedDamage, 2);
+    assert.equal(forecast!.threats.length, 1);
+    assert.equal(JSON.stringify(state), before, 'прогноз сыграл бой вместо копии');
+  });
+
+  test('прогноз Заслона считает перехват соседнего союзника', () => {
+    const allyAt = hexToWorld({ q: 8, r: 9 });
+    const shieldAt = hexToWorld({ q: 8, r: 8 });
+    const enemyAt = hexToWorld({ q: 9, r: 9 });
+    const state = createBattle(
+      N, open(),
+      [
+        { id: -2, x: allyAt.x, z: allyAt.z, hp: 5, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 0, agility: 0 },
+        { id: -1, x: shieldAt.x, z: shieldAt.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true },
+      ],
+      [{ id: 0, kind: 'minion', level: 1, x: enemyAt.x, z: enemyAt.z, hp: 8 }],
+    );
+    state.at = 1; // союзник уже выбрал ход; перед врагом решает щитоносец
+    const forecast = forecastRound(state, N, open(), flat)!;
+    assert.equal(forecast.damage, 0, 'без Заслона враг выбирает слабого союзника');
+    assert.equal(forecast.guardedDamage, 2, 'Заслон переносит половину удара на щит');
+    assert.equal(forecast.guardedThreats[0]?.target, -1);
+  });
+
+  test('воин сначала сжигает поднятый щит, а не добивает слабого соседа', () => {
+    const shieldAt = hexToWorld({ q: 8, r: 8 });
+    const allyAt = hexToWorld({ q: 8, r: 9 });
+    const enemyAt = hexToWorld({ q: 9, r: 8 });
+    const state = createBattle(
+      N, open(),
+      [
+        { id: -1, x: shieldAt.x, z: shieldAt.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true },
+        { id: -2, x: allyAt.x, z: allyAt.z, hp: 1, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 0, agility: 0 },
+      ],
+      [{ id: 0, kind: 'warrior', level: 1, x: enemyAt.x, z: enemyAt.z, hp: 12 }],
+    );
+    const shield = state.units.find((u) => u.id === -1)!;
+    shield.guarding = true;
+    shield.braceReady = true;
+    shield.interceptReady = true;
+    while (current(state)!.side !== 'enemy') advance(state);
+    assert.deepEqual(enemyPlan(state, N, open(), current(state)!, true), { kind: 'attack', target: -1 });
+  });
+
+  test('маг целит прикрытого соседа и вынуждает потратить перехват', () => {
+    const shieldAt = hexToWorld({ q: 8, r: 8 });
+    const allyAt = hexToWorld({ q: 8, r: 9 });
+    const mageAt = hexToWorld({ q: 12, r: 9 });
+    const state = createBattle(
+      N, open(),
+      [
+        { id: -1, x: shieldAt.x, z: shieldAt.z, hp: 1, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true },
+        { id: -2, x: allyAt.x, z: allyAt.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 0, agility: 0 },
+      ],
+      [{ id: 0, kind: 'mage', level: 1, x: mageAt.x, z: mageAt.z, hp: 12 }],
+    );
+    const shield = state.units.find((u) => u.id === -1)!;
+    shield.guarding = true;
+    shield.interceptReady = true;
+    while (current(state)!.side !== 'enemy') advance(state);
+    assert.deepEqual(enemyPlan(state, N, open(), current(state)!, false), { kind: 'attack', target: -2 });
+  });
+
+  test('прогноз называет таран, неподвижную тяжесть и натиск стаи', () => {
+    const heroAt = hexToWorld({ q: 8, r: 8 });
+    const shield = [{ id: -1, x: heroAt.x, z: heroAt.z, hp: 20, speed: 1.67, reach: 1, ranged: false, attack: 4, defense: 3, agility: 0, hasShield: true }];
+    const forecastFor = (enemies: Parameters<typeof createBattle>[3]) =>
+      forecastRound(createBattle(N, open(), shield, enemies), N, open(), flat)!;
+
+    const minotaurAt = hexToWorld({ q: 11, r: 8 });
+    const minotaur = forecastFor([{ id: 0, kind: 'minotaur', level: 1, x: minotaurAt.x, z: minotaurAt.z, hp: 36 }]);
+    assert.equal(minotaur.guardedThreats[0]?.intent, 'charge');
+
+    const golemAt = hexToWorld({ q: 9, r: 8 });
+    const golem = forecastFor([{ id: 0, kind: 'stone-golem', level: 1, x: golemAt.x, z: golemAt.z, hp: 18 }]);
+    assert.equal(golem.guardedThreats[0]?.intent, 'immovable');
+
+    const a = hexToWorld({ q: 9, r: 8 });
+    const b = hexToWorld({ q: 8, r: 10 });
+    const swarm = forecastFor([
+      { id: 0, kind: 'minion', level: 1, x: a.x, z: a.z, hp: 8 },
+      { id: 1, kind: 'minion', level: 1, x: b.x, z: b.z, hp: 8 },
+    ]);
+    assert.equal(swarm.guardedThreats.filter((t) => t.intent === 'swarm').length, 2);
   });
 
   test('бой кончается, когда одна сторона кончилась', () => {

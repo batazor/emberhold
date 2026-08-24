@@ -54,9 +54,9 @@ export interface MockItem {
 }
 
 export const ITEMS: readonly MockItem[] = [
-  { id: 'каска', name: 'Каска', kind: 'голова', effect: 'Ран +1', cost: 'Обзор −1: край поля закрыт',
+  { id: 'каска', name: 'Каска', kind: 'голова', effect: 'HP +1', cost: 'Обзор −1: край поля закрыт',
     picture: 'helmet' },
-  { id: 'куртка', name: 'Стёганая куртка', kind: 'тело', effect: 'Ран +1', cost: 'Шаг дороже на 15%',
+  { id: 'куртка', name: 'Стёганая куртка', kind: 'тело', effect: 'HP +1', cost: 'Шаг дороже на 15%',
     picture: 'quilted-jacket' },
   { id: 'кайло', name: 'Кайло', kind: 'руки', effect: 'Атака +3', cost: 'Тяжёлое: рюкзак −1',
     icon: 'кайло', hand: 'правая' },
@@ -64,7 +64,7 @@ export const ITEMS: readonly MockItem[] = [
     icon: 'топор', hand: 'правая' },
   { id: 'клинок', name: 'Клинок', kind: 'руки', effect: 'Атака +4', cost: 'Тяжёлый: рюкзак −1',
     icon: 'клинок', hand: 'правая' },
-  { id: 'щит', name: 'Щит', kind: 'руки', effect: 'Защита +4', cost: 'Левая рука занята: фонаря не будет',
+  { id: 'щит', name: 'Щит', kind: 'руки', effect: 'Заслон · Защита +4.8', cost: 'Левая рука занята: фонаря не будет',
     icon: 'щит', hand: 'левая' },
   { id: 'сапоги', name: 'Сапоги', kind: 'ноги', effect: 'Шаг дешевле на 10%', cost: 'Шумные: угроза быстрее',
     picture: 'boots' },
