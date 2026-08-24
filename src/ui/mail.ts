@@ -19,6 +19,8 @@
  * (`style.css`, раздел настроек).
  */
 
+import { gameMessage, setGameAttribute, setGameText } from '../i18n/game';
+
 /**
  * Конверт: рамка и клапан. Прямые грани, без скруглений и полутонов — то же
  * правило, по которому нарисована шестерня рядом, и то же плоское затенение,
@@ -42,7 +44,7 @@ export class MailButton {
     this.button = document.createElement('button');
     this.button.id = 'mail-open';
     this.button.type = 'button';
-    this.button.setAttribute('aria-label', 'Почта');
+    setGameAttribute(this.button, 'aria-label', gameMessage('Почта', 'Mail'));
     this.button.innerHTML = MAIL;
     // Значка нет до второго жильца: угол экрана — дорогое место, и держать
     // там кнопку, которая не про сегодняшнюю игру, значит занять его зря.
@@ -53,10 +55,13 @@ export class MailButton {
     this.overlay.id = 'mail';
     this.overlay.innerHTML = `
       <div class="panel">
-        <h2>Почта</h2>
-        <p class="dim">Писем нет.</p>
-        <div class="acts"><button class="ghost" data-close>Закрыть</button></div>
+        <h2 id="mail-title"></h2>
+        <p class="dim" id="mail-empty"></p>
+        <div class="acts"><button class="ghost" data-close></button></div>
       </div>`;
+    setGameText(this.overlay.querySelector('#mail-title')!, gameMessage('Почта', 'Mail'));
+    setGameText(this.overlay.querySelector('#mail-empty')!, gameMessage('Писем пока нет', 'No messages yet'));
+    setGameText(this.overlay.querySelector('[data-close]')!, gameMessage('Закрыть', 'Close'));
     parent.appendChild(this.overlay);
 
     this.button.addEventListener('click', () => this.open());

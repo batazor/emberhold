@@ -5,6 +5,7 @@ import { FluffyGrass } from './fluffyGrass';
 import wheelSceneUrl from '../../assets/codepen-carnival-wheel/assets/carnival.glb?url';
 import bakedUrl from '../../assets/codepen-carnival-wheel/assets/baked.jpg?url';
 import wheelSkinUrl from '../../assets/codepen-carnival-wheel/assets/wheel.jpg?url';
+import { gameMessage, setGameText } from '../i18n/game';
 
 /**
  * Колесо призов — локация карты (§4, вид узла «призы»). Одна прокрутка
@@ -118,14 +119,14 @@ export class WheelView {
     this.controls.maxAzimuthAngle = azimuth + wiggle;
 
     this.hint = document.createElement('div');
-    this.hint.textContent = 'Потяните рычаг вниз';
+    setGameText(this.hint, gameMessage('Потяните рычаг вниз', 'Pull the lever down'));
     this.hint.style.cssText =
       'position:absolute;left:50%;bottom:9vh;transform:translateX(-50%);' +
       'color:#e8e2d4;text-shadow:0 1px 3px rgba(0,0,0,0.6);pointer-events:none;';
 
     const leave = document.createElement('button');
     leave.className = 'act';
-    leave.textContent = 'Уйти';
+    setGameText(leave, gameMessage('Уйти', 'Leave'));
     leave.style.cssText = 'position:absolute;top:12px;left:12px;';
     leave.addEventListener('click', () => {
       if (!this.done) this.cb.onLeave();
@@ -308,7 +309,9 @@ export class WheelView {
       this.panelAction.play();
     }
     const claim = this.claimRow.firstElementChild as HTMLButtonElement;
-    claim.textContent = `Забрать ${this.answer} кр.`;
+    setGameText(claim, gameMessage('Забрать · кристаллы: {count}', 'Claim · crystals: {count}'), {
+      count: this.answer,
+    });
     this.claimRow.style.display = 'block';
   }
 

@@ -4,6 +4,7 @@ import type { EventId } from '../sim/events';
 import type { GearSlot, Offhand } from '../sim/gear';
 import type { HeroClassId, SkillId } from '../sim/heroes';
 import type { ResourceKind } from '../sim/resources';
+import type { ResidentJob, ResidentOrder, ResidentScheduleId } from '../sim/residents';
 import type { Tier } from '../sim/types';
 import type { EnemyKind } from '../sim/types';
 import { gameMessage } from './game';
@@ -80,6 +81,25 @@ export const heroClassMessage: Record<HeroClassId, GameMessage> = {
   archer: gameMessage('Лучник', 'Archer'),
   knight: gameMessage('Рыцарь', 'Knight'),
   rogue: gameMessage('Бандит', 'Rogue'),
+};
+
+export const residentOrderMessage: Record<ResidentOrder, GameMessage> = {
+  строим: gameMessage('Носить дерево', 'Gather wood'),
+  ходим: gameMessage('Носить камень', 'Gather stone'),
+  кормим: gameMessage('Добывать пищу', 'Send for food'),
+  отдых: gameMessage('Отдыхать', 'Rest'),
+};
+
+export const residentJobMessage: Record<ResidentJob, GameMessage> = {
+  строим: gameMessage('носит дерево', 'gathering wood'),
+  ходим: gameMessage('носит камень', 'gathering stone'),
+  кормим: gameMessage('добывает пищу', 'gathering food'),
+};
+
+export const residentScheduleMessage: Record<ResidentScheduleId, GameMessage> = {
+  ранняя: gameMessage('Ранняя смена', 'Early shift'),
+  дневная: gameMessage('Дневная смена', 'Day shift'),
+  поздняя: gameMessage('Поздняя смена', 'Late shift'),
 };
 
 export const enemyMessage: Record<EnemyKind, GameMessage> = {

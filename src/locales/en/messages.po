@@ -184,6 +184,16 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+#~ msgid "Забрать кристаллы · {count}"
+#~ msgstr "Claim crystals · {count}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Сон и еда занимают своё время. Постоянная работа идёт только в рабочие часы. Охота — отдельное поручение на {time}; если отозвать жителя раньше, добычи не будет."
+#~ msgstr "Sleep and meals take their own time. Regular jobs run only during work hours. A hunt lasts {time}; recalling a resident early forfeits the reward."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "—"
 msgstr "—"
 
@@ -3253,6 +3263,16 @@ msgstr "{name} · in personal camp"
 #: locales/game-messages.ts
 msgid "game.clan.build.workerAssigned"
 msgstr "{name} · building"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{name} · ур. {level}"
+msgstr "{name} · lvl {level}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{name} · ур. {level} · ведёт"
+msgstr "{name} · lvl {level} · leads party"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -8460,9 +8480,10 @@ msgid "без ковки"
 msgstr "unforged"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "без крыши"
-msgstr "roofless"
+msgstr "without shelter"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -9225,9 +9246,10 @@ msgid "В бюджет входит не клип, а"
 msgstr "The budget does not include a clip, but"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "в вылазке"
-msgstr "raiding"
+msgstr "on a raid"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -9353,6 +9375,11 @@ msgstr "In the camp, the road is a construction card and is smeared like a wall 
 #: locales/legacy-messages.ts
 msgid "В лагере кончилась пища: ZXQPH0QXZ"
 msgstr "The camp ran out of food: {value0}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "В лагере пока нет поселенцев"
+msgstr "No residents have joined the camp yet"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -11533,6 +11560,7 @@ msgid "Гостю негде спать — нужна палатка"
 msgstr "The guest has no place to sleep – they need a tent."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "готов"
 msgstr "ready"
@@ -12376,6 +12404,7 @@ msgid "дневная"
 msgstr "daytime"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дневная смена"
 msgstr "Day shift"
@@ -12498,9 +12527,10 @@ msgid "Добудьте {goal} ед. пищи"
 msgstr "Gather {goal} food"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "добывает пищу"
-msgstr "feed"
+msgstr "gathering food"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13193,9 +13223,10 @@ msgid "Если условие нарушается, карта учит жда�
 msgstr "If the condition is violated, the card teaches you to wait instead of teach you to choose, and the player spends the wait outside the game. The condition is considered to be the same function, without launching the client."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "ест"
-msgstr "eat"
+msgstr "eating"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13525,6 +13556,7 @@ msgid "Жители и герой"
 msgstr "Residents and hero"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Жители и задания"
 msgstr "Residents and assignments"
@@ -13589,6 +13621,11 @@ msgstr "There is nothing to collect: the reward has already been given on return
 #: locales/legacy-messages.ts
 msgid "Забрать"
 msgstr "Claim"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Забрать · кристаллы: {count}"
+msgstr "Claim · crystals: {count}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17866,9 +17903,10 @@ msgid "Лечение ран внутри вылазки по желанию"
 msgstr "Treatment of wounds inside the foray at will"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "лечится"
-msgstr "cure"
+msgstr "recovering"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17879,6 +17917,11 @@ msgstr "Healing."
 #: locales/legacy-messages.ts
 msgid "лечится — 4:10"
 msgstr "Healing - 4:10"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "лечится · {time}"
+msgstr "recovering · {time}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -18890,9 +18933,15 @@ msgid "На обучающем ярусе полный обход"
 msgstr "On the training tier full bypass"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "на охоте"
 msgstr "hunting"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "на охоте · {time}"
+msgstr "hunting · {time}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20410,24 +20459,28 @@ msgid "Носильщик"
 msgstr "Porter"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "носит дерево"
-msgstr "tree"
+msgstr "gathering wood"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "носит камень"
-msgstr "stone"
+msgstr "gathering stone"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Носить дерево"
-msgstr "Wearing a tree"
+msgstr "Gather wood"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Носить камень"
-msgstr "Wearing a stone"
+msgstr "Gather stone"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20534,9 +20587,10 @@ msgid "нутро"
 msgstr "gut"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "О персонаже"
-msgstr "About the character"
+msgstr "View character"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21536,19 +21590,22 @@ msgid "Отдых · провиант растёт"
 msgstr "Rest · Supplies grow"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "отдыхает"
-msgstr "rest"
+msgstr "resting"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "отдыхает по приказу"
-msgstr "rest"
+msgstr "resting by order"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Отдыхать"
-msgstr "rest"
+msgstr "Rest"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21750,6 +21807,11 @@ msgid "Отнесите к палатке три бруска"
 msgstr "Take three bars to the tent."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Отозвать · без добычи"
+msgstr "Recall · no reward"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Отозвать · без награды"
 msgstr "Withdraw - no reward"
@@ -21773,6 +21835,11 @@ msgstr "Send · {value0}"
 #: locales/legacy-messages.ts
 msgid "Отправить Вейна"
 msgstr "Send Wayne."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Отправить на охоту · {time}"
+msgstr "Send on a hunt · {time}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21897,9 +21964,19 @@ msgid "охота"
 msgstr "hunting"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Охота откроется после {needed} лис · {count}/{needed}"
+msgstr "Hunting unlocks after {needed} foxes · {count}/{needed}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Охота откроется после ZXQPH0QXZ лис · ZXQPH1QXZ/ZXQPH2QXZ"
 msgstr "Hunt will open after {value0} fox · {value1}/{value2}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Охота открыта · поймано лис: {count}"
+msgstr "Hunting unlocked · foxes caught: {count}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -22627,6 +22704,11 @@ msgstr "No letters."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Писем пока нет"
+msgstr "No messages yet"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.auth.sending"
 msgstr "Preparing the email…"
 
@@ -23273,9 +23355,10 @@ msgid "поздняя"
 msgstr "late"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Поздняя смена"
-msgstr "Late shift."
+msgstr "Late shift"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23928,6 +24011,11 @@ msgid "Потрачено ZXQPH0QXZ монет"
 msgstr "Spend {value0} coins"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Потяните рычаг вниз"
+msgstr "Pull the lever down"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "походов"
 msgstr "camping"
@@ -24073,9 +24161,10 @@ msgid "game.auth.email"
 msgstr "Email"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Почта"
-msgstr "Email"
+msgstr "Mail"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25609,6 +25698,11 @@ msgid "Ран сверх базовых"
 msgstr "Runs beyond base"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ран: {count}"
+msgstr "Wounds: {count}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "ранен"
 msgstr "Wounded"
@@ -25654,6 +25748,7 @@ msgid "ранняя"
 msgstr "early"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Ранняя смена"
 msgstr "Early shift"
@@ -25729,6 +25824,7 @@ msgid "Распадок"
 msgstr "Hollow"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Расписание"
 msgstr "Schedule"
@@ -26811,9 +26907,10 @@ msgid "свободное"
 msgstr "loose"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "свободное время"
-msgstr "spare time"
+msgstr "off duty"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -27937,9 +28034,15 @@ msgid "game.clan.build.startFirst"
 msgstr "Start construction first"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Сначала нужна крыша"
-msgstr "We need a roof first."
+msgstr "Shelter is required first"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сначала поймайте {count} лис"
+msgstr "Catch {count} foxes first"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -28261,6 +28364,11 @@ msgid "сон"
 msgstr "sleep"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сон {sleep} · еда {meals} · работа {work}"
+msgstr "Sleep {sleep} · meals {meals} · work {work}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Сон ZXQPH0QXZ · еда ZXQPH1QXZ · работа ZXQPH2QXZ"
 msgstr "Sleep {value0} · Food {value1} · Work {value2}"
@@ -28269,6 +28377,11 @@ msgstr "Sleep {value0} · Food {value1} · Work {value2}"
 #: locales/legacy-messages.ts
 msgid "Сон и еда занимают своё время. Постоянная работа выполняется только в рабочие окна. Охота — отдельное поручение на ZXQPH0QXZ; отзыв возвращает человека без добычи."
 msgstr "Sleep and food take up their time. Constant work is done only in working windows. Hunting is a separate errand on {value0}; the recall returns a man without prey."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сон и еда идут по расписанию. Жители работают только в отведённые часы. Охота — отдельное поручение на {time}; если отозвать жителя раньше, добычи не будет."
+msgstr "Sleep and meals follow the schedule. Residents work only during their assigned hours. Hunting is a separate {time} assignment; recalling a resident early forfeits the reward."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -28415,9 +28528,10 @@ msgid "Список принятого пуст"
 msgstr "List of accepted blank"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "спит"
-msgstr "sleep"
+msgstr "sleeping"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -30438,14 +30552,20 @@ msgid "Тренировочный слот занят"
 msgstr "The training slot is occupied"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "тренируется"
-msgstr "train"
+msgstr "training"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Тренируется"
 msgstr "Training."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "тренируется · {time}"
+msgstr "training · {time}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

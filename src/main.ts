@@ -2645,6 +2645,9 @@ addEventListener('emberhold-language-changed', () => {
   const api = window.EmberholdLanguage;
   if (api !== undefined) void cloudSetLanguage(api.current);
   syncFarmUi();
+  residentManager?.sync(camp, clock.now(), true);
+  if (residentCard.visible) residentCard.sync(camp, shownResident);
+  heroCard.sync(roster, shownHero, clock.now());
 });
 const authCard = new AuthCard(app);
 // Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
