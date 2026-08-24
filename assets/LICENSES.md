@@ -27,6 +27,8 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kaykit-weapons/weapons_bits_texture.png` — атлас набора | там же | CC0 1.0 | Kay Lousberg |
 | `kenney-castle-kit/glb/*.glb` — 76 моделей: стены, углы, башни, ворота, мосты, лестницы, знамёна, осадные машины | [kenney.nl/assets/castle-kit](https://kenney.nl/assets/castle-kit), версия 2.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-castle-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
+| `kenney-cave-kit/glb/*.glb` — 40 моделей: узкие и широкие коридоры, тупики, углы, развилки, перекрёстки, залы, ворота и лестницы | [kenney.nl/assets/modular-cave-kit](https://kenney.nl/assets/modular-cave-kit), версия 1.0 | CC0 1.0 | Kenney Vleugels |
+| `kenney-cave-kit/colormap.png`, `variation-a.png`, `variation-b.png` — основной атлас и два цветовых варианта набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-graveyard-kit/glb/*.glb` — 91 модель: ограды, склепы, могилы, надгробия, хвоя, пеньки, тыквы, утварь, пятеро существ | [kenney.nl/assets/graveyard-kit](https://kenney.nl/assets/graveyard-kit), версия 5.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-graveyard-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-cartography/png/*.png` — 7 retina-рисунков глобальной карты: шахта, замок, череп, кладбище, тропа, компас и палатка | [kenney.nl/assets/cartography-pack](https://kenney.nl/assets/cartography-pack), версия 1.0 | CC0 1.0 | Kenney Vleugels |
@@ -54,6 +56,7 @@ NC-лицензии несовместимы с любой монетизаци�
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
 `kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
 `kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`,
+`kenney-cave-kit/License.txt`,
 `kenney-graveyard-kit/License.txt`, `kenney-cartography/License.txt`,
 `quaternius-ual/License.txt` и
 `kaykit-tools/License.txt` — файлы лицензий как они пришли
@@ -119,18 +122,20 @@ Kay Lousberg (KayKit), CC0» уходит на тот же экран «О иг�
 не едут: проигрывателя у игры нет (§6.1.3). Атлас, как и у первых двух
 наборов, остаётся в `assets/` и в сборку не попадает.
 
-## Подземелье и анимации лежат, но не едут
+## Подземелье собирается из двух наборов
 
-Набор анимаций к тому же лежит не целиком: у него две оснастки, а крупных
-персонажей в игре нет ни одного, и 28 клипов `Rig_Large_*` удалены — 4,1 МБ
-дорожек, которые не на кого надеть. Манекен `Mannequin_Large` оставлен: по нему
-`charart.html` показывает, чем крупная оснастка отличается от средней.
+Из `kaykit-dungeon/` в игру запечены 27 деталей: сундуки и ключи, одиннадцать
+полов, восемь стен, две колонны и три лестницы. Они собирают архитектуру
+верхних ярусов точно по границе `blocked`.
 
-`kaykit-dungeon/` и `kaykit-animations/` измерены целиком, и в бандле от них
-нет ни байта: список принятых моделей пуст, `.data.ts` под них не пишется,
-а клипы игра пока не проигрывает вовсе. Реестру это всё равно —
-файлы в репозитории есть, значит запись обязана быть, — но при чтении
-«чужие ассеты в игре» эти наборы считать не нужно: в игру они не попали (§6.1.2).
+`kenney-cave-kit/` скачан официальным архивом версии 1.0. В репозитории
+оставлены все 40 GLB-моделей и три атласа; FBX, OBJ, витринные картинки и
+ярлыки отброшены как копии и промо. В бандл едут пятнадцать моделей: пять
+локальных форм прохода, залы 3×3, 5×3 и 5×5, узкая лестница, каменная рама,
+две закрытые створки ворот и две формы заполняющей породы — 25 654
+треугольника, 655,6 КБ base64 до gzip и 232 КБ gzip. Генератор хранит
+footprint каждого обычного зала, а секретный 3×3-карман оставляет
+непроходимым за закрытыми воротами до будущей механики ключей и отмычек.
 
 ## Из ресурсов едут три
 
