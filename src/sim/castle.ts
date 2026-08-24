@@ -294,6 +294,7 @@ export function buildTower(
   entranceTurn?: number,
 ): Piece[] {
   const floors = Math.max(1, Math.min(TOWER_MAX, Math.round(level)));
+  const bodyTurn = entranceTurn ?? randInt(rng, 4);
   const out: Piece[] = [
     {
       model: entrance ? TOWER.keepBase : TOWER.base,
@@ -305,12 +306,18 @@ export function buildTower(
     },
   ];
   for (let i = 1; i < floors; i++) {
+    // Ярусы читаются снизу вверх, а не бросаются независимо: у донжона
+    // сначала окна, затем глухая опора крыши; у боевой башни верхний ярус
+    // — открытая галерея, а нижние остаются защищёнными.
+    const model = roof
+      ? (i === 1 ? 'tower-square-mid-windows' : 'tower-square-mid')
+      : (i === floors - 1 ? 'tower-square-mid-open' : 'tower-square-mid-windows');
     out.push({
-      model: TOWER.body[randInt(rng, TOWER.body.length)]!,
+      model,
       x: spot.x,
       z: spot.z,
       y: FLOOR * i,
-      turn: randInt(rng, 4),
+      turn: bodyTurn,
       role: 'башня',
     });
   }
@@ -343,7 +350,9 @@ export function buildHexTower(spot: Spot, rng: Rng = mulberry32(1), raised = fal
   out.push({ model: HEX_TOWER.tops[topAt]!, x: spot.x, z: spot.z, y, turn: 0, role: 'башня' });
   y += HEX_TOWER.topHeight[topAt]!;
   out.push({
-    model: HEX_TOWER.roofs[randInt(rng, HEX_TOWER.roofs.length)]!,
+    // Деревянная шапка получает вторичную крышу, каменная — основную:
+    // независимо выбранные пары выглядели двумя наборами, склеенными рядом.
+    model: HEX_TOWER.roofs[topAt]!,
     x: spot.x,
     z: spot.z,
     y,
@@ -748,6 +757,140 @@ export function buildWall(
   return { pieces, joints };
 }
 
+/* ---------- осмысленное кольцо замка ---------- */
+
+interface StraightRun {
+  readonly spots: readonly Spot[];
+}
+
+/** Форма каждой клетки кольца — независимо от выбранной модели. */
+function ringJoints(ring: readonly Spot[]): Map<string, Joint> {
+  const set = new Set(ring.map(keyOf));
+  return new Map(ring.map((spot) => {
+    const dirs = DIRS.map((d, i) => set.has(`${spot.x + d[0]}:${spot.z + d[1]}`) ? i : -1)
+      .filter((i) => i >= 0);
+    return [keyOf(spot), jointOf(dirs)];
+  }));
+}
+
+/** Последовательные прямые фасады кольца; первый и последний тоже соседи. */
+function straightRuns(ring: readonly Spot[], joints: ReadonlyMap<string, Joint>): StraightRun[] {
+  if (ring.length === 0) return [];
+  const breakAt = ring.findIndex((spot) => joints.get(keyOf(spot)) !== 'прямая');
+  if (breakAt < 0) return [{ spots: [...ring] }];
+  const out: StraightRun[] = [];
+  let current: Spot[] = [];
+  for (let step = 1; step <= ring.length; step++) {
+    const spot = ring[(breakAt + step) % ring.length]!;
+    if (joints.get(keyOf(spot)) === 'прямая') {
+      current.push(spot);
+    } else if (current.length > 0) {
+      out.push({ spots: current });
+      current = [];
+    }
+  }
+  if (current.length > 0) out.push({ spots: current });
+  return out;
+}
+
+/** Наружная сторона клетки стены: там нет ни двора, ни другой стены. */
+function outsideOf(spot: Spot, ring: ReadonlySet<string>, yard: ReadonlySet<string>): number {
+  return DIRS.findIndex(([dx, dz]) =>
+    !ring.has(`${spot.x + dx}:${spot.z + dz}`) && !yard.has(`${spot.x + dx}:${spot.z + dz}`));
+}
+
+/**
+ * Ворота стоят в середине самого длинного фасада. Сид меняет предпочитаемую
+ * сторону только при близких по длине вариантах: короткая задняя стенка не
+ * выигрывает у парадного пролёта одной случайностью.
+ */
+function chooseGate(seed: number, ring: readonly Spot[], yard: readonly Spot[], joints: ReadonlyMap<string, Joint>): Spot {
+  const ringSet = new Set(ring.map(keyOf));
+  const yardSet = new Set(yard.map(keyOf));
+  const preferred = seed >>> 3 & 3;
+  let best: { spot: Spot; score: number } | null = null;
+  for (const run of straightRuns(ring, joints)) {
+    if (run.spots.length < 3) continue;
+    const middles = run.spots.length % 2 === 0
+      ? [run.spots[run.spots.length / 2 - 1]!, run.spots[run.spots.length / 2]!]
+      : [run.spots[(run.spots.length / 2) | 0]!];
+    for (const spot of middles) {
+      const outside = outsideOf(spot, ringSet, yardSet);
+      if (outside < 0) continue;
+      const tie = ((spot.x * 17 + spot.z * 31 + seed) >>> 0) % 7;
+      const score = run.spots.length * 100 + (outside === preferred ? 12 : 0) + tie;
+      if (best === null || score > best.score) best = { spot, score };
+    }
+  }
+  return best?.spot ?? ring.find((spot) => joints.get(keyOf(spot)) === 'прямая') ?? ring[0]!;
+}
+
+/**
+ * Кольцо крепости использует тот же обмер стыков, что `buildWall`, но выбирает
+ * варианты по роли. Контрфорсы держат ритм длинного фасада и обрамляют ворота,
+ * внешние углы получают башни, вогнутые углы — одну согласованную семью.
+ */
+function buildCastleRing(
+  seed: number,
+  ring: readonly Spot[],
+  yard: readonly Spot[],
+  gate: Spot,
+  towerStyle: TowerStyle,
+  joints: ReadonlyMap<string, Joint>,
+): { built: Built; towers: Spot[] } {
+  const ringSet = new Set(ring.map(keyOf));
+  const yardSet = new Set(yard.map(keyOf));
+  const runs = straightRuns(ring, joints);
+  const runAt = new Map<string, { at: number; length: number }>();
+  for (const run of runs) run.spots.forEach((spot, at) => runAt.set(keyOf(spot), { at, length: run.spots.length }));
+  const gateAt = ring.findIndex((spot) => keyOf(spot) === keyOf(gate));
+  const ringAt = new Map(ring.map((spot, at) => [keyOf(spot), at]));
+  const gateFrames = new Set([
+    keyOf(ring[(gateAt + ring.length - 1) % ring.length]!),
+    keyOf(ring[(gateAt + 1) % ring.length]!),
+  ]);
+  const outerCorners = ring.filter((spot) => {
+    if (joints.get(keyOf(spot)) !== 'угол') return false;
+    return DIRS.every(([dx, dz]) => !yardSet.has(`${spot.x + dx}:${spot.z + dz}`));
+  });
+  const towerKeys = new Set(outerCorners.map(keyOf));
+  const theme = seed % 3;
+  const pieces: Piece[] = [];
+  const records: Built['joints'][number][] = [];
+
+  for (const spot of ring) {
+    const dirs = DIRS.map((d, i) => ringSet.has(`${spot.x + d[0]}:${spot.z + d[1]}`) ? i : -1)
+      .filter((i) => i >= 0);
+    const joint = joints.get(keyOf(spot))!;
+    if (towerKeys.has(keyOf(spot))) {
+      records.push({ spot, joint, model: towerStyle === 'шестигранные' ? HEX_TOWER.base : TOWER.base, tower: 1 });
+      continue;
+    }
+
+    let choice: Part | undefined;
+    if (joint === 'угол') {
+      const model = ['wall-corner', 'wall-corner-slant', 'wall-corner-half'][theme]!;
+      choice = PARTS['угол'].find((p) => p.model === model);
+    } else if (joint === 'прямая') {
+      const run = runAt.get(keyOf(spot));
+      const position = ringAt.get(keyOf(spot)) ?? 0;
+      const toGate = Math.min(Math.abs(position - gateAt), ring.length - Math.abs(position - gateAt));
+      const buttress = gateFrames.has(keyOf(spot))
+        || (toGate > 2 && run !== undefined && run.length >= 5
+          && run.at > 0 && run.at < run.length - 1 && run.at % 3 === 2);
+      choice = PARTS['прямая'].find((p) => p.model === (buttress ? 'wall-pillar' : 'wall'));
+    } else {
+      choice = PARTS[joint][0];
+    }
+    if (choice === undefined) continue;
+    const turn = fitTurn(choice.open, dirs);
+    if (turn < 0) continue;
+    pieces.push({ model: choice.model, x: spot.x, z: spot.z, y: 0, turn, role: joint === 'угол' ? 'угол' : 'стена' });
+    records.push({ spot, joint, model: choice.model });
+  }
+  return { built: { pieces, joints: records }, towers: outerCorners };
+}
+
 /* ---------- сборка ---------- */
 
 /**
@@ -764,37 +907,35 @@ export function generateCastle(seed: number): Castle {
   const width = 6 + randInt(rng, 4);
   const depth = 6 + randInt(rng, 4);
   const { wall, ring, yard } = plan(rng, width, depth);
+  const joints = ringJoints(ring);
+  const gate = chooseGate(seed, ring, yard, joints);
 
-  // Кольцо собирается тем же конструктором, каким будет строить игрок:
-  // генератор отвечает за план, а как план превращается в детали — правило
-  // одно, и второй его копии нет.
-  const built = buildWall(ring, rng);
+  // Стыки остаются общими с пользовательской стройкой, но готовая крепость
+  // получает архитектурную грамматику: ритм опор, усиленные внешние углы
+  // и парадный пролёт вместо независимого броска на каждой клетке.
+  const smart = buildCastleRing(seed, ring, yard, gate, towerStyle, joints);
+  const built = smart.built;
   const pieces: Piece[] = [...built.pieces];
   const kind = new Map(built.joints.map((j) => [at(width, j.spot.x, j.spot.z), j.joint]));
-  const corners = built.joints.filter((j) => j.joint === 'угол').map((j) => j.spot);
-  const towers: Spot[] = towerStyle === 'шестигранные'
-    ? corners
-    : built.joints.filter((j) => j.model === 'wall-corner-half-tower').map((j) => j.spot);
+  const towers: Spot[] = smart.towers;
 
+  const raised = [...towers]
+    .sort((a, b) => Math.abs(a.x - gate.x) + Math.abs(a.z - gate.z)
+      - Math.abs(b.x - gate.x) - Math.abs(b.z - gate.z))
+    .slice(0, 2);
+  const raisedKeys = new Set(raised.map(keyOf));
   if (towerStyle === 'шестигранные') {
-    const towerKeys = new Set(towers.map(keyOf));
-    for (let i = pieces.length - 1; i >= 0; i--) {
-      const piece = pieces[i]!;
-      if (piece.y === 0 && towerKeys.has(keyOf(piece))) pieces.splice(i, 1);
-    }
-    towers.forEach((spot, i) => pieces.push(...buildHexTower(spot, styleRng, (i + seed) % 3 === 0)));
+    towers.forEach((spot) => pieces.push(...buildHexTower(spot, styleRng, raisedKeys.has(keyOf(spot)))));
+  } else {
+    // Две башни ближайшего к воротам фронта выше: вход получает силуэт,
+    // остальные углы остаются вровень со стеной и не превращают двор в лес.
+    towers.forEach((spot) => pieces.push(...buildTower(spot, raisedKeys.has(keyOf(spot)) ? 2 : 1, styleRng)));
   }
 
   /* ---------- ворота ---------- */
 
   // Ворота встают только там, где стена прямая и соседи её тоже прямые:
   // арка в углу упёрлась бы в поворот хода.
-  const open = ring.filter((s, i) => {
-    const prev = ring[(i + ring.length - 1) % ring.length]!;
-    const next = ring[(i + 1) % ring.length]!;
-    return [s, prev, next].every((c) => kind.get(at(width, c.x, c.z)) === 'прямая');
-  });
-  const gate = open.length > 0 ? open[randInt(rng, open.length)]! : ring[0]!;
   const gateDirs = ringNeighbors(width, depth, wall, gate.x, gate.z);
   // Створка перекрывает проезд, а он идёт поперёк стены: если стена тянется
   // вдоль z, ехать через неё можно только вдоль x.
@@ -803,8 +944,13 @@ export function generateCastle(seed: number): Castle {
     if (pieces[i]!.x === gate.x && pieces[i]!.z === gate.z) pieces.splice(i, 1);
   }
   pieces.push({ model: 'tower-square-arch', x: gate.x, z: gate.z, y: 0, turn: 0, role: 'ворота' });
+  const gateLeaf = towerStyle === 'шестигранные'
+    ? 'metal-gate'
+    : Math.min(width, depth) <= 6 ? 'door' : 'gate';
   pieces.push({
-    model: GATE_LEAVES[randInt(rng, GATE_LEAVES.length)]!,
+    // Створка продолжает язык всей крепости: металл у гексагонального
+    // военного стиля, малая дверь у компактного, широкие ворота у большого.
+    model: gateLeaf,
     x: gate.x,
     z: gate.z,
     y: 0,
@@ -823,7 +969,7 @@ export function generateCastle(seed: number): Castle {
   const bridgeTurn = fitTurn([true, false, false, false], [outward]);
   pieces.push({ model: 'bridge-draw', x: gate.x, z: gate.z, y: 0, turn: bridgeTurn, role: 'мост' });
   const bridgeSpot = { x: gate.x + DIRS[outward]![0], z: gate.z + DIRS[outward]![1] };
-  const fixedBridge = FIXED_BRIDGES[randInt(rng, FIXED_BRIDGES.length)]!;
+  const fixedBridge = gateLeaf === 'metal-gate' ? 'bridge-straight-pillar' : 'bridge-straight';
   pieces.push({
     model: fixedBridge,
     x: bridgeSpot.x,
@@ -949,12 +1095,30 @@ export function generateCastle(seed: number): Castle {
       if (free.has(keyOf(next))) lines.push({ spots: [spot, next], dir });
     }
   }
-  for (const line of shuffled(rng, lines)) {
+  // Вторая линия обороны ставится поперёк оси «ворота → донжон» и ближе
+  // к её середине. Так это барьер перед башней, а не случайный забор во дворе.
+  const axisX = keep !== null && gateInside !== null
+    ? Math.abs(keep.x - gateInside.x) >= Math.abs(keep.z - gateInside.z)
+    : true;
+  const wantedDir = axisX ? 3 : 1;
+  const target = keep !== null && gateInside !== null
+    ? { x: (keep.x + gateInside.x) / 2, z: (keep.z + gateInside.z) / 2 }
+    : { x: (width - 1) / 2, z: (depth - 1) / 2 };
+  const orderedLines = [...lines].sort((a, b) => {
+    const score = (line: typeof lines[number]): number => {
+      const x = (line.spots[0].x + line.spots[1].x) / 2;
+      const z = (line.spots[0].z + line.spots[1].z) / 2;
+      return (line.dir === wantedDir ? 0 : 100) + Math.abs(x - target.x) + Math.abs(z - target.z);
+    };
+    return score(a) - score(b) || keyOf(a.spots[0]).localeCompare(keyOf(b.spots[0]));
+  });
+  for (const line of orderedLines) {
     if (!yardPassable(width, yard, [...taken, ...line.spots])) continue;
-    const family = randInt(rng, 2) === 0 ? INNER_WALLS.stone : INNER_WALLS.wood;
+    const family = towerStyle === 'квадратные' ? INNER_WALLS.stone : INNER_WALLS.wood;
     const turn = line.dir === 1 ? 1 : 0;
+    const offset = (seed + line.spots[0].x * 3 + line.spots[0].z * 5) % family.length;
     line.spots.forEach((spot, i) => pieces.push({
-      model: family[(i + randInt(rng, family.length)) % family.length]!,
+      model: family[(i + offset) % family.length]!,
       x: spot.x,
       z: spot.z,
       y: 0,
@@ -974,21 +1138,38 @@ export function generateCastle(seed: number): Castle {
         p.x === spot.x && p.z === spot.z && (HEX_TOWER.roofs as readonly string[]).includes(p.model));
       const roofAt = roof === undefined ? -1 : (HEX_TOWER.roofs as readonly string[]).indexOf(roof.model);
       if (roof !== undefined && roofAt >= 0) y = roof.y + HEX_TOWER.roofHeight[roofAt]!;
+    } else {
+      const cap = pieces.find((p) => p.x === spot.x && p.z === spot.z && p.model === TOWER.cap);
+      if (cap !== undefined) y = cap.y + CAP;
     }
     pieces.push({ model: 'flag-pennant', x: spot.x, z: spot.z, y, turn: 0, role: 'знамя' });
   }
 
   // Настенные баннеры стоят на внешней плоскости прямых участков. Полклетки
   // выводит их из камня на грань стены; дробная координата здесь намеренна.
-  const bannerSpots = shuffled(rng, ring.filter((s) =>
-    kind.get(at(width, s.x, s.z)) === 'прямая' && !(s.x === gate.x && s.z === gate.z)));
-  const bannerTarget = Math.min(bannerSpots.length, 1 + randInt(rng, 3));
+  const gateAt = ring.findIndex((spot) => keyOf(spot) === keyOf(gate));
+  const bannerSpots: Spot[] = [];
+  // Пара на одинаковом расстоянии от ворот образует фасад. Если пролёт
+  // короткий, список ниже добирает ближайшие прямые клетки по кольцу.
+  for (const offset of [-2, 2]) {
+    const spot = ring[(gateAt + ring.length + offset) % ring.length]!;
+    if (kind.get(at(width, spot.x, spot.z)) === 'прямая') bannerSpots.push(spot);
+  }
+  for (let distance = 1; distance < ring.length && bannerSpots.length < 2; distance++) {
+    for (const direction of [-1, 1]) {
+      const spot = ring[(gateAt + ring.length + distance * direction) % ring.length]!;
+      if (kind.get(at(width, spot.x, spot.z)) !== 'прямая') continue;
+      if (bannerSpots.some((old) => keyOf(old) === keyOf(spot))) continue;
+      bannerSpots.push(spot);
+      if (bannerSpots.length === 2) break;
+    }
+  }
   const banners: Spot[] = [];
   for (const spot of bannerSpots) {
-    if (banners.some((other) => Math.abs(other.x - spot.x) + Math.abs(other.z - spot.z) < 2)) continue;
     banners.push(spot);
-    if (banners.length === bannerTarget) break;
+    if (banners.length === 2) break;
   }
+  const bannerModel = WALL_BANNERS[(seed >>> 5) % WALL_BANNERS.length]!;
   for (const spot of banners) {
     const outside = DIRS.findIndex((dir) => {
       const x = spot.x + dir[0];
@@ -996,7 +1177,7 @@ export function generateCastle(seed: number): Castle {
       return !yard.some((s) => s.x === x && s.z === z) && !ring.some((s) => s.x === x && s.z === z);
     });
     if (outside < 0) continue;
-    const model = WALL_BANNERS[randInt(rng, WALL_BANNERS.length)]!;
+    const model = bannerModel;
     pieces.push({
       model,
       x: spot.x + DIRS[outside]![0] * 0.51,

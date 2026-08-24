@@ -725,6 +725,9 @@ export class RaidView {
       };
       for (const spot of keep.castle.yard) mark(spot.x, spot.z);
       for (const spot of keep.castle.moat) mark(spot.x, spot.z);
+      // Расширенное поле сделало подход длинным: трава не должна прятать
+      // дорогу, которая объясняет игроку, где ворота и как к ним идти.
+      for (const spot of keep.roads) mark(spot.x, spot.z);
       // Только основание: ярусы башни и шапка ворот стоят выше нуля
       // и на вопрос «что под ними на земле» не отвечают.
       for (const piece of keep.castle.pieces) if (piece.y === 0) mark(piece.x, piece.z);
