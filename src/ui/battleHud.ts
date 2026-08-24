@@ -37,6 +37,7 @@ export class BattleHud {
   private readonly guard: HTMLButtonElement;
   private readonly wait: HTMLButtonElement;
   private readonly threat: HTMLElement;
+  private readonly counter: HTMLElement;
   private readonly defense: HTMLElement;
   /** Что нарисовано сейчас: панель пересобирается на смену, а не на кадр. */
   private key = '';
@@ -49,6 +50,7 @@ export class BattleHud {
       <div class="battle-turn"><b id="b-turn"></b><span id="b-round" class="dim"></span></div>
       <div class="battle-order" id="b-order"></div>
       <div class="battle-threat" id="b-threat"></div>
+      <div class="battle-counter" id="b-counter"></div>
       <div class="battle-defense dim" id="b-defense"></div>
       <div class="battle-acts">
         <button id="b-attack" type="button">Удар</button>
@@ -65,6 +67,7 @@ export class BattleHud {
     this.guard = this.q('b-guard') as HTMLButtonElement;
     this.wait = this.q('b-wait') as HTMLButtonElement;
     this.threat = this.q('b-threat');
+    this.counter = this.q('b-counter');
     this.defense = this.q('b-defense');
 
     this.attack.addEventListener('click', hooks.onAttack);
@@ -106,6 +109,7 @@ export class BattleHud {
       .filter((u) => u.hp > 0);
     const key = `${state.round}|${unit.id}|${canAttack}|${busy}|${unit.dodge}|${unit.guarding}|` +
       `${forecast?.damage ?? '-'}:${forecast?.guardedDamage ?? '-'}:${forecast?.canBreakContact ?? '-'}|` +
+      `${forecast?.guardedThreats.map((t) => `${t.attacker}:${t.aimed}:${t.target}:${t.intent ?? '-'}`).join('/') ?? '-'}|` +
       queue.map((u) => `${u.id}:${u.hp}:${u.dodge}:${u.guarding}`).join(',');
     if (key === this.key) return;
     this.key = key;
@@ -134,15 +138,20 @@ export class BattleHud {
 
     if (!mine || forecast === null) {
       this.threat.textContent = '';
-    } else if (forecast.damage > 0) {
+      this.counter.textContent = '';
+    } else if (forecast.damage > 0 || forecast.guardedDamage > 0) {
       const attacks = forecast.threats.filter((t) => t.target === unit.id).length;
+      const guardedAttacks = forecast.guardedThreats.filter((t) => t.target === unit.id).length;
+      const attackLabel = attacks === guardedAttacks ? String(attacks) : `${attacks}→${guardedAttacks}`;
       this.threat.textContent = `Угроза: ${num(forecast.damage)} · ` +
         `${unit.hasShield ? 'Заслон' : 'Блок'} ${num(forecast.damage)}→${num(forecast.guardedDamage)} · ` +
-        `ударов ${attacks}`;
+        `ударов ${attackLabel}`;
+      this.counter.textContent = counterText(state, forecast);
     } else {
       this.threat.textContent = forecast.canBreakContact
         ? 'Угрозы нет · к следующему кругу отрыв'
         : 'Удара в этом круге нет';
+      this.counter.textContent = counterText(state, forecast);
     }
     this.defense.textContent = mine
       ? `Уворот ${Math.round(unit.dodge)}%` +
@@ -159,3 +168,18 @@ export class BattleHud {
 
 const num = (value: number): string =>
   Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '');
+
+function counterText(state: BattleState, forecast: BattleForecast): string {
+  const intents = new Set(forecast.guardedThreats.map((t) => t.intent).filter((x) => x !== undefined));
+  const lines: string[] = [];
+  if (intents.has('brace-burn')) lines.push('Воин целит щит: первое отбрасывание сгорит');
+  if (intents.has('draw-intercept')) lines.push('Маг целит соседа: Заслон примет болт');
+  if (intents.has('charge')) lines.push('Таран усилен и не отбрасывается');
+  if (intents.has('immovable')) {
+    const minotaur = forecast.guardedThreats.some((t) =>
+      t.intent === 'immovable' && state.units.find((u) => u.id === t.attacker)?.kind === 'minotaur');
+    lines.push(minotaur ? 'Минотавр слишком тяжёл для толчка' : 'Голем удержит позицию');
+  }
+  if (intents.has('swarm')) lines.push('Стая: оттолкнётся только первый');
+  return lines.join(' · ');
+}

@@ -140,10 +140,10 @@ export const torchVision = (level: number): number => (level >= 4 ? 2 : level >=
  * §14.2 «ни один не лучше» перестало бы быть правдой.
  *
  * Заслон теперь ещё отталкивает и перехватывает удар, поэтому прежние +2
- * за уровень вместе с активной механикой вытесняли фонарь. Полторы единицы
+ * за уровень вместе с активной механикой вытесняли фонарь. 1,6 единицы
  * оставляют пассивное смягчение, а главную цену щита переносят в позицию.
  */
-export const shieldDefense = (level: number): number => 1.5 * Math.max(0, level);
+export const shieldDefense = (level: number): number => 1.6 * Math.max(0, level);
 
 /** Прибавка к рюкзаку. Уровень Склада даёт больше — сумка догоняет, не заменяет. */
 export const bagCapacity = (level: number): number => Math.max(0, level);
