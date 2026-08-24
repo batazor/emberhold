@@ -111,6 +111,25 @@ describe('Вылазка', () => {
     assert.equal(knight.arrows, 0);
   });
 
+  test('Стрельбище расширяет колчан, а Дозорная башня — обзор', () => {
+    const opts = {
+      seed: 19,
+      tier: 1 as const,
+      kitchenLevel: 2,
+      storageLevel: 2,
+      loadout: loadout(createHero('archer', 0)),
+      gear: emptyGear(),
+    };
+    const bare = createRaid(opts);
+    const improved = createRaid({ ...opts, quiverBonus: 6, scouting: 1.5 });
+    assert.equal(improved.arrowsMax, bare.arrowsMax + 6);
+    assert.equal(improved.vision, bare.vision + 1.5);
+    assert.equal(improved.visionAdd, bare.visionAdd + 1.5);
+    stepRaid(improved, TICK, false, improved.loadout.knowledge);
+    assert.equal(improved.vision, bare.vision + 1.5, 'разведка сохранилась после пересчёта шага');
+  });
+
+
   test('§2 — Кухня и Склад задают провиант и рюкзак', () => {
     const raid = createRaid({ seed: 1, tier: 1, kitchenLevel: 3, storageLevel: 2 });
     // Значения берутся из кривых, а не повторяются числом: кривая Кухни выведена

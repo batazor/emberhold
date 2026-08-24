@@ -12,8 +12,10 @@ import {
   ARROW_PACK_COST,
   BUILD_COST,
   MAX_LEVEL,
+  archeryQuiverBonus,
   buyArrows,
   campArea,
+  campQuiverCapacity,
   completeIfDue,
   createCamp,
   freeWindow,
@@ -31,6 +33,7 @@ import {
   upgradeBlock,
   upgradeProgress,
   villagerCount,
+  watchtowerVision,
 } from './camp';
 import { modelKitchenFood, roundNice, tierForLevel } from './balance';
 import { LOOT_SHARE } from './resources';
@@ -38,6 +41,31 @@ import type { ResourceKind } from './resources';
 import { bowQuiver } from './gear';
 
 describe('Лагерь', () => {
+  test('новые постройки открываются по развитию Жилья и растут на каждой ступени', () => {
+    const camp = createCamp();
+    camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999, food: 0 };
+    assert.equal(upgradeBlock(camp, 'archery'), 'locked');
+    camp.levels.hq = 3;
+    assert.equal(upgradeBlock(camp, 'archery'), 'ok');
+    assert.equal(upgradeBlock(camp, 'barracks'), 'locked');
+    assert.equal(upgradeBlock(camp, 'watchtower'), 'locked');
+    camp.levels.hq = 4;
+    assert.equal(upgradeBlock(camp, 'barracks'), 'ok');
+    assert.equal(upgradeBlock(camp, 'watchtower'), 'ok');
+
+    for (let level = 1; level <= MAX_LEVEL; level++) {
+      assert.ok(archeryQuiverBonus(level) > archeryQuiverBonus(level - 1));
+      assert.ok(watchtowerVision(level) > watchtowerVision(level - 1));
+    }
+  });
+
+  test('Стрельбище расширяет лагерный колчан поверх снаряжения', () => {
+    const camp = createCamp();
+    const base = campQuiverCapacity(camp);
+    camp.levels.archery = 3;
+    assert.equal(campQuiverCapacity(camp), base + archeryQuiverBonus(3));
+  });
+
   test('§20.4 — здание не может превысить Жильё', () => {
     const camp = createCamp();
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999, food: 0 };
@@ -47,7 +75,7 @@ describe('Лагерь', () => {
 
   test('§20.1 — слот один', () => {
     const camp = createCamp();
-    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 0 , infirmary: 0, yard: 0};
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 0, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0 };
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999, food: 0 };
     assert.equal(startUpgrade(camp, 'kitchen', 1000), true);
     assert.equal(upgradeBlock(camp, 'storage'), 'slot-busy');
@@ -130,7 +158,7 @@ describe('Лагерь', () => {
 
   test('ускорение длинной стройки тратит монеты и завершает её', () => {
     const camp = createCamp();
-    camp.levels = { hq: 5, kitchen: 4, storage: 1, forge: 0 , infirmary: 0, yard: 0};
+    camp.levels = { hq: 5, kitchen: 4, storage: 1, forge: 0, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0 };
     camp.resources = { stone: 9999, wood: 9999, iron: 9999, crystal: 9999, food: 0 };
     camp.coins = 9999;
     startUpgrade(camp, 'kitchen', 0); // до ур. 5 — три часа
@@ -227,9 +255,9 @@ describe('Лагерь', () => {
   test('camp.html — жителей 2 + по одному на четыре уровня, потолок 10', () => {
     const camp = createCamp();
     assert.equal(villagerCount(camp), 2);
-    camp.levels = { hq: 4, kitchen: 4, storage: 4, forge: 0 , infirmary: 0, yard: 0};
+    camp.levels = { hq: 4, kitchen: 4, storage: 4, forge: 0, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0 };
     assert.equal(villagerCount(camp), 5);
-    camp.levels = { hq: 6, kitchen: 6, storage: 6, forge: 0 , infirmary: 0, yard: 0};
+    camp.levels = { hq: 6, kitchen: 6, storage: 6, forge: 0, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0 };
     assert.equal(villagerCount(camp), 6);
   });
 
@@ -249,7 +277,7 @@ describe('Цены построек', () => {
     // Мастерская здесь уже стоит: её первый уровень бесплатен и мгновенен (§20.3),
     // и пока её нет, она перебивает любое платное предложение. Это отдельное
     // правило, оно проверяется в gear.rules.ts.
-    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1 , infirmary: 0, yard: 0};
+    camp.levels = { hq: 3, kitchen: 1, storage: 1, forge: 1, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0 };
     camp.resources = { stone: 999, wood: 999, iron: 999, crystal: 999, food: 0 };
     // У Кухни и Склада ур. 1 — одинаковая цена второго уровня, берётся первый
     // по порядку; главное, что предложение вообще есть.

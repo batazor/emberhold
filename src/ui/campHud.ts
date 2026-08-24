@@ -3,6 +3,7 @@ import {
   BUILDING_ORDER,
   BUILD_COST,
   BUILD_SECONDS,
+  campQuiverCapacity,
   gearBlock,
   itemCap,
   coinsOf,
@@ -18,7 +19,7 @@ import {
   storeCapacity,
   storeUsed,
 } from '../sim/chests';
-import { GEAR, GEAR_COST, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine, gearMods } from '../sim/gear';
+import { GEAR, GEAR_COST, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine } from '../sim/gear';
 import type { GearSlot, Offhand } from '../sim/gear';
 import {
   CONSUMABLES,
@@ -1069,7 +1070,7 @@ export class CampHud {
   }
 
   private syncArrowTask(camp: CampState): boolean {
-    const cap = this.ranged ? gearMods(camp.gear, camp.offhand).arrows : 0;
+    const cap = this.ranged ? campQuiverCapacity(camp) : 0;
     if (cap <= 0 || camp.arrows > 0) return false;
     this.task.style.display = 'flex';
     this.taskDoes = 'shop';
@@ -1162,7 +1163,7 @@ export class CampHud {
      * не показывается вовсе: у ближника колчан не значит ничего, а кнопка,
      * которая ничего не делает, хуже отсутствующей.
      */
-    const cap = this.ranged ? gearMods(camp.gear, camp.offhand).arrows : 0;
+    const cap = this.ranged ? campQuiverCapacity(camp) : 0;
     this.quiver.style.display = cap > 0 ? '' : 'none';
     if (cap > 0) {
       const price = (Object.entries(ARROW_PACK_COST) as [ResourceKind, number][])

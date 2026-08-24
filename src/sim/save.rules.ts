@@ -64,6 +64,21 @@ describe('Сохранение', () => {
     assert.equal(bad.resources.stone, 0, 'отрицательные ресурсы отбрасываются');
   });
 
+  test('старое сохранение получает новые постройки непостроенными', () => {
+    const store = fakeStore();
+    store.set('emberhold/save', JSON.stringify({
+      version: 1,
+      levels: { hq: 4, kitchen: 2, storage: 2, forge: 1, infirmary: 0, yard: 0 },
+    }));
+    const camp = load().camp;
+    assert.equal(camp.levels.archery, 0);
+    assert.equal(camp.levels.barracks, 0);
+    assert.equal(camp.levels.watchtower, 0);
+    assert.ok(camp.layout.archery !== undefined);
+    assert.ok(camp.layout.barracks !== undefined);
+    assert.ok(camp.layout.watchtower !== undefined);
+  });
+
   test('сейв, записанный когда камень звался солью, открывается камнем', () => {
     const store = fakeStore();
     store.set(
@@ -184,7 +199,7 @@ describe('Сохранение', () => {
 
   test('сейв переживает круг save → load', () => {
     const camp = createCamp();
-    camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0 , infirmary: 0, yard: 0};
+    camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0 };
     camp.resources = { stone: 50, wood: 40, iron: 20, crystal: 3, food: 0 };
     camp.layout.kitchen = { x: 6, z: 3 };
     assert.equal(startUpgrade(camp, 'storage', 500), true);

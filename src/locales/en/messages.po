@@ -12683,6 +12683,11 @@ msgid "Дожимает стройку и остаётся в сессии."
 msgstr "Finishes construction and remains in the session."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дозорная башня"
+msgstr "Watchtower"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Дойти до самой дальней комнаты и вернуться стоит"
 msgstr "Go to the farthest room and come back."
@@ -15498,6 +15503,11 @@ msgstr "Each polyp takes its glow not from its timer, but from a common field: t
 #: locales/legacy-messages.ts
 msgid "Каждый экран отвечает на один вопрос:"
 msgstr "Each screen answers one question:"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Казарма"
+msgstr "Barracks"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -29262,6 +29272,11 @@ msgstr "Arrows are spent during a raid; unused arrows return to camp"
 #: locales/legacy-messages.ts
 msgid "Стрелы: не хватает железа или колчан полон"
 msgstr "Arrows: Lack of iron or quiver full"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стрельбище"
+msgstr "Archery range"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

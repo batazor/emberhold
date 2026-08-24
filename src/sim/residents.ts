@@ -38,7 +38,7 @@
  * Размер при этом не произвол: палатка на одного и обязана быть меньше
  * Кухни. 2×2 было взято у зданий по невнимательности, а не по доводу.
  */
-import { BUILDING_ORDER, campArea, clearanceOf, stash } from './camp';
+import { BUILDING_ORDER, barracksBeds, campArea, clearanceOf, stash } from './camp';
 import type { CampState } from './camp';
 import type { DwellerLook } from './garrison';
 import type { SelfAnswer } from './settler';
@@ -277,7 +277,8 @@ export const TENT_FOOT = 1;
  * Мест под крышей. Жильё считается палаткой наравне с прочими: оно и есть
  * та палатка, которую игрок поставил в прологе.
  */
-export const roofs = (camp: CampState): number => (1 + camp.tents.length) * TENT_ROOM;
+export const roofs = (camp: CampState): number =>
+  (1 + camp.tents.length) * TENT_ROOM + barracksBeds(camp.levels.barracks);
 
 /** Людей в лагере: герой и все приглашённые. */
 export const dwellers = (camp: CampState): number => 1 + camp.residents.length;
@@ -293,7 +294,7 @@ export const homeless = (camp: CampState): number => Math.max(0, dwellers(camp) 
  * показывает человека: «кому-то негде спать» — это не задание, а сводка.
  */
 export const homelessFolk = (camp: CampState): readonly Resident[] =>
-  camp.residents.slice(camp.tents.length * TENT_ROOM);
+  camp.residents.slice(Math.max(0, roofs(camp) - 1));
 
 export type TentBlock = 'ok' | 'nobody' | 'resources' | 'area';
 

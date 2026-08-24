@@ -4,7 +4,7 @@ import type { DailyState } from './daily';
 import type { Resources } from './resources';
 import { canAfford, emptyResources, spend } from './resources';
 import { deriveBuildCost, modelKitchenFood, roundSeries, START_FOOD, TIER_KITCHEN_GATE as GATE } from './balance';
-import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear } from './gear';
+import { GEAR, GEAR_COST, GEAR_ORDER, MAX_ITEM_LEVEL, bowQuiver, emptyGear, gearMods } from './gear';
 import type { GearSlot, GearState, Offhand } from './gear';
 import { healPerWound, trainPerLevel } from './heroes';
 import { BUSHES, scatterBushes } from './berries';
@@ -15,13 +15,13 @@ import { emptyWalls, type CampWalls } from './campWalls';
 import { STONES, scatterStones, type Stone } from './stones';
 
 /**
- * Шесть зданий §2. Мастерская пришла первой сверх среза §7, потому что
+ * Девять зданий §2. Мастерская пришла первой сверх среза §7, потому что
  * закрывала дыру в петле возврата (§20.1); Лазарет и Плац — следом, и оба
  * оперируют расписанием отряда, а не вылазкой.
  *
- * Порядок §16: Мастерская (Жильё 2) → Лазарет (3) → Плац (4). Он выведен
- * из кривой ввода, а не из удобства: Лазарет вводится после первого ранения,
- * Плац — на второй-третий день, когда простой отряда уже заметен.
+ * Порядок §16: Мастерская (Жильё 2) → Лазарет и Стрельбище (3) → Плац,
+ * Казарма и Башня (4). Лазарет вводится после первого ранения, Стрельбище —
+ * вместе с полноценным лучником, а четвёртая ступень наполняет зрелый лагерь.
  */
 import type { Resident } from './residents';
 import type { OwnClan } from './clan';
@@ -29,10 +29,20 @@ import type { FarmState } from './farm';
 import type { SignpostDecor } from './signposts';
 import { emptySignpostDecor } from './signposts';
 
-export type BuildingId = 'hq' | 'kitchen' | 'storage' | 'forge' | 'infirmary' | 'yard';
+export type BuildingId =
+  | 'hq'
+  | 'kitchen'
+  | 'storage'
+  | 'forge'
+  | 'infirmary'
+  | 'yard'
+  | 'archery'
+  | 'barracks'
+  | 'watchtower';
 
 export const BUILDING_ORDER: readonly BuildingId[] = [
   'hq', 'kitchen', 'storage', 'forge', 'infirmary', 'yard',
+  'archery', 'barracks', 'watchtower',
 ];
 
 export const MAX_LEVEL = 6;
@@ -85,6 +95,22 @@ const STORAGE_CAPACITY = roundSeries(
 
 export const storageCapacity = (level: number): number =>
   STORAGE_CAPACITY[Math.max(0, Math.min(MAX_LEVEL, level))] ?? 11 + 4 * level;
+
+/** Стрельбище добавляет по два места в колчане за каждый уровень. */
+export const archeryQuiverBonus = (level: number): number =>
+  Math.max(0, Math.min(MAX_LEVEL, Math.floor(level))) * 2;
+
+/** Полная вместимость колчана с учётом лука и лагерного стрельбища. */
+export const campQuiverCapacity = (camp: CampState): number =>
+  gearMods(camp.gear, camp.offhand).arrows + archeryQuiverBonus(camp.levels.archery);
+
+/** Казарма заменяет по одной отдельной палатке за каждый уровень. */
+export const barracksBeds = (level: number): number =>
+  Math.max(0, Math.min(MAX_LEVEL, Math.floor(level)));
+
+/** Башня даёт полтайла разведанного обзора за уровень, до трёх тайлов. */
+export const watchtowerVision = (level: number): number =>
+  Math.max(0, Math.min(MAX_LEVEL, Math.floor(level))) / 2;
 
 /* ---------- кладовая (§13.6) ---------- */
 
@@ -235,6 +261,33 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
         : `Уровень за ${minutes(trainPerLevel(l))} — запасной догоняет отряд`,
     unlockHq: 4,
   },
+  archery: {
+    id: 'archery',
+    name: 'Стрельбище',
+    effect: (l) =>
+      l <= 0
+        ? 'Расширяет колчан лучника'
+        : `Колчан +${archeryQuiverBonus(l)} стрел — больше выстрелов за вылазку`,
+    unlockHq: 3,
+  },
+  barracks: {
+    id: 'barracks',
+    name: 'Казарма',
+    effect: (l) =>
+      l <= 0
+        ? 'Даёт жителям постоянные места под крышей'
+        : `Коек ${barracksBeds(l)} — столько отдельных палаток больше не нужно`,
+    unlockHq: 4,
+  },
+  watchtower: {
+    id: 'watchtower',
+    name: 'Дозорная башня',
+    effect: (l) =>
+      l <= 0
+        ? 'Разведка расширяет обзор в вылазке'
+        : `Разведка +${watchtowerVision(l).toLocaleString('ru-RU')} к обзору`,
+    unlockHq: 4,
+  },
 };
 
 /** Минуты строкой для ценников зданий: «6 мин», «1 ч 30 мин». */
@@ -340,7 +393,7 @@ export interface Construction {
 }
 
 export interface CampState {
-  /** Уровень 0 = здания ещё нет в лагере. Такое возможно только у Мастерской. */
+  /** Уровень 0 = здания ещё нет в лагере. */
   levels: Record<BuildingId, number>;
   layout: Record<BuildingId, { x: number; z: number }>;
   /**
@@ -543,15 +596,15 @@ export interface CampState {
 /**
  * Раскладка, с которой лагерь начинается. След здания 2×2, площадь при Жилье
  * ур. 1 — 6×6, поэтому левый верхний угол не может быть правее 4 (§20.4).
- * Мастерская появляется вместе с Жильём ур. 2, когда площадь уже 7×7.
+ * Поздние здания получают места на той ступени Жилья, на которой открываются.
  *
  * Отдельной константой она стала ради валунов: их кладут мимо зданий,
  * и вторая копия начальных мест разошлась бы с первой молча.
  */
 /**
- * Третий столбец (x = 6) появляется вместе с Лазаретом: до Жилья ур. 3
- * площадка 6×6…7×7 его не вмещает, а раньше третьего уровня ни Лазарета,
- * ни Плаца не существует. Переставить их игрок волен свободно (§20.4).
+ * Третий столбец (x = 6) появляется вместе с Лазаретом, нижний ряд — вместе
+ * со Стрельбищем. Казарма и Башня занимают дальние клетки площадки ур. 4.
+ * Переставить всё игрок волен свободно (§20.4).
  */
 const START_LAYOUT: Record<BuildingId, { x: number; z: number }> = {
   hq: { x: 1, z: 1 },
@@ -560,6 +613,9 @@ const START_LAYOUT: Record<BuildingId, { x: number; z: number }> = {
   forge: { x: 4, z: 4 },
   infirmary: { x: 6, z: 1 },
   yard: { x: 6, z: 4 },
+  archery: { x: 1, z: 6 },
+  barracks: { x: 4, z: 7 },
+  watchtower: { x: 7, z: 7 },
 };
 
 /**
@@ -605,7 +661,10 @@ export function campStones(): Stone[] {
 
 export function createCamp(): CampState {
   return {
-    levels: { hq: 1, kitchen: 1, storage: 1, forge: 0, infirmary: 0, yard: 0 },
+    levels: {
+      hq: 1, kitchen: 1, storage: 1, forge: 0, infirmary: 0, yard: 0,
+      archery: 0, barracks: 0, watchtower: 0,
+    },
     layout: {
       hq: { ...START_LAYOUT.hq },
       kitchen: { ...START_LAYOUT.kitchen },
@@ -613,6 +672,9 @@ export function createCamp(): CampState {
       forge: { ...START_LAYOUT.forge },
       infirmary: { ...START_LAYOUT.infirmary },
       yard: { ...START_LAYOUT.yard },
+      archery: { ...START_LAYOUT.archery },
+      barracks: { ...START_LAYOUT.barracks },
+      watchtower: { ...START_LAYOUT.watchtower },
     },
     // §13.7 — лагерь начинается с запаса пищи: содержание обязано ждать,
     // пока игрок с ним познакомится, а не встречать его голодом.

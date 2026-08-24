@@ -77,6 +77,9 @@ const FIRE_SPOTS: Record<BuildingId, readonly (FireSpot | null)[]> = {
   infirmary: [[-0.95, 0.32, 0.85, 0.45], [-0.95, 0.32, 0.85, 0.45], null],
   // Плац — площадка под открытым небом (§6.1): огня на ней нет ни на одной стадии.
   yard: [null, null, null],
+  archery: [null, null, null],
+  barracks: [null, null, null],
+  watchtower: [null, null, null],
 };
 
 /** Доля высоты пламени, на которой стоит его свет: середина языка, не подошва. */
@@ -408,6 +411,143 @@ function yardFenced(): Piece[] {
   return m;
 }
 
+/* ---------- Стрельбище, Казарма и Дозорная башня ---------- */
+
+/** Круглая мишень на отдельной стойке: силуэт Стрельбища читается с первого уровня. */
+function archeryTarget(x: number, z: number): Piece[] {
+  return [
+    rod([x, 0, z], [x, 1.05, z], 0.06, 5, C.derT),
+    cyl(x, 0.72, z, 0.34, 0.1, 10, C.solom),
+    cyl(x, 0.75, z - 0.015, 0.19, 0.11, 10, C.krasA),
+    cyl(x, 0.78, z - 0.03, 0.07, 0.12, 8, C.iney),
+  ];
+}
+
+function archeryGround(): Piece[] {
+  const m: Piece[] = [
+    box(0, -0.04, 0, 2.8, 0.06, 2.3, C.zemT),
+    ...archeryTarget(-0.7, -0.72),
+    ...archeryTarget(0.7, -0.72),
+    // Линия огня и стойка с луками отделяют это место от Плаца.
+    box(0, 0, 0.62, 2.3, 0.06, 0.12, C.solom),
+    rod([-1.05, 0, 0.88], [-1.05, 0.95, 0.88], 0.05, 5, C.derT),
+    rod([-0.45, 0, 0.88], [-0.45, 0.95, 0.88], 0.05, 5, C.derT),
+    rod([-1.05, 0.72, 0.88], [-0.45, 0.72, 0.88], 0.04, 5, C.der),
+    rod([-0.94, 0.25, 0.86], [-0.75, 0.72, 0.86], 0.025, 5, C.stal),
+    rod([-0.56, 0.25, 0.86], [-0.75, 0.72, 0.86], 0.025, 5, C.stal),
+  ];
+  return m;
+}
+
+function archeryShelter(): Piece[] {
+  const m = archeryGround();
+  for (const x of [-1.2, 1.2]) {
+    for (const z of [0.45, 1.05]) m.push(rod([x, 0, z], [x, 1.35, z], 0.06, 5, C.derT));
+  }
+  m.push(wedge(0, 1.25, 0.75, 2.7, 0.42, 1.05, C.solom));
+  return m;
+}
+
+function archeryStone(): Piece[] {
+  const m = archeryShelter();
+  m.push(box(-1.28, 0, 0.75, 0.18, 0.8, 1.15, C.kam));
+  m.push(box(1.28, 0, 0.75, 0.18, 0.8, 1.15, C.kam));
+  m.push(box(0, 0, 1.22, 2.45, 0.65, 0.18, C.kamS));
+  // Связка запасных стрел у линии огня.
+  for (const x of [0.48, 0.58, 0.68, 0.78]) {
+    m.push(rod([x, 0.12, 0.92], [x - 0.08, 0.95, 0.88], 0.018, 4, C.stal));
+  }
+  return m;
+}
+
+function barracksCamp(): Piece[] {
+  const m: Piece[] = [
+    box(0, -0.04, 0, 2.8, 0.08, 2.2, C.zemT),
+    // Длинный армейский шатёр, внутри которого уже видны две койки.
+    wedge(0, 0.48, 0, 2.7, 1.0, 1.9, C.sukS),
+    box(0, 0.38, 0, 2.65, 0.16, 1.85, C.sukT),
+    rod([-1.35, 0, 0], [1.35, 1.48, 0], 0.045, 5, C.derT),
+    box(-0.58, 0.12, 0.55, 0.95, 0.14, 0.42, C.der),
+    box(0.58, 0.12, 0.55, 0.95, 0.14, 0.42, C.der),
+    box(-0.58, 0.26, 0.55, 0.88, 0.08, 0.36, C.solom),
+    box(0.58, 0.26, 0.55, 0.88, 0.08, 0.36, C.solom),
+  ];
+  return m;
+}
+
+function barracksTimber(): Piece[] {
+  const m: Piece[] = [
+    box(0, -0.04, 0, 2.9, 0.12, 2.2, C.kamT),
+    box(0, 0.08, -0.92, 2.65, 1.25, 0.18, C.der),
+    box(-1.23, 0.08, 0, 0.2, 1.25, 2.0, C.derT),
+    box(1.23, 0.08, 0, 0.2, 1.25, 2.0, C.derT),
+    box(-0.82, 0.08, 0.92, 0.65, 1.05, 0.18, C.der),
+    box(0.82, 0.08, 0.92, 0.65, 1.05, 0.18, C.der),
+    wedge(0, 1.28, 0, 2.9, 0.72, 2.25, C.solom),
+    // Дверь и щиты делают фасад казармы, а не обычного дома.
+    box(0, 0.08, 0.98, 0.72, 0.95, 0.08, C.derT),
+    cyl(-0.88, 0.55, 1.03, 0.27, 0.08, 9, C.met),
+    cyl(0.88, 0.55, 1.03, 0.27, 0.08, 9, C.met),
+  ];
+  return m;
+}
+
+function barracksStone(): Piece[] {
+  const m = barracksTimber();
+  m.push(box(-1.29, 0.08, 0, 0.25, 0.82, 2.1, C.kam));
+  m.push(box(1.29, 0.08, 0, 0.25, 0.82, 2.1, C.kam));
+  m.push(box(0, 0.08, -0.98, 2.8, 0.82, 0.25, C.kamS));
+  m.push(box(0.78, 1.25, -0.45, 0.3, 0.85, 0.3, C.kamT));
+  return m;
+}
+
+function towerLadder(x = 0.82, z = 0.78, height = 1.8): Piece[] {
+  const m: Piece[] = [
+    rod([x - 0.16, 0, z], [x - 0.16, height, z], 0.035, 4, C.derT),
+    rod([x + 0.16, 0, z], [x + 0.16, height, z], 0.035, 4, C.derT),
+  ];
+  for (let y = 0.2; y < height; y += 0.24) {
+    m.push(rod([x - 0.16, y, z], [x + 0.16, y, z], 0.025, 4, C.der));
+  }
+  return m;
+}
+
+function watchtowerScaffold(): Piece[] {
+  const m: Piece[] = [box(0, -0.04, 0, 2.2, 0.08, 2.2, C.zemT)];
+  for (const x of [-0.75, 0.75]) {
+    for (const z of [-0.75, 0.75]) m.push(rod([x, 0, z], [x, 1.85, z], 0.09, 5, C.derT));
+  }
+  m.push(box(0, 1.55, 0, 1.85, 0.16, 1.85, C.der));
+  m.push(rod([-0.75, 0.25, -0.75], [0.75, 1.5, -0.75], 0.055, 5, C.der));
+  m.push(rod([0.75, 0.25, 0.75], [-0.75, 1.5, 0.75], 0.055, 5, C.der));
+  m.push(...towerLadder());
+  return m;
+}
+
+function watchtowerTimber(): Piece[] {
+  const m = watchtowerScaffold();
+  m.push(box(0, 1.68, -0.77, 1.75, 0.68, 0.16, C.der));
+  m.push(box(-0.77, 1.68, 0, 0.16, 0.68, 1.75, C.derT));
+  m.push(box(0.77, 1.68, 0, 0.16, 0.68, 1.75, C.derT));
+  m.push(wedge(0, 2.32, 0, 2.15, 0.55, 2.15, C.solom));
+  return m;
+}
+
+function watchtowerStone(): Piece[] {
+  const m: Piece[] = [
+    box(0, -0.04, 0, 2.25, 0.1, 2.25, C.kamT),
+    box(0, 0.06, 0, 1.45, 1.75, 1.45, C.kam),
+    box(0, 1.81, 0, 2.0, 0.18, 2.0, C.derT),
+    box(0, 1.99, -0.82, 1.85, 0.62, 0.18, C.der),
+    box(-0.82, 1.99, 0, 0.18, 0.62, 1.85, C.der),
+    box(0.82, 1.99, 0, 0.18, 0.62, 1.85, C.der),
+    wedge(0, 2.58, 0, 2.25, 0.58, 2.2, C.solom),
+    box(0, 0.06, 0.74, 0.58, 0.95, 0.1, C.derT),
+    ...towerLadder(0.52, 0.8, 1.75),
+  ];
+  return m;
+}
+
 /* ---------- сборка ---------- */
 
 const BUILDING_STAGES: Record<BuildingId, [() => Piece[], () => Piece[], () => Piece[]]> = {
@@ -417,6 +557,9 @@ const BUILDING_STAGES: Record<BuildingId, [() => Piece[], () => Piece[], () => P
   forge: [forgeOpen, forgeStone, forgeStone],
   infirmary: [infirmaryTent, infirmaryWard, infirmaryWard],
   yard: [yardGround, yardFenced, yardFenced],
+  archery: [archeryGround, archeryShelter, archeryStone],
+  barracks: [barracksCamp, barracksTimber, barracksStone],
+  watchtower: [watchtowerScaffold, watchtowerTimber, watchtowerStone],
 };
 
 const HERO_SHAPES: Record<HeroClassId, () => Piece[]> = {

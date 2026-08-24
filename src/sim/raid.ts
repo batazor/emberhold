@@ -115,6 +115,10 @@ export interface RaidOptions {
    * прогоны обязаны считаться ровно как считались.
    */
   readonly arrows?: number;
+  /** Дополнительная вместимость колчана от Стрельбища. */
+  readonly quiverBonus?: number;
+  /** Разведанный Башней радиус, который складывается с обзором героя. */
+  readonly scouting?: number;
   /** Что игрок купил перед входом (§21). По умолчанию — ничего. */
   readonly consumables?: readonly ConsumableId[];
   /**
@@ -200,7 +204,8 @@ export function createRaid(opts: RaidOptions): RaidState {
    * и с пустым колчаном не срабатывал никогда. Ноль был поглощающим: выйти
    * из него не давал ни один источник, кроме покупки за железо.
    */
-  const quiverCap = loadout.ranged ? mods.arrows : 0;
+  const quiverBonus = Math.max(0, opts.quiverBonus ?? 0);
+  const quiverCap = loadout.ranged ? mods.arrows + quiverBonus : 0;
   const quiver = Math.min(quiverCap, Math.max(0, opts.arrows ?? quiverCap));
   // §19 — карта провианта прибавляется и к запасу, и к потолку: полоса HUD
   // читает потолок, и оставленный прежним он показал бы «103 из 78».
@@ -217,7 +222,7 @@ export function createRaid(opts: RaidOptions): RaidState {
   /** Боец отряда. Ведущий и следующие собираются одним кодом: разница
    *  между ними только в том, кто задаёт путь. */
   const make = (id: number, who: HeroLoadout): Fighter => {
-    const capOf = who.ranged ? mods.arrows : 0;
+    const capOf = who.ranged ? mods.arrows + quiverBonus : 0;
     const quiverOf = Math.min(capOf, Math.max(0, opts.arrows ?? capOf));
     return {
       id,
@@ -297,11 +302,12 @@ export function createRaid(opts: RaidOptions): RaidState {
     logging: opts.logging ?? false,
     risk: opts.risk ?? true,
     riskAdd: event.risk + draft.risk,
-    visionAdd: event.vision + draft.vision,
+    visionAdd: event.vision + draft.vision + Math.max(0, opts.scouting ?? 0),
     // Ночь на входе неизвестна — её знает только кадр, — поэтому здесь день.
     // Первый же шаг перепишет число целиком, а до него по локации никто
     // не ходит и никого не будит.
-    vision: visionRadius(loadout.knowledge, false, true) + mods.vision + event.vision + draft.vision,
+    vision: visionRadius(loadout.knowledge, false, true) + mods.vision + event.vision + draft.vision +
+      Math.max(0, opts.scouting ?? 0),
     stepMul: event.step,
     // §19 — множитель пути назад. Единица без карты; «Верёвка» ставит 0,75.
     backMul: draft.back,

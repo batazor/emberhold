@@ -12624,6 +12624,11 @@ msgid "Дожимает стройку и остаётся в сессии."
 msgstr "Дожимает стройку и остаётся в сессии."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дозорная башня"
+msgstr "Дозорная башня"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Дойти до самой дальней комнаты и вернуться стоит"
 msgstr "Дойти до самой дальней комнаты и вернуться стоит"
@@ -15417,6 +15422,11 @@ msgstr "Каждый полип берёт свечение не из своег
 #: locales/legacy-messages.ts
 msgid "Каждый экран отвечает на один вопрос:"
 msgstr "Каждый экран отвечает на один вопрос:"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Казарма"
+msgstr "Казарма"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -29044,6 +29054,11 @@ msgstr "Стрелы тратятся в вылазке; неиспользов�
 #: locales/legacy-messages.ts
 msgid "Стрелы: не хватает железа или колчан полон"
 msgstr "Стрелы: не хватает железа или колчан полон"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стрельбище"
+msgstr "Стрельбище"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

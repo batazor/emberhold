@@ -15,6 +15,8 @@ import {
 import {
   BUILDINGS,
   BUILD_SECONDS,
+  archeryQuiverBonus,
+  campQuiverCapacity,
   campArea,
   campOrigin,
   completeIfDue,
@@ -32,9 +34,10 @@ import {
   upgradeBlock,
   UPGRADE_REASON,
   GEAR_REASON,
+  watchtowerVision,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
-import { GEAR, MAX_ITEM_LEVEL, OFFHAND, gearMods } from './sim/gear';
+import { GEAR, MAX_ITEM_LEVEL, OFFHAND } from './sim/gear';
 import type { GearSlot, Offhand } from './sim/gear';
 import {
   HERO_CLASSES,
@@ -805,7 +808,7 @@ const campHud = new CampHud(app, {
    * всегда дрался со штрафом пустого колчана.
    */
   onBuyArrows: () => {
-    const cap = gearMods(camp.gear, camp.offhand).arrows;
+    const cap = campQuiverCapacity(camp);
     if (!buyArrows(camp, cap)) {
       campHud.notify('Стрелы: не хватает железа или колчан полон');
       return;
@@ -1170,7 +1173,7 @@ function claimGift(): void {
       break;
     }
     case 'стрелы': {
-      const cap = gearMods(camp.gear, camp.offhand).arrows;
+      const cap = campQuiverCapacity(camp);
       const before = camp.arrows;
       camp.arrows = Math.min(cap, camp.arrows + GIFT_ARROWS);
       said = `стрелы ${camp.arrows} / ${cap}`;
@@ -3301,6 +3304,8 @@ function sendSortie(node: number): void {
       gear: { ...camp.gear },
       offhand: camp.offhand,
       arrows: camp.arrows,
+      quiverBonus: archeryQuiverBonus(camp.levels.archery),
+      scouting: watchtowerVision(camp.levels.watchtower),
     },
     now,
   );
@@ -3521,6 +3526,8 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
     // уходит из лагеря целиком: то, что не выстрелили, вернётся с героем,
     // а то, что осталось в мёртвом, — нет.
     arrows: camp.arrows,
+    quiverBonus: archeryQuiverBonus(camp.levels.archery),
+    scouting: watchtowerVision(camp.levels.watchtower),
     // §21 — расходники: что взято в эту вылазку и сгорит на выходе.
     consumables: camp.loadout,
     // §19 — карта сборов. Тратится на текущую вылазку и не хранится.

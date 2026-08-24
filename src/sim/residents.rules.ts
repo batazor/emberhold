@@ -58,6 +58,16 @@ const rich = (): CampState => {
 };
 
 describe('Жильцы и палатки', () => {
+  test('Казарма даёт места под крышей без отдельных палаток', () => {
+    const camp = rich();
+    for (let n = 1; n <= 3; n++) admit(camp, guest(`Гость ${n}`));
+    assert.equal(homeless(camp), 3);
+    camp.levels.barracks = 2;
+    assert.equal(roofs(camp), 3, 'палатка героя плюс две койки Казармы');
+    assert.equal(homeless(camp), 1);
+    assert.equal(homelessFolk(camp)[0]?.name, 'Гость 3', 'койки заняли первые пришедшие');
+  });
+
   /**
    * Пустой лагерь — герой под крышей и ни одного задания. Если бы задание
    * висело с самого начала, оно читалось бы как недоделка лагеря, а не как

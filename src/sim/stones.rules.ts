@@ -19,7 +19,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { campStones, createCamp } from './camp';
+import { campArea, campStones, createCamp } from './camp';
 import { campBlocked } from './campWalk';
 import { CASTLE_CELL } from './castle';
 import { generateCastleSite } from './castleSite';
@@ -151,8 +151,10 @@ describe('Валуны: где лежат', () => {
   test('валун не мешает ни ходьбе по лагерю, ни стройке', () => {
     const camp = createCamp();
     const blocked = campBlocked(camp);
+    const area = campArea(camp.levels.hq);
     for (const stone of camp.stones) {
-      assert.equal(blocked[idx(10, stone.x, stone.z)] ?? 0, 0, 'валун занял клетку лагеря');
+      if (stone.x >= area || stone.z >= area) continue;
+      assert.equal(blocked[idx(area, stone.x, stone.z)] ?? 0, 0, 'валун занял клетку лагеря');
     }
   });
 

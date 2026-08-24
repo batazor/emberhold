@@ -68,6 +68,9 @@ export interface SortieInput {
   readonly gear: GearState;
   readonly offhand: Offhand;
   readonly arrows: number;
+  /** Необязательны для билетов из старых сохранений. */
+  readonly quiverBonus?: number;
+  readonly scouting?: number;
 }
 
 /** Билет отряда: один на лагерь, как слот стройки (§20.1). */
@@ -164,6 +167,8 @@ export function sortieRaid(sortie: Sortie, hero: HeroState): BotRaid {
       gear: at.gear,
       offhand: at.offhand,
       arrows: at.arrows,
+      ...(at.quiverBonus === undefined ? {} : { quiverBonus: at.quiverBonus }),
+      ...(at.scouting === undefined ? {} : { scouting: at.scouting }),
     },
     POLICIES.cautious,
     mulberry32(sortie.seed),
