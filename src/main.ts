@@ -125,6 +125,7 @@ import type { Chop } from './sim/logging';
 import {
   aimMine,
   mineBlock,
+  mineYield,
   mineProgress,
   standNear,
   startMine,
@@ -264,6 +265,7 @@ import { SignpostLayer } from './render/signposts';
 import { gearIcon } from './render/gearIcon';
 import { giftIcon } from './render/giftIcon';
 import { CursorWind } from './render/cursorWind';
+import { RewardBurst } from './render/rewardBurst';
 import { TiltWind } from './render/tiltWind';
 import { RaidView } from './render/raidView';
 import { SceneRig } from './render/scene';
@@ -710,6 +712,18 @@ bindPageAudio();
 
 const rig = new SceneRig(app);
 
+/** Один кольцевой пул на все награды: сцены меняются, draw call остаётся один. */
+const rewardBurst = new RewardBurst();
+rig.world.add(rewardBurst.mesh);
+
+const showReward = (
+  kind: ResourceKind,
+  x: number,
+  z: number,
+  amount = 1,
+  y = 0.58,
+): void => rewardBurst.burst({ x, y, z, kind, amount });
+
 /** Пузыри реплик жильцов (§23.5): слой один на игру, живёт он только
  *  в лагере на поляне — остальные кадры чистят его каждый рендер. */
 const bubbles = new Bubbles(rig);
@@ -1132,13 +1146,22 @@ const farmCropPicker = new FarmCropPicker(app, {
     if (changed) persist();
   },
   onReturn: () => {
-    const result = repeatReadyFarmPlots(camp, clock.now());
+    const now = clock.now();
+    const ready = (camp.farm?.plots ?? []).flatMap((plot, index) =>
+      plot !== null && now >= farmPlotReadyAt(plot)
+        ? [{ index, amount: FARM_CROPS[plot.crop].harvestFood }]
+        : []);
+    const result = repeatReadyFarmPlots(camp, now);
     if (result.harvested === 0) {
       play('deny');
       return;
     }
     play('pick');
-    farmView.sync(camp.farm, clock.now());
+    for (const item of ready) {
+      const at = farmView.plotCenter(item.index);
+      if (at !== null) showReward('food', at.x, at.z, item.amount, at.y);
+    }
+    farmView.sync(camp.farm, now);
     syncFarmUi();
     campHud.notify(gameText(gameMessage('Собрано {harvested} · посеяно {replanted} · пища +{food}', 'Harvested {harvested} · replanted {replanted} · food +{food}'), {
       harvested: result.harvested,
@@ -4403,6 +4426,7 @@ function stepChopping(dt: number): void {
     // Кромка не открывается никогда (§12.1), и на месте упавшего дерева там
     // встаёт следующее: рубка по краю бесконечна именно этим.
     raidView?.fellTree(chop.cell.x, chop.cell.z, isEdge(raid.loc, chop.cell));
+    showReward('wood', chop.cell.x, chop.cell.z, 1, 0.72);
     // В лагере рюкзака нет (§13.5): дерево идёт прямо в кладовую, просека
     // пишется в снимок поляны — срубленное обязано пережить перезагрузку.
     if (inGladeCamp) {
@@ -4485,7 +4509,9 @@ function stepWorldPicking(dt: number): void {
     // Узел места не хранится — хранится то, что его тронули (§13.8).
     camp.picks = { ...(camp.picks ?? {}), [pickKey(place, bush.id)]: clock.now() };
     if (gatherFarmFood(camp, step.food)) syncFarmUi();
-    say(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
+    const gained = camp.resources.food - foodBefore;
+    showReward('food', work.cell.x, work.cell.z, gained);
+    say(`+${gained} · ${RESOURCE_NAME.food}`);
     play('levelup');
     worldPick = null;
     raidView?.hideWork();
@@ -4531,6 +4557,7 @@ function stepMining(dt: number): void {
   if (step.swing && stone !== null) raidView?.hitStone(stone.id);
   if (step.taken) {
     if (stone !== null) raidView?.takeStone(stone.id);
+    showReward('stone', mine.cell.x, mine.cell.z, stone === null ? 1 : mineYield(stone));
     stopChopping();
   }
 }
@@ -5433,7 +5460,10 @@ function stepCampPicking(dt: number): void {
     // и есть «приходи позже», сказанное кадром.
     campView.pickBush(clock.now());
     if (gatherFarmFood(camp, step.food)) syncFarmUi();
-    campHud.notify(`+${camp.resources.food - foodBefore} · ${RESOURCE_NAME.food}`);
+    const gained = camp.resources.food - foodBefore;
+    const origin = campOrigin(camp);
+    showReward('food', origin.x + work.cell.x, origin.z + work.cell.z, gained);
+    campHud.notify(`+${gained} · ${RESOURCE_NAME.food}`);
     campHud.sync(camp, clock.now(), 0);
     play('levelup');
     stopCampPicking();
@@ -5496,7 +5526,10 @@ function stepCampMining(dt: number): void {
   }
   if (step.taken) {
     campView.takeStone(stone.id);
-    campHud.notify(`+${camp.resources.stone - stoneBefore} · ${RESOURCE_NAME.stone}`);
+    const gained = camp.resources.stone - stoneBefore;
+    const origin = campOrigin(camp);
+    showReward('stone', origin.x + work.cell.x, origin.z + work.cell.z, gained);
+    campHud.notify(`+${gained} · ${RESOURCE_NAME.stone}`);
     campHud.sync(camp, clock.now(), 0);
     play('levelup');
     stopCampMining();
@@ -5716,6 +5749,8 @@ canvas.addEventListener('pointerdown', (e) => {
     const gathered = harvestFarmPlot(camp, plot, now);
     if (gathered > 0) {
       play('pick');
+      const at = farmView.plotCenter(plot);
+      if (at !== null) showReward('food', at.x, at.z, gathered, at.y);
       campHud.notify(`+${gathered} · ${RESOURCE_NAME.food}`);
       farmView.sync(camp.farm, now);
       syncFarmUi();
@@ -7290,6 +7325,7 @@ startLoop({
 
     returnScreen.update();
     stepWind(dt);
+    rewardBurst.update(dt);
     // Пузыри живут над теми, кто говорит: в лагере на поляне — жильцы,
     // в замке — постовые у ворот. Любой другой кадр чистит слова со сценой.
     if (inGladeCamp && campLocation === 'camp') campBubbles();
@@ -7387,6 +7423,7 @@ startLoop({
       // Число берётся из состояния, а не считается заново: слагаемых у обзора
       // три (§11.4), и своя формула здесь роняла бы фонарь и обвал с экрана.
       rig.update(dt, raid.hero.x, raid.hero.z, raid.vision);
+      raidView.updateOcclusion(dt, rig.camera);
       rig.render();
     } else {
       // camp.html §3: лагерь идёт на 30 кадрах и замирает через 20 секунд
@@ -7411,6 +7448,7 @@ startLoop({
       // Тот же кадр, что и в toCamp, плюс то, куда игрок увёз камеру.
       rig.lookAt(c.x + campInput.pan.x, c.z + campInput.pan.z);
       rig.update(campDt, c.x, c.z, 12);
+      campView.updateOcclusion(campDt, rig.camera);
       rig.render();
     }
 

@@ -24,6 +24,7 @@ import { CASTLE_CELL, type Piece, type Spot } from '../sim/castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
 import { roadPieces } from '../sim/roads';
 import { PALETTE } from './palette';
+import { DirectionalFade, fadeSide } from './directionalFade';
 
 /**
  * Сцена лагеря по camp.html: герой стоит у Жилья, стройка видна по площадке.
@@ -954,6 +955,8 @@ export class CampView {
 
   /** Всё построенное игроком: одна группа, чтобы снести её одним движением. */
   private readonly walls = new THREE.Group();
+  /** Четыре материала сторон: ближняя к камере стена открывает героя и двор. */
+  private readonly wallFade = new DirectionalFade(castleMaterial);
   /** Призрак мазка: плоские пятна под пальцем, пока стену ведут. */
   private readonly ghost = new THREE.Group();
   private wallSignature = '';
@@ -981,23 +984,32 @@ export class CampView {
     if (signature === this.wallSignature) return;
     this.wallSignature = signature;
 
+    this.wallFade.clearMeshes();
+    for (const child of this.walls.children) {
+      if (child instanceof THREE.InstancedMesh) child.dispose();
+    }
     this.walls.clear();
     if (this.walls.parent === null) this.group.add(this.walls);
     if (pieces.length === 0) return;
 
-    const byModel = new Map<string, Piece[]>();
+    const center = this.area / 2;
+    const byModel = new Map<string, { readonly side: ReturnType<typeof fadeSide>; readonly pieces: Piece[] }>();
     for (const piece of pieces) {
-      const list = byModel.get(piece.model) ?? [];
-      list.push(piece);
-      byModel.set(piece.model, list);
+      const at = CampView.at(piece);
+      const side = fadeSide(at.x, at.z, center, center);
+      const key = `${side}:${piece.model}`;
+      const bucket = byModel.get(key) ?? { side, pieces: [] };
+      bucket.pieces.push(piece);
+      byModel.set(key, bucket);
     }
 
-    const mat = this.track(castleMaterial());
     const dummy = new THREE.Object3D();
-    for (const [model, list] of byModel) {
+    for (const [key, bucket] of byModel) {
+      const model = key.slice(key.indexOf(':') + 1);
+      const list = bucket.pieces;
       const mesh = new THREE.InstancedMesh(
         castleGeometry(model as CastlePartModelName),
-        mat,
+        this.wallFade.material(bucket.side),
         list.length,
       );
       mesh.castShadow = true;
@@ -1010,8 +1022,16 @@ export class CampView {
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
       }
+      mesh.instanceMatrix.needsUpdate = true;
+      this.wallFade.add(mesh, bucket.side);
       this.walls.add(mesh);
     }
+  }
+
+  /** Камера гасит только ту сторону стен, которая стоит перед лагерем. */
+  updateOcclusion(dt: number, camera: THREE.Camera): void {
+    const center = this.center;
+    this.wallFade.update(dt, camera, center.x, center.z);
   }
 
   /* ---------- дороги и фонари (§6.1.12) ---------- */
@@ -1228,6 +1248,7 @@ export class CampView {
     this.fire.dispose();
     for (const f of this.guestFires) f.fire.dispose();
     this.meadow = null;
+    this.wallFade.dispose();
     this.groundMesh.dispose();
     // Геометрия леса общая на страницу (кэш forest.ts) — освобождаются только
     // буферы экземпляров.
