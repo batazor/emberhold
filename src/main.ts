@@ -276,6 +276,8 @@ import {
   assignClanBuilder,
   clanBuildBlock,
   clanBuilderIds,
+  clanCanAfford,
+  clanResourceShortage,
   ensureClanLocation,
   foundClan,
   neighboursOpen,
@@ -4275,6 +4277,15 @@ function clanSiteNearHero(kind: ClanBuildingKind): Cell {
 
 function selectClanBuilding(kind: ClanBuildingKind | null): void {
   if (!inClanCamp || raid === null) return;
+  const location = ensureClanLocation(camp);
+  if (kind !== null && location !== null && !clanCanAfford(location, kind)) {
+    clanPlacing = null;
+    raidView?.hideSite();
+    clanBuildBar.setReason(clanResourceShortage(camp, kind));
+    clanBuildBar.sync(camp, null, true);
+    play('deny');
+    return;
+  }
   clanPlacing = kind;
   clanBuildBar.setReason(kind === null ? '' : 'Коснитесь свободного места на опушке');
   clanBuildBar.sync(camp, clanPlacing, true);
@@ -4294,7 +4305,9 @@ function tryPlaceClanBuilding(cell: Cell): void {
   raidView?.showSite(CLAN_BUILDINGS[kind].model, cell.x, cell.z, block === 'ok');
   if (block !== 'ok') {
     play('deny');
-    clanBuildBar.setReason(CLAN_BUILD_REASON[block]);
+    clanBuildBar.setReason(block === 'resources'
+      ? clanResourceShortage(camp, kind)
+      : CLAN_BUILD_REASON[block]);
     return;
   }
   play('build');

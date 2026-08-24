@@ -11,6 +11,8 @@ import { load, save, wipe } from './save';
 import { CLANS } from './world';
 import {
   CLAN_BUILD_SECONDS,
+  CLAN_BUILDINGS,
+  CLAN_BUILDING_ORDER,
   CLAN_FROM_RESIDENTS,
   CLAN_NAME_MAX,
   CLAN_START_RESOURCES,
@@ -163,7 +165,29 @@ describe('Клан: здания на общей опушке', () => {
     assert.equal(placeClanBuilding(camp, 'hall', cell), 'ok');
     assert.deepEqual(camp.clan?.location?.buildings, []);
     assert.deepEqual(camp.clan?.location?.construction, { kind: 'hall', ...cell, work: 0 });
+    assert.deepEqual(camp.clan?.location?.resources, { wood: 8, stone: 10, iron: 14 });
     assert.equal(clanBuildBlock(camp, 'hall', cell), 'built');
+  });
+
+  test('цены трёх зданий вместе равны стартовому складу', () => {
+    for (const resource of ['wood', 'stone', 'iron'] as const) {
+      const total = CLAN_BUILDING_ORDER.reduce(
+        (sum, kind) => sum + CLAN_BUILDINGS[kind].cost[resource],
+        0,
+      );
+      assert.equal(total, CLAN_START_RESOURCES, resource);
+    }
+  });
+
+  test('при нехватке ресурсов стройка не начинается и склад не меняется', () => {
+    const camp = withFolk(2);
+    assert.ok(foundClan(camp, 'Артель Гиты', 42));
+    const cell = freeCell(camp);
+    camp.clan!.location!.resources.wood = CLAN_BUILDINGS.hall.cost.wood - 1;
+    const before = { ...camp.clan!.location!.resources };
+    assert.equal(placeClanBuilding(camp, 'hall', cell), 'resources');
+    assert.equal(camp.clan?.location?.construction, null);
+    assert.deepEqual(camp.clan?.location?.resources, before);
   });
 
   test('член клана без роли главы размещать здания не может', () => {
@@ -187,7 +211,7 @@ describe('Клан: здания на общей опушке', () => {
     assert.deepEqual(location?.buildings, []);
     assert.deepEqual(location?.construction, { kind: 'store', ...cell, work: 0 });
     assert.deepEqual(location?.builders, [builderId]);
-    assert.deepEqual(location?.resources, { stone: 15, wood: 15, iron: 15 });
+    assert.deepEqual(location?.resources, { stone: 9, wood: 10, iron: 13 });
     wipe();
   });
 
