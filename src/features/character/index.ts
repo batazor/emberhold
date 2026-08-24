@@ -75,6 +75,9 @@ const characterText = (text: string): string => {
     'Провиант за шаг': gameMessage('Провиант за шаг', 'Provisions per step'),
     'Под угрозой': gameMessage('Под угрозой', 'At risk'),
     'Колчан': gameMessage('Колчан', 'Quiver'),
+    'Лучник': gameMessage('Лучник', 'Archer'),
+    'Рыцарь': gameMessage('Рыцарь', 'Knight'),
+    'Бандит': gameMessage('Бандит', 'Rogue'),
     'с щитом': gameMessage('с щитом', 'with shield'),
     'с фонарём': gameMessage('с фонарём', 'with lantern'),
   };
@@ -444,7 +447,7 @@ export class CharacterPage {
         const b = document.createElement('button');
         b.className = `face ch-tab${p.key === s.key ? ' on' : ''}`;
         b.dataset['who'] = p.key;
-        setGameAttribute(b, 'title', gameMessage('{name}', '{name}'), { name: p.name });
+        setGameAttribute(b, 'title', gameMessage('{name}', '{name}'), { name: characterText(p.name) });
         b.innerHTML = avatarSvg(p.look, p.seed);
         return b;
       }),

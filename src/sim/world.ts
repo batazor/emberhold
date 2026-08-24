@@ -228,6 +228,45 @@ export interface Region {
   readonly camp: { readonly x: number; readonly y: number };
 }
 
+/** Порог тракта — один контракт для карты и указателей внутри локаций. */
+export const ROAD_NEAR = 0.24;
+
+export interface RoadEdge {
+  readonly a: number;
+  readonly b: number;
+}
+
+/**
+ * Граф дорог региона. Идентификатор -1 означает лагерь; остальные — id узла.
+ * Геометрия карты раньше считала эти рёбра внутри canvas, и декор не мог
+ * узнать, куда вправду ведёт нарисованный тракт.
+ */
+export function roadGraph(region: Region): RoadEdge[] {
+  const spots = [...region.nodes, { id: -1, ...region.camp }];
+  const out: RoadEdge[] = [];
+  for (let i = 0; i < spots.length; i++) {
+    for (let j = i + 1; j < spots.length; j++) {
+      const a = spots[i]!;
+      const b = spots[j]!;
+      if (Math.hypot(a.x - b.x, a.y - b.y) <= ROAD_NEAR) out.push({ a: a.id, b: b.id });
+    }
+  }
+  return out;
+}
+
+export function roadNeighbours(region: Region, node: number): WorldNode[] {
+  const ids = new Set<number>();
+  for (const edge of roadGraph(region)) {
+    if (edge.a === node && edge.b >= 0) ids.add(edge.b);
+    if (edge.b === node && edge.a >= 0) ids.add(edge.a);
+  }
+  const here = region.nodes.find((n) => n.id === node);
+  return region.nodes
+    .filter((n) => ids.has(n.id))
+    .sort((a, b) => here === undefined ? a.id - b.id :
+      Math.hypot(a.x - here.x, a.y - here.y) - Math.hypot(b.x - here.x, b.y - here.y));
+}
+
 /**
  * Сид + идентификаторы → 32 бита. Тот же FNV, что в артбуке. Выставлен
  * наружу по той же причине, что и `SEED`: местность считается из него же.
