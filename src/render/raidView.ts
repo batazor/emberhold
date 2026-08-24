@@ -21,7 +21,7 @@ import { FoxRig } from './fox';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
 import { roadPieces } from '../sim/roads';
-import { FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
+import { cryptGeometry, FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
 import type { GraveyardPartModelName } from './graveyard';
 import type { CastlePartModelName } from './castle';
 import type { CastleSite } from '../sim/castleSite';
@@ -37,7 +37,7 @@ import {
   type Garrison,
 } from '../sim/garrison';
 import type { DwellerLook } from '../sim/garrison';
-import type { GraveSite } from '../sim/graveSite';
+import { cryptStyleOf, type GraveSite } from '../sim/graveSite';
 import type { TrailSite } from '../sim/trailSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
@@ -1597,8 +1597,8 @@ export class RaidView {
    * ноль детали стоит в центре её клетки набора, а клетка набора покрывает
    * `FENCE_SCALE` клеток локации.
    *
-   * **Могилы, склеп и гроб** — предметы: у них никакой сетки нет, они стоят
-   * в клетке локации и приводятся высотой.
+   * **Могилы и гроб** — предметы и приводятся высотой. **Склеп** — цельная
+   * сборка в общем масштабе: иначе крыша и дверь разошлись бы с корпусом.
    *
    * **Лес и пеньки** по краю — тоже предметы, и порода у них своя, чтобы
    * кладбище не читалось той же поляной, с которой начинается игра.
@@ -1629,9 +1629,12 @@ export class RaidView {
     for (const [model, list] of byModel) {
       const fence = site.fence.some((p) => p.model === model);
       // Геометрия живёт в общем кэше graveyard.ts и переживает вид: её не track.
+      const crypt = cryptStyleOf(model);
       const geo = fence
         ? fenceGeometry(model as GraveyardPartModelName)
-        : graveyardGeometry(model as GraveyardPartModelName, MARK_HEIGHT[model] ?? 0.8);
+        : crypt === undefined
+          ? graveyardGeometry(model as GraveyardPartModelName, MARK_HEIGHT[model] ?? 0.8)
+          : cryptGeometry(crypt);
       const mesh = new THREE.InstancedMesh(geo, mat, list.length);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
