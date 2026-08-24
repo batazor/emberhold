@@ -5,6 +5,7 @@ import { TIER_CONTAINERS, TIER_CONTAINER_BASE, TIER_DEPTH_VALUE, TIER_SIZE } fro
 import { TIER_ROSTER, enemyStats } from './enemies';
 import { distanceField, idx, inBounds, NEIGHBORS_4 } from './grid';
 import { rollLoot } from './resources';
+import { supplyBoxAt } from './lootbox';
 import { STONES, scatterStones } from './stones';
 import { buildDungeonEnemyPatrols } from './dungeonNpc';
 import type { Cell, Container, Enemy, GameLocation, Tier } from './types';
@@ -258,6 +259,18 @@ export function generateLocation(
       kind: rollLoot(rng, tier),
       opened: false,
     });
+  }
+
+  // Ларец не добавляет добычу поверх росписи: он заменяет самую глубокую
+  // обычную находку. Отдельный RNG в `supplyBoxAt` не переставляет карту.
+  if (supplyBoxAt(seed, tier, visit) && containers.length > 0) {
+    let deepest = 0;
+    for (let i = 1; i < containers.length; i++) {
+      const a = containers[i]!;
+      const b = containers[deepest]!;
+      if (backSteps[idx(size, a.x, a.z)]! > backSteps[idx(size, b.x, b.z)]!) deepest = i;
+    }
+    containers[deepest] = { ...containers[deepest]!, look: 'сундук', supply: true };
   }
 
   /**

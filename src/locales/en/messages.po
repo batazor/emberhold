@@ -8959,6 +8959,11 @@ msgstr "More than six-tenths in one gradient — 2 of 8 genera.\n"
 "Percentages are rounded, so the row does not have to add up to exactly 100."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Бонус"
+msgstr "Bonus"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Бор на солончаке"
 msgstr "Boron on the salt marsh"
@@ -9477,6 +9482,11 @@ msgstr "Join the squad"
 #: locales/legacy-messages.ts
 msgid "В прогресс идёт пища, добытая после выдачи задания. Ежедневный расход результат не отнимает."
 msgstr "In progress there is food obtained after the issuance of the task. Daily expenditure does not take away the result."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "В путь"
+msgstr "Expedition"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -12152,6 +12162,16 @@ msgid "Дерево {wood} · Железо {iron}"
 msgstr "Wood {wood} · Iron {iron}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дерево ×2"
+msgstr "Wood ×2"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дерево ×3"
+msgstr "Wood ×3"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Дерево 100%"
 msgstr "Wood 100%"
@@ -12475,6 +12495,11 @@ msgstr "to 1.67. In KayKit, the best cycle requires 2.17. This is the main thing
 msgid "до 200 треугольников — таких в наборе 22"
 msgstr "Up to 200 triangles—there are 200 of these in the set.\n"
 "22"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "До гарантии: {left}"
+msgstr "Until guarantee: {left}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13341,6 +13366,16 @@ msgstr "Iron - the merchant in the castle"
 #: locales/game-messages.ts
 msgid "Железо {iron}"
 msgstr "Iron {iron}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Железо ×1"
+msgstr "Iron ×1"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Железо ×2"
+msgstr "Iron ×2"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -15704,6 +15739,16 @@ msgid "Камень {stone} · Железо {iron}"
 msgstr "Stone {stone} · Iron {iron}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Камень ×4"
+msgstr "Stone ×4"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Камень ×6"
+msgstr "Stone ×6"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Камень 128"
 msgstr "Stone 128"
@@ -17333,6 +17378,11 @@ msgid "Кристалл"
 msgstr "Crystal"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Кристалл ×1"
+msgstr "Crystal ×1"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "кристалл отмечен на карте"
 msgstr "The crystal is marked on the map"
@@ -17768,6 +17818,11 @@ msgstr "Terrain"
 #: locales/legacy-messages.ts
 msgid "Ландшафт 100%"
 msgstr "Terrain 100%"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ларец снабжения"
+msgstr "Supply chest"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -18339,9 +18394,10 @@ msgid "материал"
 msgstr "material"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Материал"
-msgstr "Materials"
+msgstr "Material"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19802,6 +19858,11 @@ msgstr "No damage for 5 seconds."
 msgid "Не получает урон 5 секунд. Как и два других умения, влияет на одно: насколько глубоко можно зайти и вернуться."
 msgstr "No damage for 5 seconds.\n"
 "Like the other two skills, it affects only one thing: how deep you can go and return."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "не поместилось: {amount}"
+msgstr "could not fit: {amount}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -26082,6 +26143,16 @@ msgstr "Rare Level Five maps of buildings are the reward for late improvements."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Редкий бонус"
+msgstr "Rare bonus"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Редкий бонус · гарантия {pity}-го ларца"
+msgstr "Rare bonus · guaranteed on chest {pity}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.visitCamp.mode"
 msgstr "view only"
 
@@ -27969,6 +28040,11 @@ msgid "слотом палитры"
 msgstr "palette"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "слоты походных предметов заняты"
+msgstr "expedition slots are full"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Слоты: было → стало"
 msgstr "Slots: It''s become"
@@ -29313,6 +29389,11 @@ msgstr "Arrows {value0} / {value1}"
 #: locales/legacy-messages.ts
 msgid "Стрелы ZXQPH0QXZ / ZXQPH1QXZ · +ZXQPH2QXZ · ZXQPH3QXZ"
 msgstr "Arrows {value0} / {value1} · +{value2} · {value3}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стрелы ×4"
+msgstr "Arrows ×4"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
