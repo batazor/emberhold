@@ -84,7 +84,19 @@ export type TelemetryEvent =
   | { t: 'hero_pick'; at: number; cls: HeroClassId; level: number; rotated: boolean }
   | { t: 'heal_start'; at: number; cls: HeroClassId; wounds: number; seconds: number }
   | { t: 'train_start'; at: number; cls: HeroClassId; level: number }
-  | { t: 'exit'; at: number; where: ExitPoint }
+  /**
+   * §9 — где игрок ушёл и сколько к тому моменту шла сессия. `sec` заведено
+   * под длину сессии (§22.18): своей у нас не было вовсе, а чужая — та,
+   * что считает аналитика по клику, — меряет вкладку, а не игру.
+   *
+   * Событие пишется на **уход вкладки в фон**, а не на её закрытие: события
+   * выгрузки на мобильных не гарантированы. Отсюда и чтение `sec`: это
+   * не «длина сессии» готовым числом, а «докуда сессия дошла к этому уходу»,
+   * и длиной становится наибольшее за сессию. Переключение вкладки туда-сюда
+   * даёт несколько таких отметок, и это честнее, чем одна: игра не знает,
+   * вернутся ли, — а максимум знает и без неё.
+   */
+  | { t: 'exit'; at: number; where: ExitPoint; sec: number }
   /** §21.5 — берут ли все три и уходит ли камень. */
   | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' }
   /**
