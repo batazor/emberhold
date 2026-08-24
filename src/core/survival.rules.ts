@@ -8,6 +8,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  fittedHazard,
+  hazard,
   kaplanMeier,
   meanOfAll,
   meanOfDeaths,
@@ -189,6 +191,88 @@ describe('Кривая выживания (§11.3, §9)', () => {
         Math.abs(analytic - numeric) / analytic < 1e-5,
         `b=${b}: аналитически ${analytic}, численно ${numeric}`,
       );
+    }
+  });
+
+  /**
+   * Определение функции риска: доля погибших среди доживших. Проверяется
+   * на данных, где ответ известен руками, — иначе «ĥ считается правильно»
+   * держится на той же арифметике, что и сама ĥ.
+   */
+  test('риск — это доля погибших среди доживших', () => {
+    // Десять наблюдений: по одной гибели в каждой десятой доле времени.
+    const obs: Observation[] = [];
+    for (let i = 0; i < 10; i += 1) obs.push({ time: i * 0.1 + 0.05, dead: true });
+    const bins = hazard(obs, 0.1, 1);
+    assert.equal(bins.length, 10);
+    bins.forEach((b, i) => {
+      assert.equal(b.atRisk, 10 - i, `ведро ${i}: живых ${b.atRisk}`);
+      assert.equal(b.deaths, 1);
+      // rate = 1 / (10−i) / 0,1 — доля на единицу времени, а не на ведро.
+      assert.ok(close(b.rate, 1 / (10 - i) / 0.1, 1e-9), `ведро ${i}: ĥ ${b.rate}`);
+    });
+  });
+
+  /**
+   * Главное, ради чего риск считается отдельно от кривой. Ровный отсев
+   * и стена дают одинаково падающую `S`, и различить их можно только по `ĥ`.
+   */
+  test('стена видна в риске и не видна в кривой', () => {
+    const flat: Observation[] = [];
+    const wall: Observation[] = [];
+    for (let i = 0; i < 100; i += 1) {
+      // Ровный отсев: гибели размазаны по всей длине.
+      flat.push({ time: (i + 0.5) / 100, dead: i < 50 });
+      // Стена: столько же гибелей, но все в последней десятой доле.
+      wall.push(i < 50 ? { time: 0.95, dead: true } : { time: (i + 0.5) / 100, dead: false });
+    }
+    // Обе кривые убывают и кончаются одинаково — по числу выживших не различить.
+    assert.equal(kaplanMeier(flat).deaths, kaplanMeier(wall).deaths);
+
+    const rate = (o: readonly Observation[]): number[] => hazard(o, 0.1, 1).map((b) => b.rate);
+    const [f, w] = [rate(flat), rate(wall)];
+    // У ровного отсева риск нигде не даёт пика: разброс укладывается в разы.
+    assert.ok(Math.max(...f) / Math.max(...f.filter((x) => x > 0)) < 2, `ровный: ${f}`);
+    // У стены весь риск в одном ведре, а до него — ноль.
+    assert.ok(w.slice(0, 9).every((x) => x === 0), `стена: ${w}`);
+    assert.ok(w[9]! > Math.max(...f) * 5, `стена: пик ${w[9]} против ровного ${Math.max(...f)}`);
+  });
+
+  /**
+   * `fittedHazard` — производная логарифма подогнанной кривой, и проверяется
+   * она численно: формула `−b/t` записана в модуле руками, и совпадение
+   * с наклоном `ln S` — единственное, что подтверждает, что записана верно.
+   */
+  test('риск подгонки равен наклону логарифма кривой', () => {
+    for (const b of [-0.34, -0.9, -1.7]) {
+      const fit = { a: 0.612, b, r2: 1 };
+      for (const t of [1, 7, 30, 180]) {
+        const dt = t * 1e-6;
+        const s = (x: number): number => Math.log(fit.a * x ** fit.b);
+        const numeric = -(s(t + dt) - s(t - dt)) / (2 * dt);
+        assert.ok(
+          Math.abs(fittedHazard(fit, t)! - numeric) / numeric < 1e-6,
+          `b=${b}, t=${t}: ${fittedHazard(fit, t)} против ${numeric}`,
+        );
+      }
+    }
+    assert.equal(fittedHazard({ a: 1, b: -0.5, r2: 1 }, 0), null);
+  });
+
+  /**
+   * Утверждение о риске, которое степень несёт в себе, — «риск падает».
+   * Оно записано здесь затем, чтобы §22.17 мог на него ссылаться: растущий
+   * риск по глубине опровергает не точность подгонки, а её семейство.
+   */
+  test('степенная подгонка умеет только падающий риск', () => {
+    for (const b of [-0.1, -0.34, -2]) {
+      const fit = { a: 0.9, b, r2: 1 };
+      let prev = Infinity;
+      for (const t of [0.1, 0.5, 1, 10, 100]) {
+        const h = fittedHazard(fit, t)!;
+        assert.ok(h < prev, `b=${b}: риск на ${t} не ниже предыдущего`);
+        prev = h;
+      }
     }
   });
 
