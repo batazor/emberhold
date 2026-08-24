@@ -406,6 +406,55 @@ describe('Замок: детали выбираются архитектурой
   });
 });
 
+describe('Замок: смысловой граф предшествует геометрии', () => {
+  test('каждый сид сравнивает несколько полных кандидатов', () => {
+    for (const c of expanded) {
+      assert.equal(c.generation.evaluated, 8, `сид ${c.seed}: сравнено ${c.generation.evaluated}`);
+      assert.ok(c.generation.valid >= 1 && c.generation.valid <= c.generation.evaluated,
+        `сид ${c.seed}: валидных ${c.generation.valid}/${c.generation.evaluated}`);
+      assert.ok(Number.isFinite(c.generation.score), `сид ${c.seed}: оценка кандидата не число`);
+    }
+  });
+
+  test('граф имеет две читаемые ветки от ворот: к донжону и на стену', () => {
+    for (const c of expanded) {
+      assert.deepEqual(c.routes.map((route) => route.kind).sort(), ['ворота-донжон', 'ворота-стена']);
+      for (const route of c.routes) {
+        assert.ok(route.cells.length > 0, `сид ${c.seed}: пустой маршрут ${route.kind}`);
+        assert.deepEqual(route.cells[0], c.generation.gateInside, `сид ${c.seed}: ${route.kind} не от ворот`);
+        const seen = new Set<string>();
+        for (let i = 0; i < route.cells.length; i++) {
+          const cell = route.cells[i]!;
+          assert.ok(c.yard.some((spot) => keyOf(spot) === keyOf(cell)),
+            `сид ${c.seed}: ${route.kind} вышел из двора в ${keyOf(cell)}`);
+          assert.ok(!seen.has(keyOf(cell)), `сид ${c.seed}: ${route.kind} закольцевался в ${keyOf(cell)}`);
+          seen.add(keyOf(cell));
+          if (i > 0) assert.equal(
+            Math.abs(cell.x - route.cells[i - 1]!.x) + Math.abs(cell.z - route.cells[i - 1]!.z),
+            1,
+            `сид ${c.seed}: разрыв маршрута ${route.kind}`,
+          );
+        }
+        const target = route.kind === 'ворота-донжон' ? c.generation.keepStep : c.generation.wallStair;
+        assert.equal(Math.abs(route.cells.at(-1)!.x - target.x) + Math.abs(route.cells.at(-1)!.z - target.z), 1,
+          `сид ${c.seed}: ${route.kind} не дошёл до своего узла`);
+      }
+    }
+  });
+
+  test('здания и укрепления не занимают зарезервированные дороги', () => {
+    const blocking = new Set(['башня', 'лестница', 'здание', 'укрепление']);
+    for (const c of expanded) {
+      const routes = new Set(c.routes.flatMap((route) => route.cells.map(keyOf)));
+      for (const piece of c.pieces) {
+        if (!blocking.has(piece.role) || !Number.isInteger(piece.x) || !Number.isInteger(piece.z)) continue;
+        assert.ok(!routes.has(keyOf(piece)),
+          `сид ${c.seed}: «${piece.model}» заняла дорогу ${keyOf(piece)}`);
+      }
+    }
+  });
+});
+
 describe('Замок: двор наполнен зданиями, но остаётся двором', () => {
   const buildingModels = Object.values(COURTYARD_BUILDINGS).flat() as readonly string[];
   const solidRoles = new Set(['башня', 'лестница', 'укрепление', 'здание']);
@@ -413,10 +462,10 @@ describe('Замок: двор наполнен зданиями, но оста�
   test('компактный замок получает здание, большой — небольшой квартал', () => {
     for (const c of expanded) {
       const buildings = c.pieces.filter((p) => p.role === 'здание');
-      assert.ok(buildings.length >= 1 && buildings.length <= 4, `сид ${c.seed}: зданий ${buildings.length}`);
-      if (c.yard.length >= 18) {
-        assert.ok(buildings.length >= 3, `сид ${c.seed}: большой двор пуст — зданий ${buildings.length}`);
-      }
+      assert.ok(buildings.length >= 1 && buildings.length <= 8, `сид ${c.seed}: зданий ${buildings.length}`);
+      const minimum = c.yard.length >= 40 ? 6 : c.yard.length >= 28 ? 5 : c.yard.length >= 18 ? 3 : 1;
+      assert.ok(buildings.length >= minimum,
+        `сид ${c.seed}: двор из ${c.yard.length} клеток пуст — зданий ${buildings.length}/${minimum}`);
       assert.equal(
         buildings[0]!.model,
         c.towerStyle === 'шестигранные' ? 'barracks' : 'house',
