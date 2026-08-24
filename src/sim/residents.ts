@@ -59,6 +59,8 @@ export type ResidentJob = SelfAnswer | 'кормим';
 export const RESIDENT_JOBS: readonly ResidentJob[] = ['строим', 'ходим', 'кормим'];
 
 export interface Resident {
+  /** Стабильный идентификатор для назначений, не зависящий от имени и позиции в списке. */
+  readonly id?: string;
   readonly name: string;
   readonly look: DwellerLook;
   /** Сид лица (`ui/avatar.ts`): с каким пришёл, с таким и живёт. */
@@ -76,6 +78,28 @@ export interface Resident {
   readonly schedule?: ResidentScheduleId;
   /** Пятичасовое поручение вне лагеря. До завершения можно только отозвать. */
   readonly hunt?: ResidentHunt;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function residentHash(value: string, salt: number): number {
+  let hash = (2166136261 ^ salt) >>> 0;
+  for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
+  return hash >>> 0;
+}
+
+/** UUID старого жильца выводится стабильно; новый сохраняет его навсегда. */
+export function residentUuid(resident: Pick<Resident, 'id' | 'name' | 'look' | 'seed'>): string {
+  if (resident.id !== undefined && UUID.test(resident.id)) return resident.id.toLowerCase();
+  const key = `${resident.name}\u0000${resident.look}\u0000${resident.seed}`;
+  const raw = [0x13579bdf, 0x2468ace0, 0x9e3779b9, 0x85ebca6b]
+    .map((salt) => residentHash(key, salt).toString(16).padStart(8, '0'))
+    .join('')
+    .split('');
+  raw[12] = '5';
+  raw[16] = ((parseInt(raw[16]!, 16) & 3) | 8).toString(16);
+  const hex = raw.join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export type ResidentScheduleId = 'ранняя' | 'дневная' | 'поздняя';
@@ -576,6 +600,8 @@ export function workDone(
   working?: number,
   /** Конец промежутка. Если задан, сон и еда вырезаются по расписанию. */
   untilAt?: number,
+  /** Назначенные вне личного лагеря не могут работать в двух местах сразу. */
+  excludedIds: ReadonlySet<string> = new Set(),
 ): { kind: ResourceKind; n: number }[] {
   if (awaySec <= 0) return [];
   // Работает только тот, у кого есть крыша. Это не наказание, а то же
@@ -587,6 +613,7 @@ export function workDone(
   );
   const sum = new Map<ResourceKind, number>();
   for (const r of camp.residents.slice(0, roofed)) {
+    if (excludedIds.has(residentUuid(r))) continue;
     // Отдыхающий не приносит ничего: отдых — это и есть отложенный
     // инструмент, и прибавка от него была бы работой под другим именем.
     if (r.rest || r.hunt !== undefined) continue;
@@ -612,8 +639,9 @@ export function collectWork(
   awaySec: number,
   working?: number,
   untilAt?: number,
+  excludedIds: ReadonlySet<string> = new Set(),
 ): { kind: ResourceKind; n: number }[] {
-  const done = workDone(camp, awaySec, working, untilAt);
+  const done = workDone(camp, awaySec, working, untilAt, excludedIds);
   const collected = done
     .map(({ kind, n }) => ({ kind, n: n - stash(camp, { [kind]: n }) }))
     .filter(({ n }) => n > 0);
@@ -629,7 +657,7 @@ export function collectWork(
  */
 export function admit(camp: CampState, who: Resident): boolean {
   if (camp.residents.some((r) => r.name === who.name)) return false;
-  camp.residents.push(who);
+  camp.residents.push(who.id === undefined ? { ...who, id: residentUuid(who) } : who);
   // §13.7 — приглашённый приходит со своим узелком. Кладётся он через
   // кладовую (§13.6): у неё есть дно, и подарок, не влезший в закрома,
   // пропадает так же, как принесённое жильцом.

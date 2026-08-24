@@ -10,15 +10,24 @@ import { createRoster } from './heroes';
 import { load, save, wipe } from './save';
 import { CLANS } from './world';
 import {
+  CLAN_BUILD_SECONDS,
   CLAN_FROM_RESIDENTS,
   CLAN_NAME_MAX,
+  CLAN_START_RESOURCES,
   NAME_REASON,
+  advanceClanConstruction,
+  assignClanBuilder,
+  clanBuildBlock,
   clanTaskOpen,
+  createClanLocation,
+  ensureClanLocation,
   foundClan,
   nameBlock,
   neighboursOpen,
+  placeClanBuilding,
 } from './clan';
 import type { CampState } from './camp';
+import { residentUuid } from './residents';
 import type { Resident } from './residents';
 
 const folk = (name: string): Resident => ({
@@ -86,6 +95,26 @@ describe('Клан: имя', () => {
     assert.ok(foundClan(camp, '  Артель Гиты  ', 42));
     assert.equal(camp.clan?.name, 'Артель Гиты');
     assert.equal(camp.clan?.at, 42);
+    assert.ok(camp.clan?.location, 'у основанного клана нет своей локации');
+    assert.ok((camp.clan?.location?.glade.size ?? 0) > 0, 'у клановой локации нет поляны');
+    assert.deepEqual(camp.clan?.location?.resources, {
+      stone: CLAN_START_RESOURCES,
+      wood: CLAN_START_RESOURCES,
+      iron: CLAN_START_RESOURCES,
+    });
+  });
+
+  test('клановая опушка воспроизводится из имени и часа основания', () => {
+    assert.deepEqual(createClanLocation('Артель Гиты', 42), createClanLocation('Артель Гиты', 42));
+    assert.notDeepEqual(createClanLocation('Артель Гиты', 42), createClanLocation('Другой клан', 42));
+  });
+
+  test('старый клан без локации получает её при первом входе', () => {
+    const camp = withFolk(2);
+    camp.clan = { name: 'Старый клан', at: 7 };
+    const location = ensureClanLocation(camp);
+    assert.ok(location);
+    assert.equal(camp.clan.location, location);
   });
 
   test('негодное имя лагерь не записывает', () => {
@@ -107,10 +136,82 @@ describe('Клан: сохранение', () => {
     foundClan(camp, 'Артель Гиты', 777);
     save(camp, createRoster(), 1000);
     assert.equal(load().camp.clan?.name, 'Артель Гиты');
+    assert.deepEqual(load().camp.clan?.location, camp.clan?.location);
     wipe();
     // Лагерь без клана открывается без клана, а не с пустым именем.
     save(createCamp(), createRoster(), 1000);
     assert.equal(load().camp.clan ?? null, null);
     wipe();
+  });
+});
+
+describe('Клан: здания на общей опушке', () => {
+  const freeCell = (camp: CampState): { x: number; z: number } => {
+    const size = camp.clan?.location?.glade.size ?? 0;
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        if (clanBuildBlock(camp, 'hall', { x, z }) === 'ok') return { x, z };
+      }
+    }
+    throw new Error('на клановой опушке нет места под здание');
+  };
+
+  test('глава ставит стройплощадку в свободный след 2×2', () => {
+    const camp = withFolk(2);
+    assert.ok(foundClan(camp, 'Артель Гиты', 42));
+    const cell = freeCell(camp);
+    assert.equal(placeClanBuilding(camp, 'hall', cell), 'ok');
+    assert.deepEqual(camp.clan?.location?.buildings, []);
+    assert.deepEqual(camp.clan?.location?.construction, { kind: 'hall', ...cell, work: 0 });
+    assert.equal(clanBuildBlock(camp, 'hall', cell), 'built');
+  });
+
+  test('член клана без роли главы размещать здания не может', () => {
+    const camp = withFolk(2);
+    assert.ok(foundClan(camp, 'Артель Гиты', 42));
+    camp.clan!.leader = false;
+    assert.equal(placeClanBuilding(camp, 'hall', { x: 1, z: 1 }), 'leader');
+    assert.deepEqual(camp.clan?.location?.buildings, []);
+    assert.equal(camp.clan?.location?.construction, null);
+  });
+
+  test('стройка, рабочие и склад переживают перезапуск', () => {
+    const camp = withFolk(2);
+    assert.ok(foundClan(camp, 'Артель Гиты', 42));
+    const cell = freeCell(camp);
+    assert.equal(placeClanBuilding(camp, 'store', cell, undefined, 100), 'ok');
+    const builderId = residentUuid(camp.residents[0]!);
+    assert.equal(assignClanBuilder(camp, builderId, true, 100), true);
+    save(camp, createRoster(), 1000);
+    const location = load().camp.clan?.location;
+    assert.deepEqual(location?.buildings, []);
+    assert.deepEqual(location?.construction, { kind: 'store', ...cell, work: 0 });
+    assert.deepEqual(location?.builders, [builderId]);
+    assert.deepEqual(location?.resources, { stone: 15, wood: 15, iron: 15 });
+    wipe();
+  });
+
+  test('без назначенных жителей стройка не движется', () => {
+    const camp = withFolk(2);
+    assert.ok(foundClan(camp, 'Артель Гиты', 7 * 3600));
+    const cell = freeCell(camp);
+    assert.equal(placeClanBuilding(camp, 'hall', cell, undefined, 7 * 3600), 'ok');
+    assert.deepEqual(advanceClanConstruction(camp, 18 * 3600), { worked: 0, completed: null });
+    assert.equal(camp.clan?.location?.construction?.work, 0);
+  });
+
+  test('назначенный житель заканчивает стройку своей рабочей сменой', () => {
+    const camp = withFolk(2);
+    const start = 7 * 3600;
+    assert.ok(foundClan(camp, 'Артель Гиты', start));
+    const cell = freeCell(camp);
+    assert.equal(placeClanBuilding(camp, 'workshop', cell, undefined, start), 'ok');
+    assert.equal(assignClanBuilder(camp, residentUuid(camp.residents[0]!), true, start), true);
+    const result = advanceClanConstruction(camp, 18 * 3600);
+    assert.equal(result.worked, CLAN_BUILD_SECONDS);
+    assert.equal(result.completed, 'workshop');
+    assert.deepEqual(camp.clan?.location?.buildings, [{ kind: 'workshop', ...cell }]);
+    assert.equal(camp.clan?.location?.construction, null);
+    assert.deepEqual(camp.clan?.location?.builders, []);
   });
 });
