@@ -176,6 +176,21 @@ export interface GameLocation {
   readonly tier: Tier;
   readonly size: number;
   readonly blocked: Uint8Array;
+  /**
+   * Многоклеточные залы обычного подземелья. Поле необязательное: прогулочные
+   * места используют тот же тип локации, но не пещерный генератор.
+   */
+  readonly caveRooms?: readonly CaveRoom[];
+  /** Смысловой план подземелья, построенный до координат и коридоров. */
+  readonly caveRoomGraph?: CaveRoomGraph;
+  /** Отладочный итог детерминированного конкурса вариантов геометрии. */
+  readonly caveGeneration?: CaveGenerationChoice;
+  /** Ниши геологического постпроцесса: проходимы, но не владеют содержимым. */
+  readonly caveGeology?: readonly Cell[];
+  /** Непроходимые до будущей механики ключей комнаты и их единственный вход. */
+  readonly caveSecretRooms?: readonly CaveSecretRoom[];
+  /** Мосты, зарезервированные под перепады до размещения добычи и существ. */
+  readonly caveStairHints?: readonly CaveStairHint[];
   readonly evac: Cell;
   readonly containers: Container[];
   /**
@@ -190,6 +205,71 @@ export interface GameLocation {
   readonly enemyPatrols?: readonly EnemyPatrol[];
   /** §11.1 «путь назад»: длина кратчайшего пути до выхода, в шагах. */
   readonly backSteps: Int32Array;
+}
+
+export type CaveRoomKind = 'small' | 'wide' | 'large';
+
+/** Роль отвечает на вопрос «зачем игроку этот зал», размер — только за форму. */
+export type CaveRoomRole = 'entry' | 'hub' | 'arena' | 'landmark' | 'treasure' | 'objective' | 'secret';
+
+export type CaveRoomConnectionKind = 'critical' | 'branch' | 'loop';
+
+export interface CaveRoomPlanNode {
+  readonly id: number;
+  readonly kind: CaveRoomKind;
+  readonly role: Exclude<CaveRoomRole, 'secret'>;
+  /** Число смысловых переходов от входа по критическому маршруту. */
+  readonly criticalDepth: number;
+}
+
+export interface CaveRoomPlanEdge {
+  readonly a: number;
+  readonly b: number;
+  readonly kind: CaveRoomConnectionKind;
+}
+
+/** Абстрактная структура уровня. Координат здесь намеренно нет. */
+export interface CaveRoomGraph {
+  readonly nodes: readonly CaveRoomPlanNode[];
+  readonly edges: readonly CaveRoomPlanEdge[];
+  readonly entry: number;
+  readonly objective: number;
+  readonly criticalPath: readonly number[];
+}
+
+export interface CaveGenerationChoice {
+  /** Сколько полноценных вариантов было построено и оценено. */
+  readonly evaluated: number;
+  /** Индекс выбранного варианта в `scores`. */
+  readonly selected: number;
+  /** Конкурсные оценки: невалидные штрафуются, стабильный вариант получает порог смены. */
+  readonly scores: readonly number[];
+  /** Число вариантов, прошедших все жёсткие инварианты. */
+  readonly valid: number;
+}
+
+export interface CaveRoom {
+  /** Индекс узла в `GameLocation.caveRoomGraph`; у секрета — -1. */
+  readonly nodeId: number;
+  readonly kind: CaveRoomKind;
+  readonly role: CaveRoomRole;
+  /** Центр footprint-а в координатах игровой сетки. */
+  readonly x: number;
+  readonly z: number;
+  /** Четверть оборота; у wide меняет footprint 5×3 на 3×5. */
+  readonly turn: 0 | 1 | 2 | 3;
+}
+
+export interface CaveSecretRoom extends CaveRoom {
+  readonly gate: Cell;
+  /** Направление от gate внутрь закрытого footprint-а. */
+  readonly dir: 0 | 1 | 2 | 3;
+}
+
+export interface CaveStairHint {
+  readonly low: Cell;
+  readonly high: Cell;
+  readonly dir: 0 | 1 | 2 | 3;
 }
 
 /**

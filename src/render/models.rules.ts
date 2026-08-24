@@ -47,6 +47,7 @@ import {
 import { ELEVATION } from './scene';
 import {
   BUILDER_SLOT_ORDER,
+  CAVE_SLOT_ORDER,
   CASTLE_SLOT_ORDER,
   DUNGEON_SLOT_ORDER,
   FOREST_SLOT_ORDER,
@@ -58,9 +59,17 @@ import {
   SKELETON_SLOT_ORDER,
   WEAPONS_SLOT_ORDER,
 } from './palette';
+import { CAVE_MODELS, CAVE_SLOTS } from './cave.data';
+import { CAVE_LEVEL_HEIGHT, CAVE_SCALE, caveModuleGeometry } from './cave';
 import { DUNGEON_MODELS, DUNGEON_SLOTS } from './dungeon.data';
 import { DUNGEON_HEIGHT_SCALE, DUNGEON_SCALE, dungeonModuleGeometry } from './dungeon';
 import {
+  CAVE_MODULES,
+  CAVE_BOUNDARY_MODELS,
+  CAVE_GATE_BARRIERS,
+  CAVE_GATE_FRAMES,
+  CAVE_ROOM_MODELS,
+  CAVE_STAIRS,
   DUNGEON_FLOORS,
   DUNGEON_PILLARS,
   DUNGEON_STAIRS,
@@ -422,6 +431,73 @@ describe('Артбук: бюджет треугольников', () => {
 
 /** Модульная архитектура подземелья (§6.1.2). */
 describe('Артбук: подземелье', () => {
+  test('пещерные модули Kenney запечены и совпадают с палитрой', () => {
+    assert.deepEqual([...CAVE_SLOTS], [...CAVE_SLOT_ORDER]);
+    for (const model of CAVE_MODULES) {
+      assert.ok(model in CAVE_MODELS, `«${model}» стоит в лабиринте, но в бандл не поехала`);
+      const geo = caveModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 1) < 0.02, `${model}: ширина не равна клетке`);
+      assert.ok(Math.abs(box.max.z - box.min.z - 1) < 0.02, `${model}: глубина не равна клетке`);
+      assert.ok(Math.abs(box.min.y) < 0.02, `${model}: модуль висит над основанием`);
+    }
+    assert.equal(CAVE_SCALE, 0.25, 'четыре единицы набора должны оставаться клеткой игры');
+  });
+
+  test('лестница занимает две клетки и приходит на следующий уровень', () => {
+    for (const model of CAVE_STAIRS) {
+      assert.ok(model in CAVE_MODELS, `«${model}» не запечена`);
+      const geo = caveModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 1) < 0.02, `${model}: ширина не равна клетке`);
+      assert.ok(Math.abs(box.max.z - box.min.z - 2) < 0.02, `${model}: длина не равна двум клеткам`);
+      assert.ok(box.max.y > CAVE_LEVEL_HEIGHT + 0.9, `${model}: нет потолка над верхней площадкой`);
+    }
+    assert.equal(CAVE_LEVEL_HEIGHT, 1.1, 'высота уровня обязана совпадать с воротами набора');
+  });
+
+  test('готовые комнаты занимают свои многоклеточные footprint-ы', () => {
+    const size = { 'room-small': [3, 3], 'room-wide': [5, 3], 'room-large': [5, 5] } as const;
+    for (const model of CAVE_ROOM_MODELS) {
+      assert.ok(model in CAVE_MODELS, `«${model}» не запечена`);
+      const geo = caveModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      const [width, depth] = size[model];
+      assert.ok(Math.abs(box.max.x - box.min.x - width) < 0.06, `${model}: неверная ширина`);
+      assert.ok(Math.abs(box.max.z - box.min.z - depth) < 0.06, `${model}: неверная глубина`);
+      assert.ok(Math.abs(box.min.y) < 0.02, `${model}: зал висит над основанием`);
+    }
+  });
+
+  test('камни внешней кромки запечены и стоят на земле', () => {
+    for (const model of CAVE_BOUNDARY_MODELS) {
+      assert.ok(model in CAVE_MODELS, `«${model}» не запечена`);
+      const geo = caveModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(box.max.y > 0.8, `${model}: камни слишком низкие для границы`);
+      assert.ok(Math.abs(box.min.y) < 0.02, `${model}: камни висят над землёй`);
+      if (model === 'template-floor-big') {
+        assert.ok(Math.abs(box.max.x - box.min.x - 2) < 0.02, `${model}: масса не равна двум клеткам`);
+        assert.ok(Math.abs(box.max.z - box.min.z - 2) < 0.02, `${model}: масса не равна двум клеткам`);
+      }
+    }
+  });
+
+  test('у открытых и закрытых ворот есть рама и створки', () => {
+    for (const model of [...CAVE_GATE_FRAMES, ...CAVE_GATE_BARRIERS]) {
+      assert.ok(model in CAVE_MODELS, `«${model}» не запечена`);
+      const geo = caveModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(box.max.x - box.min.x >= 0.99, `${model}: не перекрывает проход`);
+      assert.ok(box.max.y > 0.8, `${model}: ниже проёма`);
+    }
+  });
+
   test('каждая деталь конструктора запечена в бандл', () => {
     for (const model of [...DUNGEON_FLOORS, ...DUNGEON_WALLS, ...DUNGEON_PILLARS, ...DUNGEON_STAIRS]) {
       assert.ok(model in DUNGEON_MODELS, `«${model}» стоит в конструкторе, но в бандл не поехала`);
@@ -464,6 +540,15 @@ describe('Артбук: подземелье', () => {
     // 82 КБ после подключения полов, стен, колонн и лестниц округлены вверх
     // до десятка. Следующая мебель потребует отдельного решения и бюджета.
     assert.ok(kb <= 90, `набор подземелья: ${kb} КБ gzip > 90 КБ`);
+  });
+
+  test('пещерная оболочка укладывается в свой потолок — килобайты', () => {
+    const source = readFileSync(new URL('./cave.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    // Три цельных зала и две формы породы заметно тяжелее коридоров.
+    // Потолок округлён вверх от измеренного состава.
+    assert.ok(kb <= 260, `модули пещеры: ${kb} КБ gzip > 260 КБ`);
   });
 });
 

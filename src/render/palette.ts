@@ -335,6 +335,13 @@ export const DUNGEON_PALETTE = paletteOf(
   DUNGEON_SLOT_ORDER.map((name) => (name === 'золото' ? 'латунь' : name)),
 );
 
+/** Kenney Modular Cave Kit: одна порода, шесть ступеней светотени. */
+export const CAVE_SLOT_ORDER = [
+  'камень-тень', 'камень', 'камень-свет', 'скол', 'соль-тень', 'соль',
+] as const;
+
+export const CAVE_PALETTE = paletteOf(CAVE_SLOT_ORDER);
+
 /** Минотавр Zero: шкура, рога и алая набедренная ткань. */
 export const MINOTAUR_SLOT_ORDER = [
   'сукно-тень', 'краска-алая',
