@@ -1,4 +1,6 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Артбуки Emberhold</title>
@@ -68,6 +70,11 @@
 
   .rail-ft{border-top:1px solid var(--line);padding:11px 14px;display:flex;align-items:center;gap:10px;
     justify-content:space-between;}
+  .rail-ft .language-toggle{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;flex:none;}
+  .rail-ft .language-toggle button{border:0;border-right:1px solid var(--line);padding:5px 7px;background:transparent;
+    color:var(--dim);font:10px/1 var(--ff-mono);cursor:pointer;}
+  .rail-ft .language-toggle button:last-child{border-right:0;}
+  .rail-ft .language-toggle button.on{background:var(--brass);color:var(--surface);}
 
   /* ---------- правая часть ---------- */
   main{display:flex;flex-direction:column;min-width:0;min-height:0;}
@@ -128,6 +135,8 @@
   @media (min-width:901px){ .narrow{display:none;} }
 </style>
 <link rel="stylesheet" href="./artbook-mobile.css">
+</head>
+<body>
 
 <div class="shell">
   <aside class="rail" id="rail">
@@ -142,6 +151,7 @@
     <nav class="list" id="list"></nav>
     <div class="rail-ft">
       <button class="ghost" id="theme">Тема: авто</button>
+      <span id="language"></span>
       <span class="note">[ ] — соседняя книга</span>
     </div>
   </aside>
@@ -184,6 +194,8 @@
     <div class="view" id="view" hidden><iframe id="frame" title="Артбук"></iframe></div>
   </main>
 </div>
+
+<script vite-ignore src="./language.js"></script>
 
 <script>
 (() => {
@@ -242,6 +254,14 @@
   /* Русский счёт: «1 раздел», «2 раздела», «5 разделов». Оглавление читают
      глазами, а не парсером, — «1 разделов» в нём заметнее любой опечатки. */
   const plural = (n, one, few, many) => {
+    if (window.EmberholdLanguage?.current === 'en') {
+      const forms = {
+        'артбук': ['artbook', 'artbooks'], 'документ': ['document', 'documents'],
+        'книга': ['book', 'books'], 'раздел': ['section', 'sections'],
+      };
+      const form = forms[one];
+      if (form) return form[n === 1 ? 0 : 1];
+    }
     const t = Math.abs(n) % 100, u = t % 10;
     if (t > 10 && t < 20) return many;
     if (u > 1 && u < 5) return few;
@@ -467,6 +487,7 @@
     const d = frameDoc();
     theme.apply();
     if (!d || cur < 0) return;
+    window.EmberholdLanguage?.observe(d);
     const hs = readDoc(d, cur);
     hs.forEach((h, j) => { if (!h.id) h.id = 'ab-' + (j + 1); });
     meta[cur].secs = hs.map((h, j) => ({ n: kickOf(h, j), t: h.textContent.trim(), id: h.id }));
@@ -596,8 +617,11 @@
   $('cWord').textContent = plural(BOOKS.length, 'документ', 'документа', 'документов');
 
   theme.apply();
+  window.EmberholdLanguage?.toggle($('language'));
   paint();
   shelves();
   fromHash();
 })();
 </script>
+</body>
+</html>

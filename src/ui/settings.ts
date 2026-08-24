@@ -66,6 +66,13 @@ export class SettingsMenu {
     this.overlay.innerHTML = `
       <div class="panel">
         <h2>Настройки</h2>
+        <div class="set-language" translate="no">
+          <span class="lbl">${window.EmberholdLanguage?.current === 'ru' ? 'Язык' : 'Language'}</span>
+          <div class="language-toggle" role="group" aria-label="Language">
+            <button type="button" data-lang="en" class="${window.EmberholdLanguage?.current !== 'ru' ? 'on' : ''}" aria-pressed="${window.EmberholdLanguage?.current !== 'ru'}">EN</button>
+            <button type="button" data-lang="ru" class="${window.EmberholdLanguage?.current === 'ru' ? 'on' : ''}" aria-pressed="${window.EmberholdLanguage?.current === 'ru'}">RU</button>
+          </div>
+        </div>
         <div class="set-rows">
           ${KNOBS.map(
             (k) => `
@@ -86,6 +93,10 @@ export class SettingsMenu {
     // Тап по затемнению — тот же выход. Окно ничего не решает за игрока,
     // и держать его открытым до кнопки «Закрыть» незачем.
     this.overlay.addEventListener('click', (e) => {
+      if (e.target instanceof HTMLButtonElement && (e.target.dataset.lang === 'en' || e.target.dataset.lang === 'ru')) {
+        window.EmberholdLanguage?.set(e.target.dataset.lang);
+        return;
+      }
       if (e.target === this.overlay) this.close();
     });
 

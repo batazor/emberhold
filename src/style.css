@@ -893,6 +893,11 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #settings .panel { width: 100%; max-width: 340px; }
 #settings h2 { margin: 0 0 12px; font-size: 18px; }
 .set-rows { display: flex; flex-direction: column; gap: 10px; }
+.set-language { display: grid; grid-template-columns: 88px 1fr; gap: 8px; align-items: center; margin-bottom: 14px; }
+.language-toggle { display: inline-flex; justify-self: start; border: 1px solid var(--line); }
+.language-toggle button { min-width: 42px; padding: 6px 10px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--dim); }
+.language-toggle button:last-child { border-right: 0; }
+.language-toggle button.on { background: var(--gold); color: var(--ink); }
 /* Подпись · ползунок · число: числа выровнены по правому краю колонкой,
    иначе «5%» и «100%» дёргают ползунок при каждом движении. */
 .set-row { display: grid; grid-template-columns: 88px 1fr 38px; gap: 8px; align-items: center; }
