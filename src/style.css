@@ -1174,6 +1174,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 }
 #camp-locations .cl-place.clan {
   background: linear-gradient(155deg, color-mix(in srgb, var(--gold) 25%, var(--panel)) 0 48%, var(--panel) 49%);
+}
 #camp-locations .cl-place.sign {
   min-height: 36px; align-items: center; justify-content: center;
   color: var(--gold); background: color-mix(in srgb, var(--panel) 88%, var(--gold));
