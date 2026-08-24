@@ -174,6 +174,7 @@ import {
   worldAt,
 } from './sim/world';
 import type { Visit, WorldNode } from './sim/world';
+import { worldUnlock } from './sim/worldUnlock';
 import { campLevel, campPower } from './sim/standing';
 import type { LiveCamp } from './sim/standing';
 import { BuildPanel } from './ui/buildPanel';
@@ -3445,12 +3446,21 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   const now = clock.now();
   const day = dayAt(now);
   const place = placeAt(day, node);
+  if (place === null) return false;
+  // Карточка — не единственная защита условия. Вход проверяет то же чистое
+  // правило повторно: вызов из другой панели или устаревший кадр карты не
+  // должны открыть особое место в обход показанного прогресса. Отладочные
+  // адреса условие снимают намеренно — они заведены для прямого входа.
+  const unlock = worldUnlock(place.kind, camp, roster);
+  if (!debugScene && unlock !== null && !unlock.unlocked) {
+    campHud.notify('Закрыто');
+    return false;
+  }
   leaveTitle();
   inGlade = false;
   inGladeCamp = false;
   chop = null;
   campPrompt.setVisible(false);
-  if (place === null) return false;
   // Замок (§6.1.6) — не вылазка: там нечего добывать и не с кем драться,
   // и заход в него не тратит ни богатство места, ни героя.
   if (place.kind === 'замок') return toCastle(node, nodeSeed(day, node));

@@ -13644,6 +13644,11 @@ msgstr "Complete the construction."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Завершите {required} вылазки"
+msgstr "Complete {required} raids"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.auth.signUp.submit"
 msgstr "Create account"
 
@@ -13778,6 +13783,11 @@ msgstr "close off"
 #: locales/legacy-messages.ts
 msgid "Закрытие"
 msgstr "Closure"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Закрыто"
+msgstr "Locked"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -23228,6 +23238,11 @@ msgid "Подбор"
 msgstr "Pickup"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Подготовьте героя ур. {required}"
+msgstr "Train a hero to level {required}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "поддон в полторы клетки — самое широкое, что здесь есть"
 msgstr "Pallet, one and a half cells high, is the widest thing here"
@@ -23933,6 +23948,11 @@ msgstr "buildings from 3, equipment"
 #: locales/legacy-messages.ts
 msgid "постройки уровней 1–3"
 msgstr "Level 1-building 3"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Постройте Мастерскую ур. {required}"
+msgstr "Build a level {required} Workshop"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -31290,6 +31310,16 @@ msgstr "Fully upgraded"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Улучшите Кухню до ур. {required}"
+msgstr "Upgrade the Kitchen to level {required}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Улучшите Склад до ур. {required}"
+msgstr "Upgrade Storage to level {required}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Улучшить"
 msgstr "Upgrade"
@@ -31726,6 +31756,11 @@ msgstr "Speed ​​up for 24 stones"
 #: locales/legacy-messages.ts
 msgid "Ускорить целиком"
 msgstr "Speed ​​up completely"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Условие открытия"
+msgstr "Unlock requirement"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

@@ -51,6 +51,8 @@ import type { LiveCamp } from '../sim/standing';
 import { LIVE_SHOWN, liveCampSpots } from '../sim/world';
 import { KIND } from '../sim/world';
 import type { NodeKind, NodeState, Region, Visit, WorldNode } from '../sim/world';
+import { worldUnlock } from '../sim/worldUnlock';
+import type { WorldUnlock, WorldUnlockGoal } from '../sim/worldUnlock';
 import { drawMapTerrain } from './mapTerrain';
 import { gameDuration, gameMarkup, gameMessage, gameText, setGameText } from '../i18n/game';
 import { eventMessage, resourceMessage, tierMessage } from '../i18n/gameData';
@@ -149,6 +151,20 @@ const LOCATION_ICON_URL: Record<NodeKind, string> = {
   'кладбище': new URL('../../assets/world-map-icons/graveyard.png', import.meta.url).href,
   'тропа': new URL('../../assets/world-map-icons/trail.png', import.meta.url).href,
   'призы': new URL('../../assets/world-map-icons/prizes.png', import.meta.url).href,
+};
+
+/**
+ * Арт открытия вынесен в карточку: на узле по-прежнему остаётся компактный
+ * знак, а крупная сцена заранее показывает, ради чего выполнять условие.
+ * Обычная вылазка не является открываемой локацией и отдельного арта не имеет.
+ */
+const LOCATION_UNLOCK_ART: Record<NodeKind, string | null> = {
+  'вылазка': null,
+  'замок': '/assets/onboarding/world/castle-unlocked.avif',
+  'кладбище': '/assets/onboarding/world/graveyard-unlocked.avif',
+  'тропа': '/assets/onboarding/world/trail-unlocked.avif',
+  'призы': '/assets/onboarding/world/prize-wheel-unlocked.avif',
+  'замок минотавра': '/assets/onboarding/world/minotaur-castle-unlocked.avif',
 };
 
 /**
@@ -286,11 +302,20 @@ export interface WorldMapCallbacks {
  * (`camp.ts`) и у мест под здание в прологе: игрок обязан видеть, что мешает,
  * а не молчащую серую кнопку.
  */
-export type EntryBlock = 'ok' | 'kitchen' | 'onb';
+export type EntryBlock = 'ok' | 'kitchen' | 'onb' | 'location';
 
 const ENTRY_REASON = {
   kitchen: gameMessage('Провианта не хватит на такую глубину — нужна Кухня выше', 'Not enough provisions for this depth—upgrade the Kitchen'),
   onb: gameMessage('Первая вылазка идёт в другое место — оно одно горит на карте', 'The first raid starts elsewhere—the available location is highlighted on the map'),
+};
+
+/** Текст условия живёт у карточки, а число — в чистом правиле симуляции. */
+const WORLD_UNLOCK_MESSAGE: Record<WorldUnlockGoal, ReturnType<typeof gameMessage>> = {
+  forge: gameMessage('Постройте Мастерскую ур. {required}', 'Build a level {required} Workshop'),
+  raids: gameMessage('Завершите {required} вылазки', 'Complete {required} raids'),
+  storage: gameMessage('Улучшите Склад до ур. {required}', 'Upgrade Storage to level {required}'),
+  kitchen: gameMessage('Улучшите Кухню до ур. {required}', 'Upgrade the Kitchen to level {required}'),
+  hero: gameMessage('Подготовьте героя ур. {required}', 'Train a hero to level {required}'),
 };
 
 const SORTIE_REASON_MESSAGE = {
@@ -775,15 +800,20 @@ export class WorldMap {
   }
 
   /**
-   * Пускают ли в это место. Две причины, и обе временные по-разному: кадр
-   * раскадровки кончится сам, Кухня вырастет постройкой. Замок не запирается
-   * ничем — там нечего добывать и нечем рисковать (§6.1.6).
+   * Пускают ли в это место. Кадр раскадровки сильнее всего; затем особая
+   * локация проверяет собственный этап развития, а обычная вылазка — Кухню.
+   * Все причины выводятся из живого состояния, поэтому карточка и вход
+   * отвечают одинаково даже у старого сейва.
    */
   private entryBlock(node: WorldNode): EntryBlock {
     // Запирание кадра сильнее всех послаблений, включая замок: на первой
     // вылазке «ровно одно место» обязано значить ровно одно, иначе игрок
     // уходит гулять по стенам вместо того, ради чего кадр заведён.
     if (this.only !== null) return node.id === this.only ? 'ok' : 'onb';
+    if (this.camp !== null) {
+      const unlock = worldUnlock(node.kind, this.camp, this.roster ?? EMPTY_ROSTER);
+      if (unlock !== null && !unlock.unlocked) return 'location';
+    }
     // Прогулку Кухня не запирает: рисковать там нечем, и провианта на неё
     // не нужно. Прежде это было записано только про замок, а кладбище
     // проходило по совпадению — у него `tier: 0`, и гейт нулевого яруса
@@ -791,6 +821,37 @@ export class WorldMap {
     if (KIND[node.kind].gated === false) return 'ok';
     if (this.camp !== null && tierBlock(this.camp, node.tier) !== 'ok') return 'kitchen';
     return 'ok';
+  }
+
+  /** Условие выбранной точки — один расчёт для карточки, заметки и кнопки. */
+  private locationUnlock(node: WorldNode): WorldUnlock | null {
+    if (this.camp === null) return null;
+    return worldUnlock(node.kind, this.camp, this.roster ?? EMPTY_ROSTER);
+  }
+
+  /**
+   * Карточка условия добавляется перед содержимым места. Точка остаётся
+   * видимой и объясняет будущую награду — это не туман войны и не немая
+   * заблокированная кнопка.
+   */
+  private unlockCard(node: WorldNode): string {
+    const unlock = this.locationUnlock(node);
+    if (unlock === null || unlock.unlocked) return '';
+    const art = LOCATION_UNLOCK_ART[node.kind];
+    return `<figure class="location-unlock">` +
+      (art === null ? '' : `<img src="${art}" alt="" loading="lazy" decoding="async">`) +
+      `<figcaption>` +
+        `<span>${gameMarkup(gameMessage('Новая локация', 'New location'))}</span>` +
+        `<b>${gameMarkup(gameMessage('Условие открытия', 'Unlock requirement'))}</b>` +
+        `<div><i>${gameMarkup(WORLD_UNLOCK_MESSAGE[unlock.goal], { required: unlock.required })}</i>` +
+        `<em>${unlock.current} / ${unlock.required}</em></div>` +
+      `</figcaption></figure>`;
+  }
+
+  private unlockReason(node: WorldNode): ReturnType<typeof gameMessage> | null {
+    const unlock = this.locationUnlock(node);
+    if (unlock === null || unlock.unlocked) return null;
+    return WORLD_UNLOCK_MESSAGE[unlock.goal];
   }
 
   /**
@@ -958,7 +1019,7 @@ export class WorldMap {
     this.go.disabled = block !== 'ok';
     // Отказ говорит причиной и перебивает срок восстановления: игроку сейчас
     // важнее, почему сюда нельзя, чем когда сюда снова будет выгодно.
-    if (block !== 'ok') setGameText(this.note, ENTRY_REASON[block]);
+    if (block === 'kitchen' || block === 'onb') setGameText(this.note, ENTRY_REASON[block]);
     this.paintSend(node, block);
   }
 
@@ -1113,6 +1174,7 @@ export class WorldMap {
    */
   private paintGraveCard(node: WorldNode): void {
     this.card.innerHTML =
+      this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка', 'exploration'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('ограда, могилы, склеп', 'fence, graves, crypt'))}</b></div>` +
@@ -1137,6 +1199,7 @@ export class WorldMap {
    */
   private paintKeepCard(node: WorldNode): void {
     this.card.innerHTML =
+      this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('постройка', 'structure'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('стены, башни, двор', 'walls, towers, courtyard'))}</b></div>` +
@@ -1153,6 +1216,7 @@ export class WorldMap {
 
   private paintMinotaurKeepCard(node: WorldNode): void {
     this.card.innerHTML =
+      this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('испытание', 'trial'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('замок и золотой сундук', 'castle and golden chest'))}</b></div>` +
@@ -1177,6 +1241,7 @@ export class WorldMap {
    */
   private paintTrailCard(node: WorldNode): void {
     this.card.innerHTML =
+      this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка', 'exploration'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('тропа, развилки, тупики', 'trail, forks, dead ends'))}</b></div>` +
@@ -1202,6 +1267,7 @@ export class WorldMap {
   private paintPrizeCard(node: WorldNode): void {
     const spun = this.camp?.wheelDay === dayAt(this.now);
     this.card.innerHTML =
+      this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('аттракцион', 'attraction'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
       `<b>${gameMarkup(gameMessage('колесо призов', 'prize wheel'))}</b></div>` +
@@ -1233,8 +1299,22 @@ export class WorldMap {
    * неоткуда, и заперта она может быть только кадром раскадровки.
    */
   private walkButton(node: WorldNode): void {
-    setGameText(this.go, gameMessage('Пойти', 'Go'));
+    // Ветка прогулки выходит из `paintCard` раньше обычной вылазки, поэтому
+    // обязана сама погасить строку отряда от ранее выбранной точки.
+    this.sendRow.style.display = 'none';
+    const block = this.entryBlock(node);
+    setGameText(this.go, block === 'location'
+      ? gameMessage('Закрыто', 'Locked')
+      : gameMessage('Пойти', 'Go'));
     this.go.classList.remove('danger');
-    this.go.disabled = this.entryBlock(node) !== 'ok';
+    this.go.disabled = block !== 'ok';
+    if (block === 'kitchen' || block === 'onb') setGameText(this.note, ENTRY_REASON[block]);
+    else if (block === 'location') {
+      const unlock = this.locationUnlock(node);
+      const reason = this.unlockReason(node);
+      if (unlock !== null && reason !== null) setGameText(this.note, reason, {
+        required: unlock.required,
+      });
+    }
   }
 }

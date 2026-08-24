@@ -489,6 +489,49 @@ button:active { filter: brightness(1.25); }
 .map-card .line b { font-size: 12px; color: var(--ink); font-weight: 600; }
 .map-card .line b.good { color: var(--good); }
 .map-card .line b.bad { color: var(--bad); }
+.map-card .location-unlock {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  margin: -2px -2px 8px;
+  overflow: hidden;
+  border: 1px solid var(--pick-line);
+  background: linear-gradient(135deg, var(--pick), var(--event-art-bg));
+}
+.map-card .location-unlock img {
+  width: 96px;
+  height: 120px;
+  object-fit: cover;
+  object-position: center;
+  background: var(--event-art-bg);
+}
+.map-card .location-unlock figcaption {
+  min-width: 0;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.map-card .location-unlock span {
+  color: var(--gold);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.map-card .location-unlock b { font-family: Georgia, serif; font-size: 15px; font-weight: 400; }
+.map-card .location-unlock i { color: var(--paper); font-size: 10px; font-style: normal; line-height: 1.3; }
+.map-card .location-unlock figcaption div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.map-card .location-unlock em {
+  color: var(--gold);
+  font-size: 13px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
 /* Богатство — три засечки, а не число: «сколько ещё заходов» читается
    взглядом, а число заставляет считать. */
 .map-card .pips { display: flex; gap: 4px; }
