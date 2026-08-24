@@ -4203,6 +4203,16 @@ msgid "◈ выдано"
 msgstr "◈ выдано"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.like"
+msgstr "♡ Нравится · {likes}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.liked"
+msgstr "♥ Вам нравится · {likes}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "🔒 нет альянса"
 msgstr "🔒 нет альянса"
@@ -9686,6 +9696,11 @@ msgid "Вернуть"
 msgstr "Вернуть"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.back"
+msgstr "Вернуться на карту"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Вертикальный срез"
 msgstr "Вертикальный срез"
@@ -13402,6 +13417,11 @@ msgstr "Жильё не пускает выше"
 #: locales/legacy-messages.ts
 msgid "Жильё ограничивает уровень, а не место"
 msgstr "Жильё ограничивает уровень, а не место"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.summary"
+msgstr "Жильё ур. {level} · народу {folk} · здесь нельзя ничего менять"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17477,6 +17497,12 @@ msgid "Лагерь Age of Empires ощущается живым не из-за 
 msgstr "Лагерь Age of Empires ощущается живым не из-за детализации, а из-за движения: жители ходят, работают, дым идёт. Наш лагерь до сих пор статичен — а он и есть тот слой, ради которого игрок возвращается. Сцена ниже считается на месте той же ортокамерой и тем же плоским затенением, что в игре."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.unnamed"
+msgstr "Лагерь без имени"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лагерь без имени"
 msgstr "Лагерь без имени"
@@ -17579,6 +17605,11 @@ msgstr "лагерь: тап по клетке, единица дерева"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Лагеря по лайкам"
+msgstr "Лагеря по лайкам"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лазарет"
 msgstr "Лазарет"
@@ -17617,6 +17648,11 @@ msgstr "Лазарет. Ускоряется камнем по общей фор
 #: locales/legacy-messages.ts
 msgid "Лазарета"
 msgstr "Лазарета"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Лайки"
+msgstr "Лайки"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19740,6 +19776,11 @@ msgstr "Не съел ли лес глубину"
 #: locales/legacy-messages.ts
 msgid "не тот силуэт"
 msgstr "не тот силуэт"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.likeFailed"
+msgstr "Не удалось сохранить лайк — проверьте вход и сеть"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23253,6 +23294,11 @@ msgstr "Пока нижняя граница насыщенности стоял
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Пока никто не показал свой лагерь."
+msgstr "Пока никто не показал свой лагерь."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Пока они там, запас точки истощается — вам достанется меньше добычи."
 msgstr "Пока они там, запас точки истощается — вам достанется меньше добычи."
 
@@ -23613,6 +23659,11 @@ msgstr "поселенка"
 #: locales/legacy-messages.ts
 msgid "Поселенка приносит корзину еды к лагерной кладовой"
 msgstr "Поселенка приносит корзину еды к лагерной кладовой"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.action"
+msgstr "Посетить лагерь"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25844,6 +25895,11 @@ msgid "Редкие карты пятого уровня зданий: они и
 msgstr "Редкие карты пятого уровня зданий: они и есть награда за поздние улучшения."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.mode"
+msgstr "режим просмотра"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "резко"
 msgstr "резко"
@@ -27090,6 +27146,11 @@ msgstr "Сила — стоимость добычи, вложенной в ла
 #: locales/game-messages.ts
 msgid "Сила — стоимость добычи, вложенной в лагерь. На кромке видно {shown} лагерей соседей из {total}; остальные — в таблице."
 msgstr "Сила — стоимость добычи, вложенной в лагерь. На кромке видно {shown} лагерей соседей из {total}; остальные — в таблице."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "сила {power} · ур. {level} · народу {folk}"
+msgstr "сила {power} · ур. {level} · народу {folk}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

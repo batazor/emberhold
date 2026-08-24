@@ -463,6 +463,30 @@ button:active { filter: brightness(1.25); }
    здесь, а не в разметке, — карта обязана влезать в лист вместе с карточкой
    на 360×780, иначе решение принимается вслепую. */
 #camp .map { gap: 8px; }
+
+/* Гостевой лагерь — сцена, а не экран поверх неё: верхняя плашка называет
+   хозяина, нижняя возвращает на карту, середина целиком остаётся обзору. */
+#visit-camp {
+  position: fixed; inset: 0; z-index: 6; pointer-events: none; display: none;
+  flex-direction: column; align-items: center; justify-content: space-between;
+  padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
+  user-select: none; -webkit-user-select: none;
+}
+#visit-camp .visit-head {
+  width: min(100%, 360px); padding-left: 54px; pointer-events: auto;
+}
+#visit-camp .visit-head > .map-note { display: block; margin-top: 4px; }
+#visit-camp .visit-actions {
+  width: min(100%, 360px); display: flex; flex-direction: column; gap: 7px;
+  pointer-events: auto;
+}
+#visit-camp .visit-like.liked {
+  border-color: var(--risk-line);
+  background: linear-gradient(180deg, var(--risk-top), var(--risk-bot));
+  color: var(--risk-ink);
+}
+#visit-camp .visit-back { width: 100%; background: var(--fill-2); color: var(--ink); }
+#visit-camp .visit-like-note { min-height: 14px; text-align: center; color: var(--bad); }
 /* Земля под точками (§4.2) даёт карте край, которого у чёрного экрана
    не было: рамка и скругление отделяют лист от панели под ним. */
 .map-cv {

@@ -4206,6 +4206,16 @@ msgid "◈ выдано"
 msgstr "issued"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.like"
+msgstr "♡ Like · {likes}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.liked"
+msgstr "♥ Liked · {likes}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "🔒 нет альянса"
 msgstr "🔒 no alliance"
@@ -9727,6 +9737,11 @@ msgid "Вернуть"
 msgstr "Return"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.back"
+msgstr "Back to map"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Вертикальный срез"
 msgstr "Vertical slice"
@@ -13468,6 +13483,11 @@ msgstr "Housing level is too low"
 #: locales/legacy-messages.ts
 msgid "Жильё ограничивает уровень, а не место"
 msgstr "Housing limits level, not place"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.summary"
+msgstr "Housing lvl {level} · {folk} people · nothing can be changed here"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17577,9 +17597,15 @@ msgid "Лагерь Age of Empires ощущается живым не из-за 
 msgstr "The Age of Empires camp feels alive not because of detail, but because of movement: residents walk, work, smoke goes. Our camp is still static, which is the layer for which the player returns. The scene below is considered the same orthocamera and the same flat shading as in the game."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.unnamed"
+msgstr "Unnamed camp"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лагерь без имени"
-msgstr "Camp without a name"
+msgstr "Unnamed camp"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17680,6 +17706,11 @@ msgstr "Camp: Tap on a Tile, 1 Wood"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Лагеря по лайкам"
+msgstr "Camps by likes"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Лазарет"
 msgstr "Infirmary"
@@ -17722,6 +17753,11 @@ msgstr "Infirmary. Accelerated by stone according to the general formula § 20.5
 #: locales/legacy-messages.ts
 msgid "Лазарета"
 msgstr "Infirmary"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Лайки"
+msgstr "Likes"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19867,6 +19903,11 @@ msgstr "Did the forest eat the depths?"
 #: locales/legacy-messages.ts
 msgid "не тот силуэт"
 msgstr "silhouette"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.likeFailed"
+msgstr "Could not save the like — check your sign-in and connection"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23428,6 +23469,11 @@ msgstr "While the lower limit of saturation stood in a round number, two triangl
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Пока никто не показал свой лагерь."
+msgstr "No one has shared a camp yet."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Пока они там, запас точки истощается — вам достанется меньше добычи."
 msgstr "While they are there, the site is being depleted—your raid will yield less loot."
 
@@ -23788,6 +23834,11 @@ msgstr "settler"
 #: locales/legacy-messages.ts
 msgid "Поселенка приносит корзину еды к лагерной кладовой"
 msgstr "A settler carries a basket of food to the camp storehouse"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.action"
+msgstr "Visit camp"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -26030,6 +26081,11 @@ msgid "Редкие карты пятого уровня зданий: они и
 msgstr "Rare Level Five maps of buildings are the reward for late improvements."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.visitCamp.mode"
+msgstr "view only"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "резко"
 msgstr "sharp"
@@ -27288,6 +27344,11 @@ msgstr "Power is the value of loot invested in the camp: buildings, equipment, t
 #: locales/game-messages.ts
 msgid "Сила — стоимость добычи, вложенной в лагерь. На кромке видно {shown} лагерей соседей из {total}; остальные — в таблице."
 msgstr "Power is the value of loot invested in the camp. The edge shows {shown} of {total} neighboring camps; the rest are in the standings."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "сила {power} · ур. {level} · народу {folk}"
+msgstr "power {power} · lvl {level} · people {folk}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

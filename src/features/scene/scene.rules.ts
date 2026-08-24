@@ -9,14 +9,14 @@ import { describe, test } from 'node:test';
 import { panelsFor, soundFor } from './index';
 import type { Scene } from './index';
 
-const SCENES: readonly Scene[] = ['title', 'camp', 'raid'];
+const SCENES: readonly Scene[] = ['title', 'camp', 'visit', 'raid'];
 
 describe('Сцена: что видно', () => {
   test('главный экран в каждой сцене ровно один', () => {
     for (const scene of SCENES) {
       const p = panelsFor(scene);
       const main = [p.hud, p.campHud, p.startScreen].filter(Boolean).length;
-      assert.equal(main, 1, `${scene}: главных экранов ${main}`);
+      assert.equal(main, scene === 'visit' ? 0 : 1, `${scene}: главных экранов ${main}`);
     }
   });
 
@@ -28,6 +28,13 @@ describe('Сцена: что видно', () => {
 
   test('вылазка не переживает возвращение в лагерь', () => {
     assert.equal(panelsFor('camp').hud, false);
+  });
+
+  test('гостевой лагерь не получает хозяйственные и боевые панели', () => {
+    const p = panelsFor('visit');
+    assert.equal(p.hud, false);
+    assert.equal(p.campHud, false);
+    assert.equal(p.roster, false);
   });
 
   test('заставка показывает только себя', () => {
@@ -71,6 +78,7 @@ describe('Сцена: что звучит', () => {
   test('музыка фоном звучит везде, под землёй — пещерная', () => {
     assert.equal(soundFor('camp', 0).campTune, 'camp');
     assert.equal(soundFor('title', 0).campTune, 'camp');
+    assert.equal(soundFor('visit', 0).campTune, 'camp');
     assert.equal(soundFor('raid', 0).campTune, 'camp');
     assert.equal(soundFor('raid', 1).campTune, 'camp');
     assert.equal(soundFor('raid', 2).campTune, 'cave', 'копи');
@@ -83,6 +91,7 @@ describe('Сцена: что звучит', () => {
     }
     assert.equal(soundFor('camp', 3).ambient, null, 'ярус дотянулся до лагеря');
     assert.equal(soundFor('title', 3).ambient, null);
+    assert.equal(soundFor('visit', 3).ambient, null);
   });
 
   test('заставка: только музыка, без подложки и пульса', () => {

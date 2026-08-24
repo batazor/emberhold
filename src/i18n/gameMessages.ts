@@ -37,6 +37,23 @@ export const gameMessages = {
   authSending: message('game.auth.sending', 'Письмо собирается…', 'Preparing the email…'),
   authSent: message('game.auth.sent', 'Ссылка отправлена — откройте письмо', 'Link sent — check your email'),
 
+  visitCampAction: message('game.visitCamp.action', 'Посетить лагерь', 'Visit camp'),
+  visitCampMode: message('game.visitCamp.mode', 'режим просмотра', 'view only'),
+  visitCampUnnamed: message('game.visitCamp.unnamed', 'Лагерь без имени', 'Unnamed camp'),
+  visitCampSummary: message(
+    'game.visitCamp.summary',
+    'Жильё ур. {level} · народу {folk} · здесь нельзя ничего менять',
+    'Housing lvl {level} · {folk} people · nothing can be changed here',
+  ),
+  visitCampLike: message('game.visitCamp.like', '♡ Нравится · {likes}', '♡ Like · {likes}'),
+  visitCampLiked: message('game.visitCamp.liked', '♥ Вам нравится · {likes}', '♥ Liked · {likes}'),
+  visitCampLikeFailed: message(
+    'game.visitCamp.likeFailed',
+    'Не удалось сохранить лайк — проверьте вход и сеть',
+    'Could not save the like — check your sign-in and connection',
+  ),
+  visitCampBack: message('game.visitCamp.back', 'Вернуться на карту', 'Back to map'),
+
   clanPanelTitle: message('game.clan.panel.title', 'Свой клан', 'Your clan'),
   clanPanelLead: message(
     'game.clan.panel.lead',

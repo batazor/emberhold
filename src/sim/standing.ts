@@ -229,6 +229,12 @@ export interface LiveCamp {
   readonly power: number;
   readonly level: number;
   readonly folk: number;
+  /** Общий счётчик реакций. Старые/офлайн-строки без него считаются нулём. */
+  readonly likes?: number;
+  /** Поставил ли текущий аккаунт свой единственный лайк этому лагерю. */
+  readonly liked?: boolean;
+  /** Есть ли у строки публичный снимок планировки, который можно осмотреть. */
+  readonly inspectable?: boolean;
 }
 
 /** Имя лагеря без клана. Не заглушка, а повод его завести (§30.4). */
@@ -299,3 +305,15 @@ export function standings(
 /** Место игрока в таблице, считая с единицы. */
 export const yourPlace = (rows: readonly Standing[]): number =>
   rows.findIndex((r) => r.kind === 'вы') + 1;
+
+/**
+ * Лидерборд симпатий отделён от таблицы силы: лайк — оценка игрока, а не ещё
+ * одна единица прогресса. При равенстве порядок стабилизируют сила и id,
+ * поэтому строки не прыгают между двумя одинаковыми ответами сервера.
+ */
+export const campsByLikes = (live: readonly LiveCamp[]): LiveCamp[] =>
+  [...live].sort((a, b) =>
+    (b.likes ?? 0) - (a.likes ?? 0) ||
+    b.power - a.power ||
+    a.id.localeCompare(b.id),
+  );

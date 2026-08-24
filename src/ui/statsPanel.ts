@@ -8,11 +8,12 @@ import {
 } from '../sim/camp';
 import type { CampState } from '../sim/camp';
 import { neighboursOpen } from '../sim/clan';
-import { standings } from '../sim/standing';
+import { campsByLikes, standings } from '../sim/standing';
 import type { LiveCamp } from '../sim/standing';
 import { clearTelemetry, events, summarize } from '../sim/telemetry';
 import type { TelemetryEvent } from '../sim/telemetry';
 import type { Tier } from '../sim/types';
+import { gameMarkup, gameMessage } from '../i18n/game';
 
 /**
  * §9 — личные данные игрока теперь читаются как прогресс, а не как прибор.
@@ -322,6 +323,7 @@ export class StatsPanel {
       return;
     }
     const rows = standings(last.camp, last.now, last.camp.clan?.name ?? null, this.live);
+    const popular = campsByLikes(this.live);
     this.table.innerHTML =
       '<h3 class="sp-head">Лагеря по силе</h3>' +
       rows
@@ -335,6 +337,28 @@ export class StatsPanel {
             (row.folk === null ? '' : ` · народу ${row.folk}`) +
             '</div>',
         )
-        .join('');
+        .join('') +
+      `<h3 class="sp-head">${gameMarkup(gameMessage('Лагеря по лайкам', 'Camps by likes'))}</h3>` +
+      (popular.length === 0
+        ? `<div class="card sp-empty"><p>${gameMarkup(gameMessage(
+          'Пока никто не показал свой лагерь.',
+          'No one has shared a camp yet.',
+        ))}</p></div>`
+        : popular
+          .map(
+            (row, index) =>
+              `<div class="row sp-row${row.liked === true ? ' you' : ''}">` +
+              `<span class="lbl"><i class="sp-place">${index + 1}</i>` +
+              `<s class="sp-flag" style="background:${row.liked === true ? '#d46a3a' : '#9fb6d8'}"></s>` +
+              `${row.clan === null
+                ? gameMarkup(gameMessage('Лагерь без имени', 'Unnamed camp'))
+                : html(row.clan)}</span>` +
+              `<b>♥ ${row.likes ?? 0}</b></div>` +
+              `<div class="sp-note">${gameMarkup(gameMessage(
+                'сила {power} · ур. {level} · народу {folk}',
+                'power {power} · lvl {level} · people {folk}',
+              ), { power: row.power, level: row.level, folk: row.folk })}</div>`,
+          )
+          .join(''));
   }
 }

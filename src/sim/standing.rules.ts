@@ -15,6 +15,7 @@ import {
   NO_CLAN,
   buildingRaids,
   campPower,
+  campsByLikes,
   clanPower,
   clanRaids,
   levelRaids,
@@ -206,5 +207,30 @@ describe('Таблица: живые соседи (§30.7)', () => {
 
   test('без соседей таблица такая же, какой была до них', () => {
     assert.deepEqual(standings(createCamp(), T0, null, []), standings(createCamp(), T0, null));
+  });
+});
+
+describe('Лидерборд лайков лагерей', () => {
+  const camp = (id: string, likes: number | undefined, power: number) => ({
+    id,
+    clan: id,
+    power,
+    level: 2,
+    folk: 3,
+    ...(likes === undefined ? {} : { likes }),
+  });
+
+  test('сортирует по лайкам, затем по силе', () => {
+    const rows = campsByLikes([
+      camp('a', 2, 10),
+      camp('b', 5, 1),
+      camp('c', 2, 30),
+    ]);
+    assert.deepEqual(rows.map((row) => row.id), ['b', 'c', 'a']);
+  });
+
+  test('строка без нового поля остаётся совместимой и означает ноль', () => {
+    const rows = campsByLikes([camp('old', undefined, 1), camp('liked', 1, 0)]);
+    assert.deepEqual(rows.map((row) => row.id), ['liked', 'old']);
   });
 });
