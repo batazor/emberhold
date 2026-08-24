@@ -165,6 +165,12 @@ export class FarmView {
     return nearestIndex;
   }
 
+  /** Мировой якорь награды над грядкой; индекс тот же, что у симуляции. */
+  plotCenter(index: number): { x: number; y: number; z: number } | null {
+    const plot = this.plots[index];
+    return plot === undefined ? null : { x: plot.x, y: 0.62, z: 4.7 };
+  }
+
   /** Рост только меняет показ; момент созревания решает `sim/farm.ts`. */
   sync(farm: FarmState | undefined, now: number): void {
     this.plots.forEach((view, index) => {

@@ -76,6 +76,8 @@ import { FluffyGrass } from './fluffyGrass';
 import { MATERIAL, PALETTE } from './palette';
 import type { Bubble } from './bubbles';
 import { survivalTentGeometry } from './survival';
+import { DirectionalFade, fadeSide, type FadeSide } from './directionalFade';
+import type { Piece, Role } from '../sim/castle';
 
 /**
  * Вид вылазки: строит меши из состояния и синхронизирует их каждый кадр.
@@ -220,6 +222,9 @@ const MAX_RATE = 3;
  * быть видно, что она стена.
  */
 const CASTLE_FADE = 0.45;
+const CASTLE_OCCLUDER: ReadonlySet<Role> = new Set([
+  'стена', 'угол', 'ворота', 'башня', 'лестница', 'укрепление',
+]);
 const rateFor = (speed: number, scale: number): number =>
   Math.min(MAX_RATE, speed / Math.max(1e-3, SLIDE * scale));
 const walkRate = (kind: EnemyKind, scale: number): number =>
@@ -340,13 +345,10 @@ export class RaidView {
    * жилец только ходит и стоит.
    */
   private readonly dwellerViews: { rig: Rigged; facing: number }[] = [];
-  /**
-   * Материал замка. Держится отдельной ссылкой затем, чтобы гасить стены,
-   * пока герой во дворе (§6.1.6.1): иначе кадр показывает стену вместо того,
-   * ради чего в замок заходят.
-   */
-  private castleMat: THREE.MeshLambertMaterial | null = null;
-  private castleFade = 1;
+  /** Ближняя к камере сторона открывает двор, дальние стены остаются плотными. */
+  private readonly castleOcclusion = new DirectionalFade(castleMaterial, CASTLE_FADE);
+  private castleCenter: { x: number; z: number } | null = null;
+  private castleOcclusionActive = false;
   private readonly containerMeshes = new Map<number, THREE.Mesh>();
   private hero!: THREE.Group;
   /** Есть у класса с моделью набора; у примитивных классов остаётся null. */
@@ -1206,24 +1208,37 @@ export class RaidView {
       this.group.add(stream);
     }
 
-    const byModel = new Map<string, typeof site.castle.pieces[number][]>();
-    for (const piece of [...site.castle.pieces, ...site.outbuildings, ...site.surroundings]) {
+    const centerX = site.at.x + (site.castle.width * CASTLE_SCALE - 1) / 2;
+    const centerZ = site.at.z + (site.castle.depth * CASTLE_SCALE - 1) / 2;
+    this.castleCenter = { x: centerX, z: centerZ };
+    this.castleOcclusion.clearMeshes();
+    const byModel = new Map<string, { readonly model: string; readonly side: FadeSide | null; readonly pieces: Piece[] }>();
+    const collect = (piece: Piece, mayFade: boolean): void => {
       // Мощение двора не рисуется: под замком уже лежит земля локации,
       // и вторая плита поверх неё дала бы z-fighting, а не пол.
-      if (piece.role === 'двор') continue;
-      const list = byModel.get(piece.model) ?? [];
-      list.push(piece);
-      byModel.set(piece.model, list);
-    }
+      if (piece.role === 'двор') return;
+      const x = site.at.x + piece.x * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2;
+      const z = site.at.z + piece.z * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2;
+      const side = mayFade && CASTLE_OCCLUDER.has(piece.role)
+        ? fadeSide(x, z, centerX, centerZ)
+        : null;
+      const key = `${side === null ? 'solid' : side}:${piece.model}`;
+      const bucket = byModel.get(key) ?? { model: piece.model, side, pieces: [] };
+      bucket.pieces.push(piece);
+      byModel.set(key, bucket);
+    };
+    for (const piece of site.castle.pieces) collect(piece, true);
+    for (const piece of site.outbuildings) collect(piece, false);
+    for (const piece of site.surroundings) collect(piece, false);
 
-    const mat = this.track(castleMaterial());
-    this.castleMat = mat;
+    const solid = this.track(castleMaterial());
     const dummy = new THREE.Object3D();
-    for (const [model, list] of byModel) {
+    for (const bucket of byModel.values()) {
+      const list = bucket.pieces;
       // Геометрия живёт в общем кэше castle.ts и переживает вид: её не track.
       const mesh = new THREE.InstancedMesh(
-        castleGeometry(model as CastlePartModelName),
-        mat,
+        castleGeometry(bucket.model as CastlePartModelName),
+        bucket.side === null ? solid : this.castleOcclusion.material(bucket.side),
         list.length,
       );
       mesh.castShadow = true;
@@ -1243,6 +1258,8 @@ export class RaidView {
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
       }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (bucket.side !== null) this.castleOcclusion.add(mesh, bucket.side);
       this.group.add(mesh);
     }
 
@@ -3192,25 +3209,12 @@ export class RaidView {
      * До жителей (§6.1.6.1) прятать во дворе было некого, и свойство
      * не значило ничего.
      *
-     * Гаснет весь замок, а не ближняя стена: детали едут одной `InstancedMesh`
-     * на модель с общим материалом, и погасить одну из них значило бы завести
-     * второй материал и делить детали по нему каждый кадр. А главное — гаснет
-     * он ровно тогда, когда игрок внутри, то есть когда смотреть снаружи уже
-     * незачем. Тень стена при этом отбрасывает прежнюю: стена не исчезла,
-     * её просто видно насквозь.
+     * Теперь гаснет только ближняя к камере четверть оболочки. Деление на
+     * четыре корзины делается при сборке, поэтому кадр меняет четыре материала,
+     * а не обходит сотню экземпляров.
      */
-    if (this.castleMat !== null && this.keep !== null) {
-      const inside = inYard(this.keep, { x: Math.round(hero.x), z: Math.round(hero.z) });
-      const goal = inside ? CASTLE_FADE : 1;
-      this.castleFade += (goal - this.castleFade) * Math.min(1, dt * 5);
-      const mat = this.castleMat;
-      const clear = this.castleFade < 0.995;
-      if (mat.transparent !== clear) {
-        mat.transparent = clear;
-        mat.needsUpdate = true;
-      }
-      mat.opacity = this.castleFade;
-    }
+    this.castleOcclusionActive = this.keep !== null
+      && inYard(this.keep, { x: Math.round(hero.x), z: Math.round(hero.z) });
 
     for (const e of this.loc.enemies) {
       // Опоздавшему — тело на месте: засада сундука (`springAmbush`) добавляет
@@ -3377,11 +3381,24 @@ export class RaidView {
     this.meadow?.setTilt(x, z, strength);
   }
 
+  /** Вызывается после движения камеры: направление затухания не отстаёт на кадр. */
+  updateOcclusion(dt: number, camera: THREE.Camera): void {
+    if (this.castleCenter === null) return;
+    this.castleOcclusion.update(
+      dt,
+      camera,
+      this.castleCenter.x,
+      this.castleCenter.z,
+      this.castleOcclusionActive,
+    );
+  }
+
   dispose(): void {
     this.hexGrid.dispose();
     this.grass?.dispose();
     this.meadow?.dispose();
     this.fire.dispose();
+    this.castleOcclusion.dispose();
     for (const f of this.fires) f.fire.dispose();
     this.grass = null;
     this.meadow = null;
