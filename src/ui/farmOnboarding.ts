@@ -1,6 +1,7 @@
 import type { CampState } from '../sim/camp';
-import { formatDuration } from '../core/clock';
 import { FARM_FOOD_GOAL, farmStatus } from '../sim/farm';
+import { gameDuration, gameMessage, setGameAttribute, setGameText } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
 
 export type CampLocation = 'camp' | 'farm' | 'clan';
 
@@ -10,83 +11,83 @@ interface FarmOnboardingCallbacks {
 }
 
 interface FarmLessonText {
-  readonly title: string;
-  readonly copy: string;
-  readonly alt: string;
+  readonly title: GameMessage;
+  readonly copy: GameMessage;
+  readonly alt: GameMessage;
 }
 
 /** Весь текст экрана отделён от изображений и может меняться во время игры. */
 export interface FarmOnboardingText {
   readonly lessons: readonly [FarmLessonText, FarmLessonText, FarmLessonText];
   readonly intro: {
-    readonly kicker: string;
-    readonly title: string;
-    readonly copy: string;
-    readonly action: string;
+    readonly kicker: GameMessage;
+    readonly title: GameMessage;
+    readonly copy: GameMessage;
+    readonly action: GameMessage;
   };
   readonly goal: {
-    readonly kicker: string;
-    readonly title: string;
-    readonly copy: string;
-    readonly name: string;
-    readonly progress: string;
-    readonly baseline: string;
-    readonly badge: string;
-    readonly reward: string;
+    readonly kicker: GameMessage;
+    readonly title: GameMessage;
+    readonly copy: GameMessage;
+    readonly name: GameMessage;
+    readonly progress: GameMessage;
+    readonly baseline: GameMessage;
+    readonly badge: GameMessage;
+    readonly reward: GameMessage;
   };
   readonly reward: {
-    readonly kicker: string;
-    readonly title: string;
-    readonly copy: string;
-    readonly badge: string;
-    readonly note: string;
-    readonly action: string;
-    readonly alt: string;
+    readonly kicker: GameMessage;
+    readonly title: GameMessage;
+    readonly copy: GameMessage;
+    readonly badge: GameMessage;
+    readonly note: GameMessage;
+    readonly action: GameMessage;
+    readonly alt: GameMessage;
   };
 }
 
-export const FARM_ONBOARDING_RU: FarmOnboardingText = {
+export const FARM_ONBOARDING_TEXT: FarmOnboardingText = {
   lessons: [
     {
-      title: 'Жители едят',
-      copy: 'Каждый житель регулярно расходует пищу из общего запаса.',
-      alt: 'Двое поселенцев едят горячую похлёбку у костра',
+      title: gameMessage('Жителям нужна пища', 'Residents need food'),
+      copy: gameMessage('Жители регулярно едят из общих запасов.', 'Every resident draws food from the shared stores.'),
+      alt: gameMessage('Двое поселенцев едят горячую похлёбку у костра', 'Two settlers share a hot stew by the campfire'),
     },
     {
-      title: 'Добывайте пищу',
-      copy: 'Назначайте добытчиков — принесённая еда пополняет кладовую.',
-      alt: 'Поселенка приносит корзину еды к лагерной кладовой',
+      title: gameMessage('Запасайте пищу', 'Gather food'),
+      copy: gameMessage('Назначьте добытчиков — всё, что они принесут, попадёт в кладовую.', 'Assign foragers. Everything they bring home goes into storage.'),
+      alt: gameMessage('Поселенка приносит корзину еды к лагерной кладовой', 'A settler carries a basket of food to the camp storehouse'),
     },
     {
-      title: 'Нет еды — нет работы',
-      copy: 'Голодные жители прекращают работу, пока запас не пополнится.',
-      alt: 'Голодный поселенец отложил инструменты и держит пустую миску',
+      title: gameMessage('Голод останавливает работу', 'Hunger stops work'),
+      copy: gameMessage('Голодные жители не работают, пока в кладовой снова не появится пища.', 'Hungry residents stop working until food returns to storage.'),
+      alt: gameMessage('Голодный поселенец отложил инструменты и держит пустую миску', 'A hungry settler has put down his tools and holds an empty bowl'),
     },
   ],
   intro: {
-    kicker: 'Новое в поселении · ресурсы',
-    title: 'Накормите поселение',
-    copy: 'Теперь жителей двое. Познакомьтесь с пищей, прежде чем развивать лагерь дальше.',
-    action: 'Понятно, к цели →',
+    kicker: gameMessage('Новое в поселении · пища', 'New in your settlement · food'),
+    title: gameMessage('Накормите поселенцев', 'Feed your settlement'),
+    copy: gameMessage('Теперь в лагере двое жителей. Прежде чем расти дальше, научитесь пополнять запас пищи.', 'Two residents now live in camp. Learn to keep them fed before expanding further.'),
+    action: gameMessage('К первой цели →', 'Set the first goal →'),
   },
   goal: {
-    kicker: 'Первая общая цель',
-    title: 'Создайте запас на будущее',
-    copy: 'В прогресс идёт пища, добытая после выдачи задания. Ежедневный расход результат не отнимает.',
-    name: 'Добудьте {goal} пищи',
-    progress: '{gathered} / {goal}',
-    baseline: 'Запас при выдаче: {start} · добыто после задания: {gathered}',
-    badge: 'Ферма закрыта',
-    reward: 'Награда · новая локация «Ферма» и участок «Огород»',
+    kicker: gameMessage('Первая цель поселения', 'Your first settlement goal'),
+    title: gameMessage('Запаситесь пищей', 'Build a food reserve'),
+    copy: gameMessage('В зачёт идёт всё, что добыто после начала цели. Ежедневные траты прогресс не уменьшают.', 'Food gathered after this goal begins counts toward it. Daily consumption will not reduce your progress.'),
+    name: gameMessage('Добудьте {goal} ед. пищи', 'Gather {goal} food'),
+    progress: gameMessage('{gathered} / {goal}', '{gathered} / {goal}'),
+    baseline: gameMessage('Было в запасе: {start} · добыто: {gathered}', 'Starting stores: {start} · gathered: {gathered}'),
+    badge: gameMessage('Ферма закрыта', 'Farm locked'),
+    reward: gameMessage('Награда · ферма и огород', 'Reward · Farm and garden'),
   },
   reward: {
-    kicker: 'Цель выполнена',
-    title: 'Открыта локация «Ферма»!',
-    copy: 'Здесь появится огород: выращивайте урожай и развивайте хозяйство поселения.',
-    badge: 'Новая локация',
-    note: 'Ферма открыта · огород готов к развитию',
-    action: 'Перейти на ферму →',
-    alt: 'Новая ферма с огородом на рассвете',
+    kicker: gameMessage('Цель выполнена', 'Goal complete'),
+    title: gameMessage('Ферма открыта', 'Farm unlocked'),
+    copy: gameMessage('Огород готов: засевайте грядки, собирайте урожай и развивайте хозяйство.', 'The garden is ready. Plant crops, harvest food, and grow your settlement.'),
+    badge: gameMessage('Новая локация', 'New location'),
+    note: gameMessage('Огород готов к первому посеву', 'The garden is ready for its first planting'),
+    action: gameMessage('На ферму →', 'Go to the Farm →'),
+    alt: gameMessage('Новая ферма с огородом на рассвете', 'A new farm and garden at dawn'),
   },
 };
 
@@ -96,9 +97,6 @@ const LESSON_ART = [
   '/assets/onboarding/resources/hunger-stops-work.avif',
 ] as const;
 const FARM_ART = '/assets/onboarding/resources/farm-unlocked.avif';
-
-const fillText = (template: string, values: Readonly<Record<string, string | number>>): string =>
-  template.replace(/\{([a-z]+)\}/gi, (_, key: string) => String(values[key] ?? `{${key}}`));
 
 interface FarmLessonNodes {
   readonly image: HTMLImageElement;
@@ -131,7 +129,7 @@ export class FarmOnboarding {
   constructor(
     parent: HTMLElement,
     private readonly cb: FarmOnboardingCallbacks,
-    text: FarmOnboardingText = FARM_ONBOARDING_RU,
+    text: FarmOnboardingText = FARM_ONBOARDING_TEXT,
   ) {
     this.text = text;
     this.root = document.createElement('aside');
@@ -243,11 +241,11 @@ export class FarmOnboarding {
       const nodes = this.lessonNodes[i];
       const lesson = this.text.lessons[i];
       if (nodes === undefined || lesson === undefined) continue;
-      nodes.image.alt = lesson.alt;
-      nodes.title.textContent = lesson.title;
-      nodes.copy.textContent = lesson.copy;
+      setGameAttribute(nodes.image, 'alt', lesson.alt);
+      setGameText(nodes.title, lesson.title);
+      setGameText(nodes.copy, lesson.copy);
     }
-    this.farmImage.alt = this.text.reward.alt;
+    setGameAttribute(this.farmImage, 'alt', this.text.reward.alt);
   }
 
   private paint(): void {
@@ -271,28 +269,28 @@ export class FarmOnboarding {
     this.button.hidden = goal;
 
     if (intro) {
-      this.kicker.textContent = this.text.intro.kicker;
-      this.title.textContent = this.text.intro.title;
-      this.copy.textContent = this.text.intro.copy;
-      this.button.textContent = this.text.intro.action;
+      setGameText(this.kicker, this.text.intro.kicker);
+      setGameText(this.title, this.text.intro.title);
+      setGameText(this.copy, this.text.intro.copy);
+      setGameText(this.button, this.text.intro.action);
     } else if (goal) {
       const values = { start: farm.foodAtStart, gathered: farm.gatheredFood, goal: FARM_FOOD_GOAL };
-      this.kicker.textContent = this.text.goal.kicker;
-      this.title.textContent = this.text.goal.title;
-      this.copy.textContent = this.text.goal.copy;
-      this.goalName.textContent = fillText(this.text.goal.name, values);
-      this.goalValue.textContent = fillText(this.text.goal.progress, values);
+      setGameText(this.kicker, this.text.goal.kicker);
+      setGameText(this.title, this.text.goal.title);
+      setGameText(this.copy, this.text.goal.copy);
+      setGameText(this.goalName, this.text.goal.name, values);
+      setGameText(this.goalValue, this.text.goal.progress, values);
       this.goalFill.style.width = `${Math.min(100, (farm.gatheredFood / FARM_FOOD_GOAL) * 100)}%`;
-      this.baseline.textContent = fillText(this.text.goal.baseline, values);
-      this.farmBadge.textContent = this.text.goal.badge;
-      this.reward.textContent = this.text.goal.reward;
+      setGameText(this.baseline, this.text.goal.baseline, values);
+      setGameText(this.farmBadge, this.text.goal.badge);
+      setGameText(this.reward, this.text.goal.reward);
     } else {
-      this.kicker.textContent = this.text.reward.kicker;
-      this.title.textContent = this.text.reward.title;
-      this.copy.textContent = this.text.reward.copy;
-      this.farmBadge.textContent = this.text.reward.badge;
-      this.reward.textContent = this.text.reward.note;
-      this.button.textContent = this.text.reward.action;
+      setGameText(this.kicker, this.text.reward.kicker);
+      setGameText(this.title, this.text.reward.title);
+      setGameText(this.copy, this.text.reward.copy);
+      setGameText(this.farmBadge, this.text.reward.badge);
+      setGameText(this.reward, this.text.reward.note);
+      setGameText(this.button, this.text.reward.action);
     }
   }
 }
@@ -318,15 +316,15 @@ export class CampLocations {
   constructor(parent: HTMLElement, cb: CampLocationsCallbacks) {
     this.root = document.createElement('nav');
     this.root.id = 'camp-locations';
-    this.root.setAttribute('aria-label', 'Локации поселения');
+    setGameAttribute(this.root, 'aria-label', gameMessage('Локации поселения', 'Settlement locations'));
     const label = document.createElement('span');
     label.className = 'cl-label';
-    label.textContent = 'Локации';
+    setGameText(label, gameMessage('Локации', 'Locations'));
 
     this.farmButton = document.createElement('button');
     this.farmButton.className = 'cl-place farm';
     const farmName = document.createElement('b');
-    farmName.textContent = 'Ферма';
+    setGameText(farmName, gameMessage('Ферма', 'Farm'));
     this.farmState = document.createElement('span');
     this.farmButton.append(farmName, this.farmState);
     this.farmButton.addEventListener('click', () => cb.onSelect('farm'));
@@ -334,7 +332,7 @@ export class CampLocations {
     this.campButton = document.createElement('button');
     this.campButton.className = 'cl-place camp';
     const campName = document.createElement('b');
-    campName.textContent = 'Лагерь';
+    setGameText(campName, gameMessage('Лагерь', 'Camp'));
     const campState = document.createElement('span');
     campState.textContent = '●';
     this.campButton.append(campName, campState);
@@ -343,7 +341,7 @@ export class CampLocations {
     this.clanButton = document.createElement('button');
     this.clanButton.className = 'cl-place clan';
     const clanName = document.createElement('b');
-    clanName.textContent = 'Клан';
+    setGameText(clanName, gameMessage('Клан', 'Clan'));
     const clanState = document.createElement('span');
     clanState.textContent = '⚑';
     this.clanButton.append(clanName, clanState);
@@ -351,7 +349,7 @@ export class CampLocations {
 
     this.signButton = document.createElement('button');
     this.signButton.className = 'cl-place sign';
-    this.signButton.textContent = '+ Указатель';
+    setGameText(this.signButton, gameMessage('+ Указатель', '+ Signpost'));
     this.signButton.addEventListener('click', () => cb.onSign());
 
     this.root.append(label, this.farmButton, this.campButton, this.clanButton, this.signButton);
@@ -387,25 +385,30 @@ export class CampLocations {
     if (farm?.unlocked !== true) {
       this.farmState.textContent = '🔒';
       this.farmState.classList.remove('ready');
-      this.farmButton.title = 'Ферма закрыта';
-      this.farmButton.setAttribute('aria-label', 'Ферма закрыта');
+      const locked = gameMessage('Ферма закрыта', 'Farm locked');
+      setGameAttribute(this.farmButton, 'title', locked);
+      setGameAttribute(this.farmButton, 'aria-label', locked);
       return;
     }
 
     const status = farmStatus(farm, this.now);
     this.farmState.classList.toggle('ready', status.ready > 0);
-    let title: string;
+    let title: GameMessage;
+    let values: Readonly<Record<string, number | ReturnType<typeof gameDuration>>>;
     if (status.ready > 0) {
-      this.farmState.textContent = `готово: ${status.ready}`;
-      title = `Ферма · урожай готов: ${status.ready}`;
+      values = { count: status.ready };
+      setGameText(this.farmState, gameMessage('готово: {count}', '{count} ready'), values);
+      title = gameMessage('Ферма · урожай готов: {count}', 'Farm · harvest ready: {count}');
     } else if (status.growing > 0 && status.nextReadyAt !== null) {
-      this.farmState.textContent = `растёт: ${status.growing}`;
-      title = `Ферма · растёт: ${status.growing} · урожай через ${formatDuration(Math.max(0, status.nextReadyAt - this.now))}`;
+      values = { count: status.growing, time: gameDuration(Math.max(0, status.nextReadyAt - this.now)) };
+      setGameText(this.farmState, gameMessage('растёт: {count}', '{count} growing'), values);
+      title = gameMessage('Ферма · растёт: {count} · урожай через {time}', 'Farm · {count} growing · harvest in {time}');
     } else {
-      this.farmState.textContent = `грядок: ${status.active}`;
-      title = `Ферма · свободно грядок: ${status.empty}`;
+      values = { count: status.empty };
+      setGameText(this.farmState, gameMessage('свободно: {count}', '{count} open'), values);
+      title = gameMessage('Ферма · свободно грядок: {count}', 'Farm · open beds: {count}');
     }
-    this.farmButton.title = title;
-    this.farmButton.setAttribute('aria-label', title);
+    setGameAttribute(this.farmButton, 'title', title, values);
+    setGameAttribute(this.farmButton, 'aria-label', title, values);
   }
 }

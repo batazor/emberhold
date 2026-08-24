@@ -275,6 +275,7 @@ import {
   type SignLocation,
 } from './sim/signposts';
 import { FARM_CROP_TEXT, FarmCropPicker } from './ui/farmCrops';
+import { gameDuration, gameMessage, gameText } from './i18n/game';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import type { ReturnProgress } from './ui/returnScreen';
@@ -1040,7 +1041,9 @@ function armSignpost(): void {
   if (mode !== 'camp') return;
   if (camp.resources.wood < SIGN_COST) {
     play('deny');
-    campHud.notify(`Указатель: нужно ${SIGN_COST} дерево`);
+    campHud.notify(gameText(gameMessage('Указатель: нужно {count} ед. дерева', 'Signpost: {count} wood required'), {
+      count: SIGN_COST,
+    }));
     return;
   }
   buildPanel.setVisible(false);
@@ -1049,7 +1052,7 @@ function armSignpost(): void {
   // не место игрока, и своей таблички у неё нет.
   placingSign = campLocation === 'clan' ? 'camp' : campLocation;
   campHud.close();
-  campHud.notify('Указатель: коснитесь места, затем напишите текст');
+  campHud.notify(gameText(gameMessage('Указатель: выберите место, затем напишите текст', 'Signpost: choose a spot, then write the text')));
 }
 
 function placeSignpostAt(ground: { x: number; z: number }): void {
@@ -1062,14 +1065,16 @@ function placeSignpostAt(ground: { x: number; z: number }): void {
   const size = location === 'camp' ? campArea(camp.levels.hq) : 10;
   if (x < 0 || z < 0 || x >= size || z >= size) {
     play('deny');
-    campHud.notify('Указатель: выберите место внутри локации');
+    campHud.notify(gameText(gameMessage('Указатель: выберите место внутри локации', 'Signpost: choose a spot within this location')));
     return;
   }
   const signs = signDecor()[location];
   const existing = signs.findIndex((s) => s.x === x && s.z === z);
   if (existing < 0 && signs.length >= SIGN_MAX_PER_LOCATION) {
     play('deny');
-    campHud.notify(`Указателей уже ${SIGN_MAX_PER_LOCATION} — отредактируйте один из них`);
+    campHud.notify(gameText(gameMessage('Указателей уже {count} — отредактируйте один из них', 'You already have {count} signposts—edit one of them'), {
+      count: SIGN_MAX_PER_LOCATION,
+    }));
     return;
   }
   const before = existing < 0 ? '' : signs[existing]!.text;
@@ -1085,7 +1090,9 @@ function placeSignpostAt(ground: { x: number; z: number }): void {
       signs.push(sign);
     }
     play('build');
-    campHud.notify(existing >= 0 ? `Указатель изменён: «${text}»` : `Указатель построен: «${text}»`);
+    campHud.notify(existing >= 0
+      ? gameText(gameMessage('Указатель изменён: «{text}»', 'Signpost updated: “{text}”'), { text })
+      : gameText(gameMessage('Указатель построен: «{text}»', 'Signpost built: “{text}”'), { text }));
     campHud.sync(camp, clock.now(), 0);
     syncSignposts();
     persist();
@@ -1096,7 +1103,9 @@ const farmCropPicker = new FarmCropPicker(app, {
   onSelect: (crop) => {
     const changed = selectFarmCrop(camp, crop);
     syncFarmUi();
-    campHud.notify(`${FARM_CROP_TEXT[crop].name}: выбор для следующего посева`);
+    campHud.notify(gameText(gameMessage('{crop} выбрана для следующего посева', '{crop} selected for the next planting'), {
+      crop: gameText(FARM_CROP_TEXT[crop].name),
+    }));
     if (changed) persist();
   },
   onReturn: () => {
@@ -1108,9 +1117,11 @@ const farmCropPicker = new FarmCropPicker(app, {
     play('pick');
     farmView.sync(camp.farm, clock.now());
     syncFarmUi();
-    campHud.notify(
-      `Собрано: ${result.harvested} · посеяно снова: ${result.replanted} · пища +${result.netFood}`,
-    );
+    campHud.notify(gameText(gameMessage('Собрано {harvested} · посеяно {replanted} · пища +{food}', 'Harvested {harvested} · replanted {replanted} · food +{food}'), {
+      harvested: result.harvested,
+      replanted: result.replanted,
+      food: result.netFood,
+    }));
     persist();
   },
 });
@@ -2633,6 +2644,7 @@ async function syncLanguage(): Promise<void> {
 addEventListener('emberhold-language-changed', () => {
   const api = window.EmberholdLanguage;
   if (api !== undefined) void cloudSetLanguage(api.current);
+  syncFarmUi();
 });
 const authCard = new AuthCard(app);
 // Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
@@ -3040,13 +3052,25 @@ function syncFarmUi(): void {
 /** Первая строка Фермы отвечает на «что здесь сейчас делать». */
 function farmEntryHint(now: number): string {
   const status = farmStatus(camp.farm, now);
-  if (status.ready > 0) return `Урожай готов: ${status.ready} · коснитесь спелой грядки`;
+  if (status.ready > 0) {
+    return gameText(gameMessage('Урожай готов: {count} · коснитесь спелой грядки', 'Harvest ready: {count} · touch a ripe garden bed'), {
+      count: status.ready,
+    });
+  }
   if (status.growing > 0 && status.nextReadyAt !== null) {
-    return `${status.growing} растёт · ближайший урожай через ${formatDuration(Math.max(60, status.nextReadyAt - now))}`;
+    return gameText(gameMessage('Растёт: {count} · ближайший урожай через {time}', 'Growing: {count} · next harvest in {time}'), {
+      count: status.growing,
+      time: gameDuration(Math.max(60, status.nextReadyAt - now)),
+    });
   }
   const crop = camp.farm?.selectedCrop ?? FARM_DEFAULT_CROP;
   const balance = FARM_CROPS[crop];
-  return `Выбрано: ${FARM_CROP_TEXT[crop].name} · ${formatDuration(balance.growSeconds)} · ${balance.seedFood} → ${balance.harvestFood} пищи`;
+  return gameText(gameMessage('Выбрано: {crop} · {time} · {seed} → {harvest} ед. пищи', 'Selected: {crop} · {time} · {seed} → {harvest} food'), {
+    crop: gameText(FARM_CROP_TEXT[crop].name),
+    time: gameDuration(balance.growSeconds),
+    seed: balance.seedFood,
+    harvest: balance.harvestFood,
+  });
 }
 
 /** Сменить соседнюю локацию, не превращая Ферму в место мировой карты. */
@@ -4670,7 +4694,12 @@ function notifyWorked(): void {
   }
   if (farmHarvestOffline.food > 0) {
     parts.push(
-      `${farmHarvestOffline.helpers.join(', ')}: урожай ${farmHarvestOffline.plots} · пища ${farmHarvestOffline.food} · уход +${farmHarvestOffline.bonus}`,
+      gameText(gameMessage('{names}: собран урожай с {plots} грядок · пища +{food} · помощь +{bonus}', '{names}: harvested {plots} beds · food +{food} · helper bonus +{bonus}'), {
+        names: farmHarvestOffline.helpers.join(', '),
+        plots: farmHarvestOffline.plots,
+        food: farmHarvestOffline.food,
+        bonus: farmHarvestOffline.bonus,
+      }),
     );
   }
   for (const report of huntReportsOffline) {
@@ -5492,14 +5521,14 @@ canvas.addEventListener('pointerdown', (e) => {
     const hit = rig.screenToGround(e.clientX, e.clientY);
     const plot = hit === null ? null : farmView.plotAt(hit);
     if (plot === null) {
-      campHud.notify('Коснитесь грядки у дорожки');
+      campHud.notify(gameText(gameMessage('Коснитесь грядки у дорожки', 'Touch a garden bed by the path')));
       return;
     }
     const now = clock.now();
     const phase = farmPlotPhase(camp, plot, now);
     if (phase === 'locked') {
       play('deny');
-      campHud.notify('Эта грядка откроется с развитием фермы');
+      campHud.notify(gameText(gameMessage('Эта грядка откроется с развитием фермы', 'This garden bed will unlock as the farm grows')));
       return;
     }
     if (phase === 'empty') {
@@ -5508,7 +5537,9 @@ canvas.addEventListener('pointerdown', (e) => {
       const block = farmPlantBlock(camp, plot, crop);
       if (block === 'food') {
         play('deny');
-        campHud.notify(`Для посева нужна ${balance.seedFood} пища`);
+        campHud.notify(gameText(gameMessage('Для посева нужно {food} ед. пищи', 'Planting requires {food} food'), {
+          food: balance.seedFood,
+        }));
         return;
       }
       if (!plantFarmPlot(camp, plot, crop, now)) {
@@ -5516,7 +5547,10 @@ canvas.addEventListener('pointerdown', (e) => {
         return;
       }
       play('pick');
-      campHud.notify(`${FARM_CROP_TEXT[crop].name} посеян · урожай через ${formatDuration(Math.max(60, farmPlotReadyAt(camp.farm!.plots[plot]!) - now))}`);
+      campHud.notify(gameText(gameMessage('{crop} посеян · урожай через {time}', '{crop} planted · harvest in {time}'), {
+        crop: gameText(FARM_CROP_TEXT[crop].name),
+        time: gameDuration(Math.max(60, farmPlotReadyAt(camp.farm!.plots[plot]!) - now)),
+      }));
       farmView.sync(camp.farm, now);
       syncFarmUi();
       persist();
@@ -5525,7 +5559,9 @@ canvas.addEventListener('pointerdown', (e) => {
     if (phase === 'growing') {
       const planted = camp.farm?.plots[plot];
       if (planted !== null && planted !== undefined) {
-        campHud.notify(`Урожай через ${formatDuration(Math.max(60, farmPlotReadyAt(planted) - now))}`);
+        campHud.notify(gameText(gameMessage('Урожай через {time}', 'Harvest in {time}'), {
+          time: gameDuration(Math.max(60, farmPlotReadyAt(planted) - now)),
+        }));
       }
       return;
     }

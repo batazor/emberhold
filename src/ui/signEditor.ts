@@ -1,4 +1,5 @@
 import { SIGN_TEXT_MAX, cleanSignText } from '../sim/signposts';
+import { gameMessage, setGameAttribute, setGameText } from '../i18n/game';
 
 /** Небольшой игровой диалог надписи — без системного prompt и его разного UX. */
 export class SignEditor {
@@ -19,15 +20,15 @@ export class SignEditor {
     panel.className = 'panel sign-editor-panel';
     const title = document.createElement('h2');
     title.id = 'sign-editor-title';
-    title.textContent = 'Надпись на указателе';
+    setGameText(title, gameMessage('Надпись на указателе', 'Signpost text'));
     const note = document.createElement('p');
     note.className = 'dim';
-    note.textContent = 'Одна короткая строка — её будет видно прямо в локации';
+    setGameText(note, gameMessage('Одна короткая строка — она появится на указателе в локации', 'Keep it short—the words will appear on the signpost here'));
     this.input = document.createElement('input');
     this.input.className = 'card';
     this.input.maxLength = SIGN_TEXT_MAX;
-    this.input.placeholder = 'Например: К огороду';
-    this.input.setAttribute('aria-label', 'Текст указателя');
+    setGameAttribute(this.input, 'placeholder', gameMessage('Например: К огороду', 'For example: To the garden'));
+    setGameAttribute(this.input, 'aria-label', gameMessage('Текст указателя', 'Signpost text'));
     this.count = document.createElement('span');
     this.count.className = 'dim sign-editor-count';
     this.input.addEventListener('input', () => this.paintCount());
@@ -36,10 +37,10 @@ export class SignEditor {
     actions.className = 'row sign-editor-actions';
     const cancel = document.createElement('button');
     cancel.className = 'ghost';
-    cancel.textContent = 'Отмена';
+    setGameText(cancel, gameMessage('Отмена', 'Cancel'));
     cancel.addEventListener('click', () => this.close(null));
     const save = document.createElement('button');
-    save.textContent = 'Сохранить';
+    setGameText(save, gameMessage('Сохранить', 'Save'));
     save.addEventListener('click', () => {
       const text = cleanSignText(this.input.value);
       if (text.length > 0) this.close(text);

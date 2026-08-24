@@ -1,4 +1,3 @@
-import { formatDuration } from '../core/clock';
 import type { CampState } from '../sim/camp';
 import {
   FARM_CROPS,
@@ -8,6 +7,8 @@ import {
 import type { FarmCropId } from '../sim/farm';
 import { FARM_CARE_BONUS, farmCareHelpers } from '../sim/farmResidents';
 import { clanBuilderIds } from '../sim/clan';
+import { gameDuration, gameMessage, setGameAttribute, setGameText } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
 
 interface FarmCropPickerCallbacks {
   onSelect(crop: FarmCropId): void;
@@ -15,24 +16,27 @@ interface FarmCropPickerCallbacks {
 }
 
 interface CropCardText {
-  readonly name: string;
-  readonly badge: string;
-  readonly copy: string;
-  readonly alt: string;
+  readonly name: GameMessage;
+  readonly badge: GameMessage;
+  readonly copy: GameMessage;
+  readonly alt: GameMessage;
+  readonly aria: GameMessage;
 }
 
 export const FARM_CROP_TEXT: Readonly<Record<FarmCropId, CropCardText>> = {
   turnip: {
-    name: 'Репа',
-    badge: 'Быстро',
-    copy: 'Пища к ближайшему возвращению',
-    alt: 'Спелая репа на рассветном огороде',
+    name: gameMessage('Репа', 'Turnip'),
+    badge: gameMessage('Быстро', 'Quick'),
+    copy: gameMessage('Урожай к скорому возвращению', 'Ready by your next return'),
+    alt: gameMessage('Спелая репа на рассветном огороде', 'Ripe turnips in a garden at dawn'),
+    aria: gameMessage('Репа: {time}, {seed} → {harvest} ед. пищи, прибыль +{net}', 'Turnip: {time}, {seed} → {harvest} food, net +{net}'),
   },
   barley: {
-    name: 'Ячмень',
-    badge: 'Выгодно',
-    copy: 'Больше пищи за один посев',
-    alt: 'Золотой ячмень на рассветном огороде',
+    name: gameMessage('Ячмень', 'Barley'),
+    badge: gameMessage('Урожайно', 'High yield'),
+    copy: gameMessage('Больше пищи с каждой грядки', 'More food from every planting'),
+    alt: gameMessage('Золотой ячмень на рассветном огороде', 'Golden barley in a garden at dawn'),
+    aria: gameMessage('Ячмень: {time}, {seed} → {harvest} ед. пищи, прибыль +{net}', 'Barley: {time}, {seed} → {harvest} food, net +{net}'),
   },
 };
 
@@ -74,9 +78,9 @@ export class FarmCropPicker {
     head.className = 'row';
     const title = document.createElement('h2');
     title.id = 'farm-crops-title';
-    title.textContent = 'Что посеять';
+    setGameText(title, gameMessage('Что посеять', 'Choose a crop'));
     const hint = document.createElement('p');
-    hint.textContent = 'Выберите культуру, затем коснитесь свободной грядки';
+    setGameText(hint, gameMessage('Выберите культуру, затем коснитесь свободной грядки', 'Choose a crop, then touch an open garden bed'));
     head.append(title, hint);
 
     const list = document.createElement('div');
@@ -118,7 +122,7 @@ export class FarmCropPicker {
     this.helpers = document.createElement('div');
     this.helpers.className = 'fc-helpers row mid';
     const helperLabel = document.createElement('b');
-    helperLabel.textContent = 'Жители';
+    setGameText(helperLabel, gameMessage('Жители', 'Residents'));
     this.helperCopy = document.createElement('span');
     this.helpers.append(helperLabel, this.helperCopy);
     const footer = document.createElement('div');
@@ -150,13 +154,18 @@ export class FarmCropPicker {
       if (nodes === undefined) continue;
       const text = FARM_CROP_TEXT[crop];
       const balance = FARM_CROPS[crop];
-      nodes.image.alt = text.alt;
-      nodes.badge.textContent = text.badge;
-      nodes.name.textContent = text.name;
-      nodes.copy.textContent = text.copy;
-      nodes.time.textContent = formatDuration(balance.growSeconds);
-      nodes.yield.textContent = `${balance.seedFood} → ${balance.harvestFood} пищи`;
-      nodes.net.textContent = `чистыми +${balance.harvestFood - balance.seedFood}`;
+      setGameAttribute(nodes.image, 'alt', text.alt);
+      setGameText(nodes.badge, text.badge);
+      setGameText(nodes.name, text.name);
+      setGameText(nodes.copy, text.copy);
+      setGameText(nodes.time, gameMessage('{time}', '{time}'), { time: gameDuration(balance.growSeconds) });
+      setGameText(nodes.yield, gameMessage('{seed} → {harvest} ед. пищи', '{seed} → {harvest} food'), {
+        seed: balance.seedFood,
+        harvest: balance.harvestFood,
+      });
+      setGameText(nodes.net, gameMessage('прибыль +{net}', 'net +{net}'), {
+        net: balance.harvestFood - balance.seedFood,
+      });
     }
   }
 
@@ -169,24 +178,39 @@ export class FarmCropPicker {
       const selected = farm.selectedCrop === crop;
       nodes.button.classList.toggle('selected', selected);
       nodes.button.setAttribute('aria-pressed', String(selected));
-      nodes.button.setAttribute(
-        'aria-label',
-        `${FARM_CROP_TEXT[crop].name}: ${nodes.time.textContent}, ${nodes.yield.textContent}, ${nodes.net.textContent}`,
-      );
+      const balance = FARM_CROPS[crop];
+      setGameAttribute(nodes.button, 'aria-label', FARM_CROP_TEXT[crop].aria, {
+        time: gameDuration(balance.growSeconds),
+        seed: balance.seedFood,
+        harvest: balance.harvestFood,
+        net: balance.harvestFood - balance.seedFood,
+      });
     }
     const helpers = farmCareHelpers(this.camp!, clanBuilderIds(this.camp!));
     const assigned = this.camp!.residents.some((resident) => resident.answer === 'кормим');
-    this.helperCopy.textContent = helpers.length > 0
-      ? `Помогают: ${helpers.map((helper) => helper.name).join(', ')} · по 1 грядке · +${FARM_CARE_BONUS} пищи`
-      : assigned
-        ? 'Назначенный помощник отдыхает, в отлучке или без крыши'
-        : 'Назначьте жителю «Добывать пищу» — он поможет со сбором';
+    if (helpers.length > 0) {
+      const names = helpers
+        .map((helper) => window.EmberholdLanguage?.translate(helper.name) ?? helper.name)
+        .join(', ');
+      setGameText(this.helperCopy, gameMessage('Помогают: {names} · по грядке · +{food} ед. пищи', 'Helping: {names} · one bed each · +{food} food'), {
+        names,
+        food: FARM_CARE_BONUS,
+      });
+    } else if (assigned) {
+      setGameText(this.helperCopy, gameMessage('Назначенный помощник сейчас недоступен', 'The assigned helper is currently unavailable'));
+    } else {
+      setGameText(this.helperCopy, gameMessage('Назначьте жителю «Добывать пищу» — он поможет с урожаем', 'Assign “Gather food” to a resident for help with the harvest'));
+    }
     const status = farmStatus(farm, this.now);
     const returnUnlocked = farmReturnActionUnlocked(farm);
     this.returnAction.hidden = !returnUnlocked;
     this.returnAction.disabled = status.ready === 0;
-    this.returnAction.textContent = status.ready > 0
-      ? `Собрать и повторить · ${status.ready}`
-      : 'Собрать и повторить';
+    if (status.ready > 0) {
+      setGameText(this.returnAction, gameMessage('Собрать и засеять снова · {count}', 'Harvest and replant · {count}'), {
+        count: status.ready,
+      });
+    } else {
+      setGameText(this.returnAction, gameMessage('Собрать и засеять снова', 'Harvest and replant'));
+    }
   }
 }

@@ -79,7 +79,7 @@ export function clearGameText(element: Element): void {
 
 export function setGameAttribute(
   element: Element,
-  name: 'aria-label' | 'placeholder' | 'title',
+  name: 'alt' | 'aria-label' | 'placeholder' | 'title',
   descriptor: GameMessage,
   values?: GameMessageValues,
 ): void {
@@ -97,7 +97,7 @@ export function setGameAttribute(
 
 export function clearGameAttribute(
   element: Element,
-  name: 'aria-label' | 'placeholder' | 'title',
+  name: 'alt' | 'aria-label' | 'placeholder' | 'title',
 ): void {
   const raw = element.getAttribute('data-lingui-attributes');
   if (raw !== null) {
