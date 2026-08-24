@@ -33,6 +33,7 @@ import {
   FOREST_SLOT_ORDER,
   GRAVEYARD_SLOT_ORDER,
   MATERIAL,
+  MINI_FOREST_SLOT_ORDER,
   FOLK_SLOT_ORDER,
   PROPS_SLOT_ORDER,
   SKELETON_SLOT_ORDER,
@@ -43,6 +44,7 @@ import { WEAPONS_MODELS, WEAPONS_SLOTS } from './weapons.data';
 import { WEAPON_LADDER, weaponOf } from './weapons';
 import { MAX_ITEM_LEVEL } from '../sim/gear';
 import { GRAVEYARD_SLOTS } from './graveyard.data';
+import { MINI_FOREST_MODELS, MINI_FOREST_SLOTS } from './miniForest.data';
 import { PROPS_MODELS, PROPS_SLOTS } from './props.data';
 import { FENCE_SCALE, fenceGeometry } from './graveyard';
 import { FENCE, FENCE_MATERIALS } from '../sim/fence';
@@ -332,15 +334,16 @@ describe('Артбук: бюджет треугольников', () => {
 
   test('свои модели укладываются в свой потолок — килобайты', () => {
     /**
-     * 90 КБ — взятое сейчас, округлённое вверх до десятка: пятеро жильцов.
+     * 110 КБ — взятое сейчас, округлённое вверх до десятка: шестеро жильцов.
      * Пятая — поселенка (женская модель, заведена решением: Мила с мужской
-     * моделью читалась перепутанной подписью, а не человеком). Считается
-     * тем же способом, что у скелетов и героев.
+     * моделью читалась перепутанной подписью, а не человеком), шестой —
+     * лесник (§6.1.6.3), которого нанимают у замка. Считается тем же
+     * способом, что у скелетов и героев.
      */
     const source = readFileSync(new URL('./folk.data.ts', import.meta.url), 'utf8');
     const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
     const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
-    assert.ok(kb <= 90, `свои модели: ${kb} КБ gzip > 90 КБ`);
+    assert.ok(kb <= 110, `свои модели: ${kb} КБ gzip > 110 КБ`);
   });
 
   /**
@@ -504,6 +507,23 @@ describe('Артбук: замок', () => {
     assert.deepEqual([...GRAVEYARD_SLOTS], [...GRAVEYARD_SLOT_ORDER]);
     for (const name of GRAVEYARD_SLOTS) {
       assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+  });
+
+  /**
+   * Пост лесника (§6.1.6.3) — две модели набора Mini Forest (§6.1.18).
+   * Проверяется то же, что у соседей, и ещё одно: обе модели вправду поехали
+   * в бандл. Пост из одной палатки без мишени читался бы чужой стоянкой,
+   * а не местом, где кто-то работает.
+   */
+  test('слоты поста лесника не разошлись с палитрой артбука', () => {
+    assert.deepEqual([...MINI_FOREST_SLOTS], [...MINI_FOREST_SLOT_ORDER]);
+    for (const name of MINI_FOREST_SLOTS) {
+      assert.ok(name in MATERIAL, `слота «${name}» нет среди цветов артбука`);
+    }
+    for (const name of ['tent', 'target'] as const) {
+      assert.ok(name in MINI_FOREST_MODELS, `«${name}» в бандл не поехал`);
+      assert.ok(MINI_FOREST_MODELS[name].tris > 0, `«${name}» приехал пустым`);
     }
   });
 

@@ -191,6 +191,29 @@
   </div>
 </div>
 
+<div class="sec">
+  <div class="hd">
+    <h2>Второй лес: Kenney Mini Forest</h2>
+    <p>Набор от другого автора и в другом масштабе — «мини»-серия Kenney (CC0).
+      Взят он не ради леса: деревья и камни у игры уже есть, и второй лес рядом
+      с первым читался бы двумя стилями в одном кадре. Из набора едут
+      <b>две модели</b> — палатка и мишень: это <b>пост лесника</b> у стен замка
+      (§6.1.6.3), место, где его нанимают за монеты.</p>
+    <p>Лучник набора в бандл не едет, и это решение, а не пропуск. Он нарисовал
+      лесника лицом — плащ, откинутый капюшон и колчан сняты с него, — но живёт
+      лесник в лагере, где обязан ходить и рубить, а риг «мини»-серии свой,
+      шестикостный. Второй риг стоил бы килобайтов у каждого игрока ради одного
+      человека; лесник перерисован своей моделью на общем риге (набор
+      <code>folk</code>), тем же решением, каким туда приехали кузнец и охотник.</p>
+    <p>Атлас здесь устроен иначе, чем у KayKit: это не градиенты, а плоские
+      квадраты палитры — ступеней внутри материала нет вовсе. Приведение то же:
+      цвет снимается на запекании и заменяется слотом.</p>
+  </div>
+  <div class="bar" id="miniFilters"></div>
+  <div class="models" id="miniGrid"></div>
+  <p class="note" id="miniCost"></p>
+</div>
+
 </div>
 
 <script type="module">
@@ -204,12 +227,17 @@ function fail(text){
   w.className = 'lede fail';
 }
 
-let palette, cat;
+let palette, cat, miniPalette, miniCat;
+const MINI_CATALOG = './assets/kenney-mini-forest/catalog.json';
+const MINI_GLB = './assets/kenney-mini-forest/glb/';
 try{
   // Палитра берётся из самого модуля игры: две копии одного списка разошлись бы
   // молча, а страница именно про то, что список один.
-  palette = (await import('/src/render/palette.ts')).FOREST_PALETTE;
+  const palettes = await import('/src/render/palette.ts');
+  palette = palettes.FOREST_PALETTE;
+  miniPalette = palettes.MINI_FOREST_PALETTE;
   cat = await (await fetch(CATALOG)).json();
+  miniCat = await (await fetch(MINI_CATALOG)).json();
 }catch(e){
   fail('Страница читает файлы проекта и работает только на dev-сервере: npm run dev, затем /forestart.html. ' + e);
   throw e;
@@ -430,4 +458,112 @@ document.getElementById('cost').textContent =
   cat.adopted.length + ' моделей из ' + cat.models.length + ' · ' + takenTris +
   ' треугольников · ≈' + kb + ' КБ base64 в бандле';
 document.getElementById('bundle').textContent = '≈' + kb + ' КБ';
+
+/* ---------- второй лес: Kenney Mini Forest (§6.1.18) ---------- */
+
+/**
+ * Чтение .glb: тот же разбор акцессоров, что у .gltf выше, только буфер
+ * приезжает вторым куском того же файла. Узловых трансформов набор
+ * не использует ни в одной модели, кроме лучника, — и лучник в бандл не едет.
+ */
+async function loadGlbTriangles(name){
+  const buf = await (await fetch(MINI_GLB + name + '.glb')).arrayBuffer();
+  const head = new DataView(buf);
+  let at = 12, gltf = null, bin = null;
+  while(at < buf.byteLength){
+    const len = head.getUint32(at, true), kind = head.getUint32(at + 4, true);
+    const body = buf.slice(at + 8, at + 8 + len);
+    if(kind === 0x4E4F534A) gltf = JSON.parse(new TextDecoder().decode(body));
+    else if(kind === 0x004E4942) bin = body;
+    at += 8 + len;
+  }
+  const dv = new DataView(bin);
+  const read = (index) => {
+    const acc = gltf.accessors[index], bv = gltf.bufferViews[acc.bufferView];
+    const size = SIZE[acc.type], bytes = BYTES[acc.componentType];
+    const stride = bv.byteStride ?? size * bytes;
+    const start = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = [];
+    for(let i = 0; i < acc.count; i++){
+      const row = [];
+      for(let c = 0; c < size; c++) row.push(dv[READER[acc.componentType]](start + i * stride + c * bytes, true));
+      out.push(size === 1 ? row[0] : row);
+    }
+    return out;
+  };
+  const tris = [];
+  for(const mesh of gltf.meshes) for(const prim of mesh.primitives){
+    const pos = read(prim.attributes.POSITION), idx = read(prim.indices);
+    for(let i = 0; i < idx.length; i += 3) tris.push([pos[idx[i]], pos[idx[i+1]], pos[idx[i+2]]]);
+  }
+  return tris;
+}
+
+const miniSlots = new Map();
+for(const m of miniCat.models){
+  const raw = atob(m.slot);
+  const list = new Uint8Array(raw.length);
+  for(let i = 0; i < raw.length; i++) list[i] = raw.charCodeAt(i);
+  miniSlots.set(m.name, list);
+}
+
+const miniGrid = document.getElementById('miniGrid');
+const miniTaken = new Set(miniCat.adopted);
+const miniCards = [];
+for(const m of miniCat.models){
+  const card = document.createElement('div');
+  card.className = 'm' + (miniTaken.has(m.name) ? ' take' : '');
+  card.dataset.category = m.category;
+  const canvas = document.createElement('canvas');
+  canvas.width = 168; canvas.height = 148;
+  const stage = document.createElement('div');
+  stage.className = 'stage';
+  stage.appendChild(canvas);
+  card.innerHTML = '<b>' + m.name + '</b>' +
+    '<u><s>' + m.tris + ' тр.</s><s>' + m.size.join('×') + '</s>' +
+    (miniTaken.has(m.name) ? '<s class="take">в игре</s>' : '') + '</u>';
+  card.prepend(stage);
+  miniGrid.appendChild(card);
+  miniCards.push({model:m, card, canvas, drawn:false});
+}
+
+const miniSeen = new IntersectionObserver((entries) => {
+  for(const entry of entries){
+    if(!entry.isIntersecting) continue;
+    const item = miniCards.find(c => c.card === entry.target);
+    miniSeen.unobserve(entry.target);
+    if(item.drawn) continue;
+    item.drawn = true;
+    loadGlbTriangles(item.model.name).then((tris) => {
+      const list = miniSlots.get(item.model.name);
+      draw(item.canvas, tris, [...tris].map((_, i) => hex(miniPalette[list[i]])));
+    }).catch(() => { item.card.querySelector('.stage').textContent = '—'; });
+  }
+}, {rootMargin:'400px'});
+for(const c of miniCards) miniSeen.observe(c.card);
+
+const miniBar = document.getElementById('miniFilters');
+const miniCats = [...new Set(miniCat.models.map((m) => m.category))];
+for(const key of ['Всё', ...miniCats, 'Только взятое']){
+  const b = document.createElement('button');
+  b.textContent = key;
+  b.setAttribute('aria-pressed', key === 'Всё' ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    for(const other of miniBar.children) other.setAttribute('aria-pressed', 'false');
+    b.setAttribute('aria-pressed', 'true');
+    for(const c of miniCards){
+      const show = key === 'Всё' ? true
+        : key === 'Только взятое' ? miniTaken.has(c.model.name)
+        : c.model.category === key;
+      c.card.style.display = show ? '' : 'none';
+    }
+  });
+  miniBar.appendChild(b);
+}
+
+const miniTris = miniCat.adopted.reduce((sum, name) =>
+  sum + miniCat.models.find((m) => m.name === name).tris, 0);
+document.getElementById('miniCost').textContent =
+  miniCat.adopted.length + ' модели из ' + miniCat.models.length + ' · ' + miniTris +
+  ' треугольников · пост лесника у стен замка · лицензия ' + miniCat.license;
 </script>

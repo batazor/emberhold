@@ -36,7 +36,7 @@ import type { Visit } from '../sim/world';
 import type { LiveCamp } from '../sim/standing';
 import type { OnbStep } from '../sim/onboarding';
 import { RESOURCE_NAME } from '../sim/resources';
-import { TENT_COST, TENT_REASON, homeless, homelessFolk, tentBlock } from '../sim/residents';
+import { TENT_COST, TENT_REASON, homeless, homelessFolk, residentLook, tentBlock } from '../sim/residents';
 import { clanTaskOpen } from '../sim/clan';
 import { avatarSvg } from './avatar';
 import { DailyPanel } from './dailyPanel';
@@ -83,6 +83,16 @@ export interface CampCallbacks {
   onOffhand(offhand: Offhand): void;
   /** Поставить палатку жильцу (`sim/residents.ts`). */
   onTent(): void;
+  /**
+   * Пойти и добыть то, чего не хватает: дерево — топором по лесу поляны
+   * (§13.3), пищу — приказом добытчику (§13.7).
+   *
+   * Заведено потому, что задание без выхода — не задание. Строка «Не хватает
+   * дерева» с погасшей кнопкой сообщала беду и не предлагала ничего: игрок
+   * читал отказ и оставался с ним один. Теперь причина остаётся строкой,
+   * а кнопка ведёт к тому, чем причина лечится.
+   */
+  onGather(kind: 'wood' | 'food'): void;
   /** §30 — завести свой клан: строка задания открывает окно с именем. */
   onClan(): void;
   /** §29 — забрать сегодняшний подарок. Считает и зачисляет лагерь, а не
@@ -198,7 +208,7 @@ export class CampHud {
   private readonly taskWhy: HTMLElement;
   private readonly taskButton: HTMLButtonElement;
   /** Какое задание сейчас на строке: от него зависит, что делает кнопка. */
-  private taskDoes: 'tent' | 'clan' | 'chest' | 'shop' | 'world' = 'tent';
+  private taskDoes: 'tent' | 'clan' | 'chest' | 'shop' | 'world' | 'wood' | 'food' = 'tent';
   /** Разовая строка после оффлайн-вылазки: отчёт пришёл, дальше решение на карте. */
   private taskNudge: { kind: 'world'; text: string } | null = null;
 
@@ -303,6 +313,8 @@ export class CampHud {
       if (this.taskDoes === 'clan') this.cb.onClan();
       else if (this.taskDoes === 'chest') this.cb.onChest();
       else if (this.taskDoes === 'shop') this.openSheet('shop');
+      else if (this.taskDoes === 'wood') this.cb.onGather('wood');
+      else if (this.taskDoes === 'food') this.cb.onGather('food');
       else if (this.taskDoes === 'world') {
         this.taskNudge = null;
         this.openSheet('tiers');
@@ -863,6 +875,9 @@ export class CampHud {
    */
   private syncTask(camp: CampState): void {
     const need = homeless(camp);
+    // Голод стоит сразу за крышей и перед всем прочим: без пищи не работает
+    // никто (§13.7), а сундук, клан и колчан ждут до вечера.
+    if (need === 0 && this.syncFoodTask(camp)) return;
     if (need === 0 && clanTaskOpen(camp)) {
       this.syncClanTask();
       return;
@@ -892,17 +907,53 @@ export class CampHud {
     const face = first === undefined ? '' : `${first.look}/${first.seed}`;
     if (this.taskFace.dataset['who'] !== face) {
       this.taskFace.dataset['who'] = face;
-      this.taskFace.innerHTML = first === undefined ? '' : avatarSvg(first.look, first.seed);
+      this.taskFace.innerHTML = first === undefined ? '' : avatarSvg(residentLook(first), first.seed);
       this.taskFace.style.display = first === undefined ? 'none' : '';
     }
     const block = tentBlock(camp);
-    this.taskButton.textContent = `Палатка · ${this.costLine(0, TENT_COST)}`;
-    this.taskButton.disabled = block !== 'ok';
     // Название причины дописывается к поводу, а не заменяет его: игрок
     // должен видеть и что просят, и почему нельзя, — одно без другого
     // это либо задание без выхода, либо отказ без повода.
     if (block !== 'ok') this.taskWhy.textContent += ` · ${TENT_REASON[block]}`;
+    /**
+     * Не хватает дерева — кнопка ведёт за деревом, а не гаснет. Лес поляны
+     * рубится тут же (§13.3), и «нет дерева» в лагере, стоящем в лесу, —
+     * это не тупик, а одна невыполненная работа. Прочие отказы (места нет,
+     * все под крышей) кнопку по-прежнему гасят: за них платят не топором.
+     */
+    if (block === 'resources') {
+      this.taskButton.textContent = 'Собрать дерево';
+      this.taskButton.disabled = false;
+      this.taskDoes = 'wood';
+      return;
+    }
+    this.taskButton.textContent = `Палатка · ${this.costLine(0, TENT_COST)}`;
+    this.taskButton.disabled = block !== 'ok';
     this.taskDoes = 'tent';
+  }
+
+  /**
+   * Пустая кладовая по пище (§13.7). Стоит **за** крышей и **перед** прочими:
+   * голод останавливает работу всего лагеря, а сундук и клан ждут до вечера.
+   *
+   * Кнопка ведёт к тому, чем пища и берётся, — к добытчику: §13.7 держит
+   * правило «пищу приносит только жилец с приказом „Добывать пищу“».
+   * Если ставить приказ некому, строка ведёт в мир: ягоды растут в местах
+   * (§13.8), и там их берут руками.
+   */
+  private syncFoodTask(camp: CampState): boolean {
+    if (camp.resources.food > 0) return false;
+    this.task.style.display = 'flex';
+    this.hideTaskFace();
+    const feeder = camp.residents.some((r) => !r.rest && r.hunt === undefined && r.answer === 'кормим');
+    this.taskWhy.textContent = feeder
+      ? 'В кладовой нет пищи · добытчик уже в поле'
+      : 'В кладовой нет пищи: голодные не работают';
+    const canFeed = camp.residents.length > 0 && !feeder;
+    this.taskButton.textContent = canFeed ? 'Добывать пищу' : 'Собрать пищу';
+    this.taskButton.disabled = false;
+    this.taskDoes = canFeed ? 'food' : 'world';
+    return true;
   }
 
   private hideTaskFace(): void {

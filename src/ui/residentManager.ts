@@ -9,6 +9,7 @@ import {
   foxesCaught,
   hasRoof,
   huntBlock,
+  residentLook,
   residentStateAt,
   scheduleOf,
 } from '../sim/residents';
@@ -94,7 +95,7 @@ export class ResidentManager {
     identity.className = 'rm-id';
     const face = document.createElement('span');
     face.className = 'face';
-    face.innerHTML = avatarSvg(r.look, r.seed);
+    face.innerHTML = avatarSvg(residentLook(r), r.seed);
     const who = document.createElement('span');
     const state = hasRoof(camp, index) ? residentStateAt(r, this.now) : 'без крыши';
     who.innerHTML = `<b></b><small class="${hasRoof(camp, index) ? 'good' : 'dim'}"></small>`;

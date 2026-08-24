@@ -19,6 +19,8 @@ import { GUEST_FROM_TEXT, GUEST_SEEK_TEXT, GUEST_TERM_TEXT, termLine } from '../
 import type { CastleGuest, GuestMeet } from '../sim/castleGuest';
 import { MAX_NAME, SELF_ANSWERS, SELF_HINT, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
+import { HIRE_REASON, hireLine } from '../sim/woodsman';
+import type { HireBlock, WoodsmanPost, WoodsmanTalk } from '../sim/woodsman';
 import { avatarSvg } from './avatar';
 
 export interface MeetPanelCallbacks {
@@ -188,6 +190,53 @@ export class MeetPanel {
     );
   }
 
+  /**
+   * Наём лесника у стен замка (`sim/woodsman.ts`, §6.1.6.3). Панель та же,
+   * что у знакомства и у гостя, и по той же причине без кнопки «закрыть»:
+   * отойти можно в любой момент. Кадра два, тапов столько же.
+   *
+   * Лицо рисуется ремеслом, а не тем, с чем человек пришёл: у поста стоит
+   * лесник, и в кружке он обязан быть лесником — тем же, каким войдёт
+   * в лагерь (`residentLook`).
+   */
+  showWoodsman(post: WoodsmanPost, state: WoodsmanTalk, price: number, block: HireBlock): void {
+    this.root.style.display = state.step === 'кончено' ? 'none' : 'flex';
+    if (state.step === 'кончено') return;
+
+    this.buttons.replaceChildren();
+    this.field.style.display = 'none';
+    this.goods.style.display = 'none';
+    const face = `лесник/${post.who.seed}`;
+    if (this.face.dataset['who'] !== face) {
+      this.face.dataset['who'] = face;
+      this.face.innerHTML = avatarSvg('лесник', post.who.seed);
+    }
+
+    if (state.step === 'кто') {
+      this.line.textContent = `— Я ${post.who.name}. Лес мой, топор мой.`;
+      this.act('Спросить о цене', () => this.cb.onAdvance());
+      return;
+    }
+
+    this.line.textContent = '— Найми — буду валить твой лес. Кормить будешь ты.';
+    // Цена и то, чего не хватает, — одной строкой: игрок должен видеть
+    // и сколько просят, и почему нельзя, а не гадать по погасшей кнопке.
+    this.goods.textContent = block === 'ok'
+      ? hireLine(price)
+      : `${hireLine(price)} · ${HIRE_REASON[block]}`;
+    this.goods.style.display = 'block';
+    const hire = this.act(
+      'Нанять',
+      () => this.cb.onInvite(),
+      block === 'ok'
+        ? 'Вдвое быстрее на дереве; ест и работает, только пока есть крыша'
+        : 'Нанять не на что — приходи с монетами',
+    );
+    // Кнопка гаснет, а не отказывает нажатием: цена названа рядом, и жать
+    // на «нанять» с пустым кошельком незачем.
+    hire.disabled = block !== 'ok';
+  }
+
   /** Фокус в поле — отдельным вызовом: телефон открывает клавиатуру только
    *  по жесту игрока, и дёргать её на каждой перерисовке нельзя. */
   focusName(): void {
@@ -204,7 +253,7 @@ export class MeetPanel {
     return this.root.style.display !== 'none';
   }
 
-  private act(label: string, onClick: () => void, hint?: string): void {
+  private act(label: string, onClick: () => void, hint?: string): HTMLButtonElement {
     const button = document.createElement('button');
     button.textContent = label;
     // Пояснение внутри кнопки, а не рядом: выбор и его цена — одно касание.
@@ -215,5 +264,6 @@ export class MeetPanel {
     }
     button.addEventListener('click', onClick);
     this.buttons.append(button);
+    return button;
   }
 }

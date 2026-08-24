@@ -66,12 +66,9 @@ export class SettingsMenu {
     this.overlay.innerHTML = `
       <div class="panel">
         <h2>Настройки</h2>
-        <div class="set-language" translate="no">
-          <span class="lbl">${window.EmberholdLanguage?.current === 'ru' ? 'Язык' : 'Language'}</span>
-          <div class="language-toggle" role="group" aria-label="Language">
-            <button type="button" data-lang="en" class="${window.EmberholdLanguage?.current !== 'ru' ? 'on' : ''}" aria-pressed="${window.EmberholdLanguage?.current !== 'ru'}">EN</button>
-            <button type="button" data-lang="ru" class="${window.EmberholdLanguage?.current === 'ru' ? 'on' : ''}" aria-pressed="${window.EmberholdLanguage?.current === 'ru'}">RU</button>
-          </div>
+        <div class="set-language">
+          <span class="lbl">Язык</span>
+          <span data-slot="language"></span>
         </div>
         <div class="set-rows">
           ${KNOBS.map(
@@ -89,14 +86,21 @@ export class SettingsMenu {
     parent.appendChild(this.overlay);
     this.acts = this.overlay.querySelector('.acts') as HTMLElement;
 
+    /**
+     * Язык живёт здесь, а не отдельной плашкой в углу экрана (§6.2.7). Сам
+     * переключатель делает `public/language.js` — тот же, что стоит
+     * на страницах артбуков: две копии одной кнопки разошлись бы
+     * подписями и состоянием.
+     */
+    const slot = this.overlay.querySelector('[data-slot="language"]');
+    if (slot instanceof HTMLElement) window.EmberholdLanguage?.toggle(slot);
+
     this.button.addEventListener('click', () => this.open());
     // Тап по затемнению — тот же выход. Окно ничего не решает за игрока,
     // и держать его открытым до кнопки «Закрыть» незачем.
     this.overlay.addEventListener('click', (e) => {
-      if (e.target instanceof HTMLButtonElement && (e.target.dataset.lang === 'en' || e.target.dataset.lang === 'ru')) {
-        window.EmberholdLanguage?.set(e.target.dataset.lang);
-        return;
-      }
+      // Кнопки языка слушает сам переключатель (`language.js`) — здесь
+      // остаётся только не принять их за тап по затемнению.
       if (e.target === this.overlay) this.close();
     });
 

@@ -76,15 +76,30 @@ export class AuthCard {
     this.root.style.display = 'none';
   }
 
+  /**
+   * **Язык спрашивается на регистрации, и только на ней.** Заводящий аккаунт
+   * приходит с чистого листа, и первый вопрос к нему — на каком языке
+   * говорить; входящий уже отвечал на него однажды, и спрашивать второй раз
+   * значило бы не помнить ответа (`cloudLanguage`).
+   *
+   * Переключатель — тот же, что в настройках и в артбуках (`language.js`),
+   * и меняет он язык **сразу**, вместе с самой карточкой: выбор, который
+   * ничего не делает до кнопки, читается формой, а не выбором.
+   */
   private paint(): void {
     const c = CARDS[this.mode];
     this.card.innerHTML = `
       <h2>${c.title}</h2>
       <p class="sp-note">${c.lead}</p>
+      ${this.mode === 'up'
+        ? `<div class="set-language"><span class="lbl">Язык</span><span data-slot="language"></span></div>`
+        : ''}
       <input type="email" data-in="email" placeholder="Почта" autocomplete="email">
       <p class="auth-note warn"></p>
       <button type="button" data-act="go">${c.act}</button>
       <button type="button" class="ghost" data-act="swap">${c.swap}</button>`;
+    const slot = this.card.querySelector('[data-slot="language"]');
+    if (slot instanceof HTMLElement) window.EmberholdLanguage?.toggle(slot);
   }
 
   private async submit(): Promise<void> {

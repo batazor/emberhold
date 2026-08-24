@@ -96,6 +96,45 @@ export function cloudOnSignIn(cb: () => void): void {
   }
 }
 
+/**
+ * Язык игрока (§6.2.7). Живёт своей строкой в облаке, а не в блобе сейва:
+ * спрашивают его на карточке регистрации — до всякого лагеря, — и «Новая
+ * игра» его не стирает, потому что от смены лагеря язык не меняется.
+ *
+ * `null` — сессии нет или строки ещё нет. И то и другое означает одно:
+ * спрашивать облако не о чем, язык берётся с устройства.
+ */
+export async function cloudLanguage(): Promise<'en' | 'ru' | null> {
+  const uid = await userId();
+  if (uid === null) return null;
+  try {
+    const { data } = await client
+      .from('player_settings')
+      .select('language')
+      .eq('user_id', uid)
+      .maybeSingle();
+    const language: unknown = data?.language;
+    return language === 'en' || language === 'ru' ? language : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Запомнить язык за аккаунтом. Молча ничего не делает без сессии. */
+export async function cloudSetLanguage(language: 'en' | 'ru'): Promise<void> {
+  const uid = await userId();
+  if (uid === null) return;
+  try {
+    await client.from('player_settings').upsert({
+      user_id: uid,
+      language,
+      updated_at: new Date().toISOString(),
+    });
+  } catch {
+    /* см. шапку файла */
+  }
+}
+
 export async function cloudSignOut(): Promise<void> {
   try {
     await client.auth.signOut();

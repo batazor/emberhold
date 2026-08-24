@@ -7,6 +7,8 @@ interface EmberholdLanguageApi {
   translate(text: string): string;
   localize(root: Node): void;
   observe(document?: Document): void;
+  /** Дождаться словаря: переключение на английский ждёт его один раз. */
+  ready(): Promise<void>;
 }
 
 interface Window {

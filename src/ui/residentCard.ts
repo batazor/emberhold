@@ -1,4 +1,4 @@
-import { RESIDENT_ORDER, RESIDENT_ORDERS, hasRoof, residentState } from '../sim/residents';
+import { RESIDENT_ORDER, RESIDENT_ORDERS, hasRoof, residentLook, residentState } from '../sim/residents';
 import type { ResidentOrder } from '../sim/residents';
 import type { CampState } from '../sim/camp';
 import { avatarSvg } from './avatar';
@@ -97,10 +97,10 @@ export class ResidentCard {
       this.setVisible(false);
       return;
     }
-    const faceKey = `${r.look}:${r.seed}`;
+    const faceKey = `${residentLook(r)}:${r.seed}`;
     if (faceKey !== this.faceKey) {
       this.faceKey = faceKey;
-      this.face.innerHTML = avatarSvg(r.look, r.seed);
+      this.face.innerHTML = avatarSvg(residentLook(r), r.seed);
     }
     this.name.textContent = r.name;
     const roofed = hasRoof(camp, this.shown);

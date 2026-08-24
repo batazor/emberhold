@@ -328,3 +328,20 @@ export const STONE_GOLEM_SLOT_ORDER = [
 ] as const;
 
 export const STONE_GOLEM_PALETTE = paletteOf(STONE_GOLEM_SLOT_ORDER);
+
+/**
+ * Набор Kenney Mini Forest (§6.1.18) — пост лесника у стен замка: палатка
+ * и мишень. Пятнадцать слотов и ни одного нового цвета: брус и полотно
+ * легли в семью дерева, полог палатки — в краску бочек (тот же синий, каким
+ * замок красит шатры), стойка мишени — в металл, её кольца — в алое.
+ * Порядок — тот же, что пишет `npm run models` в `miniForest.data.ts`.
+ */
+export const MINI_FOREST_SLOT_ORDER = [
+  'земля', 'дерево-тень', 'дерево', 'дерево-свет', 'солома',
+  'хвоя', 'мох', 'трава',
+  'металл-тень', 'металл', 'сталь',
+  'камень-тень', 'иней',
+  'краска-алая', 'краска-синяя',
+] as const;
+
+export const MINI_FOREST_PALETTE = paletteOf(MINI_FOREST_SLOT_ORDER);

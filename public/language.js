@@ -116,11 +116,32 @@
     }).observe(doc, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ATTRIBUTES });
   }
 
-  function set(language) {
+  /**
+   * Переключение — **без перезагрузки**. Перезагрузка была простым решением
+   * и стоила больше, чем экономила: тап по языку выбрасывал игрока из кадра,
+   * а на карточке регистрации стирал набранную почту. Обратный перевод
+   * при этом ничего не стоит — исходная строка помнится у каждого узла
+   * (`original`), и `localize` возвращает её сам.
+   */
+  async function set(language) {
     if (!LANGUAGES.includes(language) || language === current) return;
     current = language;
     try { localStorage.setItem(STORAGE_KEY, language); } catch {}
-    location.reload();
+    document.documentElement.lang = current;
+    if (language === 'en') await ready();
+    for (const doc of observed) localize(doc);
+    for (const group of toggles) paint(group);
+    dispatchEvent(new CustomEvent('emberhold-language-changed', { detail: current }));
+  }
+
+  /** Переключатели на экране: их надписи обязаны знать о смене языка. */
+  const toggles = new Set();
+  function paint(group) {
+    for (const button of group.querySelectorAll('button[data-lang]')) {
+      const on = button.dataset.lang === current;
+      button.className = on ? 'on' : '';
+      button.setAttribute('aria-pressed', String(on));
+    }
   }
 
   function toggle(parent, className = '') {
@@ -132,24 +153,28 @@
     for (const language of LANGUAGES) {
       const button = document.createElement('button');
       button.type = 'button';
+      button.dataset.lang = language;
       button.textContent = language.toUpperCase();
-      button.className = language === current ? 'on' : '';
-      button.setAttribute('aria-pressed', String(language === current));
-      button.addEventListener('click', () => set(language));
+      button.addEventListener('click', () => { void set(language); });
       group.appendChild(button);
     }
+    paint(group);
+    toggles.add(group);
     parent.appendChild(group);
     return group;
   }
 
-  window.EmberholdLanguage = { get current() { return current; }, set, toggle, translate, localize, observe };
-  document.documentElement.lang = current;
-  const embedded = window.self !== window.top;
-  if (!embedded) observe(document);
+  const SOURCE = new URL('./language-en.gz.txt', document.currentScript?.src ?? location.href);
+  let loading = null;
 
-  if (current === 'en') {
-    const base = document.currentScript?.src ?? location.href;
-    fetch(new URL('./language-en.gz.txt', base))
+  /**
+   * Каталог. Грузится один раз и по требованию: страница, открытая
+   * по-русски, не платит за словарь вовсе, а переключённая на английский
+   * ждёт его ровно один раз.
+   */
+  function ready() {
+    if (loading !== null) return loading;
+    loading = fetch(SOURCE)
       .then((response) => {
         if (!response.ok) throw new Error(`language catalog: ${response.status}`);
         return response.text();
@@ -165,11 +190,26 @@
         for (const doc of observed) localize(doc);
         dispatchEvent(new CustomEvent('emberhold-language-ready'));
       })
-      .catch((error) => console.error(error));
+      .catch((error) => { console.error(error); loading = null; });
+    return loading;
   }
 
+  window.EmberholdLanguage = { get current() { return current; }, set, toggle, translate, localize, observe, ready };
+  document.documentElement.lang = current;
+  const embedded = window.self !== window.top;
+  if (!embedded) observe(document);
+
+  if (current === 'en') void ready();
+
+  /**
+   * Плавающий переключатель — только для артбуков и страниц-замеров.
+   * В самой игре его нет: угол экрана занят кадром, а язык живёт там же,
+   * где громкость и «Новая игра», — в настройках под шестернёй (§18.5).
+   * Пустой хвост адреса — это и есть игра (`/`), поэтому он в списке.
+   */
   const standalone = () => {
-    if (window.self !== window.top || /^(index|artbooks)\.html$/.test(location.pathname.split('/').pop() ?? '')) return;
+    const page = location.pathname.split('/').pop() ?? '';
+    if (window.self !== window.top || page === '' || /^(index|artbooks)\.html$/.test(page)) return;
     const style = document.createElement('style');
     style.textContent = `
       #emberhold-language { position:fixed; z-index:10000; top:max(10px,env(safe-area-inset-top)); right:10px;

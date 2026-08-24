@@ -22,6 +22,7 @@ import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
 import { roadPieces } from '../sim/roads';
 import { FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
+import { miniForestGeometry } from './miniForest';
 import type { GraveyardPartModelName } from './graveyard';
 import type { CastlePartModelName } from './castle';
 import type { CastleSite } from '../sim/castleSite';
@@ -487,6 +488,12 @@ export class RaidView {
     rising: number;
   } | null = null;
   private archer: { rig: Rigged; facing: number } | null = null;
+  /**
+   * Пост лесника у стен замка (§6.1.6.3): палатка, мишень и он сам. Отдельным
+   * полем по той же причине, что поселенец у прогалины: живёт он не от
+   * времени, как жильцы двора, а от места — и в кадре он один.
+   */
+  private post: { rig: Rigged; meshes: THREE.Mesh[] } | null = null;
   private watch = 0;
   /** Переиспользуемые слоты толчка: аллокация каждый кадр тут не нужна. */
   private readonly pushers: { x: number; z: number; strength: number }[] = [];
@@ -1380,6 +1387,64 @@ export class RaidView {
     rig.play('сидит');
     this.group.add(rig.root);
     this.settler = { rig, facing, goal: null, rising: 0 };
+  }
+
+  /**
+   * Пост лесника (§6.1.6.3) — палатка и мишень набора Mini Forest (§6.1.18)
+   * и человек между ними.
+   *
+   * Стоит, а не сидит: гость у костра ждёт попутчиков, лесник стоит при
+   * деле — и разница между «зовут его» и «нанимают его» обязана читаться
+   * до первой реплики. Лицом к мишени по той же причине, по какой жильцы
+   * лагеря смотрят на огонь: человек смотрит на то, чем занят.
+   *
+   * Ростом палатка вровень с человеком, мишень ему по грудь: «мини»-серия
+   * мерит вещи в своём масштабе, и приводить их нечем, кроме роста того,
+   * кто рядом стоит.
+   */
+  putWoodsman(look: DwellerLook, post: {
+    tent: { x: number; z: number };
+    target: { x: number; z: number };
+    stand: { x: number; z: number };
+  }): void {
+    this.clearWoodsman();
+    const meshes: THREE.Mesh[] = [];
+    const put = (
+      geometry: THREE.BufferGeometry,
+      cell: { x: number; z: number },
+      turn: number,
+    ): void => {
+      const mesh = new THREE.Mesh(this.track(geometry), this.blocking);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      // След 1×1, и клетка мира лежит центром в целых координатах — то же
+      // правило, каким ставятся палатки и сундуки поляны.
+      mesh.position.set(cell.x, 0, cell.z);
+      mesh.rotation.y = turn;
+      this.group.add(mesh);
+      this.clearGrassCell(cell.x, cell.z);
+      meshes.push(mesh);
+    };
+    const tall = guardHeight();
+    // Палатка входом к человеку, мишень — лицом к нему же: пост читается
+    // местом, где кого-то ждут, только если он повёрнут внутрь себя.
+    put(miniForestGeometry('tent', tall * 1.15), post.tent, Math.PI / 2);
+    put(miniForestGeometry('target', tall * 0.75), post.target, Math.PI);
+
+    const rig = new Rigged(dwellerParts(look), this.blocking);
+    rig.root.position.set(post.stand.x, 0, post.stand.z);
+    rig.root.rotation.y = Math.atan2(post.target.x - post.stand.x, post.target.z - post.stand.z);
+    rig.play('покой');
+    this.group.add(rig.root);
+    this.post = { rig, meshes };
+  }
+
+  /** Убрать пост: нанятый лесник уходит с игроком и хозяйство сворачивает. */
+  clearWoodsman(): void {
+    if (this.post === null) return;
+    this.post.rig.dispose();
+    for (const mesh of this.post.meshes) mesh.removeFromParent();
+    this.post = null;
   }
 
   /**
@@ -3081,6 +3146,7 @@ export class RaidView {
     for (const view of this.enemyViews.values()) view.rig.dispose();
     this.settler?.rig.dispose();
     this.settler = null;
+    this.clearWoodsman();
     for (const view of this.dwellerViews) view.rig.dispose();
     this.dwellerViews.length = 0;
     for (const view of this.squad) view.rig.dispose();
