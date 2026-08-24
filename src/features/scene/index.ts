@@ -10,7 +10,7 @@
  * (`scene.rules.ts`), без DOM и без звука.
  */
 
-export type Scene = 'title' | 'camp' | 'raid';
+export type Scene = 'title' | 'camp' | 'visit' | 'raid';
 
 /** Кто на экране. */
 export interface Panels {
@@ -46,6 +46,10 @@ export function panelsFor(scene: Scene, quiet = false): Panels {
       return { ...none, startScreen: true };
     case 'camp':
       return { ...none, campHud: true, roster: !quiet };
+    case 'visit':
+      // Гостевой режим держит свою компактную рамку снаружи этой таблицы;
+      // боевой и хозяйственный интерфейсы в чужой лагерь не проходят.
+      return none;
     case 'raid':
       return { ...none, hud: true };
   }
@@ -69,6 +73,8 @@ export function soundFor(scene: Scene, tier: number): Sound {
     case 'title':
       return { ambient: null, campTune: 'camp', pulse: false };
     case 'camp':
+      return { ambient: null, campTune: 'camp', pulse: false };
+    case 'visit':
       return { ambient: null, campTune: 'camp', pulse: false };
     case 'raid':
       return {
