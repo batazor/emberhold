@@ -165,6 +165,17 @@ export const GRAVEYARD_SLOT_ORDER = [
 export const GRAVEYARD_PALETTE = paletteOf(GRAVEYARD_SLOT_ORDER);
 
 /**
+ * Kenney Survival Kit использует ту же разлиновку colormap, что Castle Kit.
+ * Порядок обязан совпадать с `SURVIVAL_SLOTS`, который пишет `npm run models`.
+ */
+export const SURVIVAL_SLOT_ORDER = [
+  'земля', 'дерево-тень', 'дерево', 'дерево-свет',
+  'солома', 'соль-тень', 'соль', 'соль-свет',
+] as const;
+
+export const SURVIVAL_PALETTE = paletteOf(SURVIVAL_SLOT_ORDER);
+
+/**
  * Набор craftpix Environment Props (§6.1.12) — дорожные плиты и фонари.
  * Девять слотов и ни одного нового: серые полосы атласа легли в камень
  * и соль, доски настила — в семью дерева, песок между плитами — в солому,
