@@ -50,6 +50,22 @@ export async function cloudTime(): Promise<number | null> {
   }
 }
 
+/**
+ * Общая карта: точки дня, их серверные сиды и текущее окно событий одним
+ * атомарным RPC. Форма проверяется в `sim/world.ts`, а не здесь: сетевой слой
+ * возит данные и не должен знать игровые виды точек и событий.
+ *
+ * Сессия не нужна — карта одна для всех, в том числе до регистрации.
+ */
+export async function cloudWorldSnapshot(): Promise<unknown | null> {
+  try {
+    const { data, error } = await client.rpc('world_snapshot');
+    return error === null && data !== null && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Почта вошедшего — или null, если сессии нет. */
 export async function cloudUser(): Promise<string | null> {
   try {

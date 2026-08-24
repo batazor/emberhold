@@ -1135,6 +1135,11 @@ export class CampHud {
     this.map.setNeighbours(visits);
   }
 
+  /** Общий серверный снимок сменился после открытия интерфейса. */
+  refreshWorld(now: number): void {
+    this.map.refreshWorld(now);
+  }
+
   /** §30.7 — то же для чужих лагерей: карта показывает их по кромке. */
   setCamps(live: readonly LiveCamp[]): void {
     this.map.setCamps(live);

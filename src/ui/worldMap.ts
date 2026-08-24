@@ -886,6 +886,19 @@ export class WorldMap {
   }
 
   /**
+   * БД прислала новую раздачу или окно событий. Сеть остаётся снаружи,
+   * карта только перечитывает `regionAt/worldAt` и сохраняет фокус, если
+   * такой узел есть в новом снимке.
+   */
+  refreshWorld(now: number): void {
+    this.now = now;
+    this.region = regionAt(dayAt(now));
+    if (this.camp !== null) this.world = worldAt(now, this.camp.visits, this.others);
+    if (this.focus >= this.region.nodes.length) this.focus = this.defaultFocus();
+    this.paint();
+  }
+
+  /**
    * Отдать карте чужие лагеря (§30.7). Тот же случай, что у меток строкой
    * выше: читает их сеть, а панель про сеть не знает.
    */

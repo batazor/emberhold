@@ -3,9 +3,11 @@
  * список кнопок сравнивать не с чем, а карта существует ровно затем, чтобы
  * у похода была причина выбирать место (`world.html`, часть I).
  *
- * Модель — из артбука `world.html` и §4: **ничего не тикает.** Раскладка
- * точек, кланы и богатство локации — чистые функции от сида и часов;
- * в сохранении живут только дельты игрока (куда ходил и когда).
+ * Модель — из артбука `world.html` и §4: **на клиенте ничего не тикает.**
+ * Подключённый игрок получает общую раздачу точек и событий из БД; без сети
+ * те же функции строят запасной регион из сида и часов. Кланы и богатство
+ * пока остаются чистыми функциями, а в сохранении живут только дельты игрока
+ * (куда ходил и когда).
  *
  * **Регион пересобирается каждый день.** Точки, их число и ярусы выпадают
  * заново: постоянного соотношения нет, и день на день не приходится. Отсюда
@@ -19,11 +21,12 @@
  * гейт был написан и ни разу не позван. Карта при этом остаётся видна целиком:
  * запертая точка называет причину, а не исчезает.
  *
- * Сети в v0 нет, и это ничего здесь не меняет: та же функция считается на
- * клиенте, а когда появится сервер (§6), он повторит её и сверит результат.
+ * Сеть не импортируется сюда: снимок устанавливает внешний слой `core/cloud`,
+ * а симуляция лишь проверяет его форму. Так офлайн и проверки по-прежнему
+ * работают без браузера и Supabase.
  */
 import { mulberry32 } from '../core/rng';
-import { EVENT_WINDOW_SHIFTS, eventFor, isGentle } from './events';
+import { EVENT_ORDER, EVENT_WINDOW_SHIFTS, eventFor, isGentle } from './events';
 import type { EventId } from './events';
 import type { Tier } from './types';
 
@@ -519,12 +522,92 @@ export function liveCampSpots(
  *  перерисовывается кадрами — считать её каждый кадр незачем. */
 let cached: Region | null = null;
 
+interface ServerWorld {
+  readonly region: Region;
+  readonly seeds: readonly number[];
+  readonly events: readonly (EventId | null)[];
+  readonly eventFrom: number;
+  readonly eventUntil: number;
+}
+
+/** Последний согласованный снимок БД. Он не является сохранением игрока:
+ * завтра сервер отдаст другой, а без сети `regionAt` вернётся к генератору. */
+let serverWorld: ServerWorld | null = null;
+
+const recordOf = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+
+/**
+ * Принять атомарный снимок `world_snapshot()`. Проверка живёт на границе:
+ * поддельный или частичный ответ не должен положить карту — он целиком
+ * отбрасывается, после чего работает прежняя локальная раздача.
+ */
+export function installWorldSnapshot(value: unknown): boolean {
+  const raw = recordOf(value);
+  if (
+    raw === null || typeof raw.day !== 'number' ||
+    !Number.isInteger(raw.day) || !Array.isArray(raw.nodes)
+  ) return false;
+  const eventFrom = Number(raw.event_from);
+  const eventUntil = Number(raw.event_until);
+  if (!Number.isFinite(eventFrom) || !Number.isFinite(eventUntil) || eventUntil <= eventFrom) return false;
+
+  const nodes: WorldNode[] = [];
+  const seeds: number[] = [];
+  const events: (EventId | null)[] = [];
+  for (let i = 0; i < raw.nodes.length; i++) {
+    const row = recordOf(raw.nodes[i]);
+    if (row === null) return false;
+    const id = Number(row.id);
+    const name = row.name;
+    const x = Number(row.x);
+    const y = Number(row.y);
+    const tier = Number(row.tier);
+    const kind = row.kind;
+    const seed = Number(row.seed);
+    const event = row.event;
+    if (
+      id !== i || typeof name !== 'string' || name.length === 0 || name.length > 64 ||
+      !Number.isFinite(x) || x <= 0.02 || x >= 0.98 ||
+      !Number.isFinite(y) || y <= 0.02 || y >= 0.98 ||
+      !Number.isInteger(tier) || tier < 0 || tier > 3 ||
+      typeof kind !== 'string' || !Object.prototype.hasOwnProperty.call(KIND, kind) ||
+      !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff ||
+      !(event === null || (typeof event === 'string' && EVENT_ORDER.includes(event as EventId)))
+    ) return false;
+    const typedKind = kind as NodeKind;
+    const typedEvent = event as EventId | null;
+    if (!KIND[typedKind].events && typedEvent !== null) return false;
+    nodes.push({ id, name, x, y, tier: tier as Tier, kind: typedKind });
+    seeds.push(seed);
+    events.push(typedEvent);
+  }
+  if (nodes.length < NODES_MIN || new Set(nodes.map((node) => node.name)).size !== nodes.length) return false;
+
+  serverWorld = {
+    region: { day: raw.day as number, nodes, camp: CAMP_SPOT },
+    seeds,
+    events,
+    eventFrom,
+    eventUntil,
+  };
+  return true;
+}
+
+/** Только для изоляции проверок и явного возврата в офлайн-режим. */
+export function clearWorldSnapshot(): void {
+  serverWorld = null;
+}
+
 /**
  * Регион на день. Точки, их число и ярусы выпадают заново — постоянного
  * соотношения ярусов нет намеренно: день, в котором рядом только третий
  * ярус, обязан быть возможен, иначе карта снова станет расписанием.
  */
 export function regionAt(day: number): Region {
+  if (serverWorld?.region.day === day) return serverWorld.region;
   if (cached !== null && cached.day === day) return cached;
   const rng = mulberry32(hash(SEED, day, 1));
   const count = NODES_MIN + Math.floor(rng() * (NODES_MAX - NODES_MIN + 1));
@@ -591,11 +674,15 @@ export function regionAt(day: number): Region {
  * собирается одной и той же пещерой — иначе «сходить сюда ещё раз»
  * перестаёт быть решением. Завтра этого региона уже нет, и сида тоже.
  */
-export const nodeSeed = (day: number, node: number): number => hash(SEED, day, node, 3);
+export const nodeSeed = (day: number, node: number): number =>
+  serverWorld?.region.day === day && serverWorld.seeds[node] !== undefined
+    ? serverWorld.seeds[node]!
+    : hash(SEED, day, node, 3);
 
 /**
- * Что происходит на точке сейчас (§11.6). Считается так же, как клан и
- * богатство, — из сида и номера окна, без единого поля в сохранении.
+ * Что происходит на точке сейчас (§11.6). В общей карте приходит из снимка
+ * БД; офлайн считается, как прежде, из сида и номера окна. Ни тот, ни другой
+ * вариант не занимает поля в личном сохранении.
  *
  * Окно, а не смена: событие обязано пережить сессию, иначе решение «схожу
  * туда» превращается в гонку с таймером, чего `world.html` прямо не хочет
@@ -606,6 +693,12 @@ export const nodeSeed = (day: number, node: number): number => hash(SEED, day, n
  * и противников, а модифицировать нечего.
  */
 export function eventAt(day: number, node: number, t: number): EventId | null {
+  if (
+    serverWorld?.region.day === day &&
+    t >= serverWorld.eventFrom &&
+    t < serverWorld.eventUntil &&
+    serverWorld.events[node] !== undefined
+  ) return serverWorld.events[node]!;
   const window = Math.floor(shiftAt(t) / EVENT_WINDOW_SHIFTS);
   return eventFor(hash(SEED, day, node, window, 4));
 }
@@ -751,8 +844,8 @@ export interface NodeState {
  *
  * Чужое посещение приходит третьим списком (§30.6) и остаётся **входом
  * функции, а не её памятью**: метки живых соседей лежат на сервере, читает
- * их `main`, а модуль как был чистой функцией сида и часов, так и остался —
- * иначе сервер (§6) не смог бы повторить тот же счёт и сверить результат.
+ * их `main`. Общий снимок региона устанавливается отдельно и не смешивается
+ * с посещениями; один снимок и те же списки всегда дают тот же результат.
  *
  * Окно упирается в начало суток: за границей дня стоял другой регион,
  * и его заходы к сегодняшним точкам отношения не имеют.
