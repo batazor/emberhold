@@ -53,7 +53,14 @@ import {
   SKELETON_SLOT_ORDER,
   WEAPONS_SLOT_ORDER,
 } from './palette';
-import { DUNGEON_SLOTS } from './dungeon.data';
+import { DUNGEON_MODELS, DUNGEON_SLOTS } from './dungeon.data';
+import { DUNGEON_HEIGHT_SCALE, DUNGEON_SCALE, dungeonModuleGeometry } from './dungeon';
+import {
+  DUNGEON_FLOORS,
+  DUNGEON_PILLARS,
+  DUNGEON_STAIRS,
+  DUNGEON_WALLS,
+} from '../sim/dungeonLayout';
 import { WEAPONS_MODELS, WEAPONS_SLOTS } from './weapons.data';
 import { WEAPON_LADDER, weaponOf } from './weapons';
 import { MAX_ITEM_LEVEL } from '../sim/gear';
@@ -403,6 +410,53 @@ describe('Артбук: бюджет треугольников', () => {
 
   test('шесть уровней укладываются в три стадии', () => {
     assert.deepEqual([1, 2, 3, 4, 5, 6].map(stageOf), [0, 0, 1, 1, 2, 2]);
+  });
+});
+
+/** Модульная архитектура подземелья (§6.1.2). */
+describe('Артбук: подземелье', () => {
+  test('каждая деталь конструктора запечена в бандл', () => {
+    for (const model of [...DUNGEON_FLOORS, ...DUNGEON_WALLS, ...DUNGEON_PILLARS, ...DUNGEON_STAIRS]) {
+      assert.ok(model in DUNGEON_MODELS, `«${model}» стоит в конструкторе, но в бандл не поехала`);
+    }
+  });
+
+  test('малый пол и половина стены равны клетке игры', () => {
+    for (const model of DUNGEON_FLOORS) {
+      const geo = dungeonModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 1) < 0.02, `${model}: пол не шириной в клетку`);
+      assert.ok(Math.abs(box.max.z - box.min.z - 1) < 0.02, `${model}: пол не глубиной в клетку`);
+      assert.ok(Math.abs(box.min.y) < 0.02, `${model}: пол висит над основанием`);
+    }
+    for (const model of DUNGEON_WALLS.filter((name) => name.startsWith('wall_half'))) {
+      const geo = dungeonModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 1) < 0.02, `${model}: половина стены не в клетку`);
+      assert.ok(Math.abs(box.min.y) < 0.02, `${model}: стена висит над основанием`);
+    }
+    assert.equal(DUNGEON_SCALE, 0.5, 'две единицы набора должны оставаться клеткой игры');
+  });
+
+  test('полная стена закрывает ровно две соседние грани', () => {
+    for (const model of DUNGEON_WALLS.filter((name) => !name.startsWith('wall_half'))) {
+      const geo = dungeonModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 2) < 0.02, `${model}: стена не на две клетки`);
+      assert.ok(Math.abs(box.max.y - 2 * DUNGEON_HEIGHT_SCALE) < 0.02, `${model}: высота разошлась с изометрией`);
+    }
+  });
+
+  test('готовое подземелье укладывается в свой потолок — килобайты', () => {
+    const source = readFileSync(new URL('./dungeon.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    // 82 КБ после подключения полов, стен, колонн и лестниц округлены вверх
+    // до десятка. Следующая мебель потребует отдельного решения и бюджета.
+    assert.ok(kb <= 90, `набор подземелья: ${kb} КБ gzip > 90 КБ`);
   });
 });
 

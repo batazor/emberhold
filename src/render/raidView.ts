@@ -57,13 +57,15 @@ import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
 import type { Cell, Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
+import { buildDungeonLayout } from '../sim/dungeonLayout';
 import type { HeroClassId } from '../sim/heroes';
 import { forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
 import { STUMP, STUMP_HEIGHT, WOODS, cellHash, treeGeometry, treeStand, type Tree } from './woods';
 import type { Gust } from './cursorWind';
 import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
-import { chestGeometry, dungeonMaterial } from './dungeon';
+import { chestGeometry, dungeonMaterial, dungeonModuleGeometry } from './dungeon';
+import type { DungeonModelName } from './dungeon';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
@@ -76,8 +78,15 @@ import type { Bubble } from './bubbles';
  */
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-/** Камни стены вылазки: под землёй лес не растёт (§12.1). */
-const RAID_ROCKS: readonly ForestModelName[] = [
+/**
+ * Стены поляны из пролога — деревья. Список общий с лагерем и живёт
+ * в `woods.ts`: герой выходит из этого леса и в нём же встаёт лагерем,
+ * и разными породами это выглядело бы как два разных места.
+ */
+const GLADE_TREES = WOODS;
+
+/** Породы добываемых валунов; стеной подземелья они больше не служат. */
+const STONE_ROCKS: readonly ForestModelName[] = [
   'Rock_1_D_Color1',
   'Rock_1_E_Color1',
   'Rock_1_G_Color1',
@@ -85,13 +94,6 @@ const RAID_ROCKS: readonly ForestModelName[] = [
   'Rock_3_G_Color1',
   'Rock_3_H_Color1',
 ];
-
-/**
- * Стены поляны из пролога — деревья. Список общий с лагерем и живёт
- * в `woods.ts`: герой выходит из этого леса и в нём же встаёт лагерем,
- * и разными породами это выглядело бы как два разных места.
- */
-const GLADE_TREES = WOODS;
 
 /**
  * Чем застроены непроходимые клетки. Копи и поляна отличаются ровно этим
@@ -623,6 +625,9 @@ export class RaidView {
    * двумя играми.
    */
   private buildGrass(perTile: number): void {
+    // Каменный и деревянный пол KayKit занимает все проходимые клетки шахты.
+    // Трава поверх него читалась бы улицей и спорила бы с мелкими трещинами.
+    if (this.flavor === 'mine') return;
     if (this.fluffy || this.flavor === 'castle') {
       this.buildMeadow();
       return;
@@ -760,24 +765,21 @@ export class RaidView {
   }
 
   /**
-   * Стены — модели из набора (§6.1). Раньше здесь стоял додекаэдр: одна форма
-   * на всю локацию, и стена читалась как ряд одинаковых шариков. Вариантов
-   * шесть, выбор — от координаты клетки, поэтому камень на месте не прыгает
-   * между заходами и локация остаётся выводимой из сида.
-   *
-   * В прологе те же клетки заняты деревьями: поляна — единственная локация
-   * на поверхности, и стена у неё лесная.
+   * Под землёй границу строит модульный слой KayKit Dungeon, на поверхности
+   * те же занятые клетки остаются лесом. Оба варианта выводятся из состояния
+   * локации и не заводят собственную карту препятствий.
    */
   private buildWalls(): void {
     const { size, blocked } = this.loc;
     // У кладбища лес свой — из набора кладбища, и ставит его buildGraveyard.
     if (this.flavor === 'grave') return;
+    if (this.flavor === 'mine') {
+      this.buildDungeonArchitecture();
+      return;
+    }
     // Тропа стоит в том же лесу, что поляна и лагерь: она рядом с ними
     // на поверхности, и другая порода говорила бы «другое место» зря.
-    const tree = this.flavor === 'glade' || this.flavor === 'castle' || this.flavor === 'trail';
-    const models: readonly Tree[] = tree
-      ? GLADE_TREES
-      : RAID_ROCKS.map((model) => ({ set: 'forest', model }) as const);
+    const models: readonly Tree[] = GLADE_TREES;
     const cells: number[][] = models.map(() => []);
     // У замка занятых клеток два рода: лес по краю и сам замок. Лесом
     // засаживается только лес — иначе деревья выросли бы сквозь стену.
@@ -834,12 +836,12 @@ export class RaidView {
       for (let i = 0; i < list.length; i += 2) {
         const x = list[i]!;
         const z = list[i + 1]!;
-        const at = treeStand(x, z, tree, 0);
+        const at = treeStand(x, z, true, 0);
         mesh.setMatrixAt(i / 2, at);
         // Дерево, которое можно срубить, обязано быть найдено по клетке:
         // симуляция говорит «клетка освободилась», а рендеру надо знать,
         // какой из экземпляров какого меша на ней стоит (§13.3).
-        if (tree) this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
+        this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
       }
       this.group.add(mesh);
     }
@@ -860,6 +862,50 @@ export class RaidView {
         const z = snags[i + 1]!;
         mesh.setMatrixAt(i / 2, treeStand(x, z, true, 0));
         this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
+      }
+      this.group.add(mesh);
+    }
+  }
+
+  /**
+   * Модульный слой KayKit Dungeon. План выводится из `blocked`: одна плитка
+   * на свободную клетку, одна стеновая грань на каждую границу с занятым,
+   * колонны только на настоящих углах и лестница только в свободном зале.
+   */
+  private buildDungeonArchitecture(): void {
+    const layout = buildDungeonLayout(this.loc);
+    type Piece = {
+      readonly model: DungeonModelName;
+      readonly x: number;
+      readonly z: number;
+      readonly turn: number;
+      readonly floor: boolean;
+    };
+    const byModel = new Map<DungeonModelName, Piece[]>();
+    const add = (piece: Piece): void => {
+      const list = byModel.get(piece.model) ?? [];
+      list.push(piece);
+      byModel.set(piece.model, list);
+    };
+    for (const piece of layout.floors) add({ ...piece, floor: true });
+    for (const piece of layout.walls) add({ ...piece, floor: false });
+    for (const piece of layout.pillars) add({ ...piece, floor: false });
+    if (layout.stairs !== null) add({ ...layout.stairs, floor: false });
+
+    const mat = this.track(dungeonMaterial());
+    const dummy = new THREE.Object3D();
+    for (const [model, pieces] of byModel) {
+      const mesh = new THREE.InstancedMesh(dungeonModuleGeometry(model), mat, pieces.length);
+      mesh.castShadow = !pieces[0]!.floor;
+      mesh.receiveShadow = true;
+      mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      for (let i = 0; i < pieces.length; i++) {
+        const piece = pieces[i]!;
+        dummy.position.set(piece.x, piece.floor ? 0.012 : 0, piece.z);
+        dummy.rotation.set(0, piece.turn * Math.PI / 2, 0);
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
       }
       this.group.add(mesh);
     }
@@ -1982,11 +2028,10 @@ export class RaidView {
   }
 
   /**
-   * Валуны (§13.4) — те же камни набора, из которых сложена стена вылазки
-   * (§6.1.1), но ростом по колено. Это решение, а не экономия на моделях:
-   * камень на полу обязан читаться как отколовшийся от стены, а не как
-   * предмет чужого происхождения. У замка и в лагере стены из камня нет,
-   * и там та же порода говорит другое — из этого стену и сложили.
+   * Валуны (§13.4) — порода Forest ростом по колено. Архитектура подземелья
+   * теперь из KayKit Dungeon, но общая палитра камня сохраняет родство:
+   * валун на полу не выглядит предметом чужого происхождения. У замка и
+   * в лагере та же порода говорит другое — из неё строят и её добывают.
    *
    * Меш на валун, а не общий буфер: их единицы, зато каждый дрожит от удара
    * и исчезает поодиночке, а искать экземпляр в общем буфере пришлось бы
@@ -2000,7 +2045,7 @@ export class RaidView {
       // Порода и разворот выведены из координаты — тот же приём, что у стены:
       // локация обязана совпадать сама с собой между заходами.
       const t = ((Math.sin(stone.x * 3.1 + stone.z * 7.7) * 1000) % 1 + 1) % 1;
-      const model = RAID_ROCKS[Math.floor(t * RAID_ROCKS.length) % RAID_ROCKS.length]!;
+      const model = STONE_ROCKS[Math.floor(t * STONE_ROCKS.length) % STONE_ROCKS.length]!;
       const mesh = new THREE.Mesh(
         // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
         treeGeometry({ set: 'forest', model }, STONE_HEIGHT * (0.85 + t * 0.4)),
