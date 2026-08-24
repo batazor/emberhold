@@ -158,6 +158,7 @@ import {
   cloudToggleCampLike,
   cloudUser,
   cloudWheel,
+  cloudWorldSnapshot,
   cloudVisits,
   cloudWipe,
 } from './core/cloud';
@@ -167,6 +168,7 @@ import {
   SHIFT_SEC,
   WAKE_AT,
   dayAt,
+  installWorldSnapshot,
   liveVisits,
   lootMul,
   nightAt,
@@ -430,10 +432,11 @@ if (app === null) throw new Error('нет #app');
  * как открывалась. Не ответил за секунду — идём на локальных, и это видно
  * в `clock.synced`.
  */
-const serverNow = await Promise.race([
-  cloudTime(),
-  new Promise<null>((done) => setTimeout(() => done(null), 1000)),
+const [serverNow, initialWorld] = await Promise.all([
+  Promise.race([cloudTime(), new Promise<null>((done) => setTimeout(() => done(null), 1000))]),
+  Promise.race([cloudWorldSnapshot(), new Promise<null>((done) => setTimeout(() => done(null), 1000))]),
 ]);
+const initialWorldInstalled = initialWorld !== null && installWorldSnapshot(initialWorld);
 const loaded = load();
 const clock = new Clock(loaded.watermark);
 if (serverNow !== null) clock.sync(serverNow);
@@ -2762,8 +2765,32 @@ campHud.setCamps(liveCamps);
 statsPanel.setCamps(liveCamps);
 /** Когда спрашивали в последний раз. Ноль — не спрашивали ни разу. */
 let neighboursAt = 0;
+/** Последний запрос общей карты и запрос в полёте. Карта публичная, поэтому
+ * этот контур не зависит ни от входа, ни от сверки облачного сейва. */
+let globalWorldAt = initialWorldInstalled ? clock.now() : 0;
+let globalWorldPending = false;
 /** Что уже отдано в общую таблицу: гонять строку без изменений — пустая сеть. */
 let sentCamp = '';
+
+/**
+ * Подтянуть атомарный снимок карты. Минута — только срок обнаружения границы:
+ * сами события шестичасовые, регион суточный, а лишний запрос здесь дешевле
+ * отдельного клиентского таймера, который мог проспать в фоновой вкладке.
+ */
+function refreshGlobalWorld(now: number, force = false): void {
+  if (debugScene || globalWorldPending) return;
+  if (!force && now - globalWorldAt < 60) return;
+  globalWorldAt = now;
+  globalWorldPending = true;
+  void cloudWorldSnapshot().then((snapshot) => {
+    if (snapshot === null || !installWorldSnapshot(snapshot)) return;
+    const at = clock.now();
+    campHud.refreshWorld(at);
+    returnScreen.setNeighbours(neighbours);
+  }).finally(() => {
+    globalWorldPending = false;
+  });
+}
 
 /**
  * Спросить сервер о чужих заходах. Обновляется **сменами, а не секундами**:
@@ -2829,6 +2856,7 @@ document.addEventListener('visibilitychange', () => {
     // (а ноутбук мог и уснуть), поэтому серверная отметка подтверждается —
     // молча и без ожидания: не ответил, значит идём на прежней привязке.
     if (!debugScene) void cloudTime().then((now) => now !== null && clock.sync(now));
+    refreshGlobalWorld(clock.now(), true);
     return;
   }
   if (document.visibilityState !== 'hidden' || !cloudReady || wiped || debugScene) return;
@@ -7011,6 +7039,7 @@ function stepCampSystems(dt: number, now: number): void {
 startLoop({
   update: (dt) => {
     const now = clock.now();
+    refreshGlobalWorld(now);
     // На заставке не тикает ничего: таймеры стройки досчитываются при входе
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
