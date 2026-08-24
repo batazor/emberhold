@@ -151,6 +151,9 @@ describe('Вылазка', () => {
 
   test('контейнер стоит провианта и наполняет рюкзак (§11.1)', () => {
     const raid = createRaid({ seed: 7, tier: 2, kitchenLevel: 3, storageLevel: 2 });
+    // Проверка про цену контейнера, поэтому бой не должен перехватывать путь
+    // на конкретной геометрии сида после смены генератора комнат.
+    raid.loc.enemies.splice(0);
     const target = raid.loc.containers[0];
     assert.ok(target !== undefined);
     commandMove(raid, target);

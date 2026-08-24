@@ -144,9 +144,11 @@ import { BUY_REASON, CONSUMABLES, buyBlock, buyConsumable, refundConsumable } fr
 import type { ConsumableId } from './sim/consumables';
 import { RESOURCE_NAME, emptyResources, spend } from './sim/resources';
 import type { ResourceKind } from './sim/resources';
+import { claimSupplyBox, supplyClaimSeed } from './sim/lootboxClaim';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
   cloudCamp,
+  cloudCampLikeStates,
   cloudCamps,
   cloudNeighbours,
   cloudLanguage,
@@ -157,6 +159,7 @@ import {
   cloudSortieClaim,
   cloudSortieStart,
   cloudTime,
+  cloudToggleCampLike,
   cloudUser,
   cloudWheel,
   cloudVisits,
@@ -269,6 +272,7 @@ import { WheelView } from './render/wheelView';
 import { streetScene } from './render/village';
 import { CampHud } from './ui/campHud';
 import type { FlyTarget } from './ui/campHud';
+import { VisitCampHud } from './ui/visitCampHud';
 import { CampLocations, FarmOnboarding } from './ui/farmOnboarding';
 import type { CampLocation } from './ui/farmOnboarding';
 import { SignEditor } from './ui/signEditor';
@@ -409,6 +413,11 @@ import {
   startFarmOnboarding,
 } from './sim/farm';
 import { collectResidentFarmHarvest } from './sim/farmResidents';
+import {
+  simulatedCamp,
+  simulatedCampRows,
+  type InspectableCamp,
+} from './sim/neighbourCamps';
 
 const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
@@ -503,7 +512,10 @@ if (finishedOffline !== null) {
   track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
 }
 
-let mode: 'title' | 'camp' | 'raid' = 'title';
+let mode: Scene = 'title';
+/** Публичный снимок, который сейчас открыт без права менять его. */
+let visitingCamp: InspectableCamp | null = null;
+let visitedLikePending = false;
 let campLocation: CampLocation = 'camp';
 /** Отдельная опушка клана использует ходьбу поляны, но не личный лагерь. */
 let inClanCamp = false;
@@ -744,6 +756,12 @@ const hud = new Hud(app, {
   },
 }, debugHud ? { night: debugNight ?? 1, grass: grassPerTile } : null);
 
+const visitCampHud = new VisitCampHud(
+  app,
+  () => leaveVisitedCamp(),
+  () => void toggleVisitedCampLike(),
+);
+
 let residentManager: ResidentManager | null = null;
 
 const campHud = new CampHud(app, {
@@ -789,6 +807,7 @@ const campHud = new CampHud(app, {
     enterNode(node);
   },
   onSortie: (node) => sendSortie(node),
+  onVisitCamp: (id) => visitNeighbourCamp(id),
   onCraft: (slot) => forge(slot),
   // §20.4 — карточка вооружает перестановку, дальше игрок бьёт по клетке.
   onMove: (id) => {
@@ -2738,8 +2757,13 @@ function pushCloud(): void {
  * показывался до облака.
  */
 let neighbours: Visit[] = [];
-/** Лагеря живых соседей (§30.7) — та же память и тот же срок жизни. */
-let liveCamps: LiveCamp[] = [];
+/**
+ * Лагеря живых соседей (§30.7) — та же память и тот же срок жизни.
+ * Пока сервер пуст, два снимка разработки не дают соседскому слою исчезнуть.
+ */
+let liveCamps: LiveCamp[] = simulatedCampRows();
+campHud.setCamps(liveCamps);
+statsPanel.setCamps(liveCamps);
 /** Когда спрашивали в последний раз. Ноль — не спрашивали ни разу. */
 let neighboursAt = 0;
 /** Что уже отдано в общую таблицу: гонять строку без изменений — пустая сеть. */
@@ -2772,8 +2796,10 @@ function refreshNeighbours(now: number, force = false): void {
   // Лагеря — тем же вопросом и тем же сроком: обе половины соседского слоя
   // отвечают на один вопрос «кто ещё есть», и спрашивать их врозь значило бы
   // показать заходы соседа раньше, чем самого соседа.
-  void cloudCamps().then((rows) => {
-    liveCamps = rows;
+  void cloudCamps().then(async (rows) => {
+    // Настоящие игроки целиком вытесняют демо: на живом сервере фикстуры
+    // не притворяются аккаунтами. Пустой ответ возвращает их для разработки.
+    liveCamps = rows.length > 0 ? rows : await cloudCampLikeStates(simulatedCampRows());
     campHud.setCamps(liveCamps);
     statsPanel.setCamps(liveCamps);
   });
@@ -3145,6 +3171,7 @@ function switchCampLocation(next: CampLocation): void {
 }
 
 function showScene(scene: Scene, tier: Tier = 0): void {
+  if (scene !== 'visit') visitCampHud.hide();
   if (scene !== 'camp') {
     campLocation = 'camp';
     inClanCamp = false;
@@ -4741,6 +4768,8 @@ function notifyWorked(): void {
  * адресов: второй лагерь существует чисто для тестов (`toPadCamp`).
  */
 function toCamp(): void {
+  visitingCamp = null;
+  visitCampHud.hide();
   campLocation = 'camp';
   inClanCamp = false;
   clanPlacing = null;
@@ -4751,6 +4780,101 @@ function toCamp(): void {
   leaveWalkSites();
   if (camp.glade !== undefined) toGladeCamp();
   else toPadCamp();
+}
+
+/**
+ * Открыть публичный снимок соседа. Сейчас такие снимки есть у двух
+ * детерминированных аккаунтов разработки; сетевые строки без снимка карту
+ * показывают, но кнопку входа не получают.
+ */
+function visitNeighbourCamp(id: string): void {
+  const snapshot = simulatedCamp(id);
+  if (snapshot === null) {
+    play('deny');
+    return;
+  }
+  const publicRow = liveCamps.find((row) => row.id === id);
+  const target: InspectableCamp = {
+    ...snapshot,
+    likes: publicRow?.likes ?? snapshot.likes ?? 0,
+    liked: publicRow?.liked ?? snapshot.liked ?? false,
+  };
+
+  leaveTitle();
+  leaveWalkSites();
+  visitingCamp = target;
+  campLocation = 'camp';
+  inGlade = false;
+  inGladeCamp = false;
+  inClanCamp = false;
+  clanPlacing = null;
+  clanBuildBar.setVisible(false);
+  farmView.group.visible = false;
+  farmCropPicker.setVisible(false);
+  raidView?.dispose();
+  raidView = null;
+  raid = null;
+
+  campView.group.visible = true;
+  campView.setCamp(target.camp);
+  const walls = target.camp.walls ?? emptyWalls();
+  campView.setWalls(wallPieces(walls));
+  campView.setFences(fencePieces(walls));
+  campView.setRoads(roadSpots(walls));
+  campView.setLamps(lampSpots(walls));
+  const guest = createCampHero(target.camp);
+  campView.setHeroClass(activeHero(roster).cls);
+  campView.setHero(guest.x, guest.z, guest.facing, guest.y);
+
+  campInput.reset();
+  const center = campView.center;
+  rig.lookAt(center.x, center.z, true);
+  rig.setZoom(campArea(target.camp.levels.hq) * 2.8, true);
+  setNight(0.22);
+  showScene('visit');
+  visitCampHud.show(target);
+  idleSeconds = 0;
+}
+
+/** Один и тот же итог раздаётся гостевому HUD, карте и обоим лидербордам. */
+function applyCampLike(id: string, liked: boolean, likes: number): void {
+  liveCamps = liveCamps.map((row) => row.id === id ? { ...row, liked, likes } : row);
+  if (visitingCamp?.id === id) visitingCamp = { ...visitingCamp, liked, likes };
+  campHud.setCamps(liveCamps);
+  statsPanel.setCamps(liveCamps);
+}
+
+async function toggleVisitedCampLike(): Promise<void> {
+  const target = visitingCamp;
+  if (target === null || visitedLikePending) return;
+  const beforeLiked = target.liked === true;
+  const beforeLikes = target.likes ?? 0;
+  const nextLiked = !beforeLiked;
+  const nextLikes = Math.max(0, beforeLikes + (nextLiked ? 1 : -1));
+
+  visitedLikePending = true;
+  applyCampLike(target.id, nextLiked, nextLikes);
+  visitCampHud.setLike(nextLiked, nextLikes, true);
+  const saved = await cloudToggleCampLike(target.id);
+  visitedLikePending = false;
+  if (saved === null) {
+    applyCampLike(target.id, beforeLiked, beforeLikes);
+    if (visitingCamp?.id === target.id) visitCampHud.setLike(beforeLiked, beforeLikes, false, true);
+    play('deny');
+    return;
+  }
+  applyCampLike(target.id, saved.liked, saved.likes);
+  if (visitingCamp?.id === target.id) visitCampHud.setLike(saved.liked, saved.likes);
+  play('tap');
+}
+
+/** Возврат идёт именно на карту, а не просто во двор своего лагеря. */
+function leaveVisitedCamp(): void {
+  if (mode !== 'visit') return;
+  visitingCamp = null;
+  visitCampHud.hide();
+  toCamp();
+  campHud.openSheet('tiers');
 }
 
 function clanSiteNearHero(kind: ClanBuildingKind): Cell {
@@ -5083,10 +5207,14 @@ const campInput = bindCampInput({
   // На поляне панорамы нет: жест лагеря-на-поляне — прологовый, тап-ходьба,
   // и камера ходит за героем.
   active: () =>
-    mode === 'camp' && campLocation === 'camp' && buildTool === null && placingSign === null && !inGladeCamp,
+    (mode === 'camp' || mode === 'visit') && campLocation === 'camp' &&
+    buildTool === null && placingSign === null && !inGladeCamp,
   center: () => campView.center,
-  area: () => campArea(camp.levels.hq),
-  onTap: (clientX, clientY) => campTap(clientX, clientY),
+  area: () => campArea((visitingCamp?.camp ?? camp).levels.hq),
+  // В гостевом режиме тот же жест двигает камеру, но тап ничего не меняет.
+  onTap: (clientX, clientY) => {
+    if (mode === 'camp') campTap(clientX, clientY);
+  },
   onTouch: () => {
     idleSeconds = 0;
   },
@@ -6267,6 +6395,8 @@ if (debugCamp !== null) {
         power: 30 + i * 45,
         level: 2 + (i % 4),
         folk: 1 + (i % 5),
+        likes: Math.max(0, count - i - 1),
+        liked: false,
       }));
       campHud.setCamps(liveCamps);
       statsPanel.setCamps(liveCamps);
@@ -6892,6 +7022,12 @@ startLoop({
     // На заставке не тикает ничего: таймеры стройки досчитываются при входе
     // в лагерь тем же completeIfDue, что и после закрытой вкладки.
     if (mode === 'title') return;
+    // Публичный снимок неподвижен и не имеет права продвигать ни чужие
+    // таймеры, ни хозяйство хозяина. Стареет только счётчик покоя рендера.
+    if (mode === 'visit') {
+      idleSeconds += dt;
+      return;
+    }
     if (inClanCamp && raid !== null) {
       stepRaid(raid, dt, false, 0);
       raid.food = raid.foodMax;
@@ -7078,6 +7214,10 @@ startLoop({
         // §13.6 — потолок кладовой: не поместившееся пропадает, и об этом
         // говорится. Молчаливая потеря добычи хуже самой потери.
         if (stash(camp, result.carried) > 0) campHud.notify(STORE_FULL);
+        const supplyClaim = counts && result.supplyBox
+          ? claimSupplyBox(camp, supplyClaimSeed(result.seed, camp.raids + 1))
+          : null;
+        if ((supplyClaim?.overflow ?? 0) > 0) campHud.notify(STORE_FULL);
         if (raid.foxesCaught > 0) {
           camp.foxesCaught = (camp.foxesCaught ?? 0) + raid.foxesCaught;
         }
@@ -7134,6 +7274,7 @@ startLoop({
           raidNode,
           clock.now(),
           progression,
+          supplyClaim,
         );
       }
       return;
@@ -7176,7 +7317,17 @@ startLoop({
       return;
     }
 
-    if (mode === 'camp' && campLocation === 'farm') {
+    if (mode === 'visit' && visitingCamp !== null) {
+      if (idleSeconds > 20) return;
+      if (now - lastCampFrame < 1000 / 30) return;
+      const campDt = Math.min(0.1, (now - lastCampFrame) / 1000);
+      lastCampFrame = now;
+      campView.update(campDt, now, rig.dayFactor);
+      const c = campView.center;
+      rig.lookAt(c.x + campInput.pan.x, c.z + campInput.pan.z);
+      rig.update(campDt, c.x, c.z, 12);
+      rig.render();
+    } else if (mode === 'camp' && campLocation === 'farm') {
       if (idleSeconds > 20) return;
       if (now - lastCampFrame < 1000 / 30) return;
       const farmDt = Math.min(0.1, (now - lastCampFrame) / 1000);

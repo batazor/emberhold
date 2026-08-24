@@ -34,6 +34,7 @@
     "trade": "tsx scripts/trade.ts",
     "fence": "tsx scripts/fence.ts",
     "gift": "tsx scripts/gift.ts",
+    "lootbox": "tsx scripts/lootbox.ts",
     "models": "tsx scripts/models.ts",
     "clips": "tsx scripts/clips.ts",
     "resample": "tsx scripts/resample.ts",

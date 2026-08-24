@@ -234,13 +234,17 @@ export interface CloudCamp {
   readonly power: number;
   readonly level: number;
   readonly folk: number;
+  readonly likes: number;
+  readonly liked: boolean;
 }
 
 /**
  * Отдать свою строку. Замена целиком (`upsert`), а не правка полей: строка
  * маленькая и целая, и хранить в ней половину прошлого состояния незачем.
  */
-export async function cloudCamp(row: Omit<CloudCamp, 'id'>): Promise<void> {
+export async function cloudCamp(
+  row: Pick<CloudCamp, 'clan' | 'power' | 'level' | 'folk'>,
+): Promise<void> {
   const uid = await userId();
   if (uid === null) return;
   try {
@@ -257,6 +261,65 @@ export async function cloudCamp(row: Omit<CloudCamp, 'id'>): Promise<void> {
   }
 }
 
+export interface CampLikeState {
+  readonly id: string;
+  readonly likes: number;
+  readonly liked: boolean;
+}
+
+const likeCount = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+};
+
+/**
+ * Добавить счётчики к любым публичным строкам — в том числе к двум `sim-*`
+ * лагерям, которых нет в таблице `camps`. Один агрегирующий RPC не раскрывает
+ * список поставивших лайк пользователей.
+ */
+export async function cloudCampLikeStates<T extends { readonly id: string; readonly likes?: number; readonly liked?: boolean }>(
+  rows: readonly T[],
+): Promise<(T & CampLikeState)[]> {
+  const fallback = rows.map((row) => ({
+    ...row,
+    likes: likeCount(row.likes),
+    liked: row.liked === true,
+  }));
+  if (rows.length === 0) return fallback;
+  try {
+    const { data, error } = await client.rpc('camp_like_states', {
+      p_camp_ids: rows.map((row) => row.id),
+    });
+    if (error !== null || !Array.isArray(data)) return fallback;
+    const states = new Map<string, { likes: number; liked: boolean }>();
+    for (const raw of data) {
+      if (raw === null || typeof raw !== 'object') continue;
+      const record = raw as Record<string, unknown>;
+      states.set(String(record.camp_id), {
+        likes: likeCount(record.likes),
+        liked: record.liked === true,
+      });
+    }
+    return fallback.map((row) => ({ ...row, ...(states.get(row.id) ?? {}) }));
+  } catch {
+    return fallback;
+  }
+}
+
+/** Атомарно поставить или снять свой лайк и вернуть итог сервера. */
+export async function cloudToggleCampLike(campId: string): Promise<CampLikeState | null> {
+  const uid = await userId();
+  if (uid === null || campId === uid) return null;
+  try {
+    const { data, error } = await client.rpc('toggle_camp_like', { p_camp_id: campId });
+    if (error !== null || !Array.isArray(data) || data.length === 0) return null;
+    const record = data[0] as Record<string, unknown>;
+    return { id: campId, likes: likeCount(record.likes), liked: record.liked === true };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Чужие лагеря — все, кроме своего. Своя строка приходит не отсюда,
  * а из своего же лагеря: она считается на месте и всегда свежее той,
@@ -270,20 +333,36 @@ export async function cloudCamps(limit = 50): Promise<CloudCamp[]> {
   const uid = await userId();
   if (uid === null) return [];
   try {
-    const { data } = await client
-      .from('camps')
-      .select('user_id, clan, power, level, folk')
-      .neq('user_id', uid)
-      .order('power', { ascending: false })
-      .limit(limit);
-    if (!Array.isArray(data)) return [];
-    return data.map((r) => ({
-      id: String(r.user_id),
+    const [strongest, popular] = await Promise.all([
+      client
+        .from('camps')
+        .select('user_id, clan, power, level, folk')
+        .neq('user_id', uid)
+        .order('power', { ascending: false })
+        .limit(limit),
+      client.rpc('camp_like_leaderboard', { p_limit: limit }),
+    ]);
+    const parse = (r: Record<string, unknown>, idField: 'user_id' | 'camp_id'): CloudCamp => ({
+      id: String(r[idField]),
       clan: typeof r.clan === 'string' && r.clan.trim() !== '' ? r.clan : null,
       power: typeof r.power === 'number' ? r.power : 0,
       level: typeof r.level === 'number' ? r.level : 0,
       folk: typeof r.folk === 'number' ? r.folk : 0,
-    }));
+      likes: likeCount(r.likes),
+      liked: r.liked === true,
+    });
+    const byId = new Map<string, CloudCamp>();
+    if (Array.isArray(strongest.data)) for (const row of strongest.data) {
+      const parsed = parse(row as Record<string, unknown>, 'user_id');
+      byId.set(parsed.id, parsed);
+    }
+    // Верхушка по лайкам дополняет, а не заменяет верхушку по силе: обе
+    // таблицы остаются полными в пределах своего серверного лимита.
+    if (popular.error === null && Array.isArray(popular.data)) for (const row of popular.data) {
+      const parsed = parse(row as Record<string, unknown>, 'camp_id');
+      byId.set(parsed.id, parsed);
+    }
+    return cloudCampLikeStates([...byId.values()]);
   } catch {
     return [];
   }
@@ -331,6 +410,9 @@ export async function cloudWipe(): Promise<void> {
   try {
     await client.from('saves').delete().eq('user_id', uid);
     await client.from('world_visits').delete().eq('user_id', uid);
+    // Полученные лагерем лайки относятся к этой версии лагеря и уходят с ней.
+    // Лайки, поставленные другим, — предпочтения аккаунта и переживают рестарт.
+    await client.from('camp_likes').delete().eq('camp_id', uid);
     // §30.7 — строка лагеря уходит вместе с сейвом: «Новая игра» обязана
     // убрать игрока из общей таблицы, а не оставить там прежнюю силу.
     await client.from('camps').delete().eq('user_id', uid);

@@ -55,6 +55,7 @@ import { worldUnlock } from '../sim/worldUnlock';
 import type { WorldUnlock, WorldUnlockGoal } from '../sim/worldUnlock';
 import { drawMapTerrain } from './mapTerrain';
 import { gameDuration, gameMarkup, gameMessage, gameText, setGameText } from '../i18n/game';
+import { gameMessages } from '../i18n/gameMessages';
 import { eventMessage, resourceMessage, tierMessage } from '../i18n/gameData';
 
 const WORLD_PLACE_PREFIX: Readonly<Record<string, ReturnType<typeof gameMessage>>> = {
@@ -295,6 +296,8 @@ export interface WorldMapCallbacks {
   onRaid(node: number): void;
   /** §26 — то же место, но идёт отряд, а игрок остаётся в лагере. */
   onSortie(node: number): void;
+  /** Открыть публичный снимок лагеря живого соседа в режиме гостя. */
+  onVisitCamp(id: string): void;
 }
 
 /**
@@ -351,6 +354,8 @@ export class WorldMap {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly card: HTMLElement;
   private readonly go: HTMLButtonElement;
+  /** Вход в чужой лагерь существует только у строки с публичным снимком. */
+  private readonly visit: HTMLButtonElement;
   private readonly note: HTMLElement;
   /**
    * §26 — вторая кнопка карточки. Ниже входа и мельче его намеренно:
@@ -442,6 +447,14 @@ export class WorldMap {
     this.go.className = 'cta';
     this.go.addEventListener('click', () => this.cb.onRaid(this.node().id));
 
+    this.visit = document.createElement('button');
+    this.visit.className = 'cta';
+    setGameText(this.visit, gameMessages.visitCampAction);
+    this.visit.addEventListener('click', () => {
+      const key = this.focusCamp;
+      if (key?.startsWith('живой:') === true) this.cb.onVisitCamp(key.slice('живой:'.length));
+    });
+
     this.sendRow = document.createElement('div');
     this.sendRow.className = 'row tight send';
     this.send = document.createElement('button');
@@ -451,7 +464,7 @@ export class WorldMap {
     this.sendNote.className = 'map-note';
     this.sendRow.append(this.send, this.sendNote);
 
-    this.root.append(this.canvas, this.card, this.note, this.go, this.sendRow);
+    this.root.append(this.canvas, this.card, this.note, this.go, this.visit, this.sendRow);
   }
 
   /** Загружает семь маленьких файлов один раз. До загрузки остаются кольца;
@@ -575,8 +588,9 @@ export class WorldMap {
 
   /**
    * Лагеря на карте: свой и соседские (§30). Свой стоит всегда — он и был
-   * первой точкой карты; соседи зажигаются со вторым жильцом (`clan.ts`),
-   * и до того их не видно даже тапом.
+   * первой точкой карты. Фракции зажигаются со вторым жильцом (`clan.ts`),
+   * а живые соседи видны сразу: иначе пустой сервер разработки не позволяет
+   * проверить ни их карточку, ни публичный осмотр.
    */
   private camps(): readonly MapCamp[] {
     const own: MapCamp = {
@@ -585,13 +599,14 @@ export class WorldMap {
       x: this.region.camp.x,
       y: this.region.camp.y,
     };
-    if (this.camp === null || !neighboursOpen(this.camp)) return [own];
-    const clans: MapCamp[] = CLAN_CAMPS.map((c) => ({
-      key: `клан:${c.id}`,
-      color: CLANS[c.id % CLANS.length]!.color,
-      x: c.x,
-      y: c.y,
-    }));
+    const clans: MapCamp[] = this.camp !== null && neighboursOpen(this.camp)
+      ? CLAN_CAMPS.map((c) => ({
+          key: `клан:${c.id}`,
+          color: CLANS[c.id % CLANS.length]!.color,
+          x: c.x,
+          y: c.y,
+        }))
+      : [];
     // Живые — по кромке и подрезанные по числу (`LIVE_SHOWN`): места там
     // ровно столько, сколько лагерей на нём различит палец.
     const live: MapCamp[] = liveCampSpots(this.live.map((c) => c.id)).map((spot) => ({
@@ -900,6 +915,7 @@ export class WorldMap {
   /* ---------- карточка ---------- */
 
   private paintCard(): void {
+    this.visit.style.display = 'none';
     if (this.focusCamp !== null) {
       this.paintCampCard(this.focusCamp);
       return;
@@ -1064,7 +1080,9 @@ export class WorldMap {
       `<div class="row line"><span>${gameMarkup(gameMessage('Жильё', 'Housing'))}</span><b>${gameMarkup(
         gameMessage('ур. {level}', 'lvl {level}'), { level: live.level },
       )}</b></div>` +
-      `<div class="row line"><span>${gameMarkup(gameMessage('Народу', 'People'))}</span><b>${live.folk}</b></div>`;
+      `<div class="row line"><span>${gameMarkup(gameMessage('Народу', 'People'))}</span><b>${live.folk}</b></div>` +
+      `<div class="row line"><span>${gameMarkup(gameMessage('Лайки', 'Likes'))}</span><b>♥ ${live.likes ?? 0}</b></div>`;
+    this.visit.style.display = live.inspectable === true ? '' : 'none';
     if (live.clan === null) setGameText(this.note, gameMessage(
       'Живой сосед. Клана у него нет — в таблице он стоит без имени.',
       'A live neighbor. They have no clan, so they appear unnamed in the standings.',

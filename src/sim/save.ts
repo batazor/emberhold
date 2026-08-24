@@ -81,6 +81,8 @@ interface SaveV1 {
   /** Колесо призов: день последней прокрутки. Необязательно: без поля —
    *  не крутили. */
   wheelDay?: number;
+  /** Ларцы без редкого бонуса подряд. Необязательно для старых сохранений. */
+  supplyPity?: number;
   /**
    * Подарок за вход (§29): день последнего взятого и сколько взято всего.
    * Необязательно — сейв, записанный до подарков, открывается с непочатой
@@ -277,6 +279,7 @@ export function save(
     ...(camp.coins !== undefined ? { coins: camp.coins } : {}),
     ...(camp.coinDay !== undefined ? { coinDay: camp.coinDay } : {}),
     ...(camp.wheelDay !== undefined ? { wheelDay: camp.wheelDay } : {}),
+    ...(camp.supplyPity !== undefined ? { supplyPity: camp.supplyPity } : {}),
     ...(camp.daily !== undefined ? { daily: { day: camp.daily.day, taken: camp.daily.taken } } : {}),
     ...(camp.guestPromised === true ? { guest: true } : {}),
     resources: camp.resources,
@@ -490,6 +493,9 @@ export function load(): LoadResult {
     if (typeof data.coins === 'number' && data.coins >= 0) camp.coins = Math.floor(data.coins);
     if (typeof data.coinDay === 'number') camp.coinDay = Math.floor(data.coinDay);
     if (typeof data.wheelDay === 'number') camp.wheelDay = Math.floor(data.wheelDay);
+    if (typeof data.supplyPity === 'number' && Number.isFinite(data.supplyPity)) {
+      camp.supplyPity = Math.max(0, Math.floor(data.supplyPity));
+    }
     // §29 — подарки. Оба числа разбираются по одному и чинятся порознь:
     // сейв с испорченным счётом подарков не должен стоить игроку недели.
     const d = data.daily;

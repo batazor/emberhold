@@ -858,6 +858,57 @@ const CASTLE: Pack = {
 };
 
 /**
+ * Modular Cave Kit Kenney: готовые каменные оболочки для локальной формы
+ * прохода. Генератор по-прежнему владеет проходимостью; набор лишь показывает
+ * уже вычисленный тупик, прямую, поворот, тройник, перекрёсток или зал.
+ *
+ * В архиве есть три формата одной геометрии. В репозитории остаётся GLB:
+ * ровно его читает конвейер, а FBX/OBJ были бы только второй копией набора.
+ */
+const CAVE: Pack = {
+  id: 'cave',
+  title: 'Kenney Modular Cave Kit 1.0',
+  dir: 'assets/kenney-cave-kit',
+  atlas: 'colormap.png',
+  sources: ['glb'],
+  ramps: [
+    {
+      // Варианты набора меняют оттенок одной и той же породы. Палитра игры
+      // различает материал, а не витринную перекраску, поэтому весь диапазон
+      // сводится в единую каменную шкалу по яркости.
+      id: 'stone', title: 'порода',
+      slots: ['камень-тень', 'камень', 'камень-свет', 'скол', 'соль-тень', 'соль'],
+      hue: [0, 360], sat: [0, 1],
+    },
+  ],
+  slots: [
+    'камень-тень', 'камень', 'камень-свет', 'скол', 'соль-тень', 'соль',
+  ],
+  range: 'used',
+  fallback: 'stone',
+  grid: { cols: 8, rows: 4 },
+  modular: { cell: 4 },
+  grey: 0.005,
+  categoryOf: (name) => name.startsWith('corridor') ? 'Коридоры'
+    : name.startsWith('room') ? 'Залы'
+      : name.startsWith('gate') ? 'Ворота'
+        : name.startsWith('stairs') || name === 'ladder' ? 'Переходы'
+          : 'Шаблоны',
+  adopted: [
+    // Пять локальных форм проходимости, многоклеточные залы, переход между
+    // уровнями и ворота. Комнаты размещаются только по сохранённым генератором
+    // footprint-ам 3×3, 5×3 и 5×5 — оболочка не придумывает проходимость.
+    'corridor', 'corridor-corner', 'corridor-end',
+    'corridor-junction', 'corridor-intersection',
+    'room-small', 'room-wide', 'room-large',
+    'template-detail', 'template-floor-big',
+    'stairs',
+    'gate-rock', 'gate-overhang', 'gate', 'gate-metal-bars',
+  ],
+  data: { file: 'src/render/cave.data.ts', prefix: 'CAVE', type: 'Cave' },
+};
+
+/**
  * Категория кладбища — по первому слову имени файла набора. Разделитель тот же
  * дефис, что у замка: набор от того же автора и назван по тем же правилам.
  */
@@ -1851,8 +1902,8 @@ const STONE_GOLEM: Pack = {
 };
 
 const PACKS: readonly Pack[] =
-  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, GRAVEYARD, SURVIVAL, WEAPONS, TOOLS, BUILDER, FOLK,
-    CAMP, PROPS, VILLAGER, VILLAGE, FOX, MINOTAUR, STONE_GOLEM, MINI_FOREST];
+  [FOREST, DUNGEON, SKELETONS, ADVENTURERS, RESOURCES, CASTLE, CAVE, GRAVEYARD, SURVIVAL, WEAPONS, TOOLS, BUILDER,
+    FOLK, CAMP, PROPS, VILLAGER, VILLAGE, FOX, MINOTAUR, STONE_GOLEM, MINI_FOREST];
 
 /* ---------- png ---------- */
 

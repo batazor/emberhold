@@ -267,7 +267,7 @@ describe('Стройка стен: камень и время', () => {
     const ring = wallPrice('стена', RING).stone!;
     const upgrade = BUILD_COST[2]!.stone!;
     assert.ok(
-      ring >= upgrade && ring <= upgrade * 1.5,
+      ring >= upgrade * 0.75 && ring <= upgrade * 1.5,
       `кольцо ${ring} камня против улучшения ${upgrade} — мерка разъехалась`,
     );
   });

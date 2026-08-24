@@ -80,6 +80,8 @@ export interface CampCallbacks {
   onRaid(node: number): void;
   /** §26 — отправить отряд в место без игрока. */
   onSortie(node: number): void;
+  /** Открыть доступный для осмотра лагерь живого соседа. */
+  onVisitCamp(id: string): void;
   /** §14 — ковка и улучшение это одно действие: слот один, предмет один. */
   onCraft(slot: GearSlot): void;
   /** §20.4 — перестановка: карточка вооружает режим, дальше тап по клетке. */
@@ -538,6 +540,7 @@ export class CampHud {
     this.map = new WorldMap({
       onRaid: (node) => this.cb.onRaid(node),
       onSortie: (node) => this.cb.onSortie(node),
+      onVisitCamp: (id) => this.cb.onVisitCamp(id),
     });
     tiers.append(this.map.root);
     this.sections.set('tiers', tiers);

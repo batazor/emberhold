@@ -15,6 +15,9 @@ import type { ConsumableId } from '../sim/consumables';
 import { play } from '../core/audio';
 import type { ResourceKind } from '../sim/resources';
 import type { RaidResult } from '../sim/raid';
+import { SUPPLY_HARD_PITY } from '../sim/lootbox';
+import type { SupplyRewardId } from '../sim/lootbox';
+import type { SupplyClaim } from '../sim/lootboxClaim';
 import { KIND, dayAt, regionAt, worldAt } from '../sim/world';
 import type { Visit } from '../sim/world';
 import { resourceIcon } from './resourceIcons';
@@ -33,6 +36,20 @@ import { gameDuration, gameMarkup, gameMessage, gameText, setGameText } from '..
  */
 const ACCRUAL_SECONDS = 1.5;
 const ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'crystal', 'meat', 'pelt'];
+const SUPPLY_REWARD_MESSAGE = {
+  'stone-4': gameMessage('Камень ×4', 'Stone ×4'),
+  'wood-2': gameMessage('Дерево ×2', 'Wood ×2'),
+  'iron-1': gameMessage('Железо ×1', 'Iron ×1'),
+  ration: gameMessage('Дорожный паёк', 'Travel ration'),
+  bandage: gameMessage('Повязка', 'Bandage'),
+  'arrows-4': gameMessage('Стрелы ×4', 'Arrows ×4'),
+  smoke: gameMessage('Дымовая шашка', 'Smoke bomb'),
+  'stone-6': gameMessage('Камень ×6', 'Stone ×6'),
+  'wood-3': gameMessage('Дерево ×3', 'Wood ×3'),
+  'bonus-iron-1': gameMessage('Железо ×1', 'Iron ×1'),
+  'crystal-1': gameMessage('Кристалл ×1', 'Crystal ×1'),
+  'iron-2': gameMessage('Железо ×2', 'Iron ×2'),
+} satisfies Record<SupplyRewardId, ReturnType<typeof gameMessage>>;
 
 export interface ReturnCallbacks {
   onBuild(id: BuildingId): void;
@@ -88,6 +105,9 @@ export class ReturnScreen {
   private readonly title: HTMLElement;
   private readonly subtitle: HTMLElement;
   private readonly lootBox: HTMLElement;
+  private readonly supplyBox: HTMLElement;
+  private readonly supplyList: HTMLElement;
+  private readonly supplyNote: HTMLElement;
   private readonly combatBox: HTMLElement;
   private readonly combatGrid: HTMLElement;
   private readonly levelLine: HTMLElement;
@@ -141,6 +161,11 @@ export class ReturnScreen {
         <h2 id="r-title"></h2>
         <p class="dim" id="r-sub"></p>
         <div class="loot" id="r-loot"></div>
+        <section class="card r-supply" id="r-supply">
+          <h3>${gameMarkup(gameMessage('Ларец снабжения', 'Supply chest'))}</h3>
+          <div class="r-supply-list" id="r-supply-list"></div>
+          <p class="dim" id="r-supply-note"></p>
+        </section>
         <p class="bad" id="r-lost"></p>
         <section class="card r-combat" id="r-combat">
           <h3>${gameMarkup(gameMessage('Итог боя', 'Combat summary'))}</h3>
@@ -163,6 +188,9 @@ export class ReturnScreen {
     this.title = q('r-title');
     this.subtitle = q('r-sub');
     this.lootBox = q('r-loot');
+    this.supplyBox = q('r-supply');
+    this.supplyList = q('r-supply-list');
+    this.supplyNote = q('r-supply-note');
     this.combatBox = q('r-combat');
     this.combatGrid = q('r-combat-grid');
     this.levelLine = q('r-level');
@@ -239,6 +267,7 @@ export class ReturnScreen {
     node = 0,
     now = 0,
     progression: ReturnProgress | null = null,
+    supply: SupplyClaim | null = null,
   ): void {
     this.onChoice = onChoice;
     this.onlyCamp = onlyCamp;
@@ -304,6 +333,43 @@ export class ReturnScreen {
     }
     if (this.counters.size === 0) {
       this.lootBox.innerHTML = `<div class="loot-row dim">${gameMarkup(gameMessage('Пусто', 'Empty'))}</div>`;
+    }
+
+    this.supplyBox.style.display = supply === null ? 'none' : '';
+    this.supplyList.replaceChildren();
+    if (supply !== null) {
+      for (const reward of supply.rewards) {
+        const row = document.createElement('div');
+        row.className = `r-supply-row${reward.category === 'bonus-rare' ? ' rare' : ''}`;
+        const slot = document.createElement('span');
+        const slotMessage = reward.slot === 'material'
+          ? gameMessage('Материал', 'Material')
+          : reward.slot === 'expedition'
+            ? gameMessage('В путь', 'Expedition')
+            : gameMessage('Бонус', 'Bonus');
+        setGameText(slot, slotMessage);
+        const name = document.createElement('b');
+        setGameText(name, SUPPLY_REWARD_MESSAGE[reward.id]);
+        row.append(slot, name);
+        this.supplyList.appendChild(row);
+      }
+      if (supply.forced) {
+        setGameText(this.supplyNote,
+          gameMessage('Редкий бонус · гарантия {pity}-го ларца', 'Rare bonus · guaranteed on chest {pity}'),
+          { pity: SUPPLY_HARD_PITY });
+      } else if (supply.rare) {
+        setGameText(this.supplyNote, gameMessage('Редкий бонус', 'Rare bonus'));
+      } else {
+        setGameText(this.supplyNote,
+          gameMessage('До гарантии: {left}', 'Until guarantee: {left}'),
+          { left: SUPPLY_HARD_PITY - supply.pityAfter });
+      }
+      if (!supply.consumableAdded && supply.rewards.some((reward) => reward.consumable !== undefined)) {
+        this.supplyNote.append(` · ${gameText(gameMessage('слоты походных предметов заняты', 'expedition slots are full'))}`);
+      }
+      if (supply.overflow > 0) {
+        this.supplyNote.append(` · ${gameText(gameMessage('не поместилось: {amount}', 'could not fit: {amount}'), { amount: supply.overflow })}`);
+      }
     }
 
     if (result.lost > 0) {

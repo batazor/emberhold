@@ -169,6 +169,10 @@ export function sortieRaid(sortie: Sortie, hero: HeroState): BotRaid {
       arrows: at.arrows,
       ...(at.quiverBonus === undefined ? {} : { quiverBonus: at.quiverBonus }),
       ...(at.scouting === undefined ? {} : { scouting: at.scouting }),
+      // Спокойная отправка пользуется тем же мягким входом, что первые
+      // ручные заходы. Опасное событие снимает страховку заранее и именно
+      // этим остаётся объявленной ценой места, а не скрытым броском яруса.
+      visit: at.event === null ? 0 : Infinity,
     },
     POLICIES.cautious,
     mulberry32(sortie.seed),

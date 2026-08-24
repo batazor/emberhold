@@ -58,7 +58,8 @@ import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
 import type { Cell, Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
-import { buildDungeonLayout } from '../sim/dungeonLayout';
+import { CAVE_GATE_FRAMES, buildDungeonLayout } from '../sim/dungeonLayout';
+import type { DungeonLayout } from '../sim/dungeonLayout';
 import type { HeroClassId } from '../sim/heroes';
 import { forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
@@ -67,6 +68,8 @@ import type { Gust } from './cursorWind';
 import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
 import { chestGeometry, dungeonMaterial, dungeonModuleGeometry } from './dungeon';
 import type { DungeonModelName } from './dungeon';
+import { CAVE_LEVEL_HEIGHT, caveMaterial, caveModuleGeometry } from './cave';
+import type { CaveModelName } from './cave';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
@@ -327,6 +330,7 @@ interface EnemyView {
 
 export class RaidView {
   readonly group = new THREE.Group();
+  private readonly dungeonLayout: DungeonLayout;
   private readonly enemyViews = new Map<number, EnemyView>();
   /** Материал замаха, общий на вид противника (`hotOf`). */
   private readonly enemyHots = new Map<EnemyKind, THREE.MeshLambertMaterial>();
@@ -548,6 +552,7 @@ export class RaidView {
     /** §13.8 — полон ли куст места: формула живёт снаружи (см. `buildBushes`). */
     private readonly ripeBush: ((bush: Bush) => boolean) | undefined = undefined,
   ) {
+    this.dungeonLayout = buildDungeonLayout(loc);
     this.buildGround();
     this.buildGrass(grassPerTile);
     this.buildWalls();
@@ -576,6 +581,21 @@ export class RaidView {
     return x;
   }
 
+  /** Высота поверхности; между соседними клетками лестницы интерполируется. */
+  private floorY(x: number, z: number): number {
+    if (this.loc.tier < 2 || this.flavor !== 'mine') return 0;
+    const x0 = Math.max(0, Math.min(this.loc.size - 1, Math.floor(x)));
+    const z0 = Math.max(0, Math.min(this.loc.size - 1, Math.floor(z)));
+    const x1 = Math.min(this.loc.size - 1, x0 + 1);
+    const z1 = Math.min(this.loc.size - 1, z0 + 1);
+    const tx = Math.max(0, Math.min(1, x - x0));
+    const tz = Math.max(0, Math.min(1, z - z0));
+    const level = (cx: number, cz: number): number => this.dungeonLayout.elevation[idx(this.loc.size, cx, cz)]!;
+    const a = level(x0, z0) * (1 - tx) + level(x1, z0) * tx;
+    const b = level(x0, z1) * (1 - tx) + level(x1, z1) * tx;
+    return (a * (1 - tz) + b * tz) * CAVE_LEVEL_HEIGHT;
+  }
+
   /** Земля — одна InstancedMesh на всю сетку: одна draw call вместо size². */
   private buildGround(): void {
     const { size, tier } = this.loc;
@@ -599,7 +619,7 @@ export class RaidView {
         // от порядка вызовов и совпадал при том же сиде. Тот же шум читает
         // трава — иначе травинки повиснут над просевшими клетками.
         const v = tileNoise(x, z);
-        dummy.position.set(x, -0.25 - v * 0.04, z);
+        dummy.position.set(x, this.floorY(x, z) - 0.25 - v * 0.04, z);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
         // Земля темнеет с ярусом — глубина читается без цифр (§6.1).
@@ -886,7 +906,48 @@ export class RaidView {
    * колонны только на настоящих углах и лестница только в свободном зале.
    */
   private buildDungeonArchitecture(): void {
-    const layout = buildDungeonLayout(this.loc);
+    const layout = this.dungeonLayout;
+    if (this.loc.tier >= 2) {
+      type CavePiece = {
+        readonly model: CaveModelName;
+        readonly x: number;
+        readonly z: number;
+        readonly turn: number;
+        readonly level: number;
+      };
+      const byModel = new Map<CaveModelName, CavePiece[]>();
+      const add = (piece: CavePiece): void => {
+        const list = byModel.get(piece.model) ?? [];
+        list.push(piece);
+        byModel.set(piece.model, list);
+      };
+      for (const piece of layout.caves) add(piece);
+      for (const piece of layout.caveRooms) add(piece);
+      for (const piece of layout.caveBoundary) add(piece);
+      for (const piece of layout.caveStairs) add(piece);
+      for (const gate of layout.caveGates) {
+        for (const model of CAVE_GATE_FRAMES) add({ ...gate, model });
+        if (gate.barrier !== null) add({ ...gate, model: gate.barrier });
+      }
+      const mat = this.track(caveMaterial());
+      const dummy = new THREE.Object3D();
+      for (const [model, pieces] of byModel) {
+        const mesh = new THREE.InstancedMesh(caveModuleGeometry(model), mat, pieces.length);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+        for (let i = 0; i < pieces.length; i++) {
+          const piece = pieces[i]!;
+          dummy.position.set(piece.x, piece.level * CAVE_LEVEL_HEIGHT, piece.z);
+          dummy.rotation.set(0, piece.turn * Math.PI / 2, 0);
+          dummy.scale.setScalar(1);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        }
+        this.group.add(mesh);
+      }
+      return;
+    }
     type Piece = {
       readonly model: DungeonModelName;
       readonly x: number;
@@ -1015,7 +1076,7 @@ export class RaidView {
       this.group.add(this.workMark);
     }
     this.workMark.visible = true;
-    this.workMark.position.set(x, 0.06, z);
+    this.workMark.position.set(x, this.floorY(x, z) + 0.06, z);
     this.workMark.scale.setScalar(Math.max(0.08, share));
     // Пятно и клип — одно состояние: пока пятно растёт, герой машет,
     // а не стоит в покое рядом с работающим индикатором.
@@ -2048,12 +2109,13 @@ export class RaidView {
   }
 
   private buildEvac(at: Cell): void {
+    const floor = this.floorY(at.x, at.z);
     const ringMat = this.track(
       new THREE.MeshBasicMaterial({ color: PALETTE.evac, transparent: true, opacity: 0.7, fog: false }),
     );
     const ring = new THREE.Mesh(this.track(new THREE.TorusGeometry(1.2, 0.08, 8, 36)), ringMat);
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(at.x, 0.06, at.z);
+    ring.position.set(at.x, floor + 0.06, at.z);
     this.evacRings.push(ring);
 
     // Луч виден сквозь туман (fog: false) — точка выхода обязана читаться
@@ -2072,7 +2134,7 @@ export class RaidView {
         }),
       ),
     );
-    beam.position.set(at.x, 13, at.z);
+    beam.position.set(at.x, floor + 13, at.z);
     this.group.add(ring, beam);
   }
 
@@ -2117,7 +2179,7 @@ export class RaidView {
       // места. Поворот — детерминированный по id, чтобы кучки не легли
       // по линейке. Кристалл — центрированный октаэдр без основания:
       // приподнят и чуть утоплен остриём в землю, стоит, а не парит.
-      mesh.position.set(c.x, c.look === undefined && name === null ? 0.2 : 0, c.z);
+      mesh.position.set(c.x, this.floorY(c.x, c.z) + (c.look === undefined && name === null ? 0.2 : 0), c.z);
       mesh.rotation.y = tileNoise(c.id, c.id * 7 + 3) * Math.PI * 2;
       this.group.add(mesh);
       this.containerMeshes.set(c.id, mesh);
@@ -2150,7 +2212,9 @@ export class RaidView {
       );
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.position.set(stone.x + (t - 0.5) * 0.2, -0.04, stone.z + (t - 0.5) * 0.16);
+      const floor = this.floorY(stone.x, stone.z);
+      mesh.position.set(stone.x + (t - 0.5) * 0.2, floor - 0.04, stone.z + (t - 0.5) * 0.16);
+      mesh.userData.floorY = floor;
       mesh.rotation.y = t * 6.28;
       this.group.add(mesh);
       this.stoneMeshes.set(stone.id, mesh);
@@ -2187,12 +2251,13 @@ export class RaidView {
       const next = t + dt;
       if (next >= SHAKE_SECONDS) {
         this.stoneHits.delete(id);
-        mesh.position.y = -0.04;
+        mesh.position.y = Number(mesh.userData.floorY ?? 0) - 0.04;
         continue;
       }
       this.stoneHits.set(id, next);
       // Камень не кивает, как крона, а оседает: удар идёт вниз, а не вбок.
-      mesh.position.y = -0.04 - Math.sin((next / SHAKE_SECONDS) * Math.PI) * 0.06;
+      mesh.position.y = Number(mesh.userData.floorY ?? 0) - 0.04
+        - Math.sin((next / SHAKE_SECONDS) * Math.PI) * 0.06;
     }
   }
 
@@ -2246,7 +2311,7 @@ export class RaidView {
       : e.kind === 'guard'
         ? new Rigged(guardParts('дозор'), this.blocking)
         : new Rigged(enemyParts(e.kind), this.blocking);
-    rig.root.position.set(e.x, 0, e.z);
+    rig.root.position.set(e.x, this.floorY(e.x, e.z), e.z);
     this.group.add(rig.root);
 
     const { root: lifeRoot, fill } = this.buildLifeBar(enemyStats(e.kind, e.level).hp);
@@ -2409,7 +2474,7 @@ export class RaidView {
       const shown = this.battlePosNow.get(-1 - f.id);
       const x = shown === undefined ? lerp(f.prevX, f.x, alpha) : lerp(mate.position.x, shown.x, Math.min(1, dt * 12));
       const z = shown === undefined ? lerp(f.prevZ, f.z, alpha) : lerp(mate.position.z, shown.z, Math.min(1, dt * 12));
-      mate.position.set(x, 0, z);
+      mate.position.set(x, this.floorY(x, z), z);
 
       // Разворот тот же, что у ведущего (§17.2): за кадр, а не мгновенно.
       const face = shown === undefined ? f.facing : this.battleFacing.get(-1 - f.id) ?? f.facing;
@@ -2447,7 +2512,7 @@ export class RaidView {
         if (f.hp <= 0) continue;
         const to = spots[i]!;
         if (Math.hypot(to.x - f.x, to.z - f.z) < 0.05) continue;
-        m.makeTranslation(to.x, 0.06, to.z).multiply(flat);
+        m.makeTranslation(to.x, this.floorY(to.x, to.z) + 0.06, to.z).multiply(flat);
         marks.setMatrixAt(n++, m);
       }
       marks.instanceMatrix.needsUpdate = true;
@@ -2533,6 +2598,7 @@ export class RaidView {
   }
 
   private spawnDust(x: number, z: number): void {
+    const floor = this.floorY(x, z);
     this.dustGeometry ??= this.track(new THREE.CircleGeometry(0.18, 10));
     for (let i = 0; i < 3; i++) {
       const material = this.track(new THREE.MeshBasicMaterial({
@@ -2540,7 +2606,7 @@ export class RaidView {
       }));
       const mesh = new THREE.Mesh(this.dustGeometry, material);
       mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(x + (i - 1) * 0.12, 0.055 + i * 0.004, z + (i % 2 ? 0.08 : -0.05));
+      mesh.position.set(x + (i - 1) * 0.12, floor + 0.055 + i * 0.004, z + (i % 2 ? 0.08 : -0.05));
       mesh.scale.setScalar(0.55 + i * 0.16);
       this.group.add(mesh);
       this.battleFx.push({ mesh, velocity: new THREE.Vector3((i - 1) * 0.08, 0.04, (i % 2 ? 1 : -1) * 0.06), life: 0.46, total: 0.46, dust: true });
@@ -2548,13 +2614,14 @@ export class RaidView {
   }
 
   private spawnGolemShards(x: number, z: number): void {
+    const floor = this.floorY(x, z);
     this.shardGeometry ??= this.track(new THREE.TetrahedronGeometry(0.12, 0));
     this.shardMaterial ??= this.track(new THREE.MeshLambertMaterial({ color: 0x77736a, flatShading: true }));
     for (let i = 0; i < 11; i++) {
       const angle = (i / 11) * Math.PI * 2;
       const speed = 0.8 + (i % 4) * 0.22;
       const mesh = new THREE.Mesh(this.shardGeometry, this.shardMaterial);
-      mesh.position.set(x, 0.45 + (i % 3) * 0.12, z);
+      mesh.position.set(x, floor + 0.45 + (i % 3) * 0.12, z);
       mesh.scale.setScalar(0.65 + (i % 3) * 0.22);
       this.group.add(mesh);
       this.battleFx.push({
@@ -2586,8 +2653,9 @@ export class RaidView {
         fx.velocity.y -= 3.4 * dt;
         fx.mesh.rotation.x += dt * 8;
         fx.mesh.rotation.z += dt * 6;
-        if (fx.mesh.position.y < 0.06) {
-          fx.mesh.position.y = 0.06;
+        const floor = this.floorY(fx.mesh.position.x, fx.mesh.position.z);
+        if (fx.mesh.position.y < floor + 0.06) {
+          fx.mesh.position.y = floor + 0.06;
           fx.velocity.y *= -0.28;
           fx.velocity.x *= 0.65;
           fx.velocity.z *= 0.65;
@@ -2721,7 +2789,9 @@ export class RaidView {
     const to = hexToWorld(play.at);
     const f = Math.min(1, (now.t - PLAY_RELEASE_SECONDS) / Math.max(1e-3, now.impact - PLAY_RELEASE_SECONDS));
     this.arrowMesh.visible = true;
-    this.arrowMesh.position.set(lerp(from.x, to.x, f), 0.95, lerp(from.z, to.z, f));
+    const x = lerp(from.x, to.x, f);
+    const z = lerp(from.z, to.z, f);
+    this.arrowMesh.position.set(x, this.floorY(x, z) + 0.95, z);
     this.arrowMesh.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
     // Стрела своя — светлая, снаряд противника — цвета замаха: красное
     // в игре значит «удар» (§17.3), и летящее в героя оно значит то же.
@@ -2898,6 +2968,8 @@ export class RaidView {
       this.hexGrid.hide();
       return;
     }
+    const gridAt = hexToWorld(unit.hex);
+    this.hexGrid.group.position.y = this.floorY(gridAt.x, gridAt.z);
     // Пока показ дочитывает чужие ходы, сетка отмечает того, кто ходит
     // на экране: подсвечивать возможности героя раньше, чем он увидел бой,
     // значит звать его ходить вслепую.
@@ -2995,7 +3067,7 @@ export class RaidView {
    *  пятно на полу читается как декорация, а не как приглашение. */
   showHint(x: number, z: number): void {
     this.hintRing.visible = true;
-    this.hintRing.position.set(x, 0.08, z);
+    this.hintRing.position.set(x, this.floorY(x, z) + 0.08, z);
   }
 
   hideHint(): void {
@@ -3005,7 +3077,7 @@ export class RaidView {
   showMarker(x: number, z: number): void {
     this.marker.visible = true;
     (this.marker.material as THREE.MeshBasicMaterial).opacity = 0.9;
-    this.marker.position.set(x, 0.07, z);
+    this.marker.position.set(x, this.floorY(x, z) + 0.07, z);
   }
 
   /** alpha — доля между прошлым и текущим тиком симуляции (см. core/loop). */
@@ -3034,7 +3106,7 @@ export class RaidView {
     const hz = heroShown === undefined
       ? lerp(hero.prevZ, hero.z, alpha)
       : lerp(this.hero.position.z, heroShown.z, Math.min(1, dt * 12));
-    if (!this.heroParked) this.hero.position.set(hx, 0, hz);
+    if (!this.heroParked) this.hero.position.set(hx, this.floorY(hx, hz), hz);
 
     this.syncGrid(state);
     this.syncParty(state, alpha, dt);
@@ -3174,7 +3246,7 @@ export class RaidView {
       const walking = inShow
         ? Math.hypot(shown.x - ex, shown.z - ez) > 0.02
         : e.x !== e.prevX || e.z !== e.prevZ;
-      view.rig.root.position.set(ex, 0, ez);
+      view.rig.root.position.set(ex, this.floorY(ex, ez), ez);
       // Порядок важен: вспышка попадания перебивает телеграф. Замах длится
       // четверть секунды и дольше, вспышка — 150 мс, и если телеграф выиграет,
       // попадание в момент чужого замаха станет невидимым.
