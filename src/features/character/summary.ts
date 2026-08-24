@@ -50,7 +50,7 @@ export function raidSummary(gear: GearState, offhand: Offhand, ranged: boolean):
     withOther: `с ${OFFHAND[hand].name.toLowerCase()}`,
     rows: [
       row('Атака', now.attack, alt.attack, plain),
-      row('Ран', now.wounds, alt.wounds, signed),
+      row('HP', now.wounds, alt.wounds, signed),
       row('Обзор', now.vision, alt.vision, signed),
       row('Защита', now.defense, alt.defense, plain),
       row('Рюкзак', now.capacity, alt.capacity, signed),

@@ -1,0 +1,157 @@
+export interface GameMessage {
+  readonly id: string;
+  readonly message: string;
+  readonly translation: string;
+}
+
+const message = (id: string, source: string, translation: string): GameMessage => ({
+  id,
+  message: source,
+  translation,
+});
+
+/**
+ * Explicit game UI catalog. Russian is the source locale; English lives here
+ * so the generated Lingui catalog and the runtime descriptor cannot drift.
+ */
+export const gameMessages = {
+  startPlay: message('game.start.play', 'Играть', 'Play'),
+
+  authSignInTitle: message('game.auth.signIn.title', 'Вход', 'Sign in'),
+  authSignInLead: message(
+    'game.auth.signIn.lead',
+    'Лагерь хранится за аккаунтом — ссылка придёт на почту',
+    'Your camp is tied to your account — we’ll email you a link',
+  ),
+  authSignInSubmit: message('game.auth.signIn.submit', 'Прислать ссылку', 'Send me a link'),
+  authSignInSwap: message('game.auth.signIn.swap', 'У меня нет аккаунта', 'I don’t have an account'),
+  authSignUpTitle: message('game.auth.signUp.title', 'Регистрация', 'Create account'),
+  authSignUpLead: message(
+    'game.auth.signUp.lead',
+    'Аккаунт сохранит лагерь между устройствами',
+    'An account keeps your camp across devices',
+  ),
+  authSignUpSubmit: message('game.auth.signUp.submit', 'Завести аккаунт', 'Create account'),
+  authSignUpSwap: message('game.auth.signUp.swap', 'У меня есть аккаунт', 'I have an account'),
+  authEmail: message('game.auth.email', 'Почта', 'Email'),
+  authSending: message('game.auth.sending', 'Письмо собирается…', 'Preparing the email…'),
+  authSent: message('game.auth.sent', 'Ссылка отправлена — откройте письмо', 'Link sent — check your email'),
+
+  clanPanelTitle: message('game.clan.panel.title', 'Свой клан', 'Your clan'),
+  clanPanelLead: message(
+    'game.clan.panel.lead',
+    'Имя, под которым лагерь стоит в таблице.',
+    'The name your camp uses in the standings.',
+  ),
+  clanPanelName: message('game.clan.panel.name', 'Имя клана', 'Clan name'),
+  clanPanelFound: message('game.clan.panel.found', 'Основать', 'Found clan'),
+  clanPanelJoin: message('game.clan.panel.join', 'Вступить в чужой', 'Join another clan'),
+  clanPanelClose: message('game.clan.panel.close', 'Закрыть', 'Close'),
+  clanPanelJoinReason: message(
+    'game.clan.panel.joinReason',
+    'Не к кому: на карте фракции мира, а они не набирают',
+    'There is no one to join: the map shows world factions, and they do not recruit',
+  ),
+  clanNameEmpty: message('game.clan.name.empty', 'Клану нужно имя', 'The clan needs a name'),
+  clanNameShort: message(
+    'game.clan.name.short',
+    'Коротко: хотя бы {min} буквы',
+    'Too short: use at least {min} characters',
+  ),
+  clanNameLong: message(
+    'game.clan.name.long',
+    'Длинно: не больше {max} знаков',
+    'Too long: use no more than {max} characters',
+  ),
+  clanNameWorld: message('game.clan.name.world', 'Так зовут фракцию мира', 'A world faction already uses that name'),
+
+  clanBuildTitle: message('game.clan.build.title', 'Стройка клана', 'Clan construction'),
+  clanBuildHint: message('game.clan.build.hint', 'Выберите здание, затем место 2×2', 'Choose a building, then a 2×2 site'),
+  clanBuildHall: message(
+    'game.clan.build.hall',
+    'Клановый штаб · Д {wood} · К {stone} · Ж {iron}',
+    'Clan headquarters · W {wood} · S {stone} · I {iron}',
+  ),
+  clanBuildStore: message(
+    'game.clan.build.store',
+    'Клановый склад · Д {wood} · К {stone} · Ж {iron}',
+    'Clan storehouse · W {wood} · S {stone} · I {iron}',
+  ),
+  clanBuildWorkshop: message(
+    'game.clan.build.workshop',
+    'Клановая мастерская · Д {wood} · К {stone} · Ж {iron}',
+    'Clan workshop · W {wood} · S {stone} · I {iron}',
+  ),
+  clanBuildResources: message(
+    'game.clan.build.resources',
+    'Склад: дерево {wood} · камень {stone} · железо {iron}',
+    'Stockpile: wood {wood} · stone {stone} · iron {iron}',
+  ),
+  clanBuildBuilt: message('game.clan.build.built', 'Уже построено', 'Already built'),
+  clanBuildCurrent: message('game.clan.build.current', 'Сейчас строится', 'Under construction'),
+  clanBuildFinishCurrent: message(
+    'game.clan.build.finishCurrent',
+    'Сначала закончите текущую стройку',
+    'Finish the current construction first',
+  ),
+  clanBuildLeaderOnly: message('game.clan.build.leaderOnly', 'Строить может глава', 'Only the clan leader can build'),
+  clanBuildResourcesMissing: message(
+    'game.clan.build.resourcesMissing',
+    'На складе клана не хватает ресурсов',
+    'The clan stockpile does not have enough resources',
+  ),
+  clanBuildNone: message('game.clan.build.none', 'Сейчас стройки нет', 'No construction in progress'),
+  clanBuildHallProgress: message(
+    'game.clan.build.hallProgress',
+    'Клановый штаб: {done} / {total} мин работы',
+    'Clan headquarters: {done} / {total} min of work',
+  ),
+  clanBuildStoreProgress: message(
+    'game.clan.build.storeProgress',
+    'Клановый склад: {done} / {total} мин работы',
+    'Clan storehouse: {done} / {total} min of work',
+  ),
+  clanBuildWorkshopProgress: message(
+    'game.clan.build.workshopProgress',
+    'Клановая мастерская: {done} / {total} мин работы',
+    'Clan workshop: {done} / {total} min of work',
+  ),
+  clanBuildWorkers: message('game.clan.build.workers', 'Рабочие на стройке', 'Construction workers'),
+  clanBuildWorkerAssigned: message('game.clan.build.workerAssigned', '{name} · строит', '{name} · building'),
+  clanBuildWorkerCamp: message('game.clan.build.workerCamp', '{name} · в личном лагере', '{name} · in personal camp'),
+  clanBuildWorkerHunting: message('game.clan.build.workerHunting', 'Житель сейчас на охоте', 'This resident is hunting'),
+  clanBuildStartFirst: message('game.clan.build.startFirst', 'Сначала начните стройку', 'Start construction first'),
+  clanBuildNoResidents: message(
+    'game.clan.build.noResidents',
+    'В личном лагере пока нет жителей',
+    'There are no residents in your personal camp yet',
+  ),
+  clanBuildPlaceLeader: message(
+    'game.clan.build.placeLeader',
+    'Размещать здания может только глава клана',
+    'Only the clan leader can place buildings',
+  ),
+
+  settingsOpen: message('game.settings.open', 'Настройки', 'Settings'),
+  settingsTitle: message('game.settings.title', 'Настройки', 'Settings'),
+  settingsLanguage: message('game.settings.language', 'Язык', 'Language'),
+  settingsMaster: message('game.settings.master', 'Громкость', 'Volume'),
+  settingsCombat: message('game.settings.combat', 'Бой', 'Combat'),
+  settingsInterface: message('game.settings.interface', 'Интерфейс', 'Interface'),
+  settingsAmbient: message('game.settings.ambient', 'Амбиент', 'Ambient'),
+  settingsAmbientNote: message(
+    'game.settings.ambientNote',
+    'Амбиент глушится отдельно: пульс провианта идёт по шине боя и останется слышен.',
+    'Ambient sound is muted separately: the provisions pulse uses the combat channel and remains audible.',
+  ),
+  settingsEraseWarning: message(
+    'game.settings.eraseWarning',
+    'Лагерь, отряд и запасы будут стёрты.',
+    'Your camp, party, and supplies will be erased.',
+  ),
+  settingsErase: message('game.settings.erase', 'Стереть и начать заново', 'Erase and start over'),
+  settingsCancel: message('game.settings.cancel', 'Отмена', 'Cancel'),
+  settingsChronicle: message('game.settings.chronicle', 'Летопись', 'Chronicle'),
+  settingsNewGame: message('game.settings.newGame', 'Новая игра', 'New game'),
+  settingsClose: message('game.settings.close', 'Закрыть', 'Close'),
+} as const satisfies Record<string, GameMessage>;

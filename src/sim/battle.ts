@@ -32,6 +32,8 @@ import {
   worldToHex,
 } from './hex';
 import type { Hex } from './hex';
+import { finishProtection, protectionOf } from './protection';
+import type { ProtectionResult } from './protection';
 import type { EnemyKind } from './types';
 
 /**
@@ -101,7 +103,7 @@ export interface BattleUnit {
    *  при создании. У героя единица — его уровень живёт в лагере. */
   readonly level: number;
   hex: Hex;
-  /** Очки стойкости у противника, целые раны у героя (§11.3). */
+  /** Очки здоровья; одна шкала и одна формула для обеих сторон (§11.3). */
   hp: number;
   /** Гексов за ход. Выводится из скорости мира, а не назначается. */
   readonly move: number;
@@ -134,6 +136,12 @@ export interface BattleUnit {
   acted: boolean;
   /** Держит ли блок до своего следующего хода (§14.2). */
   guarding: boolean;
+  /** Щит делает из обычного Блока Заслон. */
+  readonly hasShield: boolean;
+  /** Первый ближний удар по Заслону пытается оттолкнуть врага. */
+  braceReady: boolean;
+  /** Первый удар по соседнему союзнику можно перехватить. */
+  interceptReady: boolean;
 }
 
 export interface BattleState {
@@ -190,6 +198,13 @@ export type BattlePlay =
       readonly killed: boolean;
       /** Стойкость цели после удара — полоска тикает по протоколу. */
       readonly hpAfter: number;
+      readonly dealt: number;
+      readonly preventedByDefense: number;
+      readonly preventedByGuard: number;
+      /** Куда Заслон оттолкнул атакующего. */
+      readonly pushedTo?: Hex | undefined;
+      /** Кого щитоносец прикрыл этим ударом. */
+      readonly interceptedFor?: number | undefined;
       /** Визуальный слой читает приём, но его эффект уже полностью решён здесь. */
       readonly technique?: 'minotaur-charge' | 'stone-armor' | undefined;
     }
@@ -294,6 +309,7 @@ export function createBattle(
     attack: number;
     defense: number;
     agility: number;
+    hasShield?: boolean;
   }[],
   enemies: readonly { id: number; kind: EnemyKind; level: number; x: number; z: number; hp: number }[],
   /** Сид боя для бросков уворота. Приходит из сида локации и номера стычки —
@@ -322,6 +338,9 @@ export function createBattle(
       moved: false,
       acted: false,
       guarding: false,
+      hasShield: p.hasShield ?? false,
+      braceReady: false,
+      interceptReady: false,
     });
   }
   for (const e of enemies) {
@@ -349,6 +368,9 @@ export function createBattle(
       moved: false,
       acted: false,
       guarding: false,
+      hasShield: false,
+      braceReady: false,
+      interceptReady: false,
     });
   }
 
@@ -422,6 +444,36 @@ export function targets(
   );
 }
 
+/** Кто встанет между ударом и выбранной целью. Одно правило для боя и прогноза. */
+function interceptorFor(state: BattleState, aimed: BattleUnit): BattleUnit | undefined {
+  return state.units
+    .filter((u) =>
+      u.hp > 0
+      && u.side === aimed.side
+      && u.id !== aimed.id
+      && u.guarding
+      && u.hasShield
+      && u.interceptReady
+      && hexDistance(u.hex, aimed.hex) <= 1)
+    .sort((a, b) => a.id - b.id)[0];
+}
+
+/** Куда отлетит атакующий. `from` нужен ИИ, который оценивает будущую стойку. */
+function bracePushTo(
+  state: BattleState,
+  size: number,
+  blocked: Uint8Array,
+  attacker: BattleUnit,
+  target: BattleUnit,
+  from: Hex = attacker.hex,
+): Hex | undefined {
+  if (attacker.kind === 'minotaur' || attacker.kind === 'stone-golem') return undefined;
+  const want = { q: from.q + (from.q - target.hex.q), r: from.r + (from.r - target.hex.r) };
+  return hexOpen(size, blocked, want) && !occupied(state, attacker.id).has(hexKey(want))
+    ? want
+    : undefined;
+}
+
 /** Передать ход следующему живому. Новый раунд снимает блоки и отметки. */
 export function advance(state: BattleState): void {
   for (let step = 0; step < state.order.length + 1; step++) {
@@ -436,6 +488,8 @@ export function advance(state: BattleState): void {
       // Блок держится до собственного следующего хода: он и есть цена хода,
       // потраченного на защиту, а не бесплатная поза.
       next.guarding = false;
+      next.braceReady = false;
+      next.interceptReady = false;
       next.moved = false;
       next.acted = false;
       // Свой ход — передышка: часть базы уворота возвращается (§11.3).
@@ -448,14 +502,13 @@ export function advance(state: BattleState): void {
 }
 
 /**
- * Сколько ран снимает удар этого бойца по этому. Урон считается теми же
- * правилами, что и в реальном времени: у противника очки стойкости, у героя
- * целые раны через пробой (§11.3). Пошаговость меняет, **когда** бьют,
+ * Сколько HP снимает удар этого бойца по этому. Урон считается теми же
+ * правилами для обеих сторон (§11.3). Пошаговость меняет, **когда** бьют,
  * а не **как** считается удар, — иначе получилось бы две модели боя,
  * и настраивать пришлось бы обе.
  */
 export interface Damage {
-  /** Сколько снять с цели: очков стойкости или ран. */
+  /** Сколько HP снять с цели. */
   readonly amount: number;
   /** Отражён ли удар блоком. */
   readonly blocked: boolean;
@@ -467,6 +520,25 @@ export interface Damage {
  * его решением — потраченным ходом, который окупается не всегда.
  */
 export const GUARD_SHARE = 0.5;
+const amount = (n: number): string => Number.isInteger(n) ? String(n) : n.toFixed(1);
+
+export type DamageSource = number | ProtectionResult;
+
+/** Тот же итог удара для прогноза и для применения. */
+export function strikeProtection(
+  from: BattleUnit,
+  to: BattleUnit,
+  source: DamageSource,
+  guarding = to.guarding,
+): ProtectionResult {
+  const base = typeof source === 'number' ? protectionOf(source, 0) : source;
+  return finishProtection(base, {
+    guarding,
+    guardShare: GUARD_SHARE,
+    add: from.kind === 'minotaur' && from.moved ? MINOTAUR_CHARGE_BONUS : 0,
+    absorb: to.kind === 'stone-golem' ? STONE_ARMOR : 0,
+  });
+}
 
 /**
  * Путь шага для протокола показа: гексы от стойки до места. Восстанавливается
@@ -502,7 +574,7 @@ export function apply(
   size: number,
   blocked: Uint8Array,
   action: BattleAction,
-  damageOf: (from: BattleUnit, to: BattleUnit) => number,
+  damageOf: (from: BattleUnit, to: BattleUnit) => DamageSource,
   name: (u: BattleUnit) => string,
   plays?: BattlePlay[],
 ): boolean {
@@ -523,9 +595,14 @@ export function apply(
       return true;
     }
     case 'attack': {
-      const target = state.units.find((u) => u.id === action.target && u.hp > 0);
-      if (target === undefined) return false;
-      if (!targets(state, size, blocked, unit).includes(target)) return false;
+      const aimed = state.units.find((u) => u.id === action.target && u.hp > 0);
+      if (aimed === undefined) return false;
+      if (!targets(state, size, blocked, unit).includes(aimed)) return false;
+      // §11.7 — щитоносец в Заслоне прикрывает соседа один раз.
+      const interceptor = interceptorFor(state, aimed);
+      const target = interceptor ?? aimed;
+      if (interceptor !== undefined) interceptor.interceptReady = false;
+      const attackFrom = unit.hex;
       const technique = unit.kind === 'minotaur' && unit.moved
         ? 'minotaur-charge'
         : target.kind === 'stone-golem'
@@ -552,39 +629,65 @@ export function apply(
           blocked: false,
           killed: false,
           hpAfter: target.hp,
+          dealt: 0,
+          preventedByDefense: 0,
+          preventedByGuard: 0,
+          interceptedFor: interceptor === undefined ? undefined : aimed.id,
           technique,
         });
         state.events.push(`${name(unit)} бьёт — ${name(target)} уходит от удара`);
         unit.acted = true;
         return true;
       }
-      const base = damageOf(unit, target);
-      const raw = technique === 'minotaur-charge'
-        ? base + MINOTAUR_CHARGE_BONUS
-        : technique === 'stone-armor'
-          ? Math.max(1, base - STONE_ARMOR)
-          : base;
-      const dealt = target.guarding ? Math.max(1, Math.round(raw * GUARD_SHARE)) : raw;
+      const protection = strikeProtection(unit, target, damageOf(unit, target));
+      const dealt = protection.dealt;
       target.hp -= dealt;
+
+      // Заслон покупает пространство, а не только HP. Тяжёлые тела
+      // не двигаются, но попытку всё равно сжигают: Заслон один.
+      let pushedTo: Hex | undefined;
+      if (
+        target.guarding
+        && target.hasShield
+        && target.braceReady
+        && !unit.ranged
+        && hexDistance(unit.hex, target.hex) === 1
+      ) {
+        target.braceReady = false;
+        const want = bracePushTo(state, size, blocked, unit, target);
+        if (want !== undefined) {
+          unit.hex = want;
+          pushedTo = want;
+        }
+      }
       plays?.push({
         kind: 'strike',
         unit: unit.id,
         target: target.id,
-        from: unit.hex,
+        from: attackFrom,
         at: target.hex,
         ranged: unit.ranged,
         dodged: false,
         blocked: target.guarding,
         killed: target.hp <= 0,
         hpAfter: Math.max(0, target.hp),
+        dealt,
+        preventedByDefense: protection.preventedByDefense,
+        preventedByGuard: protection.preventedByGuard,
+        pushedTo,
+        interceptedFor: interceptor === undefined ? undefined : aimed.id,
         technique,
       });
+      if (interceptor !== undefined) state.events.push(`${name(interceptor)} прикрывает ${name(aimed)}`);
+      if (pushedTo !== undefined) state.events.push(`${name(target)} отбрасывает ${name(unit)}`);
       if (technique === 'minotaur-charge') state.events.push('Минотавр идёт на таран');
       if (technique === 'stone-armor') state.events.push('Каменная броня смягчает удар');
       state.events.push(
         target.guarding
-          ? `${name(unit)} бьёт — ${name(target)} держит`
-          : `${name(unit)} бьёт`,
+          ? `${name(unit)} бьёт — ${name(target)} держит · спасено ${amount(protection.preventedByGuard)}`
+          : protection.preventedByDefense > 0
+            ? `${name(unit)} бьёт · Защита сняла ${amount(protection.preventedByDefense)}`
+            : `${name(unit)} бьёт`,
       );
       if (target.hp <= 0) state.events.push(`${name(target)} падёт`);
       unit.acted = true;
@@ -592,6 +695,8 @@ export function apply(
     }
     case 'guard': {
       unit.guarding = true;
+      unit.braceReady = unit.hasShield;
+      unit.interceptReady = unit.hasShield;
       unit.acted = true;
       plays?.push({ kind: 'guard', unit: unit.id });
       state.events.push(`${name(unit)} закрывается`);
@@ -623,8 +728,7 @@ export function enemyPlan(
 ): BattleAction {
   const reachable = targets(state, size, blocked, unit);
   if (reachable.length > 0) {
-    // Из достижимых — самый израненный: добить дешевле, чем начать нового.
-    const best = reachable.reduce((a, b) => (a.hp <= b.hp ? a : b));
+    const best = preferredEnemyTarget(state, unit, reachable);
     return { kind: 'attack', target: best.id };
   }
   // Уже ходил и не достал — ход кончен. Без этого план «дойти» остаётся
@@ -633,15 +737,228 @@ export function enemyPlan(
 
   const foes = alive(state, unit.side === 'hero' ? 'enemy' : 'hero');
   if (foes.length === 0) return { kind: 'wait' };
+  const focus = preferredEnemyTarget(state, unit, foes);
 
   const reach = moves(state, size, blocked, unit);
   let best: { hex: Hex; score: number } | null = null;
   for (const [, spot] of reach) {
-    // Ближе к ближайшему противнику; при равенстве — меньше шагов, чтобы
-    // не топтаться. Оба ключа целые, поэтому порядок обхода не решает ничего.
-    const near = Math.min(...foes.map((f) => hexDistance(spot.hex, f.hex)));
-    const score = near * 100 + spot.steps;
+    // Каждый тип идёт к той же цели, которую выберет для удара. Воин возле
+    // Заслона дополнительно ищет стойку, из которой отбрасыванию некуда идти:
+    // стена или другое тело сжигают первое срабатывание без бесплатного отрыва.
+    const near = hexDistance(spot.hex, focus.hex);
+    const trapsBrace = unit.kind === 'warrior'
+      && focus.hasShield
+      && focus.guarding
+      && near <= unit.reach
+      && bracePushTo(state, size, blocked, unit, focus, spot.hex) === undefined;
+    const score = near * 100 + spot.steps - (trapsBrace ? 40 : 0);
     if (best === null || score < best.score) best = { hex: spot.hex, score };
   }
   return best === null ? { kind: 'wait' } : { kind: 'move', to: best.hex };
+}
+
+/**
+ * Цель — часть силуэта врага, а не скрытая случайность.
+ *
+ * - воин и тяжёлые бьют поднятый щит, чтобы снять первое срабатывание;
+ * - маг целит прикрытого соседа и тем самым заставляет тратить перехват;
+ * - остальные добивают самого раненого, поэтому стая складывает удары.
+ */
+function preferredEnemyTarget(
+  state: BattleState,
+  unit: BattleUnit,
+  choices: readonly BattleUnit[],
+): BattleUnit {
+  const score = (target: BattleUnit): number => {
+    const shieldUp = target.hasShield && target.guarding && target.braceReady;
+    const covered = !target.hasShield && interceptorFor(state, target) !== undefined;
+    const role = unit.kind === 'mage' && covered
+      ? -20_000
+      : (unit.kind === 'warrior' || unit.kind === 'minotaur' || unit.kind === 'stone-golem') && shieldUp
+        ? -10_000
+        : 0;
+    return role + target.hp * 100 + target.id;
+  };
+  return choices.reduce((a, b) => (score(a) <= score(b) ? a : b));
+}
+
+export type ThreatIntent =
+  | 'brace-burn'
+  | 'draw-intercept'
+  | 'charge'
+  | 'immovable'
+  | 'swarm';
+
+export interface BattleThreat {
+  readonly attacker: number;
+  /** Кого противник выбрал до возможного перехвата. */
+  readonly aimed: number;
+  /** Кто действительно примет удар в этом сценарии. */
+  readonly target: number;
+  readonly path: readonly Hex[];
+  /** Урон при попадании в этом сценарии. */
+  readonly damage: number;
+  readonly hitChance: number;
+  readonly ranged: boolean;
+  /** Почему этот удар является контрприёмом против Заслона. */
+  readonly intent?: ThreatIntent | undefined;
+}
+
+export interface BattleForecast {
+  readonly unit: number;
+  /** Что случится без защитного действия. */
+  readonly threats: readonly BattleThreat[];
+  /** Что случится, если текущий боец выберет Блок/Заслон. */
+  readonly guardedThreats: readonly BattleThreat[];
+  /** Сумма только по тому бойцу, который сейчас ходит. */
+  readonly damage: number;
+  readonly guardedDamage: number;
+  readonly canBreakContact: boolean;
+}
+
+const copyBattle = (state: BattleState): BattleState => ({
+  ...state,
+  units: state.units.map((u) => ({ ...u, hex: { ...u.hex } })),
+  order: [...state.order],
+  events: [],
+});
+
+interface ForecastScenario {
+  readonly threats: readonly BattleThreat[];
+  readonly broken: boolean;
+}
+
+function threatIntent(
+  unit: BattleUnit,
+  target: BattleUnit,
+  interceptor: BattleUnit | undefined,
+): ThreatIntent | undefined {
+  if (unit.kind === 'mage' && interceptor !== undefined) return 'draw-intercept';
+  if (!target.guarding || !target.hasShield) return undefined;
+  if (!target.braceReady) return undefined;
+  if (unit.kind === 'warrior') return 'brace-burn';
+  if (unit.kind === 'minotaur') return unit.moved ? 'charge' : 'immovable';
+  if (unit.kind === 'stone-golem') return 'immovable';
+  return undefined;
+}
+
+/** Проиграть один вариант круга, не вскрывая броски и не снимая HP. */
+function forecastScenario(
+  state: BattleState,
+  size: number,
+  blocked: Uint8Array,
+  damageOf: (from: BattleUnit, to: BattleUnit) => DamageSource,
+  originalId: number,
+  guarding: boolean,
+  stand?: Hex,
+): ForecastScenario | null {
+  const copy = copyBattle(state);
+  const hero = copy.units.find((u) => u.id === originalId);
+  if (hero === undefined) return null;
+  if (stand !== undefined) {
+    const legal = moves(copy, size, blocked, hero).get(hexKey(stand));
+    if (legal === undefined) return null;
+    hero.hex = { ...legal.hex };
+  }
+  hero.moved = stand !== undefined;
+  hero.guarding = guarding;
+  hero.braceReady = guarding && hero.hasShield;
+  hero.interceptReady = guarding && hero.hasShield;
+  hero.acted = true;
+  advance(copy);
+
+  const paths = new Map<number, readonly Hex[]>();
+  const threats: BattleThreat[] = [];
+  let guard = 0;
+  while (guard++ < copy.units.length * 3) {
+    const unit = current(copy);
+    if (unit === undefined || unit.side === 'hero') break;
+    const stats = ENEMY_STATS[unit.kind!];
+    const plan = enemyPlan(copy, size, blocked, unit, stats.chases);
+    if (plan.kind === 'move') {
+      const plays: BattlePlay[] = [];
+      if (!apply(copy, size, blocked, plan, damageOf, () => '', plays)) break;
+      const moved = plays.find((p): p is Extract<BattlePlay, { kind: 'move' }> => p.kind === 'move');
+      if (moved !== undefined) paths.set(unit.id, moved.path);
+      continue;
+    }
+    if (plan.kind === 'attack') {
+      const aimed = copy.units.find((u) => u.id === plan.target && u.hp > 0);
+      if (aimed !== undefined) {
+        const interceptor = interceptorFor(copy, aimed);
+        const target = interceptor ?? aimed;
+        if (interceptor !== undefined) interceptor.interceptReady = false;
+        threats.push({
+          attacker: unit.id,
+          aimed: aimed.id,
+          target: target.id,
+          path: paths.get(unit.id) ?? [],
+          damage: strikeProtection(unit, target, damageOf(unit, target)).dealt,
+          hitChance: target.guarding
+            ? ATTACK_ACCURACY
+            : Math.max(0, Math.min(100, ATTACK_ACCURACY - target.dodge)),
+          ranged: unit.ranged,
+          intent: threatIntent(unit, target, interceptor),
+        });
+
+        // Первое столкновение со щитом меняет последующие пути даже в
+        // прогнозе. HP не снимается, но срабатывание и позиция — настоящие.
+        if (
+          target.guarding
+          && target.hasShield
+          && target.braceReady
+          && !unit.ranged
+          && hexDistance(unit.hex, target.hex) === 1
+        ) {
+          target.braceReady = false;
+          const pushed = bracePushTo(copy, size, blocked, unit, target);
+          if (pushed !== undefined) unit.hex = pushed;
+        }
+      }
+    }
+    unit.acted = true;
+    advance(copy);
+  }
+
+  const minions = guarding && hero.hasShield
+    ? threats.filter((t) => copy.units.find((u) => u.id === t.attacker)?.kind === 'minion')
+    : [];
+  const marked = minions.length < 2
+    ? threats
+    : threats.map((t) =>
+      copy.units.find((u) => u.id === t.attacker)?.kind === 'minion'
+        ? { ...t, intent: 'swarm' as const }
+        : t);
+  return { threats: marked, broken: contactBroken(copy, size, blocked) };
+}
+
+/**
+ * Что сделают противники, если герой кончит ход здесь.
+ *
+ * Атаки не применяются: прогноз обещает намерение и цену при
+ * попадании, а не вскрывает будущий бросок уворота. Подходы при этом
+ * проигрываются тем же `enemyPlan`, потому путь на экране не расходится с боем.
+ */
+export function forecastRound(
+  state: BattleState,
+  size: number,
+  blocked: Uint8Array,
+  damageOf: (from: BattleUnit, to: BattleUnit) => DamageSource,
+  stand?: Hex,
+): BattleForecast | null {
+  const original = current(state);
+  if (original === undefined || original.side !== 'hero') return null;
+  const plain = forecastScenario(state, size, blocked, damageOf, original.id, false, stand);
+  const guarded = forecastScenario(state, size, blocked, damageOf, original.id, true, stand);
+  if (plain === null || guarded === null) return null;
+  const mine = plain.threats.filter((t) => t.target === original.id);
+  const guardedMine = guarded.threats.filter((t) => t.target === original.id);
+  return {
+    unit: original.id,
+    threats: plain.threats,
+    guardedThreats: guarded.threats,
+    damage: mine.reduce((sum, t) => sum + t.damage, 0),
+    guardedDamage: guardedMine.reduce((sum, t) => sum + t.damage, 0),
+    canBreakContact: plain.broken,
+  };
 }

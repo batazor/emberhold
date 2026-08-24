@@ -21,7 +21,7 @@ import { FoxRig } from './fox';
 import { CASTLE_SCALE, castleGeometry, castleMaterial } from './castle';
 import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeometry, setLampsNight } from './props';
 import { roadPieces } from '../sim/roads';
-import { FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
+import { cryptGeometry, FENCE_SCALE, fenceGeometry, graveyardGeometry, graveyardMaterial } from './graveyard';
 import { miniForestGeometry } from './miniForest';
 import type { GraveyardPartModelName } from './graveyard';
 import type { CastlePartModelName } from './castle';
@@ -38,7 +38,7 @@ import {
   type Garrison,
 } from '../sim/garrison';
 import type { DwellerLook } from '../sim/garrison';
-import type { GraveSite } from '../sim/graveSite';
+import { cryptStyleOf, type GraveSite } from '../sim/graveSite';
 import type { TrailSite } from '../sim/trailSite';
 import { Fire } from './fire';
 import { fireOf } from './models';
@@ -47,8 +47,8 @@ import type { RigClipName } from './rigged';
 import { RIG_CLIPS } from './rig.data';
 import { HexGrid } from './hexGrid';
 import { current, moves, targets } from '../sim/battle';
-import type { BattlePlay } from '../sim/battle';
-import { followSpots } from '../sim/raid';
+import type { BattleForecast, BattlePlay } from '../sim/battle';
+import { battleForecast, followSpots } from '../sim/raid';
 import { hexToWorld, worldToHex } from '../sim/hex';
 import type { Hex } from '../sim/hex';
 import type { BuildingId } from '../sim/camp';
@@ -58,17 +58,19 @@ import { HERO_SPEED } from '../sim/config';
 import { SWING_SECONDS } from '../sim/logging';
 import { idx } from '../sim/grid';
 import type { Cell, Enemy, EnemyKind, GameLocation, RaidState } from '../sim/types';
+import { buildDungeonLayout } from '../sim/dungeonLayout';
 import type { HeroClassId } from '../sim/heroes';
 import { forestMaterial } from './forest';
 import type { ForestModelName } from './forest';
 import { STUMP, STUMP_HEIGHT, WOODS, cellHash, treeGeometry, treeStand, type Tree } from './woods';
 import type { Gust } from './cursorWind';
 import { RESOURCE_MODEL, resourceGeometry, resourceMaterial } from './resources';
-import { chestGeometry, dungeonMaterial } from './dungeon';
+import { chestGeometry, dungeonMaterial, dungeonModuleGeometry } from './dungeon';
+import type { DungeonModelName } from './dungeon';
 import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
-import { PALETTE } from './palette';
+import { MATERIAL, PALETTE } from './palette';
 import type { Bubble } from './bubbles';
 
 /**
@@ -77,8 +79,15 @@ import type { Bubble } from './bubbles';
  */
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-/** Камни стены вылазки: под землёй лес не растёт (§12.1). */
-const RAID_ROCKS: readonly ForestModelName[] = [
+/**
+ * Стены поляны из пролога — деревья. Список общий с лагерем и живёт
+ * в `woods.ts`: герой выходит из этого леса и в нём же встаёт лагерем,
+ * и разными породами это выглядело бы как два разных места.
+ */
+const GLADE_TREES = WOODS;
+
+/** Породы добываемых валунов; стеной подземелья они больше не служат. */
+const STONE_ROCKS: readonly ForestModelName[] = [
   'Rock_1_D_Color1',
   'Rock_1_E_Color1',
   'Rock_1_G_Color1',
@@ -86,13 +95,6 @@ const RAID_ROCKS: readonly ForestModelName[] = [
   'Rock_3_G_Color1',
   'Rock_3_H_Color1',
 ];
-
-/**
- * Стены поляны из пролога — деревья. Список общий с лагерем и живёт
- * в `woods.ts`: герой выходит из этого леса и в нём же встаёт лагерем,
- * и разными породами это выглядело бы как два разных места.
- */
-const GLADE_TREES = WOODS;
 
 /**
  * Чем застроены непроходимые клетки. Копи и поляна отличаются ровно этим
@@ -377,6 +379,13 @@ export class RaidView {
    * не меняется, тап остаётся тапом.
    */
   private hoverHex: Hex | null = null;
+  /** Прогноз каждой клетки заметно тяжелее раскраски кольца, поэтому он
+   *  пересчитывается на изменение состояния боя, а не на каждый кадр. */
+  private threatGridKey = '';
+  private threatSafe: Hex[] = [];
+  private threatDanger: Hex[] = [];
+  private threatPreviewKey = '';
+  private threatPreview: BattleForecast | null = null;
   /**
    * §11.3 — показ боя. Очередь протокола (`RaidState.plays`) и текущий ход:
    * пока они не пусты, положение и клипы бойцов ведёт показ, а не симуляция —
@@ -623,6 +632,9 @@ export class RaidView {
    * двумя играми.
    */
   private buildGrass(perTile: number): void {
+    // Каменный и деревянный пол KayKit занимает все проходимые клетки шахты.
+    // Трава поверх него читалась бы улицей и спорила бы с мелкими трещинами.
+    if (this.flavor === 'mine') return;
     if (this.fluffy || this.flavor === 'castle') {
       this.buildMeadow();
       return;
@@ -719,6 +731,10 @@ export class RaidView {
         }
       };
       for (const spot of keep.castle.yard) mark(spot.x, spot.z);
+      for (const spot of keep.castle.moat) mark(spot.x, spot.z);
+      // Расширенное поле сделало подход длинным: трава не должна прятать
+      // дорогу, которая объясняет игроку, где ворота и как к ним идти.
+      for (const spot of keep.roads) mark(spot.x, spot.z);
       // Только основание: ярусы башни и шапка ворот стоят выше нуля
       // и на вопрос «что под ними на земле» не отвечают.
       for (const piece of keep.castle.pieces) if (piece.y === 0) mark(piece.x, piece.z);
@@ -759,24 +775,21 @@ export class RaidView {
   }
 
   /**
-   * Стены — модели из набора (§6.1). Раньше здесь стоял додекаэдр: одна форма
-   * на всю локацию, и стена читалась как ряд одинаковых шариков. Вариантов
-   * шесть, выбор — от координаты клетки, поэтому камень на месте не прыгает
-   * между заходами и локация остаётся выводимой из сида.
-   *
-   * В прологе те же клетки заняты деревьями: поляна — единственная локация
-   * на поверхности, и стена у неё лесная.
+   * Под землёй границу строит модульный слой KayKit Dungeon, на поверхности
+   * те же занятые клетки остаются лесом. Оба варианта выводятся из состояния
+   * локации и не заводят собственную карту препятствий.
    */
   private buildWalls(): void {
     const { size, blocked } = this.loc;
     // У кладбища лес свой — из набора кладбища, и ставит его buildGraveyard.
     if (this.flavor === 'grave') return;
+    if (this.flavor === 'mine') {
+      this.buildDungeonArchitecture();
+      return;
+    }
     // Тропа стоит в том же лесу, что поляна и лагерь: она рядом с ними
     // на поверхности, и другая порода говорила бы «другое место» зря.
-    const tree = this.flavor === 'glade' || this.flavor === 'castle' || this.flavor === 'trail';
-    const models: readonly Tree[] = tree
-      ? GLADE_TREES
-      : RAID_ROCKS.map((model) => ({ set: 'forest', model }) as const);
+    const models: readonly Tree[] = GLADE_TREES;
     const cells: number[][] = models.map(() => []);
     // У замка занятых клеток два рода: лес по краю и сам замок. Лесом
     // засаживается только лес — иначе деревья выросли бы сквозь стену.
@@ -833,12 +846,12 @@ export class RaidView {
       for (let i = 0; i < list.length; i += 2) {
         const x = list[i]!;
         const z = list[i + 1]!;
-        const at = treeStand(x, z, tree, 0);
+        const at = treeStand(x, z, true, 0);
         mesh.setMatrixAt(i / 2, at);
         // Дерево, которое можно срубить, обязано быть найдено по клетке:
         // симуляция говорит «клетка освободилась», а рендеру надо знать,
         // какой из экземпляров какого меша на ней стоит (§13.3).
-        if (tree) this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
+        this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
       }
       this.group.add(mesh);
     }
@@ -859,6 +872,50 @@ export class RaidView {
         const z = snags[i + 1]!;
         mesh.setMatrixAt(i / 2, treeStand(x, z, true, 0));
         this.trees.set(idx(size, x, z), { mesh, at: i / 2, turn: 0 });
+      }
+      this.group.add(mesh);
+    }
+  }
+
+  /**
+   * Модульный слой KayKit Dungeon. План выводится из `blocked`: одна плитка
+   * на свободную клетку, одна стеновая грань на каждую границу с занятым,
+   * колонны только на настоящих углах и лестница только в свободном зале.
+   */
+  private buildDungeonArchitecture(): void {
+    const layout = buildDungeonLayout(this.loc);
+    type Piece = {
+      readonly model: DungeonModelName;
+      readonly x: number;
+      readonly z: number;
+      readonly turn: number;
+      readonly floor: boolean;
+    };
+    const byModel = new Map<DungeonModelName, Piece[]>();
+    const add = (piece: Piece): void => {
+      const list = byModel.get(piece.model) ?? [];
+      list.push(piece);
+      byModel.set(piece.model, list);
+    };
+    for (const piece of layout.floors) add({ ...piece, floor: true });
+    for (const piece of layout.walls) add({ ...piece, floor: false });
+    for (const piece of layout.pillars) add({ ...piece, floor: false });
+    if (layout.stairs !== null) add({ ...layout.stairs, floor: false });
+
+    const mat = this.track(dungeonMaterial());
+    const dummy = new THREE.Object3D();
+    for (const [model, pieces] of byModel) {
+      const mesh = new THREE.InstancedMesh(dungeonModuleGeometry(model), mat, pieces.length);
+      mesh.castShadow = !pieces[0]!.floor;
+      mesh.receiveShadow = true;
+      mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      for (let i = 0; i < pieces.length; i++) {
+        const piece = pieces[i]!;
+        dummy.position.set(piece.x, piece.floor ? 0.012 : 0, piece.z);
+        dummy.rotation.set(0, piece.turn * Math.PI / 2, 0);
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
       }
       this.group.add(mesh);
     }
@@ -1025,7 +1082,7 @@ export class RaidView {
   }
 
   /**
-   * Замок (§6.1.6). Деталей в кадре под сотню, а моделей два десятка, поэтому
+   * Замок (§6.1.6). Деталей в кадре под сотню, а моделей пять десятков, поэтому
    * рисуется он одной InstancedMesh на модель: сто мешей стоили бы сто вызовов
    * отрисовки за то же изображение.
    *
@@ -1035,8 +1092,35 @@ export class RaidView {
    * и вторая копия этих правил в рендере разошлась бы с первой молча.
    */
   private buildCastle(site: CastleSite): void {
+    // Вода рва — клетки плана, а не текстура земли. Небольшой зазор между
+    // квадратами оставляет читаемой форму внешнего пояса и не даёт им спорить
+    // глубиной с грунтом локации.
+    if (site.castle.moat.length > 0) {
+      const geometry = this.track(new THREE.PlaneGeometry(CASTLE_SCALE * 0.96, CASTLE_SCALE * 0.96));
+      geometry.rotateX(-Math.PI / 2);
+      const material = this.track(new THREE.MeshLambertMaterial({
+        color: MATERIAL['краска-синяя'],
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+      }));
+      const water = new THREE.InstancedMesh(geometry, material, site.castle.moat.length);
+      const at = new THREE.Object3D();
+      site.castle.moat.forEach((spot, i) => {
+        at.position.set(
+          site.at.x + spot.x * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+          0.025,
+          site.at.z + spot.z * CASTLE_SCALE + (CASTLE_SCALE - 1) / 2,
+        );
+        at.updateMatrix();
+        water.setMatrixAt(i, at.matrix);
+      });
+      water.renderOrder = 1;
+      this.group.add(water);
+    }
+
     const byModel = new Map<string, typeof site.castle.pieces[number][]>();
-    for (const piece of site.castle.pieces) {
+    for (const piece of [...site.castle.pieces, ...site.surroundings]) {
       // Мощение двора не рисуется: под замком уже лежит земля локации,
       // и вторая плита поверх неё дала бы z-fighting, а не пол.
       if (piece.role === 'двор') continue;
@@ -1634,8 +1718,8 @@ export class RaidView {
    * ноль детали стоит в центре её клетки набора, а клетка набора покрывает
    * `FENCE_SCALE` клеток локации.
    *
-   * **Могилы, склеп и гроб** — предметы: у них никакой сетки нет, они стоят
-   * в клетке локации и приводятся высотой.
+   * **Могилы и гроб** — предметы и приводятся высотой. **Склеп** — цельная
+   * сборка в общем масштабе: иначе крыша и дверь разошлись бы с корпусом.
    *
    * **Лес и пеньки** по краю — тоже предметы, и порода у них своя, чтобы
    * кладбище не читалось той же поляной, с которой начинается игра.
@@ -1666,9 +1750,12 @@ export class RaidView {
     for (const [model, list] of byModel) {
       const fence = site.fence.some((p) => p.model === model);
       // Геометрия живёт в общем кэше graveyard.ts и переживает вид: её не track.
+      const crypt = cryptStyleOf(model);
       const geo = fence
         ? fenceGeometry(model as GraveyardPartModelName)
-        : graveyardGeometry(model as GraveyardPartModelName, MARK_HEIGHT[model] ?? 0.8);
+        : crypt === undefined
+          ? graveyardGeometry(model as GraveyardPartModelName, MARK_HEIGHT[model] ?? 0.8)
+          : cryptGeometry(crypt);
       const mesh = new THREE.InstancedMesh(geo, mat, list.length);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -2009,11 +2096,10 @@ export class RaidView {
   }
 
   /**
-   * Валуны (§13.4) — те же камни набора, из которых сложена стена вылазки
-   * (§6.1.1), но ростом по колено. Это решение, а не экономия на моделях:
-   * камень на полу обязан читаться как отколовшийся от стены, а не как
-   * предмет чужого происхождения. У замка и в лагере стены из камня нет,
-   * и там та же порода говорит другое — из этого стену и сложили.
+   * Валуны (§13.4) — порода Forest ростом по колено. Архитектура подземелья
+   * теперь из KayKit Dungeon, но общая палитра камня сохраняет родство:
+   * валун на полу не выглядит предметом чужого происхождения. У замка и
+   * в лагере та же порода говорит другое — из неё строят и её добывают.
    *
    * Меш на валун, а не общий буфер: их единицы, зато каждый дрожит от удара
    * и исчезает поодиночке, а искать экземпляр в общем буфере пришлось бы
@@ -2027,7 +2113,7 @@ export class RaidView {
       // Порода и разворот выведены из координаты — тот же приём, что у стены:
       // локация обязана совпадать сама с собой между заходами.
       const t = ((Math.sin(stone.x * 3.1 + stone.z * 7.7) * 1000) % 1 + 1) % 1;
-      const model = RAID_ROCKS[Math.floor(t * RAID_ROCKS.length) % RAID_ROCKS.length]!;
+      const model = STONE_ROCKS[Math.floor(t * STONE_ROCKS.length) % STONE_ROCKS.length]!;
       const mesh = new THREE.Mesh(
         // Геометрия живёт в общем кэше forest.ts и переживает вид: её не track.
         treeGeometry({ set: 'forest', model }, STONE_HEIGHT * (0.85 + t * 0.4)),
@@ -2565,6 +2651,8 @@ export class RaidView {
     if (now.play.kind === 'move') {
       const last = now.play.path[now.play.path.length - 1];
       if (last !== undefined) this.restHex.set(now.play.unit, last);
+    } else if (now.play.kind === 'strike' && now.play.pushedTo !== undefined) {
+      this.restHex.set(now.play.unit, now.play.pushedTo);
     }
   }
 
@@ -2768,6 +2856,11 @@ export class RaidView {
   private syncGrid(state: RaidState): void {
     const battle = state.battle;
     if (battle === null) {
+      this.threatGridKey = '';
+      this.threatSafe = [];
+      this.threatDanger = [];
+      this.threatPreviewKey = '';
+      this.threatPreview = null;
       this.hexGrid.hide();
       return;
     }
@@ -2782,18 +2875,36 @@ export class RaidView {
     if (this.battleBusy()) {
       const acting = this.playNow?.play.unit;
       const at = acting === undefined ? undefined : this.restHex.get(acting);
-      this.hexGrid.show({ move: [], stand: at === undefined ? [] : [at], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: at === undefined ? [] : [at], target: [], hover: [], counter: [], covered: [] });
       return;
     }
     // Сетка показывается только на ходу героя. На чужом ходу она молчит:
     // подсвечивать чужие возможности — значит просить игрока читать то,
     // на что он всё равно не влияет.
     if (unit.side !== 'hero') {
-      this.hexGrid.show({ move: [], stand: [unit.hex], target: [], hover: [] });
+      this.hexGrid.show({ move: [], safe: [], danger: [], stand: [unit.hex], target: [], hover: [], counter: [], covered: [] });
       return;
     }
     const { size, blocked } = this.loc;
     const move: Hex[] = [...moves(battle, size, blocked, unit).values()].map((s) => s.hex);
+    const threatKey = [
+      battle.round,
+      battle.at,
+      ...battle.units.map((u) =>
+        `${u.id}:${u.hp}:${u.hex.q},${u.hex.r}:${Number(u.moved)}${Number(u.acted)}${Number(u.guarding)}`),
+      ...move.map((h) => `${h.q},${h.r}`),
+    ].join('|');
+    if (threatKey !== this.threatGridKey) {
+      this.threatGridKey = threatKey;
+      this.threatSafe = [];
+      this.threatDanger = [];
+      for (const h of move) {
+        const forecast = battleForecast(state, h);
+        (forecast !== null && forecast.damage === 0 ? this.threatSafe : this.threatDanger).push(h);
+      }
+    }
+    const safe = this.threatSafe;
+    const danger = this.threatDanger;
     const target: Hex[] = targets(battle, size, blocked, unit).map((u) => u.hex);
     // Наведение показывается только там, куда можно: подсвеченный гекс,
     // на который нельзя шагнуть, обещает ход, которого не будет.
@@ -2801,7 +2912,19 @@ export class RaidView {
     const onTarget = target.some((h) => `${h.q},${h.r}` === key);
     const canGo = move.some((h) => `${h.q},${h.r}` === key);
     const hover = this.hoverHex !== null && (canGo || onTarget) ? [this.hoverHex] : [];
-    this.hexGrid.show({ move, stand: [unit.hex], target, hover });
+    const preview = this.battlePreview(state);
+    const counter = preview?.guardedThreats
+      .filter((threat) => threat.intent !== undefined)
+      .map((threat) => {
+        const last = threat.path[threat.path.length - 1];
+        return last ?? battle.units.find((u) => u.id === threat.attacker)?.hex;
+      })
+      .filter((h): h is Hex => h !== undefined) ?? [];
+    const covered = preview?.guardedThreats
+      .filter((threat) => threat.aimed !== threat.target)
+      .map((threat) => battle.units.find((u) => u.id === threat.aimed)?.hex)
+      .filter((h): h is Hex => h !== undefined) ?? [];
+    this.hexGrid.show({ move: [], safe, danger, stand: [unit.hex], target, hover, counter, covered });
   }
 
   /**
@@ -2814,6 +2937,29 @@ export class RaidView {
 
   clearHover(): void {
     this.hoverHex = null;
+  }
+
+  /** Контекстный прогноз HUD. Кэш нужен потому, что main синхронизирует DOM
+   *  каждый кадр, а путь противников меняется только вместе с боем/наведением. */
+  battlePreview(state: RaidState): BattleForecast | null {
+    const battle = state.battle;
+    if (battle === null) return null;
+    const hover = this.hoverHex;
+    const key = [
+      battle.round,
+      battle.at,
+      battle.rolls,
+      hover === null ? '-' : `${hover.q},${hover.r}`,
+      ...battle.units.map((u) =>
+        `${u.id}:${u.hp}:${u.hex.q},${u.hex.r}:${Number(u.moved)}${Number(u.acted)}${Number(u.guarding)}`),
+    ].join('|');
+    if (key !== this.threatPreviewKey) {
+      this.threatPreviewKey = key;
+      this.threatPreview = hover === null
+        ? battleForecast(state)
+        : battleForecast(state, hover) ?? battleForecast(state);
+    }
+    return this.threatPreview;
   }
 
   /** Подсветить клетку. Кольцо пульсирует, пока кадр не сменится: статичное

@@ -20,10 +20,20 @@
  * никому. Список сплошных ролей — единственное, что здесь объявлено.
  */
 import { distanceField, idx } from './grid';
+import { mulberry32, randInt } from '../core/rng';
 import { castleBushCount, scatterBushes } from './berries';
 import type { Bush } from './berries';
 import { STONES, scatterStones } from './stones';
-import { CASTLE_CELL, generateCastle, type Castle, type Piece, type Role, type Spot } from './castle';
+import {
+  CASTLE_CELL,
+  CASTLE_SURROUNDINGS,
+  FIXED_BRIDGES,
+  generateCastle,
+  type Castle,
+  type Piece,
+  type Role,
+  type Spot,
+} from './castle';
 import type { Cell, Container, GameLocation } from './types';
 
 /**
@@ -34,8 +44,12 @@ import type { Cell, Container, GameLocation } from './types';
  */
 export const GUARD_AMBUSH = 3;
 
-/** Поле между лесом и стеной: место, где замок видно целиком. */
-export const FIELD = 4;
+/**
+ * Поле между лесом и стеной: место для общего силуэта, патруля и подхода.
+ * Десять клеток вместо шести дают по четыре дополнительные клетки с каждой
+ * стороны; размер самого замка и толщина леса при этом не раздуваются.
+ */
+export const FIELD = 10;
 /** Толщина леса по краю локации. */
 export const WOOD = 3;
 
@@ -43,7 +57,7 @@ export const WOOD = 3;
  * Роли, которые занимают клетку. Ворота в списке нет намеренно: под аркой
  * проезжают, и если её закрыть, замок станет коробкой без входа.
  */
-const SOLID: ReadonlySet<Role> = new Set<Role>(['стена', 'угол', 'башня', 'лестница']);
+const SOLID: ReadonlySet<Role> = new Set<Role>(['стена', 'угол', 'башня', 'лестница', 'укрепление']);
 
 export interface CastleSite {
   readonly loc: GameLocation;
@@ -52,6 +66,8 @@ export interface CastleSite {
   readonly at: Spot;
   /** Клетки леса: рендеру они деревья, симуляции — просто занятые клетки. */
   readonly trees: readonly Spot[];
+  /** Kenney-скалы и деревья во внешнем поле, за маршрутом патруля. */
+  readonly surroundings: readonly Piece[];
   /** §13.8 — ягодные кусты на поле перед стеной. */
   readonly bushes: readonly Bush[];
   /** Ворота в клетках локации — сюда приходят снаружи. */
@@ -129,6 +145,7 @@ export function generateCastleSite(seed: number): CastleSite {
     x: WOOD + FIELD + Math.floor((plan - castle.width * CASTLE_CELL) / 2),
     z: WOOD + FIELD + Math.floor((plan - castle.depth * CASTLE_CELL) / 2),
   };
+  const approachSteps = Math.ceil((FIELD - 1) / CASTLE_CELL);
 
   const blocked = new Uint8Array(size * size);
 
@@ -160,6 +177,24 @@ export function generateCastleSite(seed: number): CastleSite {
     }
   }
 
+  // Ров занимает внешний пояс целиком, кроме клетки каменного моста.
+  // Вода — препятствие симуляции, а не только синяя плоскость рендера.
+  const bridgeCells = new Set(castle.pieces
+    .filter((p) => (FIXED_BRIDGES as readonly string[]).includes(p.model))
+    .map((p) => `${p.x}:${p.z}`));
+  for (const spot of castle.moat) {
+    if (bridgeCells.has(`${spot.x}:${spot.z}`)) continue;
+    const base = spotAt({ at }, spot);
+    for (let dz = 0; dz < CASTLE_CELL; dz++) {
+      for (let dx = 0; dx < CASTLE_CELL; dx++) {
+        const x = base.x + dx;
+        const z = base.z + dz;
+        if (x < 0 || z < 0 || x >= size || z >= size) continue;
+        blocked[idx(size, x, z)] = 1;
+      }
+    }
+  }
+
   const gate: Cell = gatePiece === undefined
     ? { x: at.x + castle.gate.x * CASTLE_CELL, z: at.z + castle.gate.z * CASTLE_CELL }
     : spotAt({ at }, gatePiece);
@@ -178,11 +213,63 @@ export function generateCastleSite(seed: number): CastleSite {
     && !castle.ring.some((s) => s.x === castle.gate.x + dx! && s.z === castle.gate.z + dz!)) ?? [0, 1];
 
   const evac: Cell = {
-    x: Math.max(WOOD, Math.min(size - WOOD - 1, gate.x + out[0]! * (FIELD - 1) + (out[0] === 0 ? 0 : 0))),
+    x: Math.max(WOOD, Math.min(size - WOOD - 1, gate.x + out[0]! * (FIELD - 1))),
     z: Math.max(WOOD, Math.min(size - WOOD - 1, gate.z + out[1]! * (FIELD - 1))),
   };
   // Точка выхода обязана быть свободной: она же место, куда игрок приходит.
   blocked[idx(size, evac.x, evac.z)] = 0;
+
+  /*
+   * Окружение выбирает площадка мира, а не план здания. Между слоями есть
+   * строгий порядок: стена, ров, маршрут дозора, затем этот пояс и лес.
+   * Дробная координата ставит двухклеточную модель ровно между клетками
+   * плана; её след прижимается к внешней кромке расширенного поля.
+   */
+  const surroundings: Piece[] = [];
+  const sceneryRng = mulberry32(seed ^ 0x5ce91a);
+  const candidates: Spot[] = [];
+  const sceneryReach = FIELD / CASTLE_CELL + 0.5;
+  for (let z = 0.5; z < castle.depth - 0.5; z += 2) {
+    candidates.push({ x: -sceneryReach, z }, { x: castle.width + sceneryReach - 1, z });
+  }
+  for (let x = 0.5; x < castle.width - 0.5; x += 2) {
+    candidates.push({ x, z: -sceneryReach }, { x, z: castle.depth + sceneryReach - 1 });
+  }
+  const bridgeApproach = Array.from({ length: approachSteps }, (_, i) => i + 1).map((step) => ({
+    x: castle.gate.x + out[0]! * step,
+    z: castle.gate.z + out[1]! * step,
+  }));
+  const safe = candidates.filter((spot) => bridgeApproach.every((road) =>
+    Math.abs(spot.x - road.x) + Math.abs(spot.z - road.z) >= 2));
+  for (let i = safe.length - 1; i > 0; i--) {
+    const j = randInt(sceneryRng, i + 1);
+    const swap = safe[i]!;
+    safe[i] = safe[j]!;
+    safe[j] = swap;
+  }
+  const count = Math.min(safe.length, 8 + randInt(sceneryRng, 5));
+  const modelOffset = randInt(sceneryRng, CASTLE_SURROUNDINGS.length);
+  for (let i = 0; i < count; i++) {
+    const spot = safe[i]!;
+    const piece: Piece = {
+      model: CASTLE_SURROUNDINGS[(modelOffset + i) % CASTLE_SURROUNDINGS.length]!,
+      x: spot.x,
+      z: spot.z,
+      y: 0,
+      turn: randInt(sceneryRng, 4),
+      role: 'окружение',
+    };
+    surroundings.push(piece);
+    const base = spotAt({ at }, piece);
+    for (let dz = 0; dz < CASTLE_CELL; dz++) {
+      for (let dx = 0; dx < CASTLE_CELL; dx++) {
+        const x = Math.floor(base.x) + dx;
+        const z = Math.floor(base.z) + dz;
+        if (x < WOOD || z < WOOD || x >= size - WOOD || z >= size - WOOD) continue;
+        blocked[idx(size, x, z)] = 1;
+      }
+    }
+  }
 
   /*
    * Торговец — в глубине двора, дальше всех от ворот. Ближняя к воротам
@@ -207,13 +294,13 @@ export function generateCastleSite(seed: number): CastleSite {
    * Дорога — маршрут локации, названный мощением: подход снаружи, арка
    * ворот, двором к торговцу. Внутри ведёт волна по клеткам двора — тем же
    * четырёхсвязным соседством, каким ходит герой; снаружи — продолжение
-   * той же прямой, которой стоит выход: две клетки плана как раз покрывают
-   * поле до опушки.
+   * той же прямой, которой стоит выход. Число плит считается из `FIELD`,
+   * поэтому расширение поля не оставляет между дорогой и опушкой разрыва.
    */
   const gatePlan: Spot = castle.gate;
   const roads: Spot[] = [];
   const roadKey = (s: Spot): string => `${s.x}:${s.z}`;
-  for (let step = 2; step >= 1; step--) {
+  for (let step = approachSteps; step >= 1; step--) {
     roads.push({ x: gatePlan.x + out[0]! * step, z: gatePlan.z + out[1]! * step });
   }
   roads.push({ x: gatePlan.x, z: gatePlan.z });
@@ -411,5 +498,5 @@ export function generateCastleSite(seed: number): CastleSite {
     (x, z) => !busyCell.has(`${x},${z}`),
     true,
   );
-  return { loc, castle, at, trees, bushes, gate, trader, roads, lamps };
+  return { loc, castle, at, trees, surroundings, bushes, gate, trader, roads, lamps };
 }

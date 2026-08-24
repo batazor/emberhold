@@ -65,6 +65,36 @@ const MOUND = 'grave';
 const STONES = ['gravestone-cross', 'gravestone-round', 'gravestone-bevel', 'cross'] as const;
 
 /**
+ * Пять силуэтов склепа из девяти файлов набора. `crypt-a` и `crypt-b` —
+ * законченные низкие постройки; у малого и большого корпуса крыша и дверь
+ * лежат отдельными файлами и обязаны ехать с ним в одном масштабе.
+ *
+ * След задан в клетках локации относительно центра. Нечётная ширина держит
+ * центр модели в центре клетки; длина большого склепа больше, потому что его
+ * исходный корпус почти вдвое длиннее малого. `depth` считается от центра
+ * до фасада и поворачивается вместе со зданием.
+ */
+export interface CryptStyle {
+  readonly name: 'обычный' | 'низкий-а' | 'низкий-б' | 'малый' | 'большой';
+  readonly body: string;
+  readonly roof: string | null;
+  readonly door: string | null;
+  readonly side: number;
+  readonly depth: number;
+}
+
+export const CRYPT_STYLES: readonly CryptStyle[] = [
+  { name: 'обычный', body: 'crypt', roof: null, door: null, side: 1, depth: 1 },
+  { name: 'низкий-а', body: 'crypt-a', roof: null, door: null, side: 1, depth: 1 },
+  { name: 'низкий-б', body: 'crypt-b', roof: null, door: null, side: 1, depth: 1 },
+  { name: 'малый', body: 'crypt-small', roof: 'crypt-small-roof', door: 'crypt-door', side: 1, depth: 1 },
+  { name: 'большой', body: 'crypt-large', roof: 'crypt-large-roof', door: 'crypt-large-door', side: 1, depth: 2 },
+];
+
+export const cryptStyleOf = (model: string): CryptStyle | undefined =>
+  CRYPT_STYLES.find((style) => style.body === model);
+
+/**
  * Кто лежит и чем известен — **из слов, которые в игре уже есть**, и ни одного
  * сверх них.
  *
@@ -116,6 +146,10 @@ export interface GraveMark {
   readonly turn: number;
   /** Занимает ли клетку. Насыпь не занимает: через могилу переступают. */
   readonly solid: boolean;
+  /** Весь след крупной постройки. У обычной отметки это одна клетка `x,z`. */
+  readonly cells?: readonly Cell[];
+  /** Точка надписи на фасаде: центр большого склепа рукой не достать. */
+  readonly readAt?: Cell;
   /**
    * Что написано на камне. `null` — насыпь без камня: писать не на чем,
    * и это не пропуск, а разница между могилой и надгробием.
@@ -183,7 +217,8 @@ export function epitaphAt(
   let near = EPITAPH_REACH * EPITAPH_REACH;
   for (const mark of site.marks) {
     if (mark.epitaph === null) continue;
-    const d = (mark.x - x) ** 2 + (mark.z - z) ** 2;
+    const at = mark.readAt ?? mark;
+    const d = (at.x - x) ** 2 + (at.z - z) ** 2;
     if (d < near) {
       near = d;
       best = mark;
@@ -318,7 +353,7 @@ function graveNpcSpots(site: {
 
   for (const mark of site.marks) {
     // Остановка у насыпи, гроба или камня: если клетка занята, встаём рядом.
-    add(near({ x: mark.x, z: mark.z }));
+    add(near(mark.readAt ?? { x: mark.x, z: mark.z }));
   }
   return out;
 }
@@ -439,6 +474,31 @@ function ringOf(w: number, d: number): Spot[] {
   return out;
 }
 
+/** Локальный фасад модели смотрит в −z; четверть поворота ведёт его к воротам. */
+function cryptFront(turn: number): Cell {
+  return [
+    { x: 0, z: -1 },
+    { x: -1, z: 0 },
+    { x: 0, z: 1 },
+    { x: 1, z: 0 },
+  ][turn & 3]!;
+}
+
+/** Все клетки следа, с тем же поворотом, которым рендер повернёт модель. */
+function cryptFootprint(center: Cell, style: CryptStyle, turn: number): Cell[] {
+  const out: Cell[] = [];
+  for (let dz = -style.depth; dz <= style.depth; dz++) {
+    for (let dx = -style.side; dx <= style.side; dx++) {
+      const local = turn === 0 ? { x: dx, z: dz }
+        : turn === 1 ? { x: dz, z: -dx }
+          : turn === 2 ? { x: -dx, z: -dz }
+            : { x: -dz, z: dx };
+      out.push({ x: center.x + local.x, z: center.z + local.z });
+    }
+  }
+  return out;
+}
+
 /**
  * Кладбище по сиду. Размер локации — от размера участка: участок и есть то,
  * ради чего локация существует.
@@ -551,34 +611,54 @@ export function generateGraveSite(seed: number): GraveSite {
     }
   }
 
-  // Склеп — один и у дальней от ворот стороны: единственная постройка
-  // участка, и её видно от ворот через всю ограду.
+  // Склеп — один, у дальней от ворот стороны и фасадом строго к проезду.
+  // Так дверь не упирается в ограду, а здание читается уже со входа. Вариант
+  // выбирается тем же rng, поэтому сид держит не только место, но и силуэт.
+  const cryptStyle = CRYPT_STYLES[randInt(rng, CRYPT_STYLES.length)]!;
+  const cryptTurn = gateSpot.z === 0 ? 0
+    : gateSpot.x === 0 ? 1
+      : gateSpot.z === d - 1 ? 2
+        : 3;
+  const front = cryptFront(cryptTurn);
   const far: Cell = {
-    x: gate.x < at.x + (w * FENCE_CELL) / 2 ? yard.x1 - 1 : yard.x0 + 1,
-    z: gate.z < at.z + (d * FENCE_CELL) / 2 ? yard.z1 - 1 : yard.z0 + 1,
+    x: front.x < 0 ? yard.x1 - cryptStyle.depth
+      : front.x > 0 ? yard.x0 + cryptStyle.depth
+        : Math.round((yard.x0 + yard.x1) / 2),
+    z: front.z < 0 ? yard.z1 - cryptStyle.depth
+      : front.z > 0 ? yard.z0 + cryptStyle.depth
+        : Math.round((yard.z0 + yard.z1) / 2),
   };
-  // Склеп встаёт на своё место, а не поверх чужого: ряд могил мог дотянуться
-  // до дальнего угла, и две отметки в одной клетке — это и двойная геометрия,
-  // и два камня, читающиеся с одного шага. Поймало это правило чтения.
-  const lid: Cell = { x: far.x + (far.x > yard.x0 ? -1 : 1), z: far.z };
+  const cryptCells = cryptFootprint(far, cryptStyle, cryptTurn);
+  const facade: Cell = {
+    x: far.x + front.x * cryptStyle.depth,
+    z: far.z + front.z * cryptStyle.depth,
+  };
+  // Гроб стоит ещё на шаг перед фасадом: он объясняет открытую дверь, но сам
+  // остаётся проходимым, как и прежде.
+  const lid: Cell = { x: facade.x + front.x, z: facade.z + front.z };
+  const occupied = new Set([...cryptCells, lid].map((cell) => `${cell.x}:${cell.z}`));
+  // Постройка встаёт на своё место, а не поверх ряда могил. Удаляется весь
+  // конфликтующий ряд и камни вплотную к гробу: иначе две равно близкие
+  // надписи спорят у двери. После этого цельный след блокируется отдельно.
   for (let i = marks.length - 1; i >= 0; i--) {
-    const at = marks[i]!;
-    const clash = (at.x === far.x && at.z === far.z) || (at.x === lid.x && at.z === lid.z);
-    if (!clash) continue;
+    const mark = marks[i]!;
+    const atDoor = Math.hypot(mark.x - lid.x, mark.z - lid.z) <= 1;
+    if (!occupied.has(`${mark.x}:${mark.z}`) && !atDoor) continue;
     marks.splice(i, 1);
-    blocked[idx(size, at.x, at.z)] = 0;
+    if (mark.solid) blocked[idx(size, mark.x, mark.z)] = 0;
   }
   marks.push({
-    model: 'crypt',
+    model: cryptStyle.body,
     x: far.x,
     z: far.z,
-    turn: randInt(rng, 4),
+    turn: cryptTurn,
     solid: true,
+    cells: cryptCells,
+    readAt: facade,
     epitaph: writeEpitaph(rng, true),
   });
-  block(far.x, far.z);
-  // Гроб у склепа: он тут и объясняет, зачем склеп открыт.
-  marks.push({ model: 'coffin', x: lid.x, z: lid.z, turn: randInt(rng, 4), solid: false, epitaph: null });
+  for (const cell of cryptCells) block(cell.x, cell.z);
+  marks.push({ model: 'coffin', x: lid.x, z: lid.z, turn: cryptTurn, solid: false, epitaph: null });
 
   /**
    * Выход — снаружи, перед воротами. Сторона выбирается та, с которой
@@ -618,8 +698,9 @@ export function generateGraveSite(seed: number): GraveSite {
     if (stuck < 0) break;
     const sx = stuck % size;
     const sz = (stuck / size) | 0;
-    const near = marks.findIndex(
-      (m) => m.solid && Math.abs(m.x - sx) + Math.abs(m.z - sz) <= 2,
+    const near = marks.findIndex((m) =>
+      m.solid && cryptStyleOf(m.model) === undefined
+      && Math.abs(m.x - sx) + Math.abs(m.z - sz) <= 2,
     );
     if (near < 0) {
       // Отрезала не отметка, а ограда: такой клетке внутри участка взяться
@@ -687,7 +768,7 @@ export function generateGraveSite(seed: number): GraveSite {
   const busyCell = new Set<string>([
     ...trees.map((s) => `${s.x},${s.z}`),
     ...stumps.map((s) => `${s.x},${s.z}`),
-    ...marks.map((m) => `${m.x},${m.z}`),
+    ...marks.flatMap((m) => (m.cells ?? [m]).map((cell) => `${cell.x},${cell.z}`)),
   ]);
   const bushes = scatterBushes(
     seed ^ 0x2d17,

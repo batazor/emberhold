@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<script vite-ignore src="./language.js"></script>
+<script type="module" src="/src/i18n/browser.ts"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Emberhold: мир</title>
 <style>
@@ -439,20 +439,15 @@
 
     <div class="cards" id="kinds"></div>
 
-    <p><b>Значок вида — канал «форма», и рисует его тоже код игры</b>
-      (<code>NODE_ICON</code> из <code>src/ui/worldMap.ts</code>). Замок перестал
-      быть голым квадратом: на карте он читался флагом клана-переростком — обе
-      фигуры прямоугольные и одного цвета фона. Зубцы по верху оставляют силуэт
-      квадратом, канал не поменялся, но вид места назван без легенды. Вылазке
-      значок не нужен — её значок и есть кольцо: круг остаётся единственной
-      формой, на которой читаются шкала богатства и крест выработанной. Лагерь —
-      палатка в золотом кольце: точка говорила «здесь что-то есть», палатка
-      говорит «здесь живут». Границы значка меряются, а не смотрятся:
-      <code>worldMap.rules.ts</code> прослушивает путь подставным контекстом
-      и не пускает рисунок дальше 1,02 радиуса — глиф стоит на 1,3r, флаг
-      от 0,95r, и значок, дошедший туда, читался бы как они.</p>
+    <p><b>Вид места рисует Kenney Cartography Pack, адреса картинок отдаёт код
+      игры</b> (<code>MAP_ICON_URL</code> из <code>src/ui/worldMap.ts</code>).
+      Кольцо теперь всегда круглое и несёт только богатство цветом и ярус
+      толщиной; шахта, замок, кладбище, тропа и остальные места читаются
+      отдельным рисунком внутри. Лагерь получил палатку того же набора.
+      Retina-файлы красятся светлой тушью, чтобы не исчезать на тёмной земле,
+      и умещаются в 1,72 радиуса: глиф события и флаг клана остаются свободны.</p>
 
-    <p><b>Лагерей на карте пять, и различает их заливка, а не цвет</b> (§30).
+    <p><b>Лагерей на карте пять, и свой отличает золотая палатка</b> (§30).
       Свой стоит там же, где стоял всегда; четыре чужих — лагеря фракций,
       и клетка под каждым вынута из общей колоды <b>до раздачи дня
       и навсегда</b>. Отсюда два свойства, и оба по построению, а не проверкой:
@@ -461,8 +456,8 @@
       а ещё одной точкой дня.</p>
     <p>Цветом их развести нельзя: золото «Клана Отвала» (<code>#C9A227</code>)
       и золото своего лагеря (<code>#c8a24a</code>) — для глаза один и тот же
-      цвет, и на карте стояли бы две одинаковые палатки. Поэтому <b>своя палатка
-      закрашена, чужие — контуром</b>: это читается и без цвета вовсе. Шестой
+      цвет. Поэтому <b>своя палатка золотая, чужие — светлые, а цвет фракции
+      остаётся на кольце</b>. Шестой
       канал точки они при этом не занимают — лагерь не узел: в него не ходят,
       яруса и богатства у него нет, а карточка под картой говорит другое — кто,
       сколько силы, какой уровень и где он сегодня работает.</p>
@@ -1107,9 +1102,34 @@
  */
 const box = document.getElementById('events');
 try {
-  const { drawEventGlyph, NODE_ICON, drawCampTent } = await import('/src/ui/worldMap.ts');
+  const { drawEventGlyph, MAP_ICON_URL, CAMP_ICON_URL, MAP_ICON_DIAMETER } =
+    await import('/src/ui/worldMap.ts');
   const { drawMapTerrain } = await import('/src/ui/mapTerrain.ts');
   const { EVENTS, EVENT_ORDER } = await import('/src/sim/events.ts');
+  const iconUrls = [...Object.values(MAP_ICON_URL), CAMP_ICON_URL];
+  const iconImages = new Map(await Promise.all(iconUrls.map((url) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve([url, image]);
+    image.onerror = reject;
+    image.src = url;
+  }))));
+  const iconTints = new Map();
+  const mapIcon = (ctx, url, x, y, r, color = '#e8e2d4') => {
+    const key = url + '\n' + color;
+    let tinted = iconTints.get(key);
+    if (!tinted) {
+      const image = iconImages.get(url);
+      tinted = document.createElement('canvas');
+      tinted.width = image.naturalWidth; tinted.height = image.naturalHeight;
+      const ink = tinted.getContext('2d');
+      ink.drawImage(image, 0, 0);
+      ink.globalCompositeOperation = 'source-in';
+      ink.fillStyle = color; ink.fillRect(0, 0, tinted.width, tinted.height);
+      iconTints.set(key, tinted);
+    }
+    const size = r * MAP_ICON_DIAMETER;
+    ctx.drawImage(tinted, x - size / 2, y - size / 2, size, size);
+  };
   // Модель страницы рисуется раньше этого модуля, поэтому глиф отдаётся ей
   // сюда, а карты перерисовываются: без этого события были бы только
   // в карточках, а на карте — нет.
@@ -1135,6 +1155,7 @@ try {
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(11,10,9,0.85)'; ctx.fill();
     ctx.strokeStyle = '#7fb069'; ctx.lineWidth = 1 + 2 * 0.9; ctx.stroke();
+    mapIcon(ctx, MAP_ICON_URL['вылазка'], x, y, r);
     drawEventGlyph(ctx, id, x, y, r, 96, 96);
     const name = document.createElement('b'); name.textContent = def.name;
     const line = document.createElement('p'); line.textContent = def.line;
@@ -1146,12 +1167,18 @@ try {
   // копия разошлась бы с игрой молча.
   const kindsBox = document.getElementById('kinds');
   const SHOW = [
-    { name: 'Вылазка', line: 'круг: кольцо несёт богатство цветом и ярус толщиной',
-      draw: (ctx, x, y, r) => NODE_ICON['вылазка'](ctx, x, y, r), ring: '#7fb069', width: 1 + 2 * 0.9 },
-    { name: 'Замок', line: 'стена с зубцами: прогулка, кольцо тонкое всегда',
-      draw: (ctx, x, y, r) => NODE_ICON['замок'](ctx, x, y, r), ring: '#c8a24a', width: 1.4 },
-    { name: 'Кладбище', line: 'крест могилы: прогулка, привидения названы до входа',
-      draw: (ctx, x, y, r) => NODE_ICON['кладбище'](ctx, x, y, r), ring: '#9fb6d8', width: 1.4 },
+    { name: 'Вылазка', line: 'шахта Kenney; кольцо несёт богатство цветом и ярус толщиной',
+      url: MAP_ICON_URL['вылазка'], ring: '#7fb069', width: 1 + 2 * 0.9 },
+    { name: 'Замок', line: 'замок Kenney; прогулка, кольцо тонкое всегда',
+      url: MAP_ICON_URL['замок'], ring: '#c8a24a', width: 1.4 },
+    { name: 'Замок минотавра', line: 'череп Kenney; угроза читается до карточки',
+      url: MAP_ICON_URL['замок минотавра'], ring: '#d46a3a', width: 1.4 },
+    { name: 'Кладбище', line: 'кладбище Kenney; привидения названы до входа',
+      url: MAP_ICON_URL['кладбище'], ring: '#9fb6d8', width: 1.4 },
+    { name: 'Тропа', line: 'поворот тропы Kenney; прогулка без ставки',
+      url: MAP_ICON_URL['тропа'], ring: '#86a35c', width: 1.4 },
+    { name: 'Призы', line: 'компас Kenney читается как колесо призов',
+      url: MAP_ICON_URL['призы'], ring: '#a778c9', width: 1.4 },
   ];
   for (const spec of SHOW) {
     const card = document.createElement('div');
@@ -1160,9 +1187,10 @@ try {
     cv.width = 96 * dpr; cv.height = 96 * dpr;
     const c = cv.getContext('2d');
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.beginPath(); spec.draw(c, 48, 44, 14);
+    c.beginPath(); c.arc(48, 44, 14, 0, Math.PI * 2);
     c.fillStyle = 'rgba(11,10,9,0.85)'; c.fill();
     c.strokeStyle = spec.ring; c.lineWidth = spec.width; c.stroke();
+    mapIcon(c, spec.url, 48, 44, 14);
     const name = document.createElement('b'); name.textContent = spec.name;
     const line = document.createElement('p'); line.textContent = spec.line;
     card.append(cv, name, line);
@@ -1179,8 +1207,7 @@ try {
     c.beginPath(); c.arc(48, 44, 14, 0, Math.PI * 2);
     c.fillStyle = 'rgba(200,162,74,0.22)'; c.fill();
     c.strokeStyle = '#c8a24a'; c.lineWidth = 1; c.stroke();
-    c.beginPath(); drawCampTent(c, 48, 44, 14);
-    c.fillStyle = '#c8a24a'; c.fill();
+    mapIcon(c, CAMP_ICON_URL, 48, 44, 14, '#c8a24a');
     const name = document.createElement('b'); name.textContent = 'Лагерь';
     const line = document.createElement('p');
     line.textContent = 'палатка в золотом кольце: сюда не ходят — здесь живут';

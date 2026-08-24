@@ -22,10 +22,12 @@ import { describe, test } from 'node:test';
 import { CLANS } from './world';
 import { FENCE_CELL } from './fence';
 import {
+  CRYPT_STYLES,
   EPITAPH_REACH,
   FIELD,
   GRAVE_NPC_SPEED,
   WOOD,
+  cryptStyleOf,
   epitaphAt,
   generateGraveSite,
   graveNpcAt,
@@ -176,10 +178,56 @@ describe('Кладбище: что в нём есть и чего нет', () =>
 
   test('склеп и могилы стоят, и хотя бы часть из них обходят', () => {
     for (const site of sites) {
-      assert.ok(site.marks.some((m) => m.model === 'crypt'), `сид ${site.loc.seed}: склепа нет`);
+      assert.equal(
+        site.marks.filter((m) => cryptStyleOf(m.model) !== undefined).length,
+        1,
+        `сид ${site.loc.seed}: нужен ровно один склеп`,
+      );
       assert.ok(site.marks.some((m) => m.solid), `сид ${site.loc.seed}: обходить нечего`);
       assert.ok(site.marks.some((m) => !m.solid), `сид ${site.loc.seed}: переступать нечего`);
     }
+  });
+
+  test('склеп занимает весь измеренный след, а надпись и гроб остаются у фасада', () => {
+    for (const site of sites) {
+      const crypt = site.marks.find((m) => cryptStyleOf(m.model) !== undefined)!;
+      const style = cryptStyleOf(crypt.model)!;
+      assert.equal(crypt.cells?.length, (style.side * 2 + 1) * (style.depth * 2 + 1));
+      assert.ok(crypt.readAt !== undefined, `сид ${site.loc.seed}: у склепа нет фасада`);
+      for (const cell of crypt.cells ?? []) {
+        assert.equal(
+          site.loc.blocked[idx(site.loc.size, cell.x, cell.z)],
+          1,
+          `сид ${site.loc.seed}: сквозь склеп проходят в ${cell.x},${cell.z}`,
+        );
+      }
+      const coffin = site.marks.find((m) => m.model === 'coffin')!;
+      assert.equal(
+        Math.abs(coffin.x - crypt.readAt!.x) + Math.abs(coffin.z - crypt.readAt!.z),
+        1,
+        `сид ${site.loc.seed}: гроб оторван от двери`,
+      );
+      assert.equal(epitaphAt(site, coffin.x, coffin.z), crypt, `сид ${site.loc.seed}: фасад не читается`);
+    }
+  });
+
+  test('на серии сидов выпадают все пять силуэтов и все восемь новых файлов', () => {
+    const bodies = new Set<string>();
+    const parts = new Set<string>();
+    for (let seed = 1; seed <= 256; seed++) {
+      const crypt = generateGraveSite(seed).marks.find((m) => cryptStyleOf(m.model) !== undefined)!;
+      const style = cryptStyleOf(crypt.model)!;
+      bodies.add(style.body);
+      if (style.body !== 'crypt') parts.add(style.body);
+      if (style.roof !== null) parts.add(style.roof);
+      if (style.door !== null) parts.add(style.door);
+    }
+    assert.deepEqual(bodies, new Set(CRYPT_STYLES.map((style) => style.body)));
+    assert.deepEqual(parts, new Set([
+      'crypt-a', 'crypt-b',
+      'crypt-small', 'crypt-small-roof', 'crypt-door',
+      'crypt-large', 'crypt-large-roof', 'crypt-large-door',
+    ]));
   });
 
   test('пеньки по краю проходимы: по вырубке ходят', () => {
@@ -315,9 +363,11 @@ describe('Кладбище: что написано на камнях (§0.1)', 
       // вытянутой руки. Проверять «этот камень, а не соседний» бессмысленно:
       // ряды идут через клетку, и с полутора клеток соседний бывает ближе.
       for (const mark of site.marks) {
-        const read = epitaphAt(site, mark.x, mark.z);
+        const at = mark.readAt ?? mark;
+        const read = epitaphAt(site, at.x, at.z);
         if (read === null) continue;
-        const d = Math.hypot(read.x - mark.x, read.z - mark.z);
+        const readAt = read.readAt ?? read;
+        const d = Math.hypot(readAt.x - at.x, readAt.z - at.z);
         assert.ok(d <= EPITAPH_REACH, `прочиталось с ${d.toFixed(2)} клетки`);
       }
 

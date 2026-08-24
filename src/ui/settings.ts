@@ -1,6 +1,8 @@
 import { mix, play, setMix } from '../core/audio';
 import type { Mix } from '../core/audio';
 import { saveMix } from '../core/settings';
+import { setGameAttribute, setGameText } from '../i18n/game';
+import { gameMessages, type GameMessage } from '../i18n/gameMessages';
 
 /**
  * Настройки: шестерня в углу и попап поверх сцены (§6 — UI это DOM над
@@ -39,11 +41,11 @@ const GEAR = `
 </svg>`;
 
 /** Ползунки. Порядок тот же, что в §18.5: общая, потом три шины. */
-const KNOBS: readonly { readonly key: keyof Mix; readonly name: string }[] = [
-  { key: 'master', name: 'Громкость' },
-  { key: 'sfx', name: 'Бой' },
-  { key: 'ui', name: 'Интерфейс' },
-  { key: 'amb', name: 'Амбиент' },
+const KNOBS: readonly { readonly key: keyof Mix; readonly name: GameMessage }[] = [
+  { key: 'master', name: gameMessages.settingsMaster },
+  { key: 'sfx', name: gameMessages.settingsCombat },
+  { key: 'ui', name: gameMessages.settingsInterface },
+  { key: 'amb', name: gameMessages.settingsAmbient },
 ];
 
 const pct = (x: number): string => `${Math.round(x * 100)}%`;
@@ -57,7 +59,7 @@ export class SettingsMenu {
     this.button = document.createElement('button');
     this.button.id = 'settings-open';
     this.button.type = 'button';
-    this.button.setAttribute('aria-label', 'Настройки');
+    setGameAttribute(this.button, 'aria-label', gameMessages.settingsOpen);
     this.button.innerHTML = GEAR;
     parent.appendChild(this.button);
 
@@ -65,42 +67,44 @@ export class SettingsMenu {
     this.overlay.id = 'settings';
     this.overlay.innerHTML = `
       <div class="panel">
-        <h2>Настройки</h2>
+        <h2></h2>
         <div class="set-language">
-          <span class="lbl">Язык</span>
-          <span data-slot="language"></span>
+          <span class="lbl" data-language-label></span>
+          <div class="language-toggle" translate="no" role="group" aria-label="Language">
+            <button type="button" data-lang="en" class="${window.EmberholdLanguage?.current !== 'ru' ? 'on' : ''}" aria-pressed="${window.EmberholdLanguage?.current !== 'ru'}">EN</button>
+            <button type="button" data-lang="ru" class="${window.EmberholdLanguage?.current === 'ru' ? 'on' : ''}" aria-pressed="${window.EmberholdLanguage?.current === 'ru'}">RU</button>
+          </div>
         </div>
         <div class="set-rows">
           ${KNOBS.map(
             (k) => `
           <label class="set-row">
-            <span class="lbl">${k.name}</span>
+            <span class="lbl" data-label="${k.key}"></span>
             <input type="range" min="0" max="100" step="5" data-knob="${k.key}">
             <b data-out="${k.key}"></b>
           </label>`,
           ).join('')}
         </div>
-        <p class="sp-note">Амбиент глушится отдельно: пульс провианта идёт по шине боя и останется слышен.</p>
+        <p class="sp-note"></p>
         <div class="acts"></div>
       </div>`;
     parent.appendChild(this.overlay);
     this.acts = this.overlay.querySelector('.acts') as HTMLElement;
-
-    /**
-     * Язык живёт здесь, а не отдельной плашкой в углу экрана (§6.2.7). Сам
-     * переключатель делает `public/language.js` — тот же, что стоит
-     * на страницах артбуков: две копии одной кнопки разошлись бы
-     * подписями и состоянием.
-     */
-    const slot = this.overlay.querySelector('[data-slot="language"]');
-    if (slot instanceof HTMLElement) window.EmberholdLanguage?.toggle(slot);
+    setGameText(this.overlay.querySelector('h2') as HTMLElement, gameMessages.settingsTitle);
+    setGameText(this.overlay.querySelector('[data-language-label]') as HTMLElement, gameMessages.settingsLanguage);
+    for (const knob of KNOBS) {
+      setGameText(this.overlay.querySelector(`[data-label="${knob.key}"]`) as HTMLElement, knob.name);
+    }
+    setGameText(this.overlay.querySelector('.sp-note') as HTMLElement, gameMessages.settingsAmbientNote);
 
     this.button.addEventListener('click', () => this.open());
     // Тап по затемнению — тот же выход. Окно ничего не решает за игрока,
     // и держать его открытым до кнопки «Закрыть» незачем.
     this.overlay.addEventListener('click', (e) => {
-      // Кнопки языка слушает сам переключатель (`language.js`) — здесь
-      // остаётся только не принять их за тап по затемнению.
+      if (e.target instanceof HTMLButtonElement && (e.target.dataset.lang === 'en' || e.target.dataset.lang === 'ru')) {
+        window.EmberholdLanguage?.set(e.target.dataset.lang);
+        return;
+      }
       if (e.target === this.overlay) this.close();
     });
 
@@ -170,11 +174,20 @@ export class SettingsMenu {
    */
   private setConfirming(on: boolean): void {
     this.acts.innerHTML = on
-      ? `<p class="warn">Лагерь, отряд и запасы будут стёрты.</p>
-         <button type="button" class="danger" data-act="wipe">Стереть и начать заново</button>
-         <button type="button" class="ghost" data-act="cancel">Отмена</button>`
-      : `<button type="button" data-act="stats">Летопись</button>
-         <button type="button" data-act="new">Новая игра</button>
-         <button type="button" class="ghost" data-act="close">Закрыть</button>`;
+      ? `<p class="warn"></p>
+         <button type="button" class="danger" data-act="wipe"></button>
+         <button type="button" class="ghost" data-act="cancel"></button>`
+      : `<button type="button" data-act="stats"></button>
+         <button type="button" data-act="new"></button>
+         <button type="button" class="ghost" data-act="close"></button>`;
+    if (on) {
+      setGameText(this.acts.querySelector('.warn') as HTMLElement, gameMessages.settingsEraseWarning);
+      setGameText(this.acts.querySelector('[data-act="wipe"]') as HTMLButtonElement, gameMessages.settingsErase);
+      setGameText(this.acts.querySelector('[data-act="cancel"]') as HTMLButtonElement, gameMessages.settingsCancel);
+    } else {
+      setGameText(this.acts.querySelector('[data-act="stats"]') as HTMLButtonElement, gameMessages.settingsChronicle);
+      setGameText(this.acts.querySelector('[data-act="new"]') as HTMLButtonElement, gameMessages.settingsNewGame);
+      setGameText(this.acts.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.settingsClose);
+    }
   }
 }

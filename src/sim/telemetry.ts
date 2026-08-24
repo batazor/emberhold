@@ -50,6 +50,12 @@ export type TelemetryEvent =
       damageTaken: number;
       fights: number;
       kills: number;
+      /** Агрегаты защиты: одна запись на вылазку, не на удар. */
+      guardTurns?: number;
+      guardPrevented?: number;
+      shieldPushes?: number;
+      intercepts?: number;
+      dodges?: number;
     }
   /** §20.1 — главная кнопка экрана возврата: трата или повтор. */
   | {
@@ -78,7 +84,19 @@ export type TelemetryEvent =
   | { t: 'hero_pick'; at: number; cls: HeroClassId; level: number; rotated: boolean }
   | { t: 'heal_start'; at: number; cls: HeroClassId; wounds: number; seconds: number }
   | { t: 'train_start'; at: number; cls: HeroClassId; level: number }
-  | { t: 'exit'; at: number; where: ExitPoint }
+  /**
+   * §9 — где игрок ушёл и сколько к тому моменту шла сессия. `sec` заведено
+   * под длину сессии (§22.18): своей у нас не было вовсе, а чужая — та,
+   * что считает аналитика по клику, — меряет вкладку, а не игру.
+   *
+   * Событие пишется на **уход вкладки в фон**, а не на её закрытие: события
+   * выгрузки на мобильных не гарантированы. Отсюда и чтение `sec`: это
+   * не «длина сессии» готовым числом, а «докуда сессия дошла к этому уходу»,
+   * и длиной становится наибольшее за сессию. Переключение вкладки туда-сюда
+   * даёт несколько таких отметок, и это честнее, чем одна: игра не знает,
+   * вернутся ли, — а максимум знает и без неё.
+   */
+  | { t: 'exit'; at: number; where: ExitPoint; sec: number }
   /** §21.5 — берут ли все три и уходит ли камень. */
   | { t: 'consumable'; at: number; id: ConsumableId; phase: 'buy' | 'fire' }
   /**
@@ -216,6 +234,11 @@ export interface Summary {
   readonly boughtTotal: number;
   readonly avgDamageTaken: number;
   readonly avgFights: number;
+  readonly avgGuardTurns: number;
+  readonly avgGuardPrevented: number;
+  readonly avgShieldPushes: number;
+  readonly avgIntercepts: number;
+  readonly avgDodges: number;
   /** Кто добивает чаще: атрибуция без неё ничего не говорит о том, что чинить. */
   readonly fatalBy: Readonly<Record<string, number>>;
   /** §26 — отправок на одну ручную вылазку. Больше единицы значит, что игру
@@ -292,6 +315,11 @@ export function summarize(list: readonly TelemetryEvent[]): Summary {
     boughtTotal,
     avgDamageTaken: mean(ends.map((e) => e.damageTaken)),
     avgFights: mean(ends.map((e) => e.fights)),
+    avgGuardTurns: mean(ends.map((e) => e.guardTurns ?? 0)),
+    avgGuardPrevented: mean(ends.map((e) => e.guardPrevented ?? 0)),
+    avgShieldPushes: mean(ends.map((e) => e.shieldPushes ?? 0)),
+    avgIntercepts: mean(ends.map((e) => e.intercepts ?? 0)),
+    avgDodges: mean(ends.map((e) => e.dodges ?? 0)),
     fatalBy,
     sortiePerRaid:
       ends.length === 0 ? 0 : list.filter((e) => e.t === 'sortie').length / ends.length,

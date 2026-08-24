@@ -123,6 +123,8 @@ export function playSession(seed: number): SessionResult {
 
   let now = 0;
   let watermark = 0;
+  /** Начало текущей сессии — из него считается `sec` у выхода (§22.18). */
+  let sessionStartedAt = 0;
   const rows: RaidRow[] = [];
   const noOffer: Record<NoOfferReason, number> = {
     'слот занят': 0,
@@ -135,6 +137,7 @@ export function playSession(seed: number): SessionResult {
     if ((n - 1) % RAIDS_PER_SESSION === 0) {
       const away = AWAY[Math.floor((n - 1) / RAIDS_PER_SESSION)] ?? 0;
       now += away;
+      sessionStartedAt = now;
       track({
         t: 'session_start',
         at: now,
@@ -192,6 +195,11 @@ export function playSession(seed: number): SessionResult {
       damageTaken: raid.damageTaken,
       fights: raid.fights,
       kills: raid.kills,
+      guardTurns: raid.guardTurns,
+      guardPrevented: raid.guardPrevented,
+      shieldPushes: raid.shieldPushes,
+      intercepts: raid.intercepts,
+      dodges: raid.dodges,
     });
     for (const id of raid.fired) track({ t: 'consumable', at: now, id, phase: 'fire' });
     // Кладовая конечна (§13.6): бот складывает добычу тем же входом, что
@@ -267,7 +275,12 @@ export function playSession(seed: number): SessionResult {
 
     // Уход из игры фиксируется в конце сессии.
     if (n % RAIDS_PER_SESSION === 0) {
-      track({ t: 'exit', at: now, where: n % 2 === 0 ? 'camp' : 'return' });
+      track({
+        t: 'exit',
+        at: now,
+        where: n % 2 === 0 ? 'camp' : 'return',
+        sec: Math.max(0, now - sessionStartedAt),
+      });
       watermark = now;
     }
   }

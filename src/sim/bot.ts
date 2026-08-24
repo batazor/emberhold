@@ -29,6 +29,7 @@ import type { Hex } from './hex';
 import { findPath, nearestWalkable } from './pathfinding';
 import {
   backCost,
+  battleForecast,
   commandBattle,
   commandMove,
   createRaid,
@@ -638,6 +639,7 @@ export function botBattlePlan(state: RaidState, policy: Policy): BattleAction {
   const hurt = me.hp <= policy.retreatAt;
   const spots = [...moves(battle, size, blocked, me).values()];
   const nearest = (h: Hex): number => Math.min(...foes.map((f) => hexDistance(h, f.hex)));
+  const forecast = battleForecast(state);
 
   // 1. На последних ранах — вон из-под удара. Блок вместо бегства только
   // тогда, когда бежать некуда: блок стоит хода и половину удара пропускает.
@@ -649,6 +651,29 @@ export function botBattlePlan(state: RaidState, policy: Policy): BattleAction {
     if (reachable.length === 0) return { kind: 'guard' };
   }
 
+  // Заслон не выбирается по слову «щит»: бот читает тот же прогноз,
+  // что HUD. Добивание важнее: мёртвый враг не нанесёт урона вовсе.
+  const weakestHere = reachable.length === 0
+    ? null
+    : reachable.reduce((a, b) => (a.hp <= b.hp ? a : b));
+  const canFinish = weakestHere !== null && weakestHere.hp <= me.attack;
+  // Заслон должен менять позицию боя, а не превращать её в вечное
+  // «держу щит». Дальнего врага он не оттолкнёт, как и двух тяжёлых,
+  // которых правило стойкости оставляет на месте.
+  const canPushThreat = forecast?.guardedThreats.some((threat) => {
+    if (threat.target !== me.id || threat.ranged) return false;
+    const attacker = battle.units.find((u) => u.id === threat.attacker);
+    return attacker?.kind !== 'minotaur' && attacker?.kind !== 'stone-golem';
+  }) ?? false;
+  if (
+    me.hasShield
+    && !canFinish
+    && canPushThreat
+    && forecast !== null
+    && forecast.damage >= Math.max(3, me.hp * 0.25)
+    && forecast.guardedDamage < forecast.damage
+  ) return { kind: 'guard' };
+
   // 2. Достаю — бью самого израненного.
   if (reachable.length > 0) {
     // Стрелок вплотную стреляет со штрафом позиции: отойти и выстрелить
@@ -659,8 +684,7 @@ export function botBattlePlan(state: RaidState, policy: Policy): BattleAction {
         .sort((a, b) => a.steps - b.steps)[0];
       if (back !== undefined) return { kind: 'move', to: back.hex };
     }
-    const weakest = reachable.reduce((a, b) => (a.hp <= b.hp ? a : b));
-    return { kind: 'attack', target: weakest.id };
+    return { kind: 'attack', target: weakestHere!.id };
   }
 
   // 3–4. Не достаю — иду туда, откуда достану. Стрелок целит в свою

@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CASTLE_CELL } from './castle';
+import { CASTLE_CELL, CASTLE_SURROUNDINGS, FIXED_BRIDGES } from './castle';
 import { FIELD, TRADER_REACH, WOOD, atTrader, generateCastleSite, inYard, spotAt } from './castleSite';
 import { distanceField, idx } from './grid';
 
@@ -171,6 +171,7 @@ describe('Замок на карте: чего в нём нет', () => {
   });
 
   test('между лесом и стеной есть поле: замок видно целиком', () => {
+    assert.equal(FIELD, 10, 'свободный пояс снова сжался до прежних шести клеток');
     for (const site of sites) {
       const { loc, castle, at } = site;
       assert.ok(at.x >= WOOD + FIELD, `сид ${loc.seed}: замок упёрся в лес по x`);
@@ -183,6 +184,7 @@ describe('Замок на карте: чего в нём нет', () => {
         at.z + castle.depth * CASTLE_CELL <= loc.size - WOOD - FIELD,
         `сид ${loc.seed}: замок вылез в лес по z`,
       );
+      assert.ok(loc.size >= 38, `сид ${loc.seed}: карта ${loc.size} — вокруг замка снова тесно`);
     }
   });
 
@@ -243,6 +245,17 @@ describe('Замок на карте: чего в нём нет', () => {
 });
 
 describe('Замок на карте: дорога называет маршрут', () => {
+  test('подход пересекает всё расширенное поле, а не обрывается у прежней границы', () => {
+    const required = Math.ceil((FIELD - 1) / CASTLE_CELL);
+    for (const site of sites) {
+      const outside = new Set(site.roads
+        .filter((road) => !site.castle.ring.some((s) => s.x === road.x && s.z === road.z)
+          && !site.castle.yard.some((s) => s.x === road.x && s.z === road.z))
+        .map((road) => `${road.x}:${road.z}`));
+      assert.ok(outside.size >= required, `сид ${site.loc.seed}: подход ${outside.size}/${required}`);
+    }
+  });
+
   test('дорога — одна четырёхсвязная цепь от подхода до двора торговца', () => {
     for (const site of sites) {
       const { roads, loc } = site;
@@ -317,6 +330,55 @@ describe('Замок на карте: дорога называет маршру
         assert.equal(loc.blocked[idx(loc.size, lamp.x, lamp.z)], 0, `сид ${loc.seed}: фонарь в стене`);
         assert.ok(!cells.has(`${lamp.x}:${lamp.z}`), `сид ${loc.seed}: фонарь посреди полотна`);
         assert.ok(!loc.stones.some((s) => s.x === lamp.x && s.z === lamp.z), `сид ${loc.seed}: фонарь в валуне`);
+      }
+    }
+  });
+});
+
+describe('Замок на карте: ров и окружение принадлежат миру', () => {
+  test('ров непроходим везде, кроме клетки прямого моста', () => {
+    for (const site of sites) {
+      const bridges = new Set(site.castle.pieces
+        .filter((p) => (FIXED_BRIDGES as readonly string[]).includes(p.model))
+        .map((p) => `${p.x}:${p.z}`));
+      for (const spot of site.castle.moat) {
+        const base = spotAt(site, spot);
+        const blocked = [];
+        for (let dz = 0; dz < CASTLE_CELL; dz++) {
+          for (let dx = 0; dx < CASTLE_CELL; dx++) {
+            blocked.push(site.loc.blocked[idx(site.loc.size, base.x + dx, base.z + dz)]);
+          }
+        }
+        if (bridges.has(`${spot.x}:${spot.z}`)) {
+          assert.ok(blocked.every((v) => v === 0), `сид ${site.loc.seed}: мост непроходим`);
+        } else {
+          assert.ok(blocked.every((v) => v === 1), `сид ${site.loc.seed}: в рву сухая клетка`);
+        }
+      }
+    }
+  });
+
+  test('скалы и деревья стоят во внешнем поле, занимают место и используют все варианты', () => {
+    for (const site of sites) {
+      assert.ok(site.surroundings.length >= CASTLE_SURROUNDINGS.length, `сид ${site.loc.seed}: окружение пусто`);
+      const used = new Set(site.surroundings.map((p) => p.model));
+      for (const model of CASTLE_SURROUNDINGS) assert.ok(used.has(model), `сид ${site.loc.seed}: нет «${model}»`);
+      for (const piece of site.surroundings) {
+        assert.ok(
+          piece.x < 0 || piece.z < 0 || piece.x >= site.castle.width || piece.z >= site.castle.depth,
+          `сид ${site.loc.seed}: «${piece.model}» попала внутрь плана`,
+        );
+        const base = spotAt(site, piece);
+        let occupied = 0;
+        for (let dz = 0; dz < CASTLE_CELL; dz++) {
+          for (let dx = 0; dx < CASTLE_CELL; dx++) {
+            const x = Math.floor(base.x) + dx;
+            const z = Math.floor(base.z) + dz;
+            if (x < WOOD || z < WOOD || x >= site.loc.size - WOOD || z >= site.loc.size - WOOD) continue;
+            occupied += site.loc.blocked[idx(site.loc.size, x, z)] ?? 0;
+          }
+        }
+        assert.ok(occupied > 0, `сид ${site.loc.seed}: «${piece.model}» не занимает места`);
       }
     }
   });

@@ -190,140 +190,34 @@ export function drawEventGlyph(
 }
 
 /**
- * Значок вида места — канал «форма» из шести (§4.2). Прежде замок был голым
- * квадратом, и на карте он читался флагом клана-переростком: обе фигуры —
- * прямые углы одного цвета фона. Зубцы по верху оставляют силуэт квадратом —
- * канал не поменялся, — но называют вид места без легенды.
+ * Рисунки точек из Kenney Cartography Pack. `new URL` оставляет тестам
+ * обычный file URL, а Vite при сборке встраивает или переносит только семь
+ * выбранных PNG и подставляет их адреса. Исходный набор лежит в `assets/`,
+ * лицензия CC0 сохранена рядом.
  *
- * Рисуется в долях радиуса и только путём: заливку, кольцо и толщину кладёт
- * `draw()`, потому что цвет и толщина — свои каналы и сюда не входят.
- * Вынесено наружу тем же правилом, что `drawEventGlyph`: артбук `world.html`
- * рисует узлы этим же кодом, а копия разошлась бы молча.
+ * Кольцо больше не пытается быть одновременно картинкой места: оно остаётся
+ * кругом и несёт только богатство цветом и ярус толщиной. Внутри — отдельная
+ * иллюстрация Kenney, поэтому замок не приходится собирать из Canvas-линий,
+ * а вылазка наконец выглядит шахтой, а не безымянной точкой.
  */
-/**
- * Обод колеса призов в долях радиуса: восемь зубцов, четыре точки на зубец.
- * Считается один раз и с округлением до четырёх знаков — тогда след значка
- * масштабируется радиусом бит-в-бит при любом r, что и требует правило.
- */
-const WHEEL_POINTS: readonly (readonly [number, number])[] = (() => {
-  const teeth = 8;
-  const inner = 0.74;
-  const t = 0.34; // полширины зубца в долях шага
-  const round4 = (v: number): number => Math.round(v * 1e4) / 1e4;
-  const out: [number, number][] = [];
-  for (let i = 0; i < teeth; i++) {
-    const a0 = (i / teeth) * Math.PI * 2 - Math.PI / 2;
-    const half = Math.PI / teeth;
-    const push = (a: number, rad: number): void => {
-      out.push([round4(Math.cos(a) * rad), round4(Math.sin(a) * rad)]);
-    };
-    push(a0 - half * t, 1);
-    push(a0 + half * t, 1);
-    push(a0 + half * t, inner);
-    push(a0 + half * 2 - half * t, inner);
-  }
-  return out;
-})();
-
-export const NODE_ICON: Record<
-  NodeKind,
-  (ctx: CanvasRenderingContext2D, x: number, y: number, r: number) => void
-> = {
-  // Вылазка — круг: единственная форма под шкалу богатства и крест
-  // выработанной, ей значок не нужен — значок у неё кольцо.
-  'вылазка': (ctx, x, y, r) => {
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-  },
-  // Замок — стена с зубцами. Три зубца, а не пять: на радиусе в пять
-  // пикселей узкий зубец слипается в бахрому и силуэт возвращается
-  // к голому квадрату.
-  'замок': (ctx, x, y, r) => {
-    ctx.moveTo(x - r, y + r);
-    ctx.lineTo(x - r, y - r);
-    ctx.lineTo(x - r * 0.56, y - r);
-    ctx.lineTo(x - r * 0.56, y - r * 0.5);
-    ctx.lineTo(x - r * 0.2, y - r * 0.5);
-    ctx.lineTo(x - r * 0.2, y - r);
-    ctx.lineTo(x + r * 0.2, y - r);
-    ctx.lineTo(x + r * 0.2, y - r * 0.5);
-    ctx.lineTo(x + r * 0.56, y - r * 0.5);
-    ctx.lineTo(x + r * 0.56, y - r);
-    ctx.lineTo(x + r, y - r);
-    ctx.lineTo(x + r, y + r);
-    ctx.closePath();
-  },
-  // Рога над зубчатой стеной отличают владение минотавра ещё до карточки.
-  'замок минотавра': (ctx, x, y, r) => {
-    ctx.moveTo(x - r, y + r);
-    ctx.lineTo(x - r, y - r * 0.45);
-    ctx.lineTo(x - r * 0.65, y - r);
-    ctx.lineTo(x - r * 0.25, y - r * 0.45);
-    ctx.lineTo(x + r * 0.25, y - r * 0.45);
-    ctx.lineTo(x + r * 0.65, y - r);
-    ctx.lineTo(x + r, y - r * 0.45);
-    ctx.lineTo(x + r, y + r);
-    ctx.closePath();
-  },
-  // Кладбище — надгробие: плита со скруглённым верхом на основании.
-  // Прежний крест на пяти пикселях слипался со крестом «выработано»,
-  // который карта рисует поверх узлов тем же штрихом; плита — силуэт
-  // из самой локации (kenney-graveyard), и второго такого знака на карте нет.
-  'кладбище': (ctx, x, y, r) => {
-    ctx.moveTo(x - r, y + r);
-    ctx.lineTo(x - r, y + r * 0.55);
-    ctx.lineTo(x - r * 0.62, y + r * 0.55);
-    ctx.lineTo(x - r * 0.62, y - r * 0.38);
-    ctx.arc(x, y - r * 0.38, r * 0.62, Math.PI, 0);
-    ctx.lineTo(x + r * 0.62, y + r * 0.55);
-    ctx.lineTo(x + r, y + r * 0.55);
-    ctx.lineTo(x + r, y + r);
-    ctx.closePath();
-  },
-  // Колесо призов — колесо с зубцами-ручками: круг вылазки не спутать,
-  // у того контур гладкий, а здесь восемь выступов по ободу.
-  // Точки предвычислены в долях радиуса (WHEEL_POINTS): правило «значок
-  // масштабируется радиусом» сверяет след до шестого знака, и сырое
-  // cos/sin на месте расходилось с делением пополам последним знаком.
-  'призы': (ctx, x, y, r) => {
-    WHEEL_POINTS.forEach(([ux, uy], i) => {
-      if (i === 0) ctx.moveTo(x + ux * r, y + uy * r);
-      else ctx.lineTo(x + ux * r, y + uy * r);
-    });
-    ctx.closePath();
-  },
-  // Тропа — вьющаяся лента с двумя коленами: силуэт самой локации, спина
-  // которой виляет ровно так же. Лента, а не линия: пути значков заливаются,
-  // и у линии не было бы нутра.
-  'тропа': (ctx, x, y, r) => {
-    ctx.moveTo(x - r * 0.8, y + r);
-    ctx.lineTo(x + r * 0.1, y + r * 0.25);
-    ctx.lineTo(x - r * 0.3, y - r * 0.35);
-    ctx.lineTo(x + r * 0.35, y - r);
-    ctx.lineTo(x + r * 0.85, y - r);
-    ctx.lineTo(x + r * 0.2, y - r * 0.35);
-    ctx.lineTo(x + r * 0.6, y + r * 0.25);
-    ctx.lineTo(x - r * 0.3, y + r);
-    ctx.closePath();
-  },
+export const MAP_ICON_URL: Record<NodeKind, string> = {
+  'вылазка': new URL('../../assets/kenney-cartography/png/mine.png', import.meta.url).href,
+  'замок': new URL('../../assets/kenney-cartography/png/castle.png', import.meta.url).href,
+  'замок минотавра': new URL('../../assets/kenney-cartography/png/skull.png', import.meta.url).href,
+  'кладбище': new URL('../../assets/kenney-cartography/png/graveyard.png', import.meta.url).href,
+  'тропа': new URL('../../assets/kenney-cartography/png/pathCorner.png', import.meta.url).href,
+  'призы': new URL('../../assets/kenney-cartography/png/compass.png', import.meta.url).href,
 };
 
-/**
- * Палатка лагеря — вместо сплошной точки в золотом кольце. Точка говорила
- * «здесь что-то есть», палатка говорит «здесь живут»: тот же силуэт, что
- * у палатки на сцене лагеря. В узлы не входит — в лагерь не ходят,
- * и каналов узла у него нет.
- */
-export function drawCampTent(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  r: number,
-): void {
-  ctx.moveTo(x, y - r * 0.58);
-  ctx.lineTo(x + r * 0.62, y + r * 0.42);
-  ctx.lineTo(x - r * 0.62, y + r * 0.42);
-  ctx.closePath();
-}
+export const CAMP_ICON_URL = new URL(
+  '../../assets/kenney-cartography/png/tent.png',
+  import.meta.url,
+).href;
+
+/** Светлая тушь читается на тёмной земле; исходные PNG у Kenney чёрные. */
+const MAP_ICON_COLOR = '#e8e2d4';
+/** Картинка остаётся внутри кольца и не наступает на событие или флаг. */
+export const MAP_ICON_DIAMETER = 1.72;
 
 /** Лагерь на карте — свой, фракции или живого соседа. В узлы не входит:
  *  в лагерь не ходят, и ни яруса, ни богатства у него нет. */
@@ -432,6 +326,11 @@ export class WorldMap {
    */
   private only: number | null = null;
 
+  /** Исходные PNG и их окрашенные копии. Копия нужна потому, что набор
+   * нарисован чёрной тушью, а на тёмной земле карты она исчезает. */
+  private readonly iconImages = new Map<string, HTMLImageElement>();
+  private readonly iconTints = new Map<string, HTMLCanvasElement>();
+
   constructor(private readonly cb: WorldMapCallbacks) {
     this.root = document.createElement('div');
     this.root.className = 'sec map';
@@ -442,6 +341,7 @@ export class WorldMap {
     if (ctx === null) throw new Error('нет 2d-контекста для карты');
     this.ctx = ctx;
     this.canvas.addEventListener('pointerdown', (e) => this.pick(e));
+    this.loadMapIcons();
 
     this.card = document.createElement('div');
     this.card.className = 'card map-card';
@@ -466,6 +366,51 @@ export class WorldMap {
     this.sendRow.append(this.send, this.sendNote);
 
     this.root.append(this.canvas, this.card, this.note, this.go, this.sendRow);
+  }
+
+  /** Загружает семь маленьких файлов один раз. До загрузки остаются кольца;
+   * `load` тут же перерисует карту и положит внутрь готовые картинки. */
+  private loadMapIcons(): void {
+    const urls = new Set([...Object.values(MAP_ICON_URL), CAMP_ICON_URL]);
+    for (const url of urls) {
+      const image = new Image();
+      image.decoding = 'async';
+      image.addEventListener('load', () => {
+        this.iconTints.clear();
+        this.paint();
+      });
+      image.src = url;
+      this.iconImages.set(url, image);
+    }
+  }
+
+  /** Перекрашивает прозрачный PNG ровной тушью и кеширует результат.
+   * Исходные линии и альфа Kenney остаются неизменными. */
+  private tintedMapIcon(url: string, color: string): HTMLCanvasElement | null {
+    const image = this.iconImages.get(url);
+    if (image === undefined || !image.complete || image.naturalWidth === 0) return null;
+    const key = `${url}\n${color}`;
+    const ready = this.iconTints.get(key);
+    if (ready !== undefined) return ready;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx === null) return null;
+    ctx.drawImage(image, 0, 0);
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    this.iconTints.set(key, canvas);
+    return canvas;
+  }
+
+  private drawMapIcon(url: string, x: number, y: number, r: number, color: string): void {
+    const icon = this.tintedMapIcon(url, color);
+    if (icon === null) return;
+    const size = r * MAP_ICON_DIAMETER;
+    this.ctx.drawImage(icon, x - size / 2, y - size / 2, size, size);
   }
 
   /** Место, с которого карта открывается: самое богатое из тех, что есть.
@@ -643,20 +588,10 @@ export class WorldMap {
       ctx.lineWidth = 1;
       ctx.strokeStyle = color;
       ctx.stroke();
-      ctx.beginPath();
-      drawCampTent(ctx, x, y, r);
-      // Свой лагерь закрашен, чужие — контуром. Цветом их не различить:
-      // золото «Клана Отвала» (#C9A227) и золото своего лагеря (#c8a24a) —
-      // один и тот же цвет для глаза, и на карте стояли бы две одинаковые
-      // палатки. Заливка против контура читается и без цвета вовсе.
-      if (own) {
-        ctx.fillStyle = color;
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.4;
-        ctx.stroke();
-      }
+      // Палатка Kenney вместо собранного вручную треугольника. Своя золотая,
+      // чужие светлые: это разводит свой лагерь и золотой «Клан Отвала»,
+      // а цвет фракции остаётся на кольце.
+      this.drawMapIcon(CAMP_ICON_URL, x, y, r, own ? color : MAP_ICON_COLOR);
     }
 
     for (const node of this.region.nodes) {
@@ -686,11 +621,10 @@ export class WorldMap {
         ctx.stroke();
       }
 
-      // Замок — стена с зубцами, кладбище — крест, вылазка — круг. Форма,
-      // а не цвет: цвет на карте уже занят богатством, и второй смысл в него
-      // не влезает. Сами значки — в `NODE_ICON` наверху.
+      // Кольцо у всех точек одно: цвет занят богатством, толщина — ярусом.
+      // Вид места называет светлый рисунок Kenney внутри него.
       ctx.beginPath();
-      NODE_ICON[node.kind](ctx, x, y, r);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(11, 10, 9, 0.85)';
       ctx.fill();
       // Толщина кольца — ярус: цена места видна раньше подписи. У замка
@@ -699,6 +633,7 @@ export class WorldMap {
       ctx.lineWidth = walk ? 1.4 : 1 + node.tier * 0.9;
       ctx.strokeStyle = walk ? WALK_COLOR[node.kind] ?? '#c8a24a' : color;
       ctx.stroke();
+      this.drawMapIcon(MAP_ICON_URL[node.kind], x, y, r, MAP_ICON_COLOR);
 
       // Выработанная — крест. Цифру «0 из 3» на карте не прочитать, а решение
       // «сюда не иду» принимается взглядом.

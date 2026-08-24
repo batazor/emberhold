@@ -25,7 +25,22 @@ import { FOLK_MODELS, FOLK_SLOTS } from './folk.data';
 import { FOREST_SLOTS } from './forest.data';
 import { CASTLE_MODELS, CASTLE_SLOTS } from './castle.data';
 import { CASTLE_SCALE, castleGeometry } from './castle';
-import { PARTS, STAIRS, TOWER, TOWER_MAX, WALK, WALL_TOP, towerHeight } from '../sim/castle';
+import {
+  CASTLE_SURROUNDINGS,
+  FIXED_BRIDGES,
+  FREE_STAIRS,
+  GATE_LEAVES,
+  HEX_TOWER,
+  INNER_WALLS,
+  PARTS,
+  STAIR_PARTS,
+  TOWER,
+  TOWER_MAX,
+  WALL_BANNERS,
+  WALK,
+  WALL_TOP,
+  towerHeight,
+} from '../sim/castle';
 import { ELEVATION } from './scene';
 import {
   CASTLE_SLOT_ORDER,
@@ -39,15 +54,23 @@ import {
   SKELETON_SLOT_ORDER,
   WEAPONS_SLOT_ORDER,
 } from './palette';
-import { DUNGEON_SLOTS } from './dungeon.data';
+import { DUNGEON_MODELS, DUNGEON_SLOTS } from './dungeon.data';
+import { DUNGEON_HEIGHT_SCALE, DUNGEON_SCALE, dungeonModuleGeometry } from './dungeon';
+import {
+  DUNGEON_FLOORS,
+  DUNGEON_PILLARS,
+  DUNGEON_STAIRS,
+  DUNGEON_WALLS,
+} from '../sim/dungeonLayout';
 import { WEAPONS_MODELS, WEAPONS_SLOTS } from './weapons.data';
 import { WEAPON_LADDER, weaponOf } from './weapons';
 import { MAX_ITEM_LEVEL } from '../sim/gear';
-import { GRAVEYARD_SLOTS } from './graveyard.data';
+import { GRAVEYARD_MODELS, GRAVEYARD_SLOTS } from './graveyard.data';
 import { MINI_FOREST_MODELS, MINI_FOREST_SLOTS } from './miniForest.data';
 import { PROPS_MODELS, PROPS_SLOTS } from './props.data';
-import { FENCE_SCALE, fenceGeometry } from './graveyard';
+import { cryptGeometry, FENCE_SCALE, fenceGeometry } from './graveyard';
 import { FENCE, FENCE_MATERIALS } from '../sim/fence';
+import { CRYPT_STYLES } from '../sim/graveSite';
 import { SKELETON_SLOTS } from './skeleton.data';
 
 /**
@@ -393,6 +416,53 @@ describe('Артбук: бюджет треугольников', () => {
   });
 });
 
+/** Модульная архитектура подземелья (§6.1.2). */
+describe('Артбук: подземелье', () => {
+  test('каждая деталь конструктора запечена в бандл', () => {
+    for (const model of [...DUNGEON_FLOORS, ...DUNGEON_WALLS, ...DUNGEON_PILLARS, ...DUNGEON_STAIRS]) {
+      assert.ok(model in DUNGEON_MODELS, `«${model}» стоит в конструкторе, но в бандл не поехала`);
+    }
+  });
+
+  test('малый пол и половина стены равны клетке игры', () => {
+    for (const model of DUNGEON_FLOORS) {
+      const geo = dungeonModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 1) < 0.02, `${model}: пол не шириной в клетку`);
+      assert.ok(Math.abs(box.max.z - box.min.z - 1) < 0.02, `${model}: пол не глубиной в клетку`);
+      assert.ok(Math.abs(box.min.y) < 0.02, `${model}: пол висит над основанием`);
+    }
+    for (const model of DUNGEON_WALLS.filter((name) => name.startsWith('wall_half'))) {
+      const geo = dungeonModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 1) < 0.02, `${model}: половина стены не в клетку`);
+      assert.ok(Math.abs(box.min.y) < 0.02, `${model}: стена висит над основанием`);
+    }
+    assert.equal(DUNGEON_SCALE, 0.5, 'две единицы набора должны оставаться клеткой игры');
+  });
+
+  test('полная стена закрывает ровно две соседние грани', () => {
+    for (const model of DUNGEON_WALLS.filter((name) => !name.startsWith('wall_half'))) {
+      const geo = dungeonModuleGeometry(model);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.max.x - box.min.x - 2) < 0.02, `${model}: стена не на две клетки`);
+      assert.ok(Math.abs(box.max.y - 2 * DUNGEON_HEIGHT_SCALE) < 0.02, `${model}: высота разошлась с изометрией`);
+    }
+  });
+
+  test('готовое подземелье укладывается в свой потолок — килобайты', () => {
+    const source = readFileSync(new URL('./dungeon.data.ts', import.meta.url), 'utf8');
+    const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
+    const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
+    // 82 КБ после подключения полов, стен, колонн и лестниц округлены вверх
+    // до десятка. Следующая мебель потребует отдельного решения и бюджета.
+    assert.ok(kb <= 90, `набор подземелья: ${kb} КБ gzip > 90 КБ`);
+  });
+});
+
 /**
  * Замок (§6.1.6). Проверяется не то, красив ли он, а два обещания, которые
  * иначе протухнут молча: что конструктору есть чем строить и что стена
@@ -402,11 +472,25 @@ describe('Артбук: замок', () => {
   test('каждая деталь конструктора запечена в бандл', () => {
     const named = [
       ...Object.values(PARTS).flat().map((p) => p.model),
-      STAIRS.model,
+      ...STAIR_PARTS.map((p) => p.model),
       TOWER.base,
+      TOWER.keepBase,
       TOWER.cap,
       ...TOWER.body,
       ...TOWER.roofs,
+      ...TOWER.flags,
+      HEX_TOWER.base,
+      HEX_TOWER.body,
+      ...HEX_TOWER.tops,
+      ...HEX_TOWER.roofs,
+      ...INNER_WALLS.stone,
+      ...INNER_WALLS.wood,
+      ...GATE_LEAVES,
+      ...FREE_STAIRS,
+      ...FIXED_BRIDGES,
+      ...WALL_BANNERS,
+      ...CASTLE_SURROUNDINGS,
+      'bridge-draw',
     ];
     for (const model of named) {
       assert.ok(
@@ -570,25 +654,42 @@ describe('Артбук: замок', () => {
     assert.ok(Math.abs(box.min.y) < 0.02, 'основание ограды не на нуле');
   });
 
+  test('каждая часть пяти склепов запечена, а сборные стоят на одном основании', () => {
+    for (const style of CRYPT_STYLES) {
+      for (const name of [style.body, style.roof, style.door]) {
+        if (name === null) continue;
+        assert.ok(name in GRAVEYARD_MODELS, `${name}: генератор знает модель, которой нет в бандле`);
+      }
+      const geo = cryptGeometry(style);
+      geo.computeBoundingBox();
+      const box = geo.boundingBox!;
+      assert.ok(Math.abs(box.min.y) < 0.02, `${style.body}: склеп висит над землёй`);
+      if (style.roof !== null) {
+        assert.ok(box.max.y > 2.4 && box.max.y < 2.5, `${style.body}: крыша разошлась с корпусом`);
+      }
+    }
+  });
+
   test('готовое кладбище укладывается в свой потолок — килобайты', () => {
     const source = readFileSync(new URL('./graveyard.data.ts', import.meta.url), 'utf8');
     const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
     const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
-    // Потолок посчитан, а не выбран: это всё, что взято сейчас, округлённое
-    // вверх до десятка. Набор закрывает сразу четыре задачи — ограды, лес,
-    // кладбище и противника, — и потому вдвое тяжелее замка; упереться в этот
-    // потолок можно один раз, за ним решение брать из набора больше.
-    assert.ok(kb <= 60, `набор кладбища: ${kb} КБ gzip > 60 КБ`);
+    // Потолок посчитан, а не выбран: 66 КБ после подключения восьми частей
+    // склепов округлены вверх до десятка. Набор закрывает ограды, лес,
+    // кладбище, пять силуэтов склепа и противника; следующий рост снова
+    // потребует отдельного решения, а не незаметно раздует общий бандл.
+    assert.ok(kb <= 70, `набор кладбища: ${kb} КБ gzip > 70 КБ`);
   });
 
   test('готовый замок укладывается в свой потолок — килобайты', () => {
     const source = readFileSync(new URL('./castle.data.ts', import.meta.url), 'utf8');
     const blobs = [...source.matchAll(/'([A-Za-z0-9+/]{40,}={0,2})'/g)].map((m) => m[1]!).join('');
     const kb = Math.round(gzipSync(Buffer.from(blobs), { level: 9 }).length / 1024);
-    // Потолок посчитан, а не выбран: это всё, что взято сейчас, округлённое
-    // вверх до десятка. Упереться в него можно один раз — за ним не «ещё одна
-    // деталь», а решение брать из набора больше.
-    assert.ok(kb <= 40, `набор замка: ${kb} КБ gzip > 40 КБ`);
+    // После второго прохода набор закрывает не только внешнее кольцо, но ещё
+    // ров, внутренние укрепления, второй стиль башен и собственное окружение.
+    // Фактический размер округлён вверх до десятка; следующий рост снова
+    // потребует осознанно поднять этот потолок.
+    assert.ok(kb <= 70, `набор замка: ${kb} КБ gzip > 70 КБ`);
   });
 
   test('геометрия детали приходит в клетку локации, а не в единицы набора', () => {

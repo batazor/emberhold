@@ -1451,6 +1451,18 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .battle-turn .good { color: var(--good); }
 /* Очередь — порядком, а не числами: игрок читает, кто следующий. */
 .battle-order { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.battle-threat {
+  min-height: 1.2em; font-size: 12px; color: var(--warn); text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.battle-counter {
+  min-height: 1.2em; max-width: 330px; font-size: 10px; color: var(--bad);
+  line-height: 1.25; text-align: center;
+}
+.battle-defense {
+  min-height: 1.2em; font-size: 10px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .turn-chip {
   padding: 2px 7px; border-radius: 999px; font-size: 11px;
   background: var(--fill); color: var(--dim);

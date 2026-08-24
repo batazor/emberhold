@@ -13,6 +13,8 @@
  * «пока ничего» — это обещание содержимого, которого игра не давала.
  */
 import type { Entry } from '../sim/chronicle';
+import { setGameText } from '../i18n/game';
+import { gameMessages } from '../i18n/gameMessages';
 
 export interface StartScreenCallbacks {
   onPlay(): void;
@@ -27,10 +29,11 @@ export class StartScreen {
     this.root.id = 'start';
     this.root.innerHTML = `
       <div id="chron" class="panel"></div>
-      <button data-act="play">Играть</button>`;
+      <button data-act="play"></button>`;
     this.root.style.display = 'none';
     parent.appendChild(this.root);
     this.chron = this.root.querySelector('#chron') as HTMLElement;
+    setGameText(this.root.querySelector('[data-act="play"]') as HTMLButtonElement, gameMessages.startPlay);
     this.setChronicle([]);
 
     this.root.addEventListener('click', (e) => {

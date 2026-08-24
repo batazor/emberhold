@@ -283,15 +283,25 @@ const DUNGEON: Pack = {
   fallback: 'stone',
   categoryOf: (name) => DUNGEON_CATEGORIES[name.split('_')[0]!] ?? 'Прочее',
   /**
-   * Две модели — сундуки, запечённые закрытыми (крышка вливается в корпус:
-   * модель здесь — файл, а не узел). Простой — хранилище лагеря и замка,
-   * золотой — редкая находка яруса 3. Остальные модели набора по-прежнему
-   * не едут: предмет заводится вместе с механикой, которая его показывает.
+   * Сундуки остаются предметами, а модульные полы, стены, колонны и лестницы
+   * теперь собирают визуальный слой яруса поверх проходимости симуляции.
+   * Берём только детали, для которых есть правило размещения: так расширение
+   * набора не превращается в неиспользуемый вес у каждого игрока.
    */
   // Связка колец — значок кольца §14: своей модели у кольца нет ни в одном
   // наборе, а на игровой камере оно мельче пикселя. В списке Мастерской
   // оно живёт значком, и берётся ради него одного.
-  adopted: ['chest', 'chest_gold', 'keyring'],
+  adopted: [
+    'chest', 'chest_gold', 'keyring',
+    'floor_dirt_small_A', 'floor_dirt_small_B', 'floor_dirt_small_C', 'floor_dirt_small_D',
+    'floor_tile_small', 'floor_tile_small_broken_A', 'floor_tile_small_broken_B',
+    'floor_tile_small_corner', 'floor_tile_small_decorated',
+    'floor_wood_small', 'floor_wood_small_dark',
+    'wall', 'wall_arched', 'wall_pillar', 'wall_window_closed', 'wall_archedwindow_gated',
+    'wall_half', 'wall_half_endcap', 'wall_half_endcap_sloped',
+    'pillar', 'pillar_decorated',
+    'stairs_narrow', 'stairs_wall_left', 'stairs_wall_right',
+  ],
   data: { file: 'src/render/dungeon.data.ts', prefix: 'DUNGEON', type: 'Dungeon' },
 };
 
@@ -804,30 +814,45 @@ const CASTLE: Pack = {
    * лестница, арка ворот, ярусы башни и два знамени. Что список и словарь
    * не разошлись, проверяет `castle.rules.ts`.
    *
-   * Вторые варианты тройника и яруса с дверью не взяты: они стоили бы
-   * шестьсот треугольников у каждого игрока за разнообразие, которого
-   * в кадре не видно.
+   * Дверной ярус был взят, когда у него появилась семантика: только первый
+   * этаж донжона, никогда башня на стене. Открытый ярус и крыша с окнами
+   * меняют силуэт, лестница с перилами — маршрут во дворе, а подъёмный мост
+   * называет вход ещё до арки. Это не фоновые варианты: каждый отвечает на свой
+   * вопрос генератора.
    *
-   * Осадные машины не взяты ни одна: почти половина треугольников набора
-   * лежит в них, а осады в игре нет.
+   * Второй слой набора работает уже не как внешнее кольцо: шестигранные
+   * башни задают стиль силуэта, узкие стены делят двор, прямой мост держит
+   * подход над рвом, а скалы с деревьями площадка мира ставит за дозором.
+   * Осадные машины по-прежнему не взяты: осады в игре нет.
    */
   adopted: [
     // Формы стыка: одиночная, тупик, прямая, угол, тройник.
     'tower-square',
     'wall-to-narrow',
     'wall', 'wall-pillar',
-    'wall-corner', 'wall-corner-slant', 'wall-corner-half-tower',
+    'wall-corner', 'wall-corner-slant', 'wall-corner-half', 'wall-corner-half-tower',
     'wall-half',
-    // Лестница со двора и проезд ворот со створкой.
-    'wall-narrow-stairs',
-    'tower-square-arch', 'gate',
+    // Лестницы и внутренние укрепления двора.
+    'wall-narrow-stairs', 'wall-narrow-stairs-rail', 'stairs-stone', 'stairs-stone-square',
+    'wall-narrow', 'wall-doorway', 'wall-half-modular', 'wall-narrow-gate',
+    'wall-narrow-wood', 'wall-narrow-wood-fence',
+    // Проезд: арка, три створки, подъёмное полотно и каменная опора над рвом.
+    'tower-square-arch', 'gate', 'door', 'metal-gate',
+    'bridge-draw', 'bridge-straight', 'bridge-straight-pillar',
     // Башня: этаж, ярусы, шапка и крыши.
     'tower-square-base',
-    'tower-square-mid', 'tower-square-mid-windows',
+    'tower-square-mid', 'tower-square-mid-windows', 'tower-square-mid-open', 'tower-square-mid-door',
     'tower-square-top',
     'tower-square-top-roof', 'tower-square-top-roof-high', 'tower-square-top-roof-rounded',
-    // Знамёна: на донжоне и на угловых башенках.
-    'flag', 'flag-pennant',
+    'tower-square-top-roof-high-windows',
+    // Отдельный стиль угловых башен со своими высотами ярусов.
+    'tower-hexagon-base', 'tower-hexagon-mid',
+    'tower-hexagon-top', 'tower-hexagon-top-wood',
+    'tower-hexagon-roof', 'tower-hexagon-roof-secondary',
+    // Знамёна: на донжоне, башенках и внешней плоскости стен.
+    'flag', 'flag-wide', 'flag-pennant', 'flag-banner-short', 'flag-banner-long',
+    // Окружение выбирает генератор площадки мира, а не план здания.
+    'rocks-large', 'rocks-small', 'tree-large', 'tree-small',
   ],
   data: { file: 'src/render/castle.data.ts', prefix: 'CASTLE', type: 'CastlePart' },
 };
@@ -928,9 +953,10 @@ const GRAVEYARD: Pack = {
    * отрезка смыкаются сами. Три дуги набора решают задачу, которой
    * у конструктора нет, и стоили бы 1190 треугольников у каждого игрока.
    *
-   * Не взято: склепы, фонари, тыквы, сено, утварь и четверо существ
-   * из пяти. Кладбище — локация без наполнения (§4), и всё это ждёт того же
-   * дня, что и наполнение замка.
+   * Не взято: фонари, тыквы, сено, утварь и четверо существ из пяти.
+   * Восемь оставшихся деталей склепов теперь замыкают отдельный генератор:
+   * два низких варианта стоят самостоятельно, а малый и большой собираются
+   * из корпуса, своей крыши и подходящей по ширине двери.
    */
   adopted: [
     // Ограда: дерево. Столб — на изломе.
@@ -944,9 +970,13 @@ const GRAVEYARD: Pack = {
     // Лес: хвоя, осенняя хвоя и два пенька.
     'pine', 'pine-crooked', 'pine-fall', 'pine-fall-crooked',
     'trunk', 'trunk-long',
-    // Кладбище: могила, надгробия, крест, склеп, гроб.
+    // Кладбище: могила, надгробия, крест, пять вариантов склепа и гроб.
     'grave', 'gravestone-cross', 'gravestone-round', 'gravestone-bevel',
-    'cross', 'crypt', 'coffin',
+    'cross',
+    'crypt', 'crypt-a', 'crypt-b',
+    'crypt-small', 'crypt-small-roof', 'crypt-door',
+    'crypt-large', 'crypt-large-roof', 'crypt-large-door',
+    'coffin',
     // Единственный противник локации (§15).
     'character-ghost',
   ],
