@@ -570,7 +570,7 @@ msgstr "- I''m {value0}."
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "— Я ZXQPH0QXZ. Лес мой, топор мой."
-msgstr "— I am ZXQPH0QXZ. The forest is mine, the axe is mine."
+msgstr "— I am {value0}. The forest is mine, the axe is mine."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -3127,7 +3127,7 @@ msgstr "{value0} has nowhere to wear."
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "ZXQPH0QXZ нанят · монеты −ZXQPH1QXZ"
-msgstr "ZXQPH0QXZ hired · coins −ZXQPH1QXZ"
+msgstr "{value0} hired · coins −{value1}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -3222,7 +3222,7 @@ msgstr "{value0}: back without foxes"
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "ZXQPH0QXZ: добывать пищу"
-msgstr "ZXQPH0QXZ: send for food"
+msgstr "{value0}: send for food"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -18129,12 +18129,12 @@ msgstr "Equipped"
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Наём: монеты ZXQPH0QXZ"
-msgstr "Hire: coins ZXQPH0QXZ"
+msgstr "Hire: coins {value0}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Наём: монеты ZXQPH0QXZ · Монет на уговор не хватает"
-msgstr "Hire: coins ZXQPH0QXZ · Not enough coins for the deal"
+msgstr "Hire: coins {value0} · Not enough coins for the deal"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
