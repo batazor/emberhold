@@ -1,5 +1,7 @@
 import { cpSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import babel from '@rolldown/plugin-babel';
+import { lingui, linguiTransformerBabelPreset } from '@lingui/vite-plugin';
 import { defineConfig } from 'vite';
 
 // Порт назначает среда через PORT: в проекте нет ничего, что требовало бы
@@ -21,6 +23,8 @@ const pages = Object.fromEntries(
 
 export default defineConfig({
   plugins: [
+    lingui(),
+    babel({ presets: [linguiTransformerBabelPreset()] }),
     {
       // Артбуки читают каталоги и .gltf из assets/ на живом сайте так же,
       // как на dev-сервере. В public/ папку не переносим: её адрес зашит

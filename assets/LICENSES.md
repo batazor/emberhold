@@ -29,6 +29,7 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kenney-castle-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-graveyard-kit/glb/*.glb` — 91 модель: ограды, склепы, могилы, надгробия, хвоя, пеньки, тыквы, утварь, пятеро существ | [kenney.nl/assets/graveyard-kit](https://kenney.nl/assets/graveyard-kit), версия 5.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-graveyard-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
+| `kenney-cartography/png/*.png` — 7 retina-рисунков глобальной карты: шахта, замок, череп, кладбище, тропа, компас и палатка | [kenney.nl/assets/cartography-pack](https://kenney.nl/assets/cartography-pack), версия 1.0 | CC0 1.0 | Kenney Vleugels |
 | `kaykit-builder/glb/**/*.glb` — 226 моделей: 30 объектов (постройки, стены, мосты, рельеф, растительность), 68 квадратных плиток и 128 гексов | [kaylousberg.itch.io/kaykit-medieval-builder-pack](https://kaylousberg.itch.io/kaykit-medieval-builder-pack), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
 | `quaternius-ual/gltf/UAL1_Standard.glb`, `UAL1_Standard_RM.glb` — 42 скелетных клипа на манекене 65 костей; второй файл — те же клипы с ходом в корне | [quaternius.itch.io/universal-animation-library](https://quaternius.itch.io/universal-animation-library), тариф Standard (бесплатный) | CC0 1.0 | Quaternius |
@@ -53,7 +54,8 @@ NC-лицензии несовместимы с любой монетизаци�
 `kaykit-adventurers/License.txt`, `kaykit-resources/License.txt`,
 `kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
 `kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`,
-`kenney-graveyard-kit/License.txt`, `quaternius-ual/License.txt` и
+`kenney-graveyard-kit/License.txt`, `kenney-cartography/License.txt`,
+`quaternius-ual/License.txt` и
 `kaykit-tools/License.txt` — файлы лицензий как они пришли
 в архивах, без правок.
 
