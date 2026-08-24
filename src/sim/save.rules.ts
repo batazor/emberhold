@@ -12,6 +12,12 @@ import { createRoster, syncRoster } from './heroes';
 import { emptyGear } from './gear';
 import { ticketOf } from './sortie';
 import { residentUuid } from './residents';
+import {
+  FARM_DEFAULT_CROP,
+  FARM_PLOT_COUNT,
+  FARM_STARTING_PLOT_COUNT,
+  emptyFarmPlots,
+} from './farm';
 import { load, save, wipe } from './save';
 
 /** Поддельный localStorage: тесты сейва живут без браузера. */
@@ -282,6 +288,47 @@ describe('Сохранение', () => {
     assert.ok(first !== undefined && typeof first.seed === 'number', 'жилец без лица');
     assert.equal(first.seed, second?.seed, 'лицо поменялось между загрузками');
     wipe();
+  });
+});
+
+describe('Сохранение: огород', () => {
+  test('новая вместимость сохраняется, а старый шестигрядочный урожай не пропадает', () => {
+    const store = fakeStore();
+    const camp = createCamp();
+    camp.farm = {
+      foodAtStart: 10,
+      gatheredFood: 30,
+      step: 'done',
+      unlocked: true,
+      activePlots: FARM_STARTING_PLOT_COUNT,
+      selectedCrop: 'turnip',
+      plots: emptyFarmPlots(),
+    };
+    save(camp, createRoster(), 100);
+    const raw = JSON.parse(store.get('emberhold/save')!) as {
+      farm: {
+        activePlots?: number;
+        selectedCrop?: string;
+        plots: ({ plantedAt: number; crop?: string } | null)[];
+      };
+    };
+    assert.equal(raw.farm.activePlots, FARM_STARTING_PLOT_COUNT);
+    assert.equal(raw.farm.selectedCrop, 'turnip');
+
+    // Срез до балансировки не писал вместимость и позволял сеять все шесть.
+    delete raw.farm.activePlots;
+    delete raw.farm.selectedCrop;
+    raw.farm.plots = Array(FARM_PLOT_COUNT).fill(null);
+    raw.farm.plots[5] = { plantedAt: 50 };
+    store.set('emberhold/save', JSON.stringify(raw));
+    const back = load().camp.farm;
+    assert.equal(back?.activePlots, FARM_STARTING_PLOT_COUNT);
+    assert.equal(back?.selectedCrop, FARM_DEFAULT_CROP, 'старый сейв остался без выбора культуры');
+    assert.deepEqual(
+      back?.plots[5],
+      { plantedAt: 50, crop: FARM_DEFAULT_CROP },
+      'старый урожай потерян',
+    );
   });
 });
 
