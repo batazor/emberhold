@@ -195,9 +195,9 @@
   </main>
 </div>
 
-<script vite-ignore src="./language.js"></script>
+<script type="module" src="/src/i18n/browser.ts"></script>
 
-<script>
+<script type="module">
 (() => {
   'use strict';
 
@@ -611,15 +611,19 @@
   }
   addEventListener('keydown', keys);
 
-  $('hNum').textContent = numeral(BOOKS.length);
-  $('hWord').textContent = plural(BOOKS.length, 'артбук', 'артбука', 'артбуков');
-  $('cNum').textContent = numeral(BOOKS.length);
-  $('cWord').textContent = plural(BOOKS.length, 'документ', 'документа', 'документов');
+  const syncLanguage = () => {
+    $('hNum').textContent = numeral(BOOKS.length);
+    $('hWord').textContent = plural(BOOKS.length, 'артбук', 'артбука', 'артбуков');
+    $('cNum').textContent = numeral(BOOKS.length);
+    $('cWord').textContent = plural(BOOKS.length, 'документ', 'документа', 'документов');
+    paint();
+    shelves();
+  };
+  addEventListener('emberhold-language-ready', syncLanguage);
 
   theme.apply();
   window.EmberholdLanguage?.toggle($('language'));
-  paint();
-  shelves();
+  syncLanguage();
   fromHash();
 })();
 </script>
