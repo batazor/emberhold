@@ -26,6 +26,7 @@ import { graveyardGeometry } from './graveyard';
 import { hutParts } from './hut';
 import { skeletonGeometry, skeletonParts } from './skeleton';
 import { foxGeometry } from './fox';
+import { survivalTentGeometry } from './survival';
 
 /**
  * Модели из артбука. Формы взяты из `artbook.html` (раздел 03 — здания,
@@ -482,6 +483,7 @@ const hutLodge = (): THREE.BufferGeometry =>
   hutParts({ door: 'plank', window: 'cross' }, HUT_HEIGHT).body.clone();
 
 export const buildingGeometry = (id: BuildingId, level: number): THREE.BufferGeometry => {
+  if (id === 'hq' && stageOf(level) === 0) return survivalTentGeometry('complete').clone();
   if (id === 'hq' && stageOf(level) === 1) return hutLodge();
   return merge(BUILDING_STAGES[id][stageOf(level)]());
 };
@@ -646,6 +648,11 @@ const DWELLER_MODEL: Record<DwellerLook, FolkModelName> = {
   // `hand.r` и ходят вместе с кистью в любом клипе.
   'кузнец': 'Blacksmith',
   'охотник': 'Hunter',
+  // Лесник (§6.1.6.3) нанимается у замка из набора Mini Forest (§6.1.18),
+  // а живёт в лагере — значит и рисуется тем же способом, что все жильцы:
+  // своей моделью на общем риге. Предмета в кулаке у него нет — топор ему
+  // кладёт занятие (§6.1.14), и на камне он берёт кайло.
+  'лесник': 'Forester',
 };
 
 /**

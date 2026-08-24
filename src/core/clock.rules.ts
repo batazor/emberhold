@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Clock } from './clock';
+import { Clock, formatDuration } from './clock';
 
 /**
  * Часы §6. Проверяется ровно то, ради чего заведена серверная половина:
@@ -84,5 +84,10 @@ describe('Часы', () => {
       clock.sync(2_000_000_000);
       assert.equal(clock.now(), 2_000_000_500);
     });
+  });
+
+  it('остаток часа переносится в часы, а не показывает 60 минут', () => {
+    assert.equal(formatDuration(4 * 3600 - 1), '4 ч');
+    assert.equal(formatDuration(3 * 3600 + 31 * 60), '3 ч 31 мин');
   });
 });

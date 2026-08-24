@@ -15,11 +15,44 @@
  * подставленное имя тапом и не печатает ни буквы. Форма от этого не
  * возникает — возникает согласие.
  */
-import { GUEST_FROM_TEXT, GUEST_SEEK_TEXT, GUEST_TERM_TEXT, termLine } from '../sim/castleGuest';
 import type { CastleGuest, GuestMeet } from '../sim/castleGuest';
-import { MAX_NAME, SELF_ANSWERS, SELF_HINT, SELF_LABEL, giftLine, giftOf } from '../sim/settler';
+import { termLine } from '../sim/castleGuest';
+import type { GuestOrigin, GuestSeek, GuestTerm } from '../sim/castleGuest';
+import { MAX_NAME, SELF_ANSWERS, giftLine, giftOf } from '../sim/settler';
 import type { MeetState, SelfAnswer, Settler } from '../sim/settler';
+
+import type { HireBlock, WoodsmanPost, WoodsmanTalk } from '../sim/woodsman';
 import { avatarSvg } from './avatar';
+import { gameMessage, gameText, setGameText, type GameMessageValues } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
+
+const selfCopy: Record<SelfAnswer, { label: GameMessage; hint: GameMessage }> = {
+  строим: {
+    label: gameMessage('Строим лагерь', 'We are building a camp'),
+    hint: gameMessage('Под крышей гость будет рубить дерево и пополнять кладовую', 'With shelter, the guest will gather wood for storage'),
+  },
+  ходим: {
+    label: gameMessage('Ходим в вылазки', 'We go on raids'),
+    hint: gameMessage('Под крышей гость будет добывать камень и пополнять кладовую', 'With shelter, the guest will gather stone for storage'),
+  },
+};
+
+const guestFromCopy: Record<GuestOrigin, GameMessage> = {
+  хутор: gameMessage('— С хутора за лесом. Хутора больше нет, вот и скитаюсь.', '— From the farmstead beyond the woods. It is gone now, so I wander.'),
+  застава: gameMessage('— Со сторожевой заставы. Смена кончилась, а возвращаться некуда.', '— From the watch post. My shift ended, but I have nowhere to return.'),
+  обоз: gameMessage('— Шёл с обозом. Обоз ушёл дальше, а я остался.', '— I traveled with a caravan. It moved on; I stayed behind.'),
+  берег: gameMessage('— С берега за холмами. Вода поднялась выше крыши.', '— From the shore beyond the hills. The water rose above our roof.'),
+};
+const guestSeekCopy: Record<GuestSeek, GameMessage> = {
+  дело: gameMessage('— Ищу место, где строят. Руки помнят дерево.', '— I seek a place where people build. My hands know timber.'),
+  дорога: gameMessage('— Ищу спуск под землю. Камень — работа мне знакомая.', '— I seek a way underground. I know how to work stone.'),
+};
+const guestTermCopy: Record<GuestTerm, GameMessage> = {
+  даром: gameMessage('— Ничего не возьму. Место у огня — и по рукам.', '— I ask for nothing. A place by the fire, and we have a deal.'),
+  долг: gameMessage('— Я задолжал страже. Погасишь долг камнем — пойду.', '— I owe the guard. Pay my debt in stone, and I will come.'),
+  родня: gameMessage('— Родным надо собраться в дорогу. Дашь дерева — я с тобой.', '— My family needs supplies for the road. Give them timber, and I am with you.'),
+  изба: gameMessage('— Хватит с меня палаток. Встанет изба — перееду.', '— I have had enough of tents. Build a house and I will move in.'),
+};
 
 export interface MeetPanelCallbacks {
   /** Игрок принял имя — своё или подставленное. */
@@ -29,6 +62,11 @@ export interface MeetPanelCallbacks {
   onAdvance(): void;
   onInvite(): void;
 }
+
+/** Почему лесника не нанять (`sim/woodsman.ts`): слова причины — в панели. */
+const HIRE_REASON_MESSAGE = {
+  coins: gameMessage('Монет на уговор не хватает', 'Not enough coins for the deal'),
+} as const;
 
 export class MeetPanel {
   private readonly root: HTMLElement;
@@ -98,13 +136,13 @@ export class MeetPanel {
     }
 
     if (state.step === 'он') {
-      this.line.textContent = `— Я ${settler.name}.`;
-      this.act('Назваться', () => this.cb.onAdvance());
+      setGameText(this.line, gameMessage('— Я {name}.', '— I’m {name}.'), { name: settler.name });
+      this.act(gameMessage('Назваться', 'Introduce yourself'), () => this.cb.onAdvance());
       return;
     }
 
     if (state.step === 'ты') {
-      this.line.textContent = '— А тебя как звать?';
+      setGameText(this.line, gameMessage('— А тебя как звать?', '— And what should I call you?'));
       this.field.style.display = 'block';
       // Значение ставится только на входе в кадр: перетирать его на каждой
       // перерисовке значило бы стирать то, что игрок печатает.
@@ -112,27 +150,29 @@ export class MeetPanel {
         this.field.value = state.heroName;
         this.field.dataset.step = 'ты';
       }
-      this.act('Так и звать', () => this.cb.onName(this.field.value));
+      this.act(gameMessage('Так и звать', 'That’s right'), () => this.cb.onName(this.field.value));
       return;
     }
 
     if (state.step === 'вопрос') {
       this.field.dataset.step = '';
-      this.line.textContent = `— ${state.heroName}. Чем у вас там живут?`;
+      setGameText(this.line, gameMessage('— {name}. А чем у вас в лагере промышляют?', '— {name}. What keeps your camp going?'), { name: state.heroName });
       for (const answer of SELF_ANSWERS) {
-        this.act(SELF_LABEL[answer], () => this.cb.onAnswer(answer), SELF_HINT[answer]);
+        this.act(selfCopy[answer].label, () => this.cb.onAnswer(answer), selfCopy[answer].hint);
       }
       return;
     }
 
     const gift = giftOf(state);
-    this.line.textContent = gift === null ? '— Возьми, что есть.' : '— Возьми, что было.';
+    setGameText(this.line, gift === null
+      ? gameMessage('— Возьми, что есть.', '— Take what I have.')
+      : gameMessage('— Возьми, что осталось.', '— Take what I had left.'));
     // Дар отдельной строкой, а не внутри реплики: это перечень с числами,
     // и в кавычках прямой речи он читался бы репликой, которую человек
     // произносит вслух.
     this.goods.textContent = gift === null ? '' : giftLine(gift);
     this.goods.style.display = gift === null ? 'none' : 'block';
-    this.act('Позвать с собой', () => this.cb.onInvite());
+    this.act(gameMessage('Позвать с собой', 'Invite along'), () => this.cb.onInvite());
   }
 
   /**
@@ -156,36 +196,99 @@ export class MeetPanel {
     }
 
     if (state.step === 'кто') {
-      this.line.textContent = `— Я ${guest.who.name}. Сижу у огня, жду попутчиков.`;
-      this.act('Спросить, откуда', () => this.cb.onAdvance());
+      setGameText(this.line, gameMessage('— Я {name}. Жду у огня попутчиков.', '— I’m {name}. Waiting by the fire for someone headed my way.'), { name: guest.who.name });
+      this.act(gameMessage('Спросить, откуда', 'Ask where they are from'), () => this.cb.onAdvance());
       return;
     }
 
     if (state.step === 'откуда') {
-      this.line.textContent = GUEST_FROM_TEXT[guest.origin];
-      this.act('Спросить, что ищет', () => this.cb.onAdvance());
+      setGameText(this.line, guestFromCopy[guest.origin]);
+      this.act(gameMessage('Спросить, что ищет', 'Ask what they seek'), () => this.cb.onAdvance());
       return;
     }
 
     // Цену гость называет в ответ на приглашение (`GuestStep`): кнопка
     // «Позвать» открывает уговор, а не заключает его.
     if (state.step === 'дело') {
-      this.line.textContent = GUEST_SEEK_TEXT[guest.seek];
-      this.act('Позвать в лагерь', () => this.cb.onAdvance());
+      setGameText(this.line, guestSeekCopy[guest.seek]);
+      this.act(gameMessage('Позвать в лагерь', 'Invite to camp'), () => this.cb.onAdvance());
       return;
     }
 
-    this.line.textContent = GUEST_TERM_TEXT[guest.term];
+    setGameText(this.line, guestTermCopy[guest.term]);
     // Цена отдельной строкой, как дар знакомства: перечень с числами
     // в кавычках прямой речи читался бы репликой.
     const cost = termLine(guest.term);
     this.goods.textContent = cost;
     this.goods.style.display = cost === '' ? 'none' : 'block';
     this.act(
-      'По рукам',
+      gameMessage('По рукам', 'Deal'),
       () => this.cb.onInvite(),
-      'Палатку и костёр заберёт с собой, место в лагере выберет сам',
+      gameMessage('Палатку и костёр заберёт с собой, место в лагере выберет сам', 'They will bring their tent and campfire and choose a place in camp'),
     );
+  }
+
+  /**
+   * Наём лесника у стен замка (`sim/woodsman.ts`, §6.1.6.3). Панель та же,
+   * что у знакомства и у гостя, и по той же причине без кнопки «закрыть»:
+   * отойти можно в любой момент. Кадра два, тапов столько же.
+   *
+   * Лицо рисуется ремеслом, а не тем, с чем человек пришёл: у поста стоит
+   * лесник, и в кружке он обязан быть лесником — тем же, каким войдёт
+   * в лагерь (`residentLook`).
+   */
+  showWoodsman(post: WoodsmanPost, state: WoodsmanTalk, price: number, block: HireBlock): void {
+    this.root.style.display = state.step === 'кончено' ? 'none' : 'flex';
+    if (state.step === 'кончено') return;
+
+    this.buttons.replaceChildren();
+    this.field.style.display = 'none';
+    this.goods.style.display = 'none';
+    const face = `лесник/${post.who.seed}`;
+    if (this.face.dataset['who'] !== face) {
+      this.face.dataset['who'] = face;
+      this.face.innerHTML = avatarSvg('лесник', post.who.seed);
+    }
+
+    if (state.step === 'кто') {
+      setGameText(
+        this.line,
+        gameMessage('— Я {name}. Лес мой, топор мой.', '— I’m {name}. My forest, my axe.'),
+        { name: post.who.name },
+      );
+      this.act(gameMessage('Спросить о цене', 'Ask about the price'), () => this.cb.onAdvance());
+      return;
+    }
+
+    setGameText(this.line, gameMessage(
+      '— Найми меня — буду валить для тебя лес. Кормить будешь ты.',
+      '— Hire me and I will fell timber for you. You provide the food.',
+    ));
+    // Цена и то, чего не хватает, — одной строкой: игрок должен видеть
+    // и сколько просят, и почему нельзя, а не гадать по погасшей кнопке.
+    if (block === 'ok') {
+      setGameText(this.goods, gameMessage('Плата за наём: {price} монет', 'Hiring fee: {price} coins'), { price });
+    } else {
+      setGameText(
+        this.goods,
+        gameMessage('Плата за наём: {price} монет · {reason}', 'Hiring fee: {price} coins · {reason}'),
+        { price, reason: gameText(HIRE_REASON_MESSAGE[block]) },
+      );
+    }
+    this.goods.style.display = 'block';
+    const hire = this.act(
+      gameMessage('Нанять', 'Hire'),
+      () => this.cb.onInvite(),
+      block === 'ok'
+        ? gameMessage(
+            'Рубит дерево вдвое быстрее; ест как все и работает, пока есть крыша',
+            'Gathers wood twice as fast; eats like everyone else and works while sheltered',
+          )
+        : gameMessage('Монет не хватает — возвращайся с платой', 'Not enough coins — return when you can pay'),
+    );
+    // Кнопка гаснет, а не отказывает нажатием: цена названа рядом, и жать
+    // на «нанять» с пустым кошельком незачем.
+    hire.disabled = block !== 'ok';
   }
 
   /** Фокус в поле — отдельным вызовом: телефон открывает клавиатуру только
@@ -204,16 +307,22 @@ export class MeetPanel {
     return this.root.style.display !== 'none';
   }
 
-  private act(label: string, onClick: () => void, hint?: string): void {
+  private act(
+    label: GameMessage,
+    onClick: () => void,
+    hint?: GameMessage,
+    values?: GameMessageValues,
+  ): HTMLButtonElement {
     const button = document.createElement('button');
-    button.textContent = label;
+    setGameText(button, label, values);
     // Пояснение внутри кнопки, а не рядом: выбор и его цена — одно касание.
     if (hint !== undefined) {
       const sub = document.createElement('small');
-      sub.textContent = hint;
+      setGameText(sub, hint, values);
       button.append(sub);
     }
     button.addEventListener('click', onClick);
     this.buttons.append(button);
+    return button;
   }
 }

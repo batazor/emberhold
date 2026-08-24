@@ -6,7 +6,9 @@ import {
   minotaurResourceText,
   minotaurTradeRewardText,
 } from '../sim/minotaurCastle';
-import { RESOURCE_NAME } from '../sim/resources';
+import { resourceMessage } from '../i18n/gameData';
+import { gameMessage, gameText, setGameText } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
 
 export interface MinotaurPanelCallbacks {
   readonly onFight: () => void;
@@ -53,9 +55,15 @@ export class MinotaurPanel {
     this.render();
   }
 
-  private button(label: string, small: string, click: () => void): HTMLButtonElement {
+  private button(label: GameMessage | string, small: GameMessage | string, click: () => void): HTMLButtonElement {
     const button = document.createElement('button');
-    button.innerHTML = `${label}<small>${small}</small>`;
+    const main = document.createElement('span');
+    const detail = document.createElement('small');
+    if (typeof label === 'string') main.textContent = label;
+    else setGameText(main, label);
+    if (typeof small === 'string') detail.textContent = small;
+    else setGameText(detail, small);
+    button.append(main, detail);
     button.addEventListener('click', click);
     return button;
   }
@@ -66,10 +74,14 @@ export class MinotaurPanel {
     const accepted = camp.minotaurQuests?.[String(this.seed >>> 0)];
     const reputation = camp.minotaurReputation ?? 0;
     const rotation = minotaurQuestRotation(this.seed, camp.minotaurQuestCycle ?? 0);
-    this.say.textContent = '— В моём доме берут не тайком. За моей спиной два каменных стража. Есть три пути: испытание, честный обмен или работа.';
-    this.goods.textContent = `Репутация: ${reputation} · Монеты: ${coinsOf(camp)} · ${RESOURCE_NAME.stone}: ${camp.resources.stone} · ${RESOURCE_NAME.wood}: ${camp.resources.wood} · ${RESOURCE_NAME.iron}: ${camp.resources.iron}`;
+    setGameText(this.say, gameMessage('— В моём доме не крадут. За моей спиной два каменных стража. Выбирай: испытание, честный обмен или работа.', '— No one steals from my house. Two stone sentinels stand behind me. Choose: a trial, an honest trade, or honest work.'));
+    setGameText(this.goods, gameMessage('Репутация: {reputation} · Монеты: {coins} · {stone}: {stoneCount} · {wood}: {woodCount} · {iron}: {ironCount}', 'Reputation: {reputation} · Coins: {coins} · {stone}: {stoneCount} · {wood}: {woodCount} · {iron}: {ironCount}'), {
+      reputation, coins: coinsOf(camp), stone: gameText(resourceMessage.stone), stoneCount: camp.resources.stone,
+      wood: gameText(resourceMessage.wood), woodCount: camp.resources.wood,
+      iron: gameText(resourceMessage.iron), ironCount: camp.resources.iron,
+    });
     this.acts.replaceChildren();
-    this.acts.append(this.button('Сразиться', 'Минотавр и два голема охраняют золотой сундук', this.cb.onFight));
+    this.acts.append(this.button(gameMessage('Сразиться', 'Fight'), gameMessage('Минотавр и два голема охраняют золотой сундук', 'The minotaur and two golems guard a golden chest'), this.cb.onFight));
     for (const offer of MINOTAUR_TRADES) {
       const need = Math.max(0, offer.reputation - (Object.values(camp.minotaurRelics ?? {}).includes('labyrinth-signet') ? 1 : 0));
       const button = this.button(
@@ -78,12 +90,12 @@ export class MinotaurPanel {
         () => this.cb.onTrade(offer.id),
       );
       button.disabled = reputation < need;
-      if (button.disabled) button.querySelector('small')!.textContent = `Откроется при репутации ${need}`;
+      if (button.disabled) setGameText(button.querySelector('small')!, gameMessage('Откроется при репутации {reputation}', 'Unlocks at reputation {reputation}'), { reputation: need });
       this.acts.append(button);
     }
     if (accepted !== undefined && !accepted.completed) {
       this.acts.append(this.button(
-        `Сдать: ${accepted.title ?? 'заказ минотавра'}`,
+        gameText(gameMessage('Сдать: {quest}', 'Turn in: {quest}'), { quest: accepted.title ?? gameText(gameMessage('заказ минотавра', 'minotaur order')) }),
         `${minotaurResourceText(accepted.kind, accepted.amount)} → ${accepted.reward} монет · +${accepted.reputation ?? 1} репутации`,
         () => this.cb.onQuest(accepted.id),
       ));
@@ -96,6 +108,6 @@ export class MinotaurPanel {
         ));
       }
     }
-    this.acts.append(this.button('Уйти', 'Разговор закончится', this.cb.onLeave));
+    this.acts.append(this.button(gameMessage('Уйти', 'Leave'), gameMessage('Разговор закончится', 'End the conversation'), this.cb.onLeave));
   }
 }

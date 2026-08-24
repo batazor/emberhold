@@ -1,7 +1,7 @@
 export interface GameMessage {
   readonly id: string;
   readonly message: string;
-  readonly translation: string;
+  readonly translation?: string;
 }
 
 const message = (id: string, source: string, translation: string): GameMessage => ({

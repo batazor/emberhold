@@ -25,6 +25,8 @@ import {
   speedup,
   setOffhand,
   claimDailyCoins,
+  coinsOf,
+  earnCoins,
   speedupCost,
   startUpgrade,
   upgradeBlock,
@@ -144,7 +146,9 @@ import {
   cloudCamp,
   cloudCamps,
   cloudNeighbours,
+  cloudLanguage,
   cloudOnSignIn,
+  cloudSetLanguage,
   cloudPull,
   cloudPush,
   cloudSortieClaim,
@@ -170,6 +174,7 @@ import {
   worldAt,
 } from './sim/world';
 import type { Visit, WorldNode } from './sim/world';
+import { worldUnlock } from './sim/worldUnlock';
 import { campLevel, campPower } from './sim/standing';
 import type { LiveCamp } from './sim/standing';
 import { BuildPanel } from './ui/buildPanel';
@@ -249,6 +254,7 @@ import { analyticsIdentify, startAnalytics } from './core/analytics';
 import type { Cell, EnemyKind, GameLocation, Tier } from './sim/types';
 import { CampView } from './render/campView';
 import { FarmView } from './render/farmView';
+import { SignpostLayer } from './render/signposts';
 import { gearIcon } from './render/gearIcon';
 import { giftIcon } from './render/giftIcon';
 import { CursorWind } from './render/cursorWind';
@@ -262,6 +268,15 @@ import { CampHud } from './ui/campHud';
 import type { FlyTarget } from './ui/campHud';
 import { CampLocations, FarmOnboarding } from './ui/farmOnboarding';
 import type { CampLocation } from './ui/farmOnboarding';
+import { SignEditor } from './ui/signEditor';
+import {
+  SIGN_COST,
+  SIGN_MAX_PER_LOCATION,
+  emptySignpostDecor,
+  type SignLocation,
+} from './sim/signposts';
+import { FARM_CROP_TEXT, FarmCropPicker } from './ui/farmCrops';
+import { gameDuration, gameMessage, gameText } from './i18n/game';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import type { ReturnProgress } from './ui/returnScreen';
@@ -310,6 +325,17 @@ import { FanControl, installFan } from './features/fan';
 import type { FanPerson } from './features/fan';
 import { bindCampInput } from './features/campInput';
 import { createDirector } from './features/onboarding';
+import {
+  HIRE_REASON,
+  advanceHire,
+  woodsmenOf,
+  hireBlock,
+  hireWoodsman,
+  nextWoodsmanPrice,
+  startHireTalk,
+  woodsmanPostAt,
+} from './sim/woodsman';
+import type { WoodsmanPost, WoodsmanTalk } from './sim/woodsman';
 import { MeetPanel } from './ui/meetPanel';
 import type { MeetPanelCallbacks } from './ui/meetPanel';
 import { advance, answerSelf, generateSettler, giftOf, setHeroName, startMeet } from './sim/settler';
@@ -325,6 +351,7 @@ import {
   hasRoof,
   homeless,
   recallHunt,
+  residentLook,
   residentPhaseAt,
   residentState,
   roofs,
@@ -362,10 +389,23 @@ import type { Scene } from './features/scene';
 import { createRaidEar } from './features/raidAudio';
 import {
   FARM_FOOD_GOAL,
+  FARM_CROPS,
+  FARM_DEFAULT_CROP,
+  FARM_STARTING_PLOT_COUNT,
   advanceFarmOnboarding,
+  emptyFarmPlots,
+  farmPlantBlock,
+  farmPlotReadyAt,
+  farmPlotPhase,
+  farmStatus,
   gatherFarmFood,
+  harvestFarmPlot,
+  plantFarmPlot,
+  repeatReadyFarmPlots,
+  selectFarmCrop,
   startFarmOnboarding,
 } from './sim/farm';
+import { collectResidentFarmHarvest } from './sim/farmResidents';
 
 const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
@@ -431,11 +471,19 @@ const awaySec = loaded.watermark > 0 ? Math.max(0, startedAt - loaded.watermark)
 const upkeep = payUpkeep(camp, awaySec);
 const clanWorkersOffline = clanBuilderIds(camp);
 advanceClanConstruction(camp, startedAt);
+const workingResidents = workingAfter(camp, upkeep.hungry);
 const worked = collectWork(
   camp,
   awaySec,
-  workingAfter(camp, upkeep.hungry),
+  workingResidents,
   startedAt,
+  clanWorkersOffline,
+);
+const farmHarvestOffline = collectResidentFarmHarvest(
+  camp,
+  loaded.watermark > 0 ? loaded.watermark : startedAt,
+  startedAt,
+  workingResidents,
   clanWorkersOffline,
 );
 // Охотники не получают одновременно обычную зарплату: сначала считается
@@ -486,6 +534,12 @@ let wiped = false;
  * кто уже решил остаться, — значит, крыша идёт первой.
  */
 let placing: BuildingId | null = null;
+/**
+ * Выбранное место палатки до отдельного действия «построить». В этот момент
+ * сцена показывает каркас с половиной полотна из Kenney Survival Kit; клетка
+ * уже занята, но дерево ещё в сумке и костёр ставить рано.
+ */
+let tentUnderConstruction: Cell | null = null;
 const PITCH_ORDER: readonly BuildingId[] = ['hq', 'kitchen'];
 const PITCH_HINT: Partial<Record<BuildingId, string>> = {
   hq: 'Выберите место для палатки',
@@ -548,12 +602,15 @@ let resultShown = false;
 /** camp.html: лагерь замирает через 20 секунд без касаний. */
 let idleSeconds = 0;
 let lastCampFrame = 0;
+let lastFarmStatusSecond = -1;
 let lastClanWorkCheck = startedAt;
 let selected: BuildingId | null = null;
 /** Кнопка «Палатка» вооружила выбор места: следующий тап ставит палатку. */
 let placingTent = false;
 /** Кнопка «Сундук» (`chests.ts`) вооружила выбор места — тем же жестом. */
 let placingChest = false;
+/** Кнопка декора вооружает следующий тап по земле в лагере или на ферме. */
+let placingSign: SignLocation | null = null;
 
 /**
  * Отладка, а не механика — как ползунок «Ночь». Плотность травы меряется
@@ -658,6 +715,8 @@ const campView = new CampView(camp);
 rig.world.add(campView.group);
 const farmView = new FarmView();
 rig.world.add(farmView.group);
+const signpostLayer = new SignpostLayer();
+rig.world.add(signpostLayer.group);
 
 /* ---------- HUD ---------- */
 const hud = new Hud(app, {
@@ -789,6 +848,70 @@ const campHud = new CampHud(app, {
     if (spot !== null) showPlacingSpot(spot);
   },
   /**
+   * Пойти и добыть то, чего не хватает (§13.3, §13.7).
+   *
+   * **Дерево герой берёт сам.** Лагерь стоит в лесу, лес поляны рубится
+   * (§13.3), и «не хватает дерева» здесь — не тупик, а невыполненная работа
+   * на десять секунд. Кнопка делает ровно то, что сделал бы тап по дереву:
+   * ведёт героя к ближайшему стволу и ставит его рубить. Ближайший —
+   * не к центру поляны, а **к самому герою**: за деревом ходят ногами,
+   * и дальний ствол стоил бы дороги, которую игрок не просил.
+   *
+   * **Пищу берёт добытчик.** §13.7 держит правило «пища не выпадает
+   * в находках вовсе»: её приносит жилец с приказом «Добывать пищу»,
+   * и другого источника в лагере нет. Приказ ставится первому, кто может
+   * работать; кому ставить — решает панель (`syncFoodTask`), а не эта
+   * функция: она выполняет, а не выбирает.
+   */
+  onGather: (kind) => {
+    if (kind === 'food') {
+      const at = camp.residents.findIndex(
+        (r) => r.hunt === undefined && !(r.answer === 'кормим' && !r.rest),
+      );
+      if (at < 0 || !assignWork(camp, at, 'кормим')) {
+        play('deny');
+        campHud.notify('Добывать пищу некому — ягоды растут в местах мира');
+        return;
+      }
+      play('build');
+      campHud.notify(`${camp.residents[at]!.name}: добывать пищу`);
+      // Тот же пересбор, что у приказа из карточки: инструмент в руке
+      // и маршрут рутины обязаны смениться сразу, а не к следующему заходу.
+      refreshResidentAssignment(at);
+      return;
+    }
+    // Кадр, в котором лес не рубится (площадка отладки, §6.2.5), отвечает
+    // картой, а не отказом: дерево в мире есть всегда, а «здесь нечего
+    // рубить» — это ровно то задание без выхода, ради которого кнопка
+    // и заведена.
+    if (raid === null || !raid.logging) {
+      campHud.notify('Дерево растёт в местах мира');
+      campHud.openSheet('tiers');
+      return;
+    }
+    // Ближайшее дерево к герою: поляна — кольцо леса вокруг площадки,
+    // и стволов у любого лагеря больше, чем нужно. Ищется перебором
+    // по локации, а не по снимку: срубленное уже не стоит.
+    let goal: Cell | null = null;
+    let best = Infinity;
+    for (let z = 0; z < raid.loc.size; z++) {
+      for (let x = 0; x < raid.loc.size; x++) {
+        if (!treeAt(raid.loc, { x, z })) continue;
+        const d = Math.hypot(raid.hero.x - x, raid.hero.z - z);
+        if (d >= best) continue;
+        best = d;
+        goal = { x, z };
+      }
+    }
+    if (goal === null) {
+      play('deny');
+      campHud.notify(CHOP_REASON.gone);
+      return;
+    }
+    campHud.close();
+    startChopping(goal);
+  },
+  /**
    * Сундук (`chests.ts`) — тот же жест, что палатка: карточка вооружает
    * палец, место выбирает игрок. Отказ звучит так же, как виден (§18.3).
    */
@@ -889,8 +1012,119 @@ const farmOnboarding = new FarmOnboarding(app, {
   },
 });
 
+const signEditor = new SignEditor(app);
+
 const campLocations = new CampLocations(app, {
   onSelect: (location) => switchCampLocation(location),
+  onSign: () => armSignpost(),
+});
+
+const signDecor = () => (camp.signposts ??= emptySignpostDecor());
+
+function syncSignposts(): void {
+  if (mode === 'camp') {
+    if (campLocation === 'farm') signpostLayer.setPlayers(signDecor().farm);
+    else signpostLayer.setPlayers(signDecor().camp, campOrigin(camp));
+    return;
+  }
+  if (mode === 'raid' && raid !== null && !inGlade) {
+    const region = regionAt(dayAt(clock.now()));
+    const node = region.nodes[raidNode];
+    if (node !== undefined) {
+      signpostLayer.setWorldNode(region, node, raid.loc.evac);
+      return;
+    }
+  }
+  signpostLayer.clear();
+}
+
+function armSignpost(): void {
+  if (mode !== 'camp') return;
+  if (camp.resources.wood < SIGN_COST) {
+    play('deny');
+    campHud.notify(gameText(gameMessage('Указатель: нужно {count} ед. дерева', 'Signpost: {count} wood required'), {
+      count: SIGN_COST,
+    }));
+    return;
+  }
+  buildPanel.setVisible(false);
+  buildTool = null;
+  // Указатель ставят в лагере и на хозяйстве; клановая площадка (§30) —
+  // не место игрока, и своей таблички у неё нет.
+  placingSign = campLocation === 'clan' ? 'camp' : campLocation;
+  campHud.close();
+  campHud.notify(gameText(gameMessage('Указатель: выберите место, затем напишите текст', 'Signpost: choose a spot, then write the text')));
+}
+
+function placeSignpostAt(ground: { x: number; z: number }): void {
+  const location = placingSign;
+  placingSign = null;
+  if (location === null) return;
+  const local = location === 'camp' ? campLocal(ground) : ground;
+  const x = Math.round(local.x);
+  const z = Math.round(local.z);
+  const size = location === 'camp' ? campArea(camp.levels.hq) : 10;
+  if (x < 0 || z < 0 || x >= size || z >= size) {
+    play('deny');
+    campHud.notify(gameText(gameMessage('Указатель: выберите место внутри локации', 'Signpost: choose a spot within this location')));
+    return;
+  }
+  const signs = signDecor()[location];
+  const existing = signs.findIndex((s) => s.x === x && s.z === z);
+  if (existing < 0 && signs.length >= SIGN_MAX_PER_LOCATION) {
+    play('deny');
+    campHud.notify(gameText(gameMessage('Указателей уже {count} — отредактируйте один из них', 'You already have {count} signposts—edit one of them'), {
+      count: SIGN_MAX_PER_LOCATION,
+    }));
+    return;
+  }
+  const before = existing < 0 ? '' : signs[existing]!.text;
+  signEditor.open(before, (text) => {
+    if (text === null) return;
+    // Камера лагеря и фермы начинает с юго-востока: лицевая сторона доски
+    // встречает первый кадр, а не стоит к нему ребром. Поворот камеры позже
+    // всё равно покажет обратную подпись — рендер рисует её с двух сторон.
+    const sign = { x, z, text, turn: Math.PI / 4 };
+    if (existing >= 0) signs[existing] = sign;
+    else {
+      spend(camp.resources, { wood: SIGN_COST });
+      signs.push(sign);
+    }
+    play('build');
+    campHud.notify(existing >= 0
+      ? gameText(gameMessage('Указатель изменён: «{text}»', 'Signpost updated: “{text}”'), { text })
+      : gameText(gameMessage('Указатель построен: «{text}»', 'Signpost built: “{text}”'), { text }));
+    campHud.sync(camp, clock.now(), 0);
+    syncSignposts();
+    persist();
+  });
+}
+
+const farmCropPicker = new FarmCropPicker(app, {
+  onSelect: (crop) => {
+    const changed = selectFarmCrop(camp, crop);
+    syncFarmUi();
+    campHud.notify(gameText(gameMessage('{crop} выбрана для следующего посева', '{crop} selected for the next planting'), {
+      crop: gameText(FARM_CROP_TEXT[crop].name),
+    }));
+    if (changed) persist();
+  },
+  onReturn: () => {
+    const result = repeatReadyFarmPlots(camp, clock.now());
+    if (result.harvested === 0) {
+      play('deny');
+      return;
+    }
+    play('pick');
+    farmView.sync(camp.farm, clock.now());
+    syncFarmUi();
+    campHud.notify(gameText(gameMessage('Собрано {harvested} · посеяно {replanted} · пища +{food}', 'Harvested {harvested} · replanted {replanted} · food +{food}'), {
+      harvested: result.harvested,
+      replanted: result.replanted,
+      food: result.netFood,
+    }));
+    persist();
+  },
 });
 
 /**
@@ -1203,7 +1437,7 @@ function characterPeople(): PersonTab[] {
     ...camp.residents.map((r) => ({
       key: `жилец:${r.seed}:${r.name}`,
       name: r.name,
-      look: r.look,
+      look: residentLook(r),
       seed: r.seed,
     })),
   ];
@@ -1282,7 +1516,7 @@ function characterSubject(): CharacterSubject | null {
     key: `жилец:${r.seed}:${r.name}`,
     name: r.name,
     kind: 'жилец',
-    look: r.look,
+    look: residentLook(r),
     seed: r.seed,
     status: roofed ? residentState(r) : 'без крыши',
     good: roofed,
@@ -1299,7 +1533,7 @@ function characterSubject(): CharacterSubject | null {
     ranged: false,
     // Инструмент — тот же, что у жильца в кадре (§6.1.14): занятие видно
     // по руке, и разбор обязан показывать ту же руку, а не пустую.
-    model: { kind: 'жилец', look: r.look, tool: r.rest ? null : RESIDENT_TOOL[r.answer] },
+    model: { kind: 'жилец', look: residentLook(r), tool: r.rest ? null : RESIDENT_TOOL[r.answer] },
     people: characterPeople(),
   };
 }
@@ -1390,7 +1624,7 @@ const heroFan = new FanControl({
     ...camp.residents.map((r, i): FanPerson => ({
       name: r.name,
       kind: 'жилец',
-      look: r.look,
+      look: residentLook(r),
       seed: r.seed,
       state: hasRoof(camp, i) ? residentState(r) : 'без крыши',
       busy: false,
@@ -1876,7 +2110,7 @@ function seatResidents(): void {
     if (chore !== undefined && chore !== null) {
       const at = choreAt(chore, campTime());
       return {
-        look: r.look,
+        look: residentLook(r),
         tool: RESIDENT_TOOL[r.answer],
         x: at.x,
         z: at.z,
@@ -1891,7 +2125,7 @@ function seatResidents(): void {
     busy.push(sit);
     seatedBodies.push({ x: sit.x + 0.5, z: sit.z + 0.5 });
     return {
-      look: r.look,
+      look: residentLook(r),
       // Инструмент занятия — и у костра: топор у дерева, кирка у камня,
       // у отдыхающего руки пустые (§6.1.14).
       ...(r.rest ? {} : { tool: RESIDENT_TOOL[r.answer] }),
@@ -2305,6 +2539,17 @@ const minotaurPanel = new MinotaurPanel(app, {
 const setHint = (text: string): void => hud.setHint(meetPanel.visible ? '' : text);
 
 /**
+ * Низ вылазки уступает разговору (§6.2.6). Панель разговора — пятый слой
+ * в том же нижнем углу, и о кнопках вылазки она не знает: две коробки
+ * налезали друг на друга, и первым это ловилось глазом, а не правилом.
+ *
+ * Считается по видимости панели, а не по числу открывших: разговоров
+ * четыре — знакомство, гость, лесник и минотавр, — и договориться между
+ * собой они не смогли бы, как и не смогли бы с подсказкой (`setHint`).
+ */
+const syncTalking = (): void => hud.setTalking(meetPanel.visible);
+
+/**
  * Настройки (§18.5). Живут во всех сборках, а не только в дев: громкость
  * нужна игроку, а не разработчику. «Новая игра» переехала сюда же из
  * дев-меню — сейв переживает перезагрузку, и стереть его из консоли нельзя:
@@ -2371,6 +2616,39 @@ void cloudUser().then((email) => {
   // §9 — с этого мига события пишутся на человека, а не на устройство:
   // иначе один игрок с телефона и с ноутбука считается двумя.
   if (email !== null) analyticsIdentify(email);
+  if (email !== null) void syncLanguage();
+});
+
+/**
+ * Язык и аккаунт (§6.2.7). Спрошенный один раз на регистрации, он обязан
+ * приезжать вместе с лагерем на любое устройство — иначе игрок отвечает
+ * на один и тот же вопрос заново с каждого телефона.
+ *
+ * Кто кого перебивает: **облако старше устройства**. Устройство помнит
+ * последний выбор в этом браузере, облако — выбор человека; чужой браузер
+ * с чужим умолчанием иначе молча переучивал бы аккаунт. Пустая строка
+ * в облаке — не спор, а первый вход: туда уезжает то, что выбрано здесь.
+ */
+async function syncLanguage(): Promise<void> {
+  const api = window.EmberholdLanguage;
+  if (api === undefined) return;
+  const saved = await cloudLanguage();
+  if (saved === null) {
+    await cloudSetLanguage(api.current);
+    return;
+  }
+  if (saved !== api.current) api.set(saved);
+}
+
+// Выбор языка в настройках или на карточке регистрации уезжает в облако
+// сразу: второй раз о нём не спросят ни здесь, ни на другом устройстве.
+addEventListener('emberhold-language-changed', () => {
+  const api = window.EmberholdLanguage;
+  if (api !== undefined) void cloudSetLanguage(api.current);
+  syncFarmUi();
+  residentManager?.sync(camp, clock.now(), true);
+  if (residentCard.visible) residentCard.sync(camp, shownResident);
+  heroCard.sync(roster, shownHero, clock.now());
 });
 const authCard = new AuthCard(app);
 // Ссылка из письма открывает свою вкладку уже вошедшей; эта узнаёт
@@ -2382,6 +2660,7 @@ cloudOnSignIn(() => {
   void cloudUser().then((email) => {
     if (email !== null) analyticsIdentify(email);
   });
+  void syncLanguage();
   void syncCloud();
 });
 
@@ -2770,7 +3049,32 @@ const quietFrame = (): boolean =>
 
 function syncFarmUi(): void {
   farmOnboarding.sync(camp);
-  campLocations.sync(camp, campLocation);
+  campLocations.sync(camp, campLocation, clock.now());
+  farmCropPicker.sync(camp, clock.now());
+}
+
+/** Первая строка Фермы отвечает на «что здесь сейчас делать». */
+function farmEntryHint(now: number): string {
+  const status = farmStatus(camp.farm, now);
+  if (status.ready > 0) {
+    return gameText(gameMessage('Урожай готов: {count} · коснитесь спелой грядки', 'Harvest ready: {count} · touch a ripe garden bed'), {
+      count: status.ready,
+    });
+  }
+  if (status.growing > 0 && status.nextReadyAt !== null) {
+    return gameText(gameMessage('Растёт: {count} · ближайший урожай через {time}', 'Growing: {count} · next harvest in {time}'), {
+      count: status.growing,
+      time: gameDuration(Math.max(60, status.nextReadyAt - now)),
+    });
+  }
+  const crop = camp.farm?.selectedCrop ?? FARM_DEFAULT_CROP;
+  const balance = FARM_CROPS[crop];
+  return gameText(gameMessage('Выбрано: {crop} · {time} · {seed} → {harvest} ед. пищи', 'Selected: {crop} · {time} · {seed} → {harvest} food'), {
+    crop: gameText(FARM_CROP_TEXT[crop].name),
+    time: gameDuration(balance.growSeconds),
+    seed: balance.seedFood,
+    harvest: balance.harvestFood,
+  });
 }
 
 /** Сменить соседнюю локацию, не превращая Ферму в место мировой карты. */
@@ -2795,6 +3099,7 @@ function switchCampLocation(next: CampLocation): void {
     return;
   }
   campLocation = next;
+  placingSign = null;
   const onFarm = next === 'farm';
   if (onFarm) {
     buildPanel.setVisible(false);
@@ -2808,6 +3113,7 @@ function switchCampLocation(next: CampLocation): void {
     hidePlacingSpot();
   }
   farmView.group.visible = onFarm;
+  farmCropPicker.setVisible(onFarm);
   campView.group.visible = !onFarm && !inGladeCamp;
   if (inGladeCamp && raidView !== null) raidView.group.visible = !onFarm;
   campHud.close();
@@ -2816,9 +3122,12 @@ function switchCampLocation(next: CampLocation): void {
   closeCharacter();
   heroFan.setVisible(!onFarm && !quietFrame());
   if (onFarm) {
+    const now = clock.now();
+    farmView.sync(camp.farm, now);
     rig.lookAt(farmView.center.x, farmView.center.z, true);
     rig.setZoom(18, true);
     setNight(0.18);
+    campHud.notify(farmEntryHint(now));
   } else if (inGladeCamp && raid !== null) {
     rig.lookAt(raid.hero.x, raid.hero.z, true);
     rig.setZoom(20, true);
@@ -2828,6 +3137,7 @@ function switchCampLocation(next: CampLocation): void {
     rig.setZoom(campArea(camp.levels.hq) * 2.8, true);
   }
   idleSeconds = 0;
+  syncSignposts();
   syncFarmUi();
 }
 
@@ -2838,6 +3148,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
     clanPlacing = null;
     clanBuildBar.setVisible(false);
     farmView.group.visible = false;
+    farmCropPicker.setVisible(false);
   }
   // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
   // палец поверх вылазки.
@@ -2886,6 +3197,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
   else stopPulse();
 
   mode = scene;
+  syncSignposts();
 }
 
 /**
@@ -3134,12 +3446,21 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
   const now = clock.now();
   const day = dayAt(now);
   const place = placeAt(day, node);
+  if (place === null) return false;
+  // Карточка — не единственная защита условия. Вход проверяет то же чистое
+  // правило повторно: вызов из другой панели или устаревший кадр карты не
+  // должны открыть особое место в обход показанного прогресса. Отладочные
+  // адреса условие снимают намеренно — они заведены для прямого входа.
+  const unlock = worldUnlock(place.kind, camp, roster);
+  if (!debugScene && unlock !== null && !unlock.unlocked) {
+    campHud.notify('Закрыто');
+    return false;
+  }
   leaveTitle();
   inGlade = false;
   inGladeCamp = false;
   chop = null;
   campPrompt.setVisible(false);
-  if (place === null) return false;
   // Замок (§6.1.6) — не вылазка: там нечего добывать и не с кем драться,
   // и заход в него не тратит ни богатство места, ни героя.
   if (place.kind === 'замок') return toCastle(node, nodeSeed(day, node));
@@ -3339,6 +3660,113 @@ function syncGuestMeet(): void {
 }
 
 /**
+ * Пост лесника у стен замка (`sim/woodsman.ts`, §6.1.6.3) и разговор с ним.
+ * Живёт при сцене, как гость: пост выводится из сида замка заново на каждом
+ * заходе, а переживает заход только нанятый — он вписан в жильцов лагеря.
+ * Хранить «нанят здесь» незачем: лесника нанимают сколько угодно раз,
+ * и второй у того же замка — не ошибка, а следующая цена.
+ */
+let woodsmanPost: WoodsmanPost | null = null;
+let woodsmanTalk: WoodsmanTalk | null = null;
+let woodsmanShown = false;
+/**
+ * Что показано в панели найма сейчас: кадр, цена и отказ. Панель
+ * перерисовывается на смену этой строки, а не каждый кадр: монеты меняются
+ * не только наймом (§20.5 — их дают за вход), и панель, застывшая на «монет
+ * не хватает» после того, как они появились, врала бы игроку.
+ */
+let woodsmanShownKey = '';
+
+/**
+ * Разговор с лесником: кадры листает игрок, наём списывает монеты
+ * (§20.5) и вписывает человека в жильцы. Палатку он с собой не приносит —
+ * в отличие от гостя, у которого хозяйство своё: лесник нанят, а не позван,
+ * и крышу ему обязан дать наниматель.
+ */
+function woodsmanCallbacks(): MeetPanelCallbacks {
+  const redraw = (): void => {
+    if (woodsmanPost === null || woodsmanTalk === null) return;
+    const price = nextWoodsmanPrice(camp);
+    const block = hireBlock(camp);
+    woodsmanShownKey = `${woodsmanTalk.step}:${price}:${block}`;
+    meetPanel.showWoodsman(woodsmanPost, woodsmanTalk, price, block);
+    setHint('');
+  };
+  return {
+    onName: () => {},
+    onAnswer: () => {},
+    onAdvance: () => {
+      if (woodsmanTalk === null) return;
+      advanceHire(woodsmanTalk);
+      redraw();
+    },
+    onInvite: () => {
+      if (woodsmanPost === null || woodsmanTalk === null) return;
+      const block = hireBlock(camp);
+      if (block !== 'ok') {
+        play('deny');
+        raid?.events.push(HIRE_REASON[block]);
+        return;
+      }
+      const price = nextWoodsmanPrice(camp);
+      const hired = hireWoodsman(camp, woodsmanPost);
+      if (hired === null) {
+        play('deny');
+        return;
+      }
+      woodsmanTalk.hired = true;
+      syncFarmUi();
+      persist();
+      play('build');
+      raid?.events.push(`${hired.name} нанят · монеты −${price}`);
+      // Хозяйство поста сворачивается вместе с ним: наняли человека —
+      // у стен не остаётся ни его, ни палатки, ни мишени.
+      raidView?.clearWoodsman();
+      advanceHire(woodsmanTalk);
+      meetPanel.hide();
+      woodsmanShown = false;
+    },
+  };
+}
+
+/**
+ * Разговор с лесником открывается подходом и гаснет уходом — тем же жестом,
+ * что лавка торговца (§13.5) и стоянка гостя (§6.1.6.2).
+ */
+function syncWoodsmanTalk(): void {
+  if (raid === null || woodsmanPost === null || woodsmanTalk === null) return;
+  if (woodsmanTalk.hired) {
+    if (woodsmanShown) {
+      woodsmanShown = false;
+      meetPanel.hide();
+    }
+    return;
+  }
+  const near =
+    Math.hypot(
+      raid.hero.x - woodsmanPost.stand.x,
+      raid.hero.z - woodsmanPost.stand.z,
+    ) <= 2.5;
+  if (!near) {
+    if (woodsmanShown) {
+      woodsmanShown = false;
+      woodsmanShownKey = '';
+      meetPanel.hide();
+    }
+    return;
+  }
+  const price = nextWoodsmanPrice(camp);
+  const block = hireBlock(camp);
+  const key = `${woodsmanTalk.step}:${price}:${block}`;
+  if (woodsmanShown && key === woodsmanShownKey) return;
+  woodsmanShown = true;
+  woodsmanShownKey = key;
+  meetOn = woodsmanCallbacks();
+  meetPanel.showWoodsman(woodsmanPost, woodsmanTalk, price, block);
+  setHint('');
+}
+
+/**
  * Замок (§6.1.6). Собирается тем же `createRaid`, что вылазка и пролог:
  * ходьба, шаг и камера обязаны считаться одинаково везде, иначе прогулка
  * научит игрока не тому, что его ждёт дальше.
@@ -3500,6 +3928,12 @@ function leaveWalkSites(): void {
   guestMeet = null;
   if (guestShown) meetPanel.hide();
   guestShown = false;
+  // Пост лесника — тем же правилом: он стоит у стен, а не в игре.
+  woodsmanPost = null;
+  woodsmanTalk = null;
+  if (woodsmanShown) meetPanel.hide();
+  woodsmanShown = false;
+  woodsmanShownKey = '';
 }
 
 function toMinotaurCastle(node: number, seed: number): boolean {
@@ -3646,6 +4080,16 @@ function toCastle(node: number, seed: number): boolean {
       guest.sit.z + 0.5,
       Math.atan2(guest.fire.x - (guest.sit.x + 0.5), guest.fire.z - (guest.sit.z + 0.5)),
     );
+  }
+  /**
+   * Пост лесника (§6.1.6.3). В отличие от гостя, условий у него нет: он
+   * стоит у каждого замка и каждый раз, потому что это услуга, а не находка,
+   * и редкостью цена ему не служит — ценой служит цена.
+   */
+  woodsmanPost = woodsmanPostAt(site);
+  if (woodsmanPost !== null) {
+    woodsmanTalk = startHireTalk();
+    raidView.putWoodsman('лесник', woodsmanPost);
   }
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
@@ -3794,21 +4238,23 @@ function tryPlace(cell: Cell): void {
     return;
   }
 
+  // Выбор клетки и стройка палатки — два разных действия. После первого
+  // остаётся видимая строительная стадия; только тап по ней натянет полотно,
+  // спишет дерево и поведёт дальше к костру.
+  if (placing === 'hq') {
+    raidView?.place('hq', cell.x, cell.z, 1, true);
+    play('build');
+    pitched.push(cell);
+    tentUnderConstruction = cell;
+    placing = null;
+    raidView?.hideSite();
+    setHint('Коснитесь каркаса, чтобы построить палатку');
+    return;
+  }
+
   raidView?.place(placing, cell.x, cell.z);
   play('build');
   pitched.push(cell);
-  // Вместе с палаткой встаёт её кладовая — первый сундук (`chests.ts`).
-  // Бесплатно и здесь, а не в лагере: прибавка к рюкзаку показывается
-  // в кадре, где игрок только что познакомился с рюкзаком. Сейв, начатый
-  // до сундуков, уже получил свой при чтении — второго не полагается.
-  if (placing === 'hq' && camp.chests.length === 0 && gladeChest === null) {
-    const spot = chestSiteNear(raid.loc, pitched, raid.hero, cell);
-    if (spot !== null) {
-      gladeChest = spot;
-      raidView?.setChests([spot]);
-      raid.events.push(`Сундук у палатки: кладовая +${CHEST_BONUS}`);
-    }
-  }
   // Палатка встаёт из принесённого: бруски уходят из сумки на глазах,
   // на той же полосе, в которую их только что клали. Ради этой секунды
   // сбор в прологе и заведён — «здание стоит принесённого» показывается
@@ -3819,7 +4265,7 @@ function tryPlace(cell: Cell): void {
   // Оба здания лагеря стоят дерева, и оба берут не больше, чем собрано:
   // пролог показывает цену, но за неё не запирает (§16.1). Запирает лагерная
   // экономика (§20.3), и там цена настоящая.
-  const price = placing === 'hq' ? TENT_WOOD : KITCHEN_WOOD;
+  const price = KITCHEN_WOOD;
   const paid = Math.min(price, raid.bag.wood);
   raid.bag.wood -= paid;
   raid.bagTotal -= paid;
@@ -3838,6 +4284,35 @@ function tryPlace(cell: Cell): void {
     return;
   }
   startPlacing(next);
+}
+
+/**
+ * Завершить палатку после выбора места. Строительная версия заменяется
+ * готовой тем же мешем `placed.hq`, поэтому ни след, ни раскладка не прыгают.
+ */
+function finishTent(): void {
+  if (raid === null || tentUnderConstruction === null) return;
+  const cell = tentUnderConstruction;
+  tentUnderConstruction = null;
+
+  const paid = Math.min(TENT_WOOD, raid.bag.wood);
+  raid.bag.wood -= paid;
+  raid.bagTotal -= paid;
+  raidView?.setLevel('hq', 1);
+  play('build');
+
+  // Кладовая появляется вместе с готовой палаткой, не рядом с недостроенным
+  // каркасом: бонус рюкзака — результат стройки, а не выбора клетки.
+  if (camp.chests.length === 0 && gladeChest === null) {
+    const spot = chestSiteNear(raid.loc, pitched, raid.hero, cell);
+    if (spot !== null) {
+      gladeChest = spot;
+      raidView?.setChests([spot]);
+      raid.events.push(`Сундук у палатки: кладовая +${CHEST_BONUS}`);
+    }
+  }
+
+  startPlacing('kitchen');
 }
 
 /* ---------- вырубка (§13.3) ---------- */
@@ -4040,9 +4515,10 @@ function stepMining(dt: number): void {
  */
 function stepGladeCamp(dt: number): void {
   if (raid === null) return;
-  // Пока лагерь ещё ставится, кадром распоряжается выбор места: его подсказка
-  // («Теперь костёр») не должна перебиваться отдыхом.
-  if (placing !== null) return;
+  // Пока лагерь ещё ставится, кадром распоряжается выбор места или отдельная
+  // стройка палатки: их подсказки не должны перебиваться отдыхом, а три
+  // бруска в сумке не должны случайно засчитаться улучшением недостроя.
+  if (placing !== null || tentUnderConstruction !== null) return;
   const near = nearCamp(pitched, raid.hero);
 
   if (!upgraded && near && raid.bag.wood >= UPGRADE_WOOD) {
@@ -4192,6 +4668,7 @@ function toGlade(): void {
   gladeHint = '';
   ear.reset(raid);
   placing = null;
+  tentUnderConstruction = null;
   pitched.length = 0;
   gladeChest = null;
   raidView.hideSite();
@@ -4227,6 +4704,16 @@ function notifyWorked(): void {
   const parts: string[] = [];
   if (worked.length > 0) {
     parts.push(worked.map((w) => `${RESOURCE_NAME[w.kind]} ${w.n}`).join(' · '));
+  }
+  if (farmHarvestOffline.food > 0) {
+    parts.push(
+      gameText(gameMessage('{names}: собран урожай с {plots} грядок · пища +{food} · помощь +{bonus}', '{names}: harvested {plots} beds · food +{food} · helper bonus +{bonus}'), {
+        names: farmHarvestOffline.helpers.join(', '),
+        plots: farmHarvestOffline.plots,
+        food: farmHarvestOffline.food,
+        bonus: farmHarvestOffline.bonus,
+      }),
+    );
   }
   for (const report of huntReportsOffline) {
     parts.push(report.foxes === 0
@@ -4539,7 +5026,7 @@ function toPadCamp(): void {
   // и сказать о нём позже задания значило бы отдать строку тому, что ещё
   // только просят. Задание никуда не денется — оно живёт своей строкой
   // и не гаснет через четыре секунды.
-  if (worked.length > 0 && !workShown) {
+  if ((worked.length > 0 || farmHarvestOffline.food > 0) && !workShown) {
     notifyWorked();
   } else if (homeless(camp) > 0) {
     campHud.notify(
@@ -4588,7 +5075,8 @@ const campInput = bindCampInput({
   // Пока выбрана карточка стройки, камера не двигается: палец рисует стену.
   // На поляне панорамы нет: жест лагеря-на-поляне — прологовый, тап-ходьба,
   // и камера ходит за героем.
-  active: () => mode === 'camp' && campLocation === 'camp' && buildTool === null && !inGladeCamp,
+  active: () =>
+    mode === 'camp' && campLocation === 'camp' && buildTool === null && placingSign === null && !inGladeCamp,
   center: () => campView.center,
   area: () => campArea(camp.levels.hq),
   onTap: (clientX, clientY) => campTap(clientX, clientY),
@@ -5035,9 +5523,71 @@ canvas.addEventListener('pointerdown', (e) => {
   play('tap');
   askTilt();
   idleSeconds = 0;
-  // Ферма пока сцена-награда: у неё нет жестов лагеря, и тап по грядке не
-  // должен двигать героя на скрытой площадке.
-  if (mode === 'camp' && campLocation === 'farm') return;
+  if (mode === 'camp' && placingSign !== null) {
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    if (hit !== null) placeSignpostAt(hit);
+    return;
+  }
+  // Огород принимает один прямой жест: пустую грядку засевает, готовую
+  // собирает, растущая называет остаток. Жесты скрытого лагеря сюда не идут.
+  if (mode === 'camp' && campLocation === 'farm') {
+    const hit = rig.screenToGround(e.clientX, e.clientY);
+    const plot = hit === null ? null : farmView.plotAt(hit);
+    if (plot === null) {
+      campHud.notify(gameText(gameMessage('Коснитесь грядки у дорожки', 'Touch a garden bed by the path')));
+      return;
+    }
+    const now = clock.now();
+    const phase = farmPlotPhase(camp, plot, now);
+    if (phase === 'locked') {
+      play('deny');
+      campHud.notify(gameText(gameMessage('Эта грядка откроется с развитием фермы', 'This garden bed will unlock as the farm grows')));
+      return;
+    }
+    if (phase === 'empty') {
+      const crop = camp.farm?.selectedCrop ?? FARM_DEFAULT_CROP;
+      const balance = FARM_CROPS[crop];
+      const block = farmPlantBlock(camp, plot, crop);
+      if (block === 'food') {
+        play('deny');
+        campHud.notify(gameText(gameMessage('Для посева нужно {food} ед. пищи', 'Planting requires {food} food'), {
+          food: balance.seedFood,
+        }));
+        return;
+      }
+      if (!plantFarmPlot(camp, plot, crop, now)) {
+        play('deny');
+        return;
+      }
+      play('pick');
+      campHud.notify(gameText(gameMessage('{crop} посеян · урожай через {time}', '{crop} planted · harvest in {time}'), {
+        crop: gameText(FARM_CROP_TEXT[crop].name),
+        time: gameDuration(Math.max(60, farmPlotReadyAt(camp.farm!.plots[plot]!) - now)),
+      }));
+      farmView.sync(camp.farm, now);
+      syncFarmUi();
+      persist();
+      return;
+    }
+    if (phase === 'growing') {
+      const planted = camp.farm?.plots[plot];
+      if (planted !== null && planted !== undefined) {
+        campHud.notify(gameText(gameMessage('Урожай через {time}', 'Harvest in {time}'), {
+          time: gameDuration(Math.max(60, farmPlotReadyAt(planted) - now)),
+        }));
+      }
+      return;
+    }
+    const gathered = harvestFarmPlot(camp, plot, now);
+    if (gathered > 0) {
+      play('pick');
+      campHud.notify(`+${gathered} · ${RESOURCE_NAME.food}`);
+      farmView.sync(camp.farm, now);
+      syncFarmUi();
+      persist();
+    }
+    return;
+  }
   // Клановая опушка — самостоятельное место: здесь пока есть только ходьба,
   // а жесты и панели личного лагеря не должны менять его из-за общего вида.
   if (mode === 'camp' && campLocation === 'clan' && inClanCamp) {
@@ -5146,6 +5696,16 @@ canvas.addEventListener('pointerdown', (e) => {
     // что у наведения выше и у перестановки зданий (`moveSelected`).
     tryPlace({ x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) });
     return;
+  }
+  // После выбора места следующий осмысленный тап — по строительной версии
+  // палатки. Запас вокруг следа такой же, как у готовых зданий на поляне:
+  // на телефоне не требуется попадать в тонкую стойку каркаса.
+  if (tentUnderConstruction !== null) {
+    const center = { x: tentUnderConstruction.x + 0.5, z: tentUnderConstruction.z + 0.5 };
+    if (Math.hypot(hit.x - center.x, hit.z - center.z) <= 1.9) {
+      finishTent();
+      return;
+    }
   }
   if (raid === null || raid.status !== 'running') return;
 
@@ -5447,8 +6007,9 @@ if (debugTier !== null || debugNode !== null) {
  * `?test=walls` — лагерь с готовым кольцом стен: ворота, башня, лестница.
  *   Ровно та планировка, на которой видно все четыре ответа сразу — ход
  *   поверху, разрыв на башне, проезд под воротами и подъём.
- * `?test=farm-intro|farm-goal|farm-reward` — три состояния карточек пищи.
+ * `?test=farm-intro|farm-goal|farm-reward|farm-return` — состояния огорода.
  *   Текст и адаптивную раскладку можно проверять без прохождения пролога.
+ *   Последнее открывает четыре полосы и массовый повтор готового урожая.
  * `?test=character` — экран героя с опытом и свободным очком умения.
  * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
  *
@@ -5519,14 +6080,39 @@ if (debugCamp !== null) {
     camp.resources.iron = 100;
     camp.resources.crystal = 50;
   }
-  if (debugCamp === 'farm-intro' || debugCamp === 'farm-goal' || debugCamp === 'farm-reward') {
-    const reward = debugCamp === 'farm-reward';
+  if (
+    debugCamp === 'farm-intro' || debugCamp === 'farm-goal' ||
+    debugCamp === 'farm-reward' || debugCamp === 'farm-return'
+  ) {
+    const reward = debugCamp === 'farm-reward' || debugCamp === 'farm-return';
+    const returnAction = debugCamp === 'farm-return';
     camp.farm = {
       foodAtStart: 18,
       gatheredFood: reward ? FARM_FOOD_GOAL : debugCamp === 'farm-goal' ? 14 : 0,
       step: reward ? 'reward' : debugCamp === 'farm-goal' ? 'goal' : 'intro',
       unlocked: reward,
+      activePlots: returnAction ? 4 : FARM_STARTING_PLOT_COUNT,
+      selectedCrop: FARM_DEFAULT_CROP,
+      plots: emptyFarmPlots(),
     };
+    if (returnAction) {
+      const now = clock.now();
+      camp.farm.plots[0] = { plantedAt: now - FARM_CROPS.turnip.growSeconds, crop: 'turnip' };
+      camp.farm.plots[3] = { plantedAt: now - FARM_CROPS.barley.growSeconds, crop: 'barley' };
+      camp.farm.plots[1] = { plantedAt: now - FARM_CROPS.turnip.growSeconds / 2, crop: 'turnip' };
+    }
+    // Готовая ферма показывает не только культуры, но и связь с поручением:
+    // один настоящий помощник делает строку карточки проверяемой глазом.
+    if (reward && camp.residents.length === 0) {
+      admit(camp, {
+        name: 'Тихон',
+        look: 'поселенец',
+        seed: 33,
+        answer: 'кормим',
+        rest: false,
+      });
+      buildTent(camp);
+    }
   }
   if (debugCamp === 'staff') {
     camp.foxesCaught = 10;
@@ -5763,6 +6349,37 @@ if (debugCastle !== null) {
       }));
     },
     watch: (t: number) => raidView?.setWatch(t),
+    /**
+     * Пост лесника (§6.1.6.3): где он встал и во что обойдётся следующий.
+     * Наём отдаётся ручкой вместе с монетами: копить сотню входами, чтобы
+     * посмотреть кадр лагеря, — не проверка, а ожидание (§6.2.5 — отладка
+     * живёт в отладочной сцене и только в ней).
+     */
+    woodsman: () => (woodsmanPost === null ? null : {
+      tent: [woodsmanPost.tent.x, woodsmanPost.tent.z],
+      target: [woodsmanPost.target.x, woodsmanPost.target.z],
+      stand: [woodsmanPost.stand.x, woodsmanPost.stand.z],
+      who: woodsmanPost.who.name,
+      price: nextWoodsmanPrice(camp),
+      coins: coinsOf(camp),
+      hired: woodsmenOf(camp),
+    }),
+    /** Монеты в кошелёк: цена лесника — десять дней входов (§20.5),
+     *  и копить их ради проверки кадра значило бы не проверять его вовсе. */
+    coins: (n = 500) => {
+      earnCoins(camp, n);
+      return coinsOf(camp);
+    },
+    hire: () => {
+      if (woodsmanPost === null) return null;
+      earnCoins(camp, nextWoodsmanPrice(camp));
+      const who = hireWoodsman(camp, woodsmanPost);
+      if (who !== null) {
+        raidView?.clearWoodsman();
+        if (woodsmanTalk !== null) woodsmanTalk.hired = true;
+      }
+      return who;
+    },
     /**
      * §13.8 — местные у кустов: кто вышел, к какому узлу и где он сейчас.
      * Печатается вместе с ответом формулы про тот же узел — вопрос
@@ -6129,7 +6746,7 @@ if (debugHas(debugParams, 'fan')) {
         ...camp.residents.map((r, i) => ({
           name: r.name,
           kind: 'жилец' as const,
-          look: r.look,
+          look: residentLook(r),
           seed: 100 + i,
           state: r.answer,
           asking: false,
@@ -6341,7 +6958,12 @@ startLoop({
         if (show) tradePanel.sync(camp, traderStock());
         // Гость у стен: разговор тем же жестом подхода, что лавка выше.
         syncGuestMeet();
+        // Пост лесника (§6.1.6.3) — тем же жестом и в том же кадре.
+        syncWoodsmanTalk();
       }
+      // Разговор открылся или закрылся — низ вылазки уступает или
+      // возвращается. Спрашивается панель, а не открывший её кадр.
+      syncTalking();
       if (minotaurNow !== null) {
         const enemy = minotaurNow.minotaur;
         const alive = enemy !== null && enemy.hp > 0;
@@ -6528,6 +7150,14 @@ startLoop({
     // Полосы прогресса — каждый кадр и в любой сцене: список сам пустеет
     // там, где работ нет, и чистить его отдельной веткой не нужно.
     syncWorkBars();
+    if (mode === 'camp' && camp.farm !== undefined) {
+      const farmSecond = Math.floor(clock.now());
+      if (farmSecond !== lastFarmStatusSecond) {
+        lastFarmStatusSecond = farmSecond;
+        campLocations.sync(camp, campLocation, farmSecond);
+        farmCropPicker.sync(camp, farmSecond);
+      }
+    }
 
     if (mode === 'title' && titleView !== null) {
       // Полная частота, а не 30 кадров лагеря: камеру здесь тянут пальцем,
@@ -6545,6 +7175,7 @@ startLoop({
       const farmDt = Math.min(0.1, (now - lastCampFrame) / 1000);
       lastCampFrame = now;
       const c = farmView.center;
+      farmView.sync(camp.farm, clock.now());
       rig.lookAt(c.x, c.z);
       rig.update(farmDt, c.x, c.z, 12);
       rig.render();

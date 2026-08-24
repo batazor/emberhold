@@ -2,7 +2,8 @@ import { i18n, type Messages } from '@lingui/core';
 import { legacyPatterns } from './legacy';
 
 type Language = 'en' | 'ru';
-type MessageValues = Readonly<Record<string, string | number>>;
+type MessageValue = string | number | { readonly kind: 'duration'; readonly seconds: number };
+type MessageValues = Readonly<Record<string, MessageValue>>;
 interface RuntimeMessage {
   readonly id: string;
   readonly message: string;
@@ -38,12 +39,37 @@ let current: Language = read();
 let activation = 0;
 
 const normalized = (text: string): string => text.replace(/\s+/g, ' ').trim();
-const interpolate = (source: string, values: MessageValues = {}): string =>
-  source.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) => String(values[name] ?? whole));
+function duration(seconds: number): string {
+  const value = Math.max(0, Math.ceil(seconds));
+  if (value >= 3600) {
+    const hours = Math.floor(value / 3600);
+    const minutes = Math.round((value % 3600) / 60);
+    if (current === 'en') return minutes > 0 ? `${hours} hr ${minutes} min` : `${hours} hr`;
+    return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`;
+  }
+  if (value >= 60) {
+    const minutes = Math.floor(value / 60);
+    const secondsLeft = value % 60;
+    if (current === 'en') return secondsLeft > 0 ? `${minutes} min ${secondsLeft} sec` : `${minutes} min`;
+    return secondsLeft > 0 ? `${minutes} мин ${secondsLeft} с` : `${minutes} мин`;
+  }
+  return current === 'en' ? `${value} sec` : `${value} с`;
+}
+
+const resolvedValues = (values: MessageValues = {}): Record<string, string | number> =>
+  Object.fromEntries(Object.entries(values).map(([name, value]) => [
+    name,
+    typeof value === 'object' ? duration(value.seconds) : value,
+  ]));
+
+const interpolate = (source: string, values: MessageValues = {}): string => {
+  const resolved = resolvedValues(values);
+  return source.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) => String(resolved[name] ?? whole));
+};
 
 function message(descriptor: Pick<RuntimeMessage, 'id' | 'message'>, values?: MessageValues): string {
   if (!loaded.has(current) || current === 'ru') return interpolate(descriptor.message, values);
-  return i18n._(descriptor.id, values);
+  return i18n._(descriptor.id, resolvedValues(values));
 }
 
 function readMessage(value: string | null): RuntimeMessage | null {
@@ -215,6 +241,10 @@ async function set(language: Language): Promise<void> {
   } catch {}
   syncToggles();
   await activate(language);
+  // Выбор человека, а не загрузка словаря: `-ready` приходит и на старте,
+  // и его слушают те, кому важен готовый каталог. Здесь событие про другое —
+  // игрок **выбрал**, — и по нему выбор уезжает в аккаунт (§6.2.7).
+  window.dispatchEvent(new CustomEvent('emberhold-language-changed', { detail: { language } }));
 }
 
 function toggle(parent: HTMLElement, className = ''): HTMLElement {
@@ -254,8 +284,15 @@ const embedded = window.self !== window.top;
 if (!embedded) observe(document);
 void activate(current);
 
+/**
+ * Плавающий переключатель — только для артбуков и страниц-замеров (§6.2.7).
+ * В самой игре его нет: угол экрана занят кадром, а язык живёт там же,
+ * где громкость и «Новая игра», — в настройках под шестернёй. Пустой хвост
+ * адреса — это и есть игра (`/`), поэтому он в списке наравне с `index.html`.
+ */
 const standalone = (): void => {
-  if (embedded || /^(index|artbooks)\.html$/.test(location.pathname.split('/').pop() ?? '')) return;
+  const page = location.pathname.split('/').pop() ?? '';
+  if (embedded || page === '' || /^(index|artbooks)\.html$/.test(page)) return;
   const style = document.createElement('style');
   style.textContent = `
     #emberhold-language { position:fixed; z-index:10000; top:max(10px,env(safe-area-inset-top)); right:10px;

@@ -26,6 +26,75 @@ import {
 } from './items';
 import type { ItemPicture, PackState } from './items';
 import { raidSummary } from './summary';
+import { gameMarkup, gameMessage, gameText, setGameAttribute, setGameText } from '../../i18n/game';
+
+const itemCopy: Record<string, { name: ReturnType<typeof gameMessage>; effect: ReturnType<typeof gameMessage>; cost: ReturnType<typeof gameMessage> }> = {
+  'каска': { name: gameMessage('Каска', 'Helmet'), effect: gameMessage('Здоровье +1', 'Health +1'), cost: gameMessage('Обзор −1: край поля закрыт', 'Vision −1: the edge of the field is obscured') },
+  'куртка': { name: gameMessage('Стёганая куртка', 'Quilted jacket'), effect: gameMessage('Здоровье +1', 'Health +1'), cost: gameMessage('Шаг дороже на 15%', 'Steps cost 15% more') },
+  'кайло': { name: gameMessage('Кайло', 'Pickaxe'), effect: gameMessage('Атака +3', 'Attack +3'), cost: gameMessage('Тяжёлое: рюкзак −1', 'Heavy: backpack −1') },
+  'топор': { name: gameMessage('Топор', 'Axe'), effect: gameMessage('Атака +2', 'Attack +2'), cost: gameMessage('Рубит, но не долбит камень', 'Chops wood but cannot break stone') },
+  'клинок': { name: gameMessage('Клинок', 'Blade'), effect: gameMessage('Атака +4', 'Attack +4'), cost: gameMessage('Тяжёлый: рюкзак −1', 'Heavy: backpack −1') },
+  'щит': { name: gameMessage('Щит', 'Shield'), effect: gameMessage('Заслон · Защита +4,8', 'Intercept · Defense +4.8'), cost: gameMessage('Левая рука занята: фонаря не будет', 'Occupies the left hand: no lantern') },
+  'сапоги': { name: gameMessage('Сапоги', 'Boots'), effect: gameMessage('Шаг дешевле на 10%', 'Steps cost 10% less'), cost: gameMessage('Шумные: угроза быстрее', 'Noisy: threat rises faster') },
+  'фонарь': { name: gameMessage('Рудничный фонарь', 'Mining lantern'), effect: gameMessage('Обзор +1', 'Vision +1'), cost: gameMessage('Занимает левую руку', 'Occupies the left hand') },
+  'короб': { name: gameMessage('Заплечный короб', 'Backpack'), effect: gameMessage('Рюкзак +2', 'Backpack +2'), cost: gameMessage('В бою не даёт ничего', 'Provides no combat benefit') },
+  'кольцо': { name: gameMessage('Спокойная рука', 'Steady hand'), effect: gameMessage('Под угрозой меньше на 20%', '20% less loot at risk'), cost: gameMessage('Свойство определяется при ковке', 'Its bonus is chosen when forged') },
+  'настой': { name: gameMessage('Настой', 'Tincture'), effect: gameMessage('Залечивает одну рану', 'Heals one wound'), cost: gameMessage('Одноразовый', 'Single use') },
+};
+
+const statCopy: Record<string, ReturnType<typeof gameMessage>> = {
+  'Атака': gameMessage('Атака', 'Attack'),
+  'Защита': gameMessage('Защита', 'Defense'),
+  'Знание': gameMessage('Знание', 'Knowledge'),
+  'Ловкость': gameMessage('Ловкость', 'Agility'),
+};
+
+const slotCopy = (name: string): ReturnType<typeof gameMessage> => {
+  if (name === 'Шлем') return gameMessage('Шлем', 'Head');
+  if (name === 'Одежда') return gameMessage('Одежда', 'Body');
+  if (name === 'Руки') return gameMessage('Руки', 'Hands');
+  if (name === 'Ноги') return gameMessage('Ноги', 'Feet');
+  return gameMessage('Свободный', 'Free slot');
+};
+
+const legacyText = (text: string): string => window.EmberholdLanguage?.translate(text) ?? text;
+const characterText = (text: string): string => {
+  const fixed: Record<string, ReturnType<typeof gameMessage>> = {
+    'защита, здоровье, обзор −1': gameMessage('защита, здоровье, обзор −1', 'defense, health, vision −1'),
+    'обзор, скорость, рюкзак −25%': gameMessage('обзор, скорость, рюкзак −25%', 'vision, speed, backpack −25%'),
+    'рюкзак +30%, добыча, защита': gameMessage('рюкзак +30%, добыча, защита', 'backpack +30%, loot, defense'),
+    'Нужен Плац': gameMessage('Нужен Плац', 'Requires a Training Yard'),
+    'Занят': gameMessage('Занят', 'Busy'),
+    'Потолок — на два уровня ниже лучшего': gameMessage('Потолок — на два уровня ниже лучшего', 'Level cap is two below the best hero'),
+    'Тренировочный слот занят': gameMessage('Тренировочный слот занят', 'The training slot is occupied'),
+    'Максимальный уровень': gameMessage('Максимальный уровень', 'Maximum level'),
+    'Атака': gameMessage('Атака', 'Attack'),
+    'HP': gameMessage('Здоровье', 'Health'),
+    'Обзор': gameMessage('Обзор', 'Vision'),
+    'Защита': gameMessage('Защита', 'Defense'),
+    'Рюкзак': gameMessage('Рюкзак', 'Backpack'),
+    'Провиант за шаг': gameMessage('Провиант за шаг', 'Provisions per step'),
+    'Под угрозой': gameMessage('Под угрозой', 'At risk'),
+    'Колчан': gameMessage('Колчан', 'Quiver'),
+    'Лучник': gameMessage('Лучник', 'Archer'),
+    'Рыцарь': gameMessage('Рыцарь', 'Knight'),
+    'Бандит': gameMessage('Бандит', 'Rogue'),
+    'с щитом': gameMessage('с щитом', 'with shield'),
+    'с фонарём': gameMessage('с фонарём', 'with lantern'),
+  };
+  const known = fixed[text];
+  if (known !== undefined) return gameText(known);
+  let match = /^\+(\d+) вместимости до конца вылазки$/.exec(text);
+  if (match !== null) return gameText(gameMessage('+{capacity} вместимости до конца вылазки', '+{capacity} capacity until the raid ends'), { capacity: match[1]! });
+  match = /^путь назад −(\d+)% на (\d+) с$/.exec(text);
+  if (match !== null) return gameText(gameMessage('путь назад −{percent}% на {seconds} с', 'return distance −{percent}% for {seconds} sec'), { percent: match[1]!, seconds: match[2]! });
+  match = /^находки ×([^ ]+) на (\d+) с$/.exec(text);
+  if (match !== null) return gameText(gameMessage('находки ×{multiplier} на {seconds} с', 'loot ×{multiplier} for {seconds} sec'), { multiplier: match[1]!, seconds: match[2]! });
+  return legacyText(text);
+};
+const itemName = (id: string, fallback: string): string => gameText(itemCopy[id]?.name ?? gameMessage(fallback));
+const itemEffect = (id: string, fallback: string): string => gameText(itemCopy[id]?.effect ?? gameMessage(fallback));
+const itemCost = (id: string, fallback: string): string => gameText(itemCopy[id]?.cost ?? gameMessage(fallback));
 
 const ITEM_PICTURE: Record<ItemPicture, string> = {
   helmet: helmetIcon,
@@ -159,6 +228,8 @@ export class CharacterPage {
   private pack: PackState = startPack();
   /** Чья раскладка сейчас разложена: у другого человека она своя. */
   private packKey = '';
+  /** Вложенные подписи title получают уже переведённые значения и требуют перерисовки при смене языка. */
+  private packLanguage = '';
   private faceKey = '';
   private tabsKey = '';
   private skillKey = '';
@@ -185,7 +256,7 @@ export class CharacterPage {
           <span class="ch-who"><b id="ch-name"></b><span id="ch-status" class="dim"></span></span>
           <span class="ch-tabs" id="ch-tabs"></span>
           <span class="ch-level" id="ch-level"></span>
-          <button id="ch-close" class="ghost">Закрыть</button>
+          <button id="ch-close" class="ghost">${gameMarkup(gameMessage('Закрыть', 'Close'))}</button>
         </div>
         <div class="ch-xp-row"><div class="bar" id="ch-bar"><i id="ch-xp"></i></div><span id="ch-xp-text"></span></div>
         <div class="ch-body">
@@ -193,20 +264,20 @@ export class CharacterPage {
             <div class="ch-slots" id="ch-worn"></div>
             <div class="ch-fig">
               <div id="ch-canvas"></div>
-              <button id="ch-turn" class="ghost">Ракурс лагеря</button>
+              <button id="ch-turn" class="ghost">${gameMarkup(gameMessage('Ракурс лагеря', 'Camp view'))}</button>
             </div>
           </div>
           <div class="ch-side" id="ch-side">
-            <h3>Сумка</h3>
+            <h3>${gameMarkup(gameMessage('Сумка', 'Bag'))}</h3>
             <div class="ch-bag" id="ch-bag"></div>
-            <h3>Что будет в вылазке · §14</h3>
+            <h3>${gameMarkup(gameMessage('Что будет в вылазке · §14', 'Raid loadout · §14'))}</h3>
             <div class="ch-raid" id="ch-raid"></div>
-            <h3>Характеристики</h3>
+            <h3>${gameMarkup(gameMessage('Характеристики', 'Stats'))}</h3>
             <div class="ch-stats" id="ch-stats"></div>
             <div class="ch-skill card" id="ch-skill"></div>
             <div class="r-skill" id="ch-note"></div>
             <button id="ch-train"></button>
-            <h3>Кованое · §14</h3>
+            <h3>${gameMarkup(gameMessage('Кованое · §14', 'Forged gear · §14'))}</h3>
           </div>
         </div>
         <p class="ch-hint" id="ch-hint"></p>
@@ -278,10 +349,15 @@ export class CharacterPage {
     }
     // Раскладка макета своя у каждого человека: чужие вещи на новом лице
     // читались бы как «снаряжение перешло», а перехода никакого нет.
+    const language = document.documentElement.lang;
     if (s.key !== this.packKey) {
       this.packKey = s.key;
+      this.packLanguage = language;
       this.pack = startPack();
-      this.hint.textContent = 'Тащите вещь из сумки на слот — или коротко тапните по ней.';
+      setGameText(this.hint, gameMessage('Тащите вещь из сумки на слот — или коротко тапните по ней.', 'Drag an item from the bag to a slot, or tap it briefly.'));
+      this.drawPack();
+    } else if (language !== this.packLanguage) {
+      this.packLanguage = language;
       this.drawPack();
     }
     const tabsKey = s.people.map((p) => p.key).join(',') + `|${s.key}`;
@@ -290,9 +366,16 @@ export class CharacterPage {
       this.drawTabs(s);
     }
     this.name.textContent = s.name;
-    this.status.textContent = s.status;
+    this.status.textContent = legacyText(s.status);
     this.status.className = s.good ? 'good' : 'dim';
-    this.level.textContent = s.level === null ? s.kind : `${s.kind} · ур. ${s.level}`;
+    setGameText(this.level,
+      s.level === null
+        ? (s.kind === 'герой' ? gameMessage('герой', 'hero') : gameMessage('жилец', 'resident'))
+        : gameMessage('{kind} · ур. {level}', '{kind} · lvl {level}'),
+      s.level === null ? undefined : {
+        kind: gameText(s.kind === 'герой' ? gameMessage('герой', 'hero') : gameMessage('жилец', 'resident')),
+        level: s.level,
+      });
     this.bar.style.display = s.xp < 0 ? 'none' : '';
     this.xp.style.width = `${Math.min(100, Math.max(0, s.xp * 100)).toFixed(1)}%`;
     this.xpText.textContent = s.xpText ?? '';
@@ -301,36 +384,35 @@ export class CharacterPage {
     if (s.stats.length === 0) {
       // Честная пустота вместо выдуманных чисел: у жильца характеристик нет,
       // и страница говорит это словами (§11.7).
-      this.statsEl.innerHTML =
-        '<span class="dim">Характеристик у жильца игра не считает — есть занятие и крыша.</span>';
+      this.statsEl.innerHTML = `<span class="dim">${gameMarkup(gameMessage('Характеристик у жильца игра не считает — есть занятие и крыша.', 'Residents have no calculated stats—only a job and a roof.'))}</span>`;
     } else {
-      this.statsEl.innerHTML =
-        s.stats
-          .map(
-            (row) =>
-              `<span class="ch-stat">${row.name} <b>${row.value}</b>${
-                s.points > 0 ? `<button class="hc-plus" data-stat="${row.key}">+</button>` : ''
-              }</span>`,
-          )
-          .join('') + (s.points > 0 ? `<span class="ch-stat"><b>очков: ${s.points}</b></span>` : '');
+      this.statsEl.innerHTML = s.stats.map((row) =>
+        `<span class="ch-stat">${gameMarkup(statCopy[row.name] ?? gameMessage(row.name))} <b>${row.value}</b>${
+          s.points > 0 ? `<button class="hc-plus" data-stat="${row.key}">+</button>` : ''
+        }</span>`,
+      ).join('') + (s.points > 0
+        ? `<span class="ch-stat"><b>${gameMarkup(gameMessage('очков: {points}', 'points: {points}'), { points: s.points })}</b></span>`
+        : '');
     }
-    this.note.textContent = s.note;
+    this.note.textContent = characterText(s.note);
     const skillKey = s.skill === null
       ? 'none'
-      : `${s.skill.name}|${s.skill.level}|${s.skill.max}|${s.skill.points}|${s.skill.effect}`;
+      : `${document.documentElement.lang}|${s.skill.name}|${s.skill.level}|${s.skill.max}|${s.skill.points}|${s.skill.effect}`;
     if (skillKey !== this.skillKey) {
       this.skillKey = skillKey;
       this.skill.innerHTML = s.skill === null
         ? ''
-        : `<span><b>${s.skill.name} · ур. ${s.skill.level}/${s.skill.max}</b><small>${s.skill.effect}</small></span>`
+        : `<span><b>${gameMarkup(gameMessage('{skill} · ур. {level}/{max}', '{skill} · lvl {level}/{max}'), { skill: legacyText(s.skill.name), level: s.skill.level, max: s.skill.max })}</b><small>${characterText(s.skill.effect)}</small></span>`
           + (s.skill.points > 0 && s.skill.level < s.skill.max
-            ? `<button data-skill>Улучшить · ${s.skill.points}</button>`
-            : `<i>${s.skill.level >= s.skill.max ? 'максимум' : 'очков навыка: 0'}</i>`);
+            ? `<button data-skill>${gameMarkup(gameMessage('Улучшить · {points}', 'Upgrade · {points}'), { points: s.skill.points })}</button>`
+            : `<i>${s.skill.level >= s.skill.max
+                ? gameMarkup(gameMessage('максимум', 'maximum'))
+                : gameMarkup(gameMessage('очков навыка: 0', 'skill points: 0'))}</i>`);
       this.skill.style.display = s.skill === null ? 'none' : '';
     }
     this.train.style.display = s.train === null ? 'none' : '';
     if (s.train !== null) {
-      this.train.textContent = s.train.text;
+      this.train.textContent = characterText(s.train.text);
       this.train.disabled = s.train.disabled;
     }
     this.gear.sync(s.gear, s.offhand);
@@ -352,15 +434,15 @@ export class CharacterPage {
       this.raidKey = '';
       return;
     }
-    const key = `${Object.values(s.gear).join(',')}:${s.offhand}:${s.ranged}`;
+    const key = `${document.documentElement.lang}:${Object.values(s.gear).join(',')}:${s.offhand}:${s.ranged}`;
     if (key === this.raidKey) return;
     this.raidKey = key;
     const summary = raidSummary(s.gear, s.offhand, s.ranged);
     this.raid.innerHTML = summary.rows
       .map(
         (row) =>
-          `<span class="dim">${row.name}</span><b>${row.now}</b>` +
-          `<i>${row.other === null ? '' : `→ ${row.other} ${summary.withOther}`}</i>`,
+          `<span class="dim">${characterText(row.name)}</span><b>${row.now}</b>` +
+          `<i>${row.other === null ? '' : `→ ${row.other} ${characterText(summary.withOther)}`}</i>`,
       )
       .join('');
   }
@@ -373,7 +455,7 @@ export class CharacterPage {
         const b = document.createElement('button');
         b.className = `face ch-tab${p.key === s.key ? ' on' : ''}`;
         b.dataset['who'] = p.key;
-        b.title = p.name;
+        setGameAttribute(b, 'title', gameMessage('{name}', '{name}'), { name: characterText(p.name) });
         b.innerHTML = avatarSvg(p.look, p.seed);
         return b;
       }),
@@ -400,9 +482,15 @@ export class CharacterPage {
       el.appendChild(pic);
     }
     const label = document.createElement('span');
-    label.textContent = item.name;
+    const copy = itemCopy[item.id];
+    if (copy !== undefined) setGameText(label, copy.name);
+    else label.textContent = item.name;
     el.appendChild(label);
-    el.title = `${item.effect} · ${item.cost}`;
+    if (copy !== undefined) {
+      setGameAttribute(el, 'title', gameMessage('{effect} · {cost}', '{effect} · {cost}'), {
+        effect: gameText(copy.effect), cost: gameText(copy.cost),
+      });
+    } else el.title = `${item.effect} · ${item.cost}`;
     into.appendChild(el);
   }
 
@@ -412,7 +500,7 @@ export class CharacterPage {
         const el = document.createElement('div');
         el.className = 'ch-slot card';
         el.dataset['slot'] = slot.id;
-        el.innerHTML = `<i>${slot.name}</i>`;
+        el.innerHTML = `<i>${gameMarkup(slotCopy(slot.name))}</i>`;
         this.cell(this.pack.worn.get(slot.id) ?? null, el);
         return el;
       }),
@@ -421,7 +509,9 @@ export class CharacterPage {
     // игрок обязан видеть, что их будет больше и от чего (`items.ts`).
     const note = document.createElement('p');
     note.className = 'ch-free-note dim';
-    note.textContent = `Свободных слотов ${FREE_SLOTS} из ${MAX_FREE_SLOTS} — остальные откроют навыки`;
+    setGameText(note, gameMessage('Свободно {free} из {max} слотов — остальные откроют навыки', 'Free slots: {free} of {max} · skills unlock the rest'), {
+      free: FREE_SLOTS, max: MAX_FREE_SLOTS,
+    });
     this.wornEl.appendChild(note);
 
     this.bagEl.replaceChildren(
@@ -444,17 +534,24 @@ export class CharacterPage {
     const item = ITEM.get(itemId);
     if (item === undefined) return;
     if (fromSlot !== null) {
-      this.hint.textContent = unequip(this.pack, fromSlot)
-        ? `${item.name} убран в сумку.`
-        : 'В сумке нет места.';
+      if (unequip(this.pack, fromSlot)) {
+        setGameText(this.hint, gameMessage('{item} убран в сумку.', '{item} moved to the bag.'), {
+          item: itemName(item.id, item.name),
+        });
+      } else setGameText(this.hint, gameMessage('В сумке нет места.', 'There is no room in the bag.'));
       this.drawPack();
       return;
     }
     const slot = slotFor(this.pack, item);
     if (slot === null || !equip(this.pack, itemId, slot.id)) {
-      this.hint.textContent = `${item.name} надеть некуда.`;
+      setGameText(this.hint, gameMessage('{item} надеть некуда.', 'There is no slot for {item}.'), {
+        item: itemName(item.id, item.name),
+      });
     } else {
-      this.hint.textContent = `${item.name} → ${slot.name.toLowerCase()}. ${item.effect} · ${item.cost}`;
+      setGameText(this.hint, gameMessage('{item} → {slot}. {effect} · {cost}', '{item} → {slot}. {effect} · {cost}'), {
+        item: itemName(item.id, item.name), slot: gameText(slotCopy(slot.name)).toLowerCase(),
+        effect: itemEffect(item.id, item.effect), cost: itemCost(item.id, item.cost),
+      });
     }
     this.drawPack();
   }
@@ -464,14 +561,19 @@ export class CharacterPage {
     const slot = SLOTS.find((s) => s.id === slotId);
     if (item === undefined || slot === undefined) return;
     if (!fits(slot, item)) {
-      this.hint.textContent = `${item.name} в слот «${slot.name.toLowerCase()}» не встаёт.`;
+      setGameText(this.hint, gameMessage('{item} в слот «{slot}» не встаёт.', '{item} does not fit the “{slot}” slot.'), {
+        item: itemName(item.id, item.name), slot: gameText(slotCopy(slot.name)).toLowerCase(),
+      });
       return;
     }
     if (!equip(this.pack, itemId, slotId)) {
-      this.hint.textContent = 'В сумке нет места для снятого.';
+      setGameText(this.hint, gameMessage('В сумке нет места для снятого.', 'There is no room in the bag for the removed item.'));
       return;
     }
-    this.hint.textContent = `${item.name} → ${slot.name.toLowerCase()}. ${item.effect} · ${item.cost}`;
+    setGameText(this.hint, gameMessage('{item} → {slot}. {effect} · {cost}', '{item} → {slot}. {effect} · {cost}'), {
+      item: itemName(item.id, item.name), slot: gameText(slotCopy(slot.name)).toLowerCase(),
+      effect: itemEffect(item.id, item.effect), cost: itemCost(item.id, item.cost),
+    });
   }
 
   /**
@@ -538,10 +640,13 @@ export class CharacterPage {
       const bag = at?.closest<HTMLElement>('.ch-cell') ?? at?.closest<HTMLElement>('.ch-bag');
       if (slot !== undefined) this.drop(d.item, slot);
       else if (bag !== null && bag !== undefined && d.from.kind === 'слот') {
-        this.hint.textContent = unequip(this.pack, d.from.id)
-          ? `${ITEM.get(d.item)?.name ?? d.item} убран в сумку.`
-          : 'В сумке нет места.';
-      } else this.hint.textContent = 'Вещь вернулась на место.';
+        const item = ITEM.get(d.item);
+        if (unequip(this.pack, d.from.id)) {
+          setGameText(this.hint, gameMessage('{item} убран в сумку.', '{item} moved to the bag.'), {
+            item: itemName(d.item, item?.name ?? d.item),
+          });
+        } else setGameText(this.hint, gameMessage('В сумке нет места.', 'There is no room in the bag.'));
+      } else setGameText(this.hint, gameMessage('Вещь вернулась на место.', 'The item returned to its place.'));
       this.drawPack();
     };
     this.root.addEventListener('pointerup', finish);

@@ -1,8 +1,10 @@
-import { RESIDENT_ORDER, RESIDENT_ORDERS, hasRoof, residentState } from '../sim/residents';
+import { RESIDENT_ORDERS, hasRoof, residentLook } from '../sim/residents';
 import type { ResidentOrder } from '../sim/residents';
 import type { CampState } from '../sim/camp';
 import { avatarSvg } from './avatar';
 import { revealCard } from './cardReveal';
+import { gameMessage, setGameText } from '../i18n/game';
+import { residentJobMessage, residentOrderMessage } from '../i18n/gameData';
 
 /**
  * Карточка выбранного жильца — сестра карточки героя (`heroCard.ts`) и то,
@@ -56,12 +58,14 @@ export class ResidentCard {
       <div class="r-id"><span class="face" id="rc-face"></span>
         <span><b id="rc-name"></b><span id="rc-status" class="dim"></span></span></div>
       <div class="r-acts" id="rc-acts"></div>
-      <div class="r-acts"><button id="rc-about">О персонаже</button></div>`;
+      <div class="r-acts"><button id="rc-about"></button></div>`;
     this.face = this.root.querySelector('#rc-face')!;
     this.name = this.root.querySelector('#rc-name')!;
     this.status = this.root.querySelector('#rc-status')!;
     this.acts = this.root.querySelector('#rc-acts')!;
-    this.root.querySelector('#rc-about')!.addEventListener('click', () => {
+    const about = this.root.querySelector<HTMLButtonElement>('#rc-about')!;
+    setGameText(about, gameMessage('О персонаже', 'View character'));
+    about.addEventListener('click', () => {
       this.cb.onAbout(this.shown);
     });
     parent.appendChild(this.root);
@@ -97,22 +101,25 @@ export class ResidentCard {
       this.setVisible(false);
       return;
     }
-    const faceKey = `${r.look}:${r.seed}`;
+    const faceKey = `${residentLook(r)}:${r.seed}`;
     if (faceKey !== this.faceKey) {
       this.faceKey = faceKey;
-      this.face.innerHTML = avatarSvg(r.look, r.seed);
+      this.face.innerHTML = avatarSvg(residentLook(r), r.seed);
     }
-    this.name.textContent = r.name;
+    this.name.textContent = window.EmberholdLanguage?.translate(r.name) ?? r.name;
     const roofed = hasRoof(camp, this.shown);
     // Занятие видно всегда, крыша — только когда её нет: строка о том,
     // что мешает, а не перечень свойств.
-    this.status.textContent = roofed ? (r.hunt !== undefined ? 'на охоте' : residentState(r)) : 'без крыши';
+    if (!roofed) setGameText(this.status, gameMessage('без крыши', 'without shelter'));
+    else if (r.hunt !== undefined) setGameText(this.status, gameMessage('на охоте', 'hunting'));
+    else if (r.rest) setGameText(this.status, gameMessage('отдыхает', 'resting'));
+    else setGameText(this.status, residentJobMessage[r.answer]);
     this.status.className = roofed ? 'good' : 'dim';
 
     this.acts.replaceChildren(
       ...RESIDENT_ORDERS.map((order) => {
         const b = document.createElement('button');
-        b.textContent = RESIDENT_ORDER[order];
+        setGameText(b, residentOrderMessage[order]);
         // Выключена кнопка происходящего: у отдыхающего — «Отдыхать»,
         // у работающего — его занятие.
         b.disabled = r.hunt !== undefined || (order === 'отдых' ? r.rest : !r.rest && r.answer === order);

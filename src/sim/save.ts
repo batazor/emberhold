@@ -1,13 +1,13 @@
 import type { BuildingId, CampState } from './camp';
 import { BUILDING_ORDER, campArea, campStones, createCamp } from './camp';
 import { adoptChest } from './chests';
-import { DWELLER_LOOKS } from './garrison';
+import { DWELLER_LOOK_KINDS } from './garrison';
 import type { DwellerLook } from './garrison';
 import { prunePicks } from './berries';
 import { pruneBought } from './trade';
 import type { PickLog } from './berries';
-import { RESIDENT_JOBS, RESIDENT_SCHEDULE_ORDER, residentUuid } from './residents';
-import type { ResidentJob, ResidentScheduleId } from './residents';
+import { RESIDENT_CRAFTS, RESIDENT_JOBS, RESIDENT_SCHEDULE_ORDER, residentUuid } from './residents';
+import type { ResidentCraft, ResidentJob, ResidentScheduleId } from './residents';
 import { GEAR_ORDER, MAX_ITEM_LEVEL } from './gear';
 import type { GearSlot } from './gear';
 import {
@@ -27,9 +27,17 @@ import { RESOURCE_KINDS, emptyResources } from './resources';
 import { liveVisits } from './world';
 import type { Resources } from './resources';
 import type { Tier } from './types';
-import { FARM_FOOD_GOAL } from './farm';
+import {
+  FARM_FOOD_GOAL,
+  FARM_DEFAULT_CROP,
+  FARM_PLOT_COUNT,
+  FARM_STARTING_PLOT_COUNT,
+  emptyFarmPlots,
+  isFarmCropId,
+} from './farm';
 import { CLAN_BUILDING_ORDER, startingClanResources } from './clan';
 import type { ClanBuildingKind } from './clan';
+import { validSignposts } from './signposts';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -172,6 +180,12 @@ interface SaveV1 {
     rest?: boolean;
     schedule?: string;
     hunt?: { startedAt: number; endsAt: number; seed: number };
+    /**
+     * Ремесло нанятого (§6.1.6.3). Необязательное по той же причине, что
+     * всё соседнее: сейв, записанный до лесников, обязан открываться —
+     * и открывается лагерем, в котором все умеют одно и то же.
+     */
+    craft?: string;
   }[];
   /** Счёт открытия поручения охоты. Без поля старый лагерь начинает с нуля. */
   foxes?: number;
@@ -182,7 +196,15 @@ interface SaveV1 {
     gatheredFood: number;
     step: 'intro' | 'goal' | 'reward' | 'done';
     unlocked: boolean;
+    /** Необязательно: первый сейв огорода открывал все шесть полос сразу. */
+    activePlots?: number;
+    /** Необязательно: до карточек единственной культурой был ячмень. */
+    selectedCrop?: string;
+    /** Необязательно: сейв до появления огорода открывается с пустыми грядками. */
+    plots?: ({ plantedAt: number; crop?: string } | null)[];
   };
+  /** Декор моложе версии сохранения: отсутствие означает пустые локации. */
+  signposts?: CampState['signposts'];
   /**
    * Свой клан (§30) — имя и час основания. Поле необязательное и по той же
    * причине, что все соседние: сейв, записанный до кланов, обязан
@@ -284,6 +306,9 @@ export function save(
       ...(r.rest ? { rest: true } : {}),
       ...(r.schedule !== undefined ? { schedule: r.schedule } : {}),
       ...(r.hunt !== undefined ? { hunt: r.hunt } : {}),
+      // Ремесло пишется только у того, у кого оно есть: пустое поле у всех
+      // прочих было бы записью «ремесла нет» там, где его никогда и не было.
+      ...(r.craft !== undefined ? { craft: r.craft } : {}),
     })),
     ...(camp.foxesCaught !== undefined ? { foxes: camp.foxesCaught } : {}),
     tents: camp.tents.map((t) => ({ x: t.x, z: t.z })),
@@ -294,8 +319,16 @@ export function save(
             gatheredFood: camp.farm.gatheredFood,
             step: camp.farm.step,
             unlocked: camp.farm.unlocked,
+            activePlots: camp.farm.activePlots,
+            selectedCrop: camp.farm.selectedCrop,
+            plots: camp.farm.plots.map((plot) => plot === null
+              ? null
+              : { plantedAt: plot.plantedAt, crop: plot.crop }),
           },
         }
+      : {}),
+    ...(camp.signposts !== undefined
+      ? { signposts: { camp: camp.signposts.camp, farm: camp.signposts.farm } }
       : {}),
     chests: camp.chests.map((c) => ({ x: c.x, z: c.z })),
     // exactOptionalPropertyTypes: у лагеря без клана ключа нет вовсе.
@@ -504,11 +537,41 @@ export function load(): LoadResult {
     ) {
       const gatheredFood = Math.min(FARM_FOOD_GOAL, Math.floor(farm.gatheredFood));
       const unlocked = farm.unlocked === true || gatheredFood >= FARM_FOOD_GOAL;
+      const activePlots =
+        typeof farm.activePlots === 'number' && Number.isFinite(farm.activePlots)
+          ? Math.max(0, Math.min(FARM_PLOT_COUNT, Math.floor(farm.activePlots)))
+          : FARM_STARTING_PLOT_COUNT;
+      const selectedCrop = isFarmCropId(farm.selectedCrop) ? farm.selectedCrop : FARM_DEFAULT_CROP;
+      const plots = emptyFarmPlots();
+      if (Array.isArray(farm.plots)) {
+        for (let i = 0; i < FARM_PLOT_COUNT; i += 1) {
+          const plot = farm.plots[i];
+          if (
+            plot !== null && typeof plot === 'object' &&
+            typeof plot.plantedAt === 'number' && Number.isFinite(plot.plantedAt) && plot.plantedAt >= 0
+          ) {
+            plots[i] = {
+              plantedAt: plot.plantedAt,
+              crop: isFarmCropId(plot.crop) ? plot.crop : FARM_DEFAULT_CROP,
+            };
+          }
+        }
+      }
       camp.farm = {
         foodAtStart: Math.floor(farm.foodAtStart),
         gatheredFood,
         step: unlocked && (farm.step === 'intro' || farm.step === 'goal') ? 'reward' : farm.step,
         unlocked,
+        activePlots,
+        selectedCrop,
+        plots,
+      };
+    }
+    const signs = data.signposts;
+    if (signs != null && typeof signs === 'object') {
+      camp.signposts = {
+        camp: validSignposts(signs.camp),
+        farm: validSignposts(signs.farm),
       };
     }
     if (typeof data.raids === 'number') camp.raids = data.raids;
@@ -602,11 +665,15 @@ export function load(): LoadResult {
           rest?: boolean;
           schedule?: string;
           hunt?: { startedAt: number; endsAt: number; seed: number };
+          craft?: string;
         } =>
           r != null &&
           typeof r.name === 'string' &&
           r.name !== '' &&
-          DWELLER_LOOKS.includes(r.look as DwellerLook) &&
+          // Внешность меряется всем списком, а не пулом гуляющих
+          // (`DWELLER_LOOK_KINDS`): по второму нанятый лесник в сейв
+          // записался бы, а обратно не прочитался.
+          DWELLER_LOOK_KINDS.includes(r.look as DwellerLook) &&
           RESIDENT_JOBS.includes(r.answer as ResidentJob))
         // Сид лица у старых сохранений отсутствует, и выдумывать его случайно
         // нельзя: жилец менял бы лицо при каждой загрузке. Берётся из имени —
@@ -626,6 +693,12 @@ export function load(): LoadResult {
           rest: r.rest === true,
           ...(RESIDENT_SCHEDULE_ORDER.includes(r.schedule as ResidentScheduleId)
             ? { schedule: r.schedule as ResidentScheduleId }
+            : {}),
+          // Незнакомое ремесло читается как «ремесла нет»: человек остаётся
+          // в лагере обычными руками. Выбросить его целиком значило бы
+          // отнять у игрока купленного жильца из-за одного поля.
+          ...(RESIDENT_CRAFTS.includes(r.craft as ResidentCraft)
+            ? { craft: r.craft as ResidentCraft }
             : {}),
           ...(r.hunt != null &&
             typeof r.hunt.startedAt === 'number' && Number.isFinite(r.hunt.startedAt) &&

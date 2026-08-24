@@ -29,6 +29,8 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kenney-castle-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-graveyard-kit/glb/*.glb` — 91 модель: ограды, склепы, могилы, надгробия, хвоя, пеньки, тыквы, утварь, пятеро существ | [kenney.nl/assets/graveyard-kit](https://kenney.nl/assets/graveyard-kit), версия 5.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-graveyard-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
+| `kenney-survival-kit/glb/tent*.glb` — каркас палатки, половина и полное полотно; в игру едут готовая палатка и строительная стадия | [kenney.nl/assets/survival-kit](https://kenney.nl/assets/survival-kit), версия 2.0 | CC0 1.0 | Kenney Vleugels |
+| `kenney-survival-kit/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `kenney-cartography/png/*.png` — 7 retina-рисунков глобальной карты: шахта, замок, череп, кладбище, тропа, компас и палатка | [kenney.nl/assets/cartography-pack](https://kenney.nl/assets/cartography-pack), версия 1.0 | CC0 1.0 | Kenney Vleugels |
 | `kaykit-builder/glb/**/*.glb` — 226 моделей: 30 объектов (постройки, стены, мосты, рельеф, растительность), 68 квадратных плиток и 128 гексов | [kaylousberg.itch.io/kaykit-medieval-builder-pack](https://kaylousberg.itch.io/kaykit-medieval-builder-pack), тариф FREE, версия 1.0 | CC0 1.0 | Kay Lousberg |
 | `kenney-rpg-audio/audio/*.ogg` — 51 звук: шаги, двери, клинок, ткань, книга, утварь, монеты, топор | [kenney.nl/assets/rpg-audio](https://kenney.nl/assets/rpg-audio) | CC0 1.0 | Kenney Vleugels |
@@ -47,6 +49,8 @@ NC-лицензии несовместимы с любой монетизаци�
 | `codepen-carnival-wheel/assets/*` — GLB сцены колеса и запечённые текстуры; `carnival.glb`, `baked.jpg` и `wheel.jpg` **едут в прототип** (`render/wheelView.ts`, локация призов). Лицензия автором не объявлена — по решению владельца допущено в прототип, перед релизом модель пересобрать свою | там же, `assets.codepen.io/262181/` | не объявлена | Jared Stanley |
 | `sungraphica-icons/*.png` — 2 значка из бесплатной версии: стрелка поворота (вправо — зеркалится CSS) и дом; красятся маской в `currentColor`. Строки авторства в игре нет — по решению владельца: формулировка автора на странице набора — «please credit whenever possible», просьба, а не условие; авторство записано здесь | [sungraphica.itch.io/minimal-game-icons-pack](https://sungraphica.itch.io/minimal-game-icons-pack), тариф FREE | CC BY 4.0 (по слову автора в комментариях; страница мягче) | SunGraphica |
 | `low-poly-fox/source/*`, `low-poly-fox/glb/fox.glb` — модель лисы, текстура и производный GLB; в игру едет запечённая геометрия `src/render/fox.data.ts` | [gabrielpedroleal.itch.io/low-poly-fox-model](https://gabrielpedroleal.itch.io/low-poly-fox-model), бесплатный архив от 2026-08-23 | **не объявлена**: на странице и в архиве условия отсутствуют; допущено только в прототип, до релиза подтвердить у автора или заменить | GabrielPedroLeal |
+| `kenney-mini-forest/glb/*.glb` — 22 модели: деревья, кусты, камни, настилы, мостки, лестница, ограда, флаг, палатка, мишень, лучник и его лук | [kenney.nl/assets/mini-forest](https://kenney.nl/assets/mini-forest), версия 1.0 | CC0 1.0 | Kenney Vleugels |
+| `kenney-mini-forest/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `item-icons/meat.png`, `item-icons/fox-pelt.png` — иконки охотничьей добычи, сгенерированы для проекта | локальная генерация OpenAI ImageGen, 2026-08-23 | свои ассеты проекта | Emberhold |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
@@ -55,6 +59,7 @@ NC-лицензии несовместимы с любой монетизаци�
 `kaykit-weapons/License.txt`, `kaykit-builder/License.txt`,
 `kenney-rpg-audio/License.txt`, `kenney-castle-kit/License.txt`,
 `kenney-graveyard-kit/License.txt`, `kenney-cartography/License.txt`,
+`kenney-mini-forest/License.txt`, `kenney-survival-kit/License.txt`,
 `quaternius-ual/License.txt` и
 `kaykit-tools/License.txt` — файлы лицензий как они пришли
 в архивах, без правок.
@@ -246,12 +251,19 @@ Ogg Vorbis только в 18.4, а §18.5 отдельно оговаривае
 и запись в реестре стоит не ради лицензии, а ради того же, ради чего стоят
 остальные: чтобы на вопрос «откуда это в `assets/`» отвечал файл, а не память.
 
-В папке лежат `build.py` — скрипт сборки, он же источник, — и два `.glb`
-как его результат. Рабочей сцены `.blend` здесь нет: она держала бы внутри
+В папке лежат `build.py` — скрипт сборки, он же источник, — `export.py`,
+хедлесс-драйвер к нему (`Blender -b -P assets/folk/export.py -- Forester`),
+и шесть `.glb` как их результат. Рабочей сцены `.blend` здесь нет: она держала бы внутри
 импортированного рыцаря из чужого набора и расходилась бы со скриптом молча. В бандл едет не `.glb`,
 а `src/render/folk.data.ts`: `npm run models -- --write --pack=folk` применяет
 скиннинг, ставит модель в позу покоя и пишет треугольники со слотами палитры.
-39 КБ gzip на двоих.
+108 КБ gzip на шестерых.
+
+Шестой — лесник (§6.1.6.3). Нарисован он здесь, но **силуэт снят с чужой
+модели**: плащ, откинутый капюшон и колчан — с лучника набора Kenney Mini
+Forest (CC0, записан выше). Геометрии оттуда не взято ни треугольника —
+референс лицензией не обременён и в любом случае CC0, — а записано это
+затем же, зачем всё в этом файле: чтобы на вопрос «откуда» отвечал файл.
 
 Общего с чужими наборами у них одно и важное: **риг**. Скелет `Rig_Medium`
 приехал с KayKit (CC0), и свои модели скинованы на него — иначе клипы §17.1

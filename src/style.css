@@ -53,6 +53,9 @@
   --raze-line: #b0574a;
   /* Плашка под портретом: темнее сцены, светлее листа. */
   --portrait: rgba(30, 28, 24, 0.9);
+  --event-art-bg: #11100d;
+  --event-art-fade-top: rgba(11, 10, 9, 0.02);
+  --event-art-fade-bottom: rgba(11, 10, 9, 0.88);
   /* Рамка опасного действия: тот же красный, только вполсилы. */
   --bad-line: rgba(212, 84, 58, 0.5);
 
@@ -282,6 +285,11 @@ canvas { display: block; touch-action: none; }
    отказаться от лагеря нельзя (§16.1). */
 #hud:not(.prompting) .prompt { display: none; }
 #hud.prompting .hint, #hud.prompting .ctl { display: none; }
+/* Разговор (§6.1.6.2, §6.1.6.3) приходит своей панелью снизу и о нижних
+   кнопках не знает: две коробки в одном углу налезали друг на друга.
+   Пока он на экране, низ вылазки уступает — то же правило, что у
+   приглашения пролога строкой выше. */
+#hud.talking .hint, #hud.talking .ctl, #hud.talking .raid-slots { display: none; }
 /* Отладочный ряд вылазки (§6.2.5). Собирается только при `?debug` в адресе —
    в игре его нет в разметке вовсе, поэтому и правило здесь одно. */
 .night { display: flex; align-items: center; gap: 8px; pointer-events: auto; flex-wrap: wrap; }
@@ -462,12 +470,68 @@ button:active { filter: brightness(1.25); }
   border: 1px solid var(--line); border-radius: 8px;
 }
 .map-card { padding: 8px 10px; }
+.map-card .event-art {
+  min-height: 112px; overflow: hidden;
+  padding: 9px 10px; box-sizing: border-box; display: flex; flex-direction: column;
+  justify-content: flex-end; gap: 2px; color: var(--ink); background-color: var(--event-art-bg);
+  background-position: center 42%; background-size: cover; position: relative; isolation: isolate;
+}
+.map-card .event-art::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, var(--event-art-fade-top) 22%, var(--event-art-fade-bottom) 100%);
+}
+.map-card .event-art span { font-size: 10px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.12em; }
+.map-card .event-art b { font-family: Georgia, serif; font-size: 18px; font-weight: 400; }
+.map-card .event-art i { font-style: normal; color: var(--paper); font-size: 11px; line-height: 1.25; }
 .map-card .t b { font-size: 14px; }
 .map-card .t i { font-style: normal; font-size: 11px; color: var(--dim); }
 .map-card .line { font-size: 12px; color: var(--dim); }
 .map-card .line b { font-size: 12px; color: var(--ink); font-weight: 600; }
 .map-card .line b.good { color: var(--good); }
 .map-card .line b.bad { color: var(--bad); }
+.map-card .location-unlock {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  margin: -2px -2px 8px;
+  overflow: hidden;
+  border: 1px solid var(--pick-line);
+  background: linear-gradient(135deg, var(--pick), var(--event-art-bg));
+}
+.map-card .location-unlock img {
+  width: 96px;
+  height: 120px;
+  object-fit: cover;
+  object-position: center;
+  background: var(--event-art-bg);
+}
+.map-card .location-unlock figcaption {
+  min-width: 0;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.map-card .location-unlock span {
+  color: var(--gold);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.map-card .location-unlock b { font-family: Georgia, serif; font-size: 15px; font-weight: 400; }
+.map-card .location-unlock i { color: var(--paper); font-size: 10px; font-style: normal; line-height: 1.3; }
+.map-card .location-unlock figcaption div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.map-card .location-unlock em {
+  color: var(--gold);
+  font-size: 13px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
 /* Богатство — три засечки, а не число: «сколько ещё заходов» читается
    взглядом, а число заставляет считать. */
 .map-card .pips { display: flex; gap: 4px; }
@@ -893,10 +957,28 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #settings .panel { width: 100%; max-width: 340px; }
 #settings h2 { margin: 0 0 12px; font-size: 18px; }
 .set-rows { display: flex; flex-direction: column; gap: 10px; }
+/* Язык — первая строка настроек и та же сетка, что у ползунков ниже:
+   подпись слева, орган управления справа. Плашки в углу экрана больше нет
+   (`public/language.js`): язык меняют раз в жизни, а место в кадре он
+   занимал всегда. */
 .set-language { display: grid; grid-template-columns: 88px 1fr; gap: 8px; align-items: center; margin-bottom: 14px; }
-.language-toggle { display: inline-flex; justify-self: start; border: 1px solid var(--line); }
-.language-toggle button { min-width: 42px; padding: 6px 10px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--dim); }
-.language-toggle button:last-child { border-right: 0; }
+/* Сегментная кнопка: две половины одной кнопки, а не две кнопки рядом.
+   Рамка общая, разделитель один, выбранная половина светится золотом —
+   тем же, каким горит выбранное везде в игре. */
+/* Скругления здесь нет намеренно: коробку с краем и радиусом объявляет
+   только словарь (`.card`, `.panel`, `.chip`), и сегментной кнопке своя
+   не положена — правило сторожит `style.rules.ts`. */
+.language-toggle {
+  display: inline-flex; justify-self: start; overflow: hidden;
+  border: 1px solid var(--line); background: var(--fill-2);
+}
+.language-toggle button {
+  min-width: 46px; padding: 7px 12px; border: 0; border-radius: 0; border-image: none;
+  background: transparent; color: var(--dim); font-size: 12px; letter-spacing: 0.08em;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.language-toggle button + button { border-left: 1px solid var(--line); }
+.language-toggle button:hover:not(.on) { color: var(--ink); }
 .language-toggle button.on { background: var(--gold); color: var(--ink); }
 /* Подпись · ползунок · число: числа выровнены по правому краю колонкой,
    иначе «5%» и «100%» дёргают ползунок при каждом движении. */
@@ -1118,7 +1200,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 
 #camp-locations {
   position: fixed; z-index: 16; left: 10px; top: calc(78px + env(safe-area-inset-top));
-  display: grid; width: 112px; gap: 7px; pointer-events: auto;
+  display: grid; width: 132px; gap: 7px; pointer-events: auto;
 }
 #camp-locations .cl-label {
   padding-left: 3px; color: var(--dim); font-size: 9px;
@@ -1136,10 +1218,79 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #camp-locations .cl-place.clan {
   background: linear-gradient(155deg, color-mix(in srgb, var(--gold) 25%, var(--panel)) 0 48%, var(--panel) 49%);
 }
+#camp-locations .cl-place.sign {
+  min-height: 36px; align-items: center; justify-content: center;
+  color: var(--gold); background: color-mix(in srgb, var(--panel) 88%, var(--gold));
+  font-size: 11px; text-align: center;
+}
 #camp-locations .cl-place b, #camp-locations .cl-place span { position: relative; z-index: 1; }
-#camp-locations .cl-place span { font-size: 11px; }
+#camp-locations .cl-place span { font-size: 10px; white-space: nowrap; }
+#camp-locations .cl-place.farm span.ready { color: var(--good); font-weight: 700; }
 #camp-locations .cl-place[aria-pressed="true"] { border-color: var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 22%, transparent); }
 #camp-locations .cl-place.locked { filter: saturate(0.45); opacity: 0.72; }
+
+/* ---------- огород: выбор следующего посева ---------- */
+#farm-crops {
+  position: fixed; z-index: 17; left: 50%; bottom: max(72px, calc(62px + env(safe-area-inset-bottom)));
+  transform: translateX(-50%); width: min(650px, calc(100% - 24px)); padding: 9px;
+  pointer-events: auto;
+}
+#farm-crops[hidden] { display: none !important; }
+#farm-crops > header {
+  gap: 12px; margin-bottom: 7px;
+}
+#farm-crops h2 { margin: 0; font-size: 14px; }
+#farm-crops header p { margin: 0; color: var(--dim); font-size: 10px; }
+#farm-crops .fc-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+#farm-crops .fc-card {
+  position: relative; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 9px;
+  min-height: 98px; padding: 6px; text-align: left; overflow: hidden;
+  background: color-mix(in srgb, var(--panel) 90%, var(--good));
+}
+#farm-crops .fc-card.selected {
+  border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold), 0 0 14px color-mix(in srgb, var(--gold) 20%, transparent);
+  background: color-mix(in srgb, var(--panel) 78%, var(--gold));
+}
+#farm-crops .fc-media { position: relative; display: block; min-width: 0; }
+#farm-crops .fc-media img {
+  display: block; width: 88px; height: 88px; object-fit: cover; border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+#farm-crops .fc-badge { position: absolute; left: 5px; top: 5px; padding: 2px 5px; font-size: 8px; }
+#farm-crops .fc-body { display: flex; flex-direction: column; min-width: 0; align-self: stretch; }
+#farm-crops .fc-body b { margin-top: 1px; font-size: 15px; }
+#farm-crops .fc-body small { margin-top: 2px; color: var(--dim); font-size: 9px; line-height: 1.25; }
+#farm-crops .fc-stats {
+  display: flex; flex-wrap: wrap; gap: 3px; margin-top: auto; padding-top: 5px;
+  font-size: 9px; font-variant-numeric: tabular-nums;
+}
+#farm-crops .fc-stats span {
+  padding: 2px 5px; white-space: nowrap;
+}
+#farm-crops .fc-stats span:last-child { color: var(--good); }
+#farm-crops .fc-footer { display: flex; gap: 7px; margin-top: 7px; }
+#farm-crops .fc-helpers {
+  flex: 1 1 auto; min-height: 28px; padding: 3px 7px; color: var(--dim);
+  font-size: 10px; background: var(--fill); border-radius: var(--r-chip);
+}
+#farm-crops .fc-helpers b { flex: 0 0 auto; color: var(--good); }
+#farm-crops .fc-return { flex: 0 0 auto; min-height: 28px; padding: 4px 10px; color: var(--good); }
+#farm-crops .fc-return[hidden] { display: none; }
+
+@media (max-width: 620px) {
+  #farm-crops { bottom: max(68px, calc(58px + env(safe-area-inset-bottom))); padding: 7px; }
+  #farm-crops > header { margin-bottom: 5px; }
+  #farm-crops header p, #farm-crops .fc-body small { display: none; }
+  #farm-crops .fc-card { grid-template-columns: 58px minmax(0, 1fr); gap: 6px; min-height: 70px; padding: 5px; }
+  #farm-crops .fc-media img { width: 58px; height: 58px; }
+  #farm-crops .fc-body b { font-size: 13px; }
+  #farm-crops .fc-stats { padding-top: 3px; font-size: 8px; }
+  #farm-crops .fc-stats span:last-child { display: none; }
+  #farm-crops .fc-footer { margin-top: 5px; gap: 5px; }
+  #farm-crops .fc-helpers { font-size: 8px; }
+  #farm-crops .fc-helpers b { display: none; }
+  #farm-crops .fc-return { max-width: 132px; padding: 4px 7px; font-size: 9px; }
+}
 
 #clan-build {
   position: fixed; z-index: 17; left: 50%; bottom: max(14px, env(safe-area-inset-bottom));
@@ -1162,6 +1313,20 @@ button[disabled] { opacity: 0.4; cursor: default; }
   #clan-build .cb-list button { min-height: 36px; }
   #clan-build .cb-workers b { display: none; }
 }
+.sign-editor {
+  position: fixed; z-index: 80; inset: 0; display: grid; place-items: center;
+  padding: 16px; background: var(--scrim-soft); pointer-events: auto;
+}
+.sign-editor[hidden] { display: none; }
+.sign-editor-panel { width: min(420px, 100%); padding: 18px; }
+.sign-editor-panel h2 { margin: 0 0 6px; font-size: 20px; }
+.sign-editor-panel p { margin: 0 0 14px; }
+.sign-editor-panel input {
+  width: 100%; box-sizing: border-box; padding: 11px 12px;
+  color: var(--ink); font: inherit;
+}
+.sign-editor-count { display: block; margin-top: 5px; text-align: right; font-size: 10px; }
+.sign-editor-actions { margin-top: 14px; justify-content: flex-end; gap: 8px; }
 
 @media (max-width: 620px) {
   #farm-onboarding {
@@ -1294,6 +1459,10 @@ button[disabled] { opacity: 0.4; cursor: default; }
   display: flex; flex-direction: column; gap: 4px; align-items: center; max-width: 300px;
 }
 /* Пояснение под ответом: что выбор значит для лагеря. */
+/* Погасшая кнопка разговора: нанять не на что, и жать не на что.
+   Причина при этом стоит строкой выше — отказ обязан называть, чего
+   не хватает (§23.3), а не только гаснуть. */
+#meet .acts button:disabled, #minotaur-meet .acts button:disabled { opacity: 0.45; }
 #meet .acts button small, #minotaur-meet .acts button small {
   font-size: 11px; letter-spacing: 0.02em; color: var(--dim); white-space: normal;
   line-height: 1.35;

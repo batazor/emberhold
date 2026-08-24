@@ -1,6 +1,4 @@
-import { formatDuration } from '../core/clock';
 import {
-  CLAIM_REASON,
   GIFT_ARROWS,
   WEEK,
   claimBlock,
@@ -19,10 +17,11 @@ import { CHEST_BONUS, chestSpot, overflowOf } from '../sim/chests';
 import { campOrigin } from '../sim/camp';
 import { generateSettler } from '../sim/settler';
 import { DAY_SEC, dayAt } from '../sim/world';
-import { RESOURCE_NAME } from '../sim/resources';
 import type { CampState } from '../sim/camp';
 import type { ResourceKind } from '../sim/resources';
 import { avatarSvg } from './avatar';
+import { clearGameText, gameDuration, gameMessage, setGameAttribute, setGameText, type GameMessageValues } from '../i18n/game';
+import type { GameMessage } from '../i18n/gameMessages';
 
 /**
  * Подарок за вход (§29.4): значок над сценой и семь карточек в листе.
@@ -78,21 +77,57 @@ const PIC_OF: Partial<Record<ResourceKind, GiftPic>> = {
  * У вещей наоборот: «Сундук» — это вещь, а «Кладовая +30» — то, что она
  * делает, и второе из первого не выводится.
  */
-function giftText(gift: DailyGift, camp: CampState, taken: number): { title: string; line: string } {
+interface GiftText {
+  readonly title: GameMessage;
+  readonly titleValues?: GameMessageValues;
+  readonly line?: GameMessage;
+  readonly lineValues?: GameMessageValues;
+}
+
+function giftText(gift: DailyGift, camp: CampState, taken: number): GiftText {
   switch (gift.id) {
     case 'ресурсы': {
       const loot = giftLoot(gift, giftTier(camp.levels.kitchen), taken);
-      const title = (Object.entries(loot) as [ResourceKind, number][])
-        .map(([kind, amount]) => `${RESOURCE_NAME[kind]} ${amount}`)
-        .join(' · ');
-      return { title, line: '' };
+      const values = Object.fromEntries(Object.entries(loot)) as GameMessageValues;
+      switch (gift.kinds.join(',')) {
+        case 'wood': return { title: gameMessage('Дерево {wood}', 'Wood {wood}'), titleValues: values };
+        case 'stone': return { title: gameMessage('Камень {stone}', 'Stone {stone}'), titleValues: values };
+        case 'iron': return { title: gameMessage('Железо {iron}', 'Iron {iron}'), titleValues: values };
+        case 'stone,wood': return {
+          title: gameMessage('Камень {stone} · Дерево {wood}', 'Stone {stone} · Wood {wood}'), titleValues: values,
+        };
+        case 'wood,iron': return {
+          title: gameMessage('Дерево {wood} · Железо {iron}', 'Wood {wood} · Iron {iron}'), titleValues: values,
+        };
+        case 'stone,iron': return {
+          title: gameMessage('Камень {stone} · Железо {iron}', 'Stone {stone} · Iron {iron}'), titleValues: values,
+        };
+        default: return {
+          title: gameMessage(
+            'Камень {stone} · Дерево {wood} · Железо {iron}',
+            'Stone {stone} · Wood {wood} · Iron {iron}',
+          ),
+          titleValues: values,
+        };
+      }
     }
     case 'сундук':
-      return { title: gift.title, line: `Кладовая +${CHEST_BONUS}` };
+      return {
+        title: gameMessage('Сундук', 'Chest'),
+        line: gameMessage('Кладовая +{bonus}', 'Storage +{bonus}'),
+        lineValues: { bonus: CHEST_BONUS },
+      };
     case 'стрелы':
-      return { title: gift.title, line: `Стрелы ${GIFT_ARROWS}` };
+      return {
+        title: gameMessage('Пачка стрел', 'Bundle of arrows'),
+        line: gameMessage('Стрелы {count}', 'Arrows {count}'),
+        lineValues: { count: GIFT_ARROWS },
+      };
     case 'встреча':
-      return { title: gift.title, line: 'Ему нужна крыша' };
+      return {
+        title: gameMessage('Гость у костра', 'Guest by the fire'),
+        line: gameMessage('Ему нужна крыша', 'They need shelter'),
+      };
   }
 }
 
@@ -130,10 +165,10 @@ function picOf(gift: DailyGift, camp: CampState, taken: number): GiftPic | null 
  * Кнопку это не запирает. Полная кладовая — не отказ: игрок вправе взять
  * подарок и потерять часть, а вот не знать об этом заранее не вправе.
  */
-function giftWarn(camp: CampState, taken: number): string | null {
+function giftWarn(camp: CampState, taken: number): readonly [GameMessage, GameMessageValues?] | null {
   const gift = giftAt(taken);
   if (gift.id === 'сундук') {
-    return chestSpot(camp) === null ? 'Сундук некуда поставить — площадка занята' : null;
+    return chestSpot(camp) === null ? [gameMessage('Сундук некуда поставить — площадка занята', 'There is nowhere to place the chest—the site is occupied')] : null;
   }
   if (gift.kinds.length === 0) return null;
   const loot = giftLoot(gift, giftTier(camp.levels.kitchen), taken);
@@ -141,8 +176,11 @@ function giftWarn(camp: CampState, taken: number): string | null {
   if (lost === 0) return null;
   const asked = (Object.values(loot) as number[]).reduce((sum, n) => sum + n, 0);
   return lost >= asked
-    ? 'Кладовая полна — из подарка не влезет ничего'
-    : `Кладовая почти полна — из ${asked} влезет ${asked - lost}`;
+    ? [gameMessage('Кладовая полна — из подарка не влезет ничего', 'Storage is full—none of the gift will fit')]
+    : [gameMessage(
+      'Кладовая почти полна — из {asked} влезет {fits}',
+      'Storage is almost full — {fits} of {asked} will fit',
+    ), { asked, fits: asked - lost }];
 }
 
 export class DailyPanel {
@@ -169,7 +207,7 @@ export class DailyPanel {
   constructor(private readonly cb: DailyCallbacks) {
     this.icon = document.createElement('button');
     this.icon.className = 'chip gift-icon';
-    this.icon.setAttribute('aria-label', 'Подарок за вход');
+    setGameAttribute(this.icon, 'aria-label', gameMessage('Подарок за вход', 'Daily gift'));
     // Значок над сценой — тот же сундук, что стоит в лагере: игрок узнаёт
     // вещь раньше, чем прочтёт подпись, а подписи у значка нет вовсе.
     const pic = document.createElement('img');
@@ -206,7 +244,7 @@ export class DailyPanel {
       box.style.setProperty('--in', `${day * 45}ms`);
       const badge = document.createElement('span');
       badge.className = 'badge';
-      badge.textContent = `День ${day + 1}`;
+      setGameText(badge, gameMessage('День {day}', 'Day {day}'), { day: day + 1 });
       const pic2 = document.createElement('div');
       pic2.className = 'gift-pic';
       const title = document.createElement('b');
@@ -228,7 +266,7 @@ export class DailyPanel {
 
     this.take = document.createElement('button');
     this.take.className = 'cta';
-    this.take.textContent = 'Забрать';
+    setGameText(this.take, gameMessage('Забрать', 'Claim'));
     this.take.addEventListener('click', () => this.cb.onClaim());
 
     this.root.append(this.week, this.days, this.note, this.take);
@@ -250,15 +288,20 @@ export class DailyPanel {
     this.mark.style.display = free ? '' : 'none';
     this.icon.classList.toggle('ready', free);
 
-    this.weekName.textContent = first ? 'Первая неделя' : `Неделя ${weekOf(state.taken)}`;
-    this.weekCount.textContent = first ? 'даётся один раз' : 'круг повторяется';
+    setGameText(this.weekName, first
+      ? gameMessage('Первая неделя', 'First week')
+      : gameMessage('Неделя {week}', 'Week {week}'), { week: weekOf(state.taken) });
+    setGameText(this.weekCount, first ? gameMessage('награды выдаются один раз', 'one-time rewards') : gameMessage('повторяется каждую неделю', 'repeats every week'));
 
     week.forEach((gift, at) => {
       const card = this.cards[at]!;
       const taken = state.taken - today + at;
       const text = giftText(gift, camp, taken);
-      card.title.textContent = text.title;
-      card.line.textContent = text.line;
+      setGameText(card.title, text.title, text.titleValues);
+      if (text.line === undefined) {
+        clearGameText(card.line);
+        card.line.textContent = '';
+      } else setGameText(card.line, text.line, text.lineValues);
       this.paintPic(card.pic, gift, camp, taken);
       // Три состояния и ни одного лишнего: взято, следующий, впереди.
       // Взятое гасится, а не вычёркивается: вычеркнутое читается потерей.
@@ -271,13 +314,14 @@ export class DailyPanel {
       const next = at === today;
       card.box.classList.toggle('on', next && free);
       card.box.classList.toggle('gift-done', done);
-      card.badge.textContent = done
-        ? 'взято'
+      const badge = done
+        ? gameMessage('взято', 'claimed')
         : next
           ? free
-            ? 'сегодня'
-            : 'завтра'
-          : `День ${at + 1}`;
+            ? gameMessage('сегодня', 'today')
+            : gameMessage('завтра', 'tomorrow')
+          : gameMessage('День {day}', 'Day {day}');
+      setGameText(card.badge, badge, { day: at + 1 });
     });
 
     this.take.disabled = !free;
@@ -285,11 +329,12 @@ export class DailyPanel {
     // это отказ, а число — это уже свидание. Считается оно теми же часами,
     // которыми считается сам день (§27).
     const warn = free ? giftWarn(camp, state.taken) : null;
-    this.note.textContent =
-      warn ??
-      (free
-        ? 'Подарок сегодняшнего дня ждёт в лагере'
-        : `${CLAIM_REASON.today}, через ${formatDuration((day + 1) * DAY_SEC - now)}`);
+    if (warn !== null) setGameText(this.note, warn[0], warn[1]);
+    else if (free) setGameText(this.note, gameMessage('Подарок сегодняшнего дня ждёт в лагере', "Today's gift is waiting in camp"));
+    else setGameText(this.note, gameMessage(
+      'Подарок сегодня уже взят — следующий через {duration}',
+      'Today’s gift has already been claimed — the next one arrives in {duration}',
+    ), { duration: gameDuration((day + 1) * DAY_SEC - now) });
     // Предупреждение красится как предупреждение: строка о потере, набранная
     // тем же серым, что и «ждёт в лагере», сообщает ровно ничего.
     this.note.classList.toggle('warn', warn !== null);

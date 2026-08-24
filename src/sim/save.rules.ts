@@ -12,6 +12,12 @@ import { createRoster, syncRoster } from './heroes';
 import { emptyGear } from './gear';
 import { ticketOf } from './sortie';
 import { residentUuid } from './residents';
+import {
+  FARM_DEFAULT_CROP,
+  FARM_PLOT_COUNT,
+  FARM_STARTING_PLOT_COUNT,
+  emptyFarmPlots,
+} from './farm';
 import { load, save, wipe } from './save';
 
 /** Поддельный localStorage: тесты сейва живут без браузера. */
@@ -227,6 +233,39 @@ describe('Сохранение', () => {
   });
 
   /**
+   * **Ремесло переживает перезагрузку** (§6.1.6.3). Лесник куплен за монеты,
+   * и потерянное при записи ремесло означало бы, что сотня монет ушла
+   * на обычные руки. Внешность у него своя, и мерить её пулом гуляющих
+   * (`DWELLER_LOOKS`) нельзя — по нему он не прочитался бы вовсе.
+   */
+  test('нанятый лесник возвращается лесником', () => {
+    const camp = createCamp();
+    camp.residents = [{
+      name: 'Гита', look: 'лесник', seed: 12345, answer: 'строим', rest: false, craft: 'лесник',
+    }];
+    save(camp, createRoster(), 1);
+    const back = load().camp.residents[0];
+    assert.equal(back?.craft, 'лесник', 'ремесло потеряно при перезагрузке');
+    assert.equal(back?.look, 'лесник', 'внешность нанятого не прочиталась');
+  });
+
+  /** Незнакомое ремесло не выбрасывает человека: он остаётся обычными руками. */
+  test('сейв с чужим ремеслом открывается, а ремесло отбрасывается', () => {
+    const camp = createCamp();
+    camp.residents = [{ name: 'Гита', look: 'поселенец', seed: 7, answer: 'строим', rest: false }];
+    save(camp, createRoster(), 1);
+    const raw = JSON.parse(localStorage.getItem('emberhold/save')!) as {
+      residents: { craft?: string }[];
+    };
+    raw.residents[0]!.craft = 'звездочёт';
+    localStorage.setItem('emberhold/save', JSON.stringify(raw));
+    const back = load().camp.residents;
+    assert.equal(back.length, 1, 'жилец пропал из-за незнакомого ремесла');
+    assert.equal(back[0]?.craft, undefined, 'чужое ремесло прочиталось как своё');
+    wipe();
+  });
+
+  /**
    * Сейв, записанный до того, как лицо появилось, не роняет игру и не выдаёт
    * жильцу случайное лицо: сид берётся из имени, а имя у жильца не меняется.
    */
@@ -249,6 +288,47 @@ describe('Сохранение', () => {
     assert.ok(first !== undefined && typeof first.seed === 'number', 'жилец без лица');
     assert.equal(first.seed, second?.seed, 'лицо поменялось между загрузками');
     wipe();
+  });
+});
+
+describe('Сохранение: огород', () => {
+  test('новая вместимость сохраняется, а старый шестигрядочный урожай не пропадает', () => {
+    const store = fakeStore();
+    const camp = createCamp();
+    camp.farm = {
+      foodAtStart: 10,
+      gatheredFood: 30,
+      step: 'done',
+      unlocked: true,
+      activePlots: FARM_STARTING_PLOT_COUNT,
+      selectedCrop: 'turnip',
+      plots: emptyFarmPlots(),
+    };
+    save(camp, createRoster(), 100);
+    const raw = JSON.parse(store.get('emberhold/save')!) as {
+      farm: {
+        activePlots?: number;
+        selectedCrop?: string;
+        plots: ({ plantedAt: number; crop?: string } | null)[];
+      };
+    };
+    assert.equal(raw.farm.activePlots, FARM_STARTING_PLOT_COUNT);
+    assert.equal(raw.farm.selectedCrop, 'turnip');
+
+    // Срез до балансировки не писал вместимость и позволял сеять все шесть.
+    delete raw.farm.activePlots;
+    delete raw.farm.selectedCrop;
+    raw.farm.plots = Array(FARM_PLOT_COUNT).fill(null);
+    raw.farm.plots[5] = { plantedAt: 50 };
+    store.set('emberhold/save', JSON.stringify(raw));
+    const back = load().camp.farm;
+    assert.equal(back?.activePlots, FARM_STARTING_PLOT_COUNT);
+    assert.equal(back?.selectedCrop, FARM_DEFAULT_CROP, 'старый сейв остался без выбора культуры');
+    assert.deepEqual(
+      back?.plots[5],
+      { plantedAt: 50, crop: FARM_DEFAULT_CROP },
+      'старый урожай потерян',
+    );
   });
 });
 

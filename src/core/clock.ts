@@ -73,8 +73,11 @@ export class Clock {
 export const formatDuration = (seconds: number): string => {
   const s = Math.max(0, Math.ceil(seconds));
   if (s >= 3600) {
-    const h = Math.floor(s / 3600);
-    const m = Math.round((s % 3600) / 60);
+    // Округляется весь остаток разом: иначе 3:59:59 превращалось в
+    // невозможные «3 ч 60 мин» ровно там, где таймер почти полный.
+    const totalMinutes = Math.round(s / 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
     return m > 0 ? `${h} ч ${m} мин` : `${h} ч`;
   }
   if (s >= 60) {
