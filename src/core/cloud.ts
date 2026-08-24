@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { ClanCampIcon, PersonalCampIcon } from './cosmetics';
 
 /**
  * Облачная копия сейва (§6). Модуль ничего не знает о форме сохранения —
@@ -247,6 +248,9 @@ export async function cloudNeighbours(): Promise<{ user: string; node: number; s
 export interface CloudCamp {
   readonly id: string;
   readonly clan: string | null;
+  readonly clanId: string | null;
+  readonly icon: PersonalCampIcon;
+  readonly clanIcon: ClanCampIcon;
   readonly power: number;
   readonly level: number;
   readonly folk: number;
@@ -272,6 +276,7 @@ export async function cloudCamp(
       folk: Math.max(0, Math.round(row.folk)),
       updated_at: new Date().toISOString(),
     });
+    if (row.clan !== null) await client.rpc('ensure_owned_clan', { p_name: row.clan });
   } catch {
     /* см. шапку файла */
   }
@@ -352,7 +357,7 @@ export async function cloudCamps(limit = 50): Promise<CloudCamp[]> {
     const [strongest, popular] = await Promise.all([
       client
         .from('camps')
-        .select('user_id, clan, power, level, folk')
+        .select('user_id, clan, clan_id, camp_icon, power, level, folk, clans(camp_icon)')
         .neq('user_id', uid)
         .order('power', { ascending: false })
         .limit(limit),
@@ -361,6 +366,15 @@ export async function cloudCamps(limit = 50): Promise<CloudCamp[]> {
     const parse = (r: Record<string, unknown>, idField: 'user_id' | 'camp_id'): CloudCamp => ({
       id: String(r[idField]),
       clan: typeof r.clan === 'string' && r.clan.trim() !== '' ? r.clan : null,
+      clanId: typeof r.clan_id === 'string' ? r.clan_id : null,
+      icon: r.camp_icon === 'watchfire' || r.camp_icon === 'horned_tent' ? r.camp_icon : 'default',
+      clanIcon: (() => {
+        const joined = Array.isArray(r.clans) ? r.clans[0] : r.clans;
+        const icon = joined !== null && typeof joined === 'object'
+          ? (joined as Record<string, unknown>).camp_icon
+          : null;
+        return icon === 'banner_tower' || icon === 'council_totem' ? icon : 'default';
+      })(),
       power: typeof r.power === 'number' ? r.power : 0,
       level: typeof r.level === 'number' ? r.level : 0,
       folk: typeof r.folk === 'number' ? r.folk : 0,
@@ -376,7 +390,7 @@ export async function cloudCamps(limit = 50): Promise<CloudCamp[]> {
     // таблицы остаются полными в пределах своего серверного лимита.
     if (popular.error === null && Array.isArray(popular.data)) for (const row of popular.data) {
       const parsed = parse(row as Record<string, unknown>, 'camp_id');
-      byId.set(parsed.id, parsed);
+      byId.set(parsed.id, { ...parsed, ...(byId.get(parsed.id) ?? {}) });
     }
     return cloudCampLikeStates([...byId.values()]);
   } catch {
@@ -418,6 +432,46 @@ export const cloudSortieClaim = <T>(): Promise<{ report: T } | null> =>
  */
 export const cloudWheel = (node: number): Promise<{ crystals: number; day: number; repeat?: boolean } | null> =>
   callFunction<{ crystals: number; day: number; repeat?: boolean }>('wheel', { node });
+
+export interface BillingState {
+  readonly founderPack: boolean;
+  readonly personal: {
+    readonly owned: boolean;
+    readonly equipped: PersonalCampIcon;
+  };
+  readonly clan: null | {
+    readonly id: string;
+    readonly name: string;
+    readonly role: 'leader' | 'officer' | 'member';
+    readonly owned: boolean;
+    readonly equipped: ClanCampIcon;
+  };
+  readonly url?: string;
+}
+
+/** Права приходят с сервера: сейв и localStorage покупать ничего не умеют. */
+export const cloudBillingStatus = (): Promise<BillingState | null> =>
+  callFunction<BillingState>('billing', { action: 'status' });
+
+/** Одноразовая ссылка привязывается к сессии серверным случайным claim. */
+export const cloudBillingCheckout = (sku: string): Promise<BillingState | null> =>
+  callFunction<BillingState>('billing', { action: 'checkout', sku });
+
+/** Выбор проходит через сервер: localStorage не может надеть неоплаченное. */
+export const cloudBillingEquip = (
+  owner: 'player' | 'clan',
+  icon: PersonalCampIcon | ClanCampIcon,
+): Promise<BillingState | null> => callFunction<BillingState>('billing', { action: 'equip', owner, icon });
+
+/** Канонический UUID заводится после локального основания и переживает имя. */
+export async function cloudEnsureClan(name: string): Promise<string | null> {
+  try {
+    const { data, error } = await client.rpc('ensure_owned_clan', { p_name: name });
+    return error === null && typeof data === 'string' ? data : null;
+  } catch {
+    return null;
+  }
+}
 
 /** «Новая игра» стирает и облачные следы — иначе сейв воскреснет при входе. */
 export async function cloudWipe(): Promise<void> {

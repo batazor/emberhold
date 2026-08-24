@@ -226,6 +226,12 @@ export const LIVE_COLOR = '#9fb6d8';
 export interface LiveCamp {
   readonly id: string;
   readonly clan: string | null;
+  /** Публичный личный знак лагеря; отсутствие — старая стандартная палатка. */
+  readonly icon?: 'default' | 'watchfire' | 'horned_tent';
+  /** Канонический клан нужен, чтобы не рисовать общий лагерь по одному на участника. */
+  readonly clanId?: string | null;
+  /** Знак принадлежит клану, а не строке участника. */
+  readonly clanIcon?: 'default' | 'banner_tower' | 'council_totem';
   readonly power: number;
   readonly level: number;
   readonly folk: number;

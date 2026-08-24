@@ -9,3 +9,11 @@ entrypoint = "./functions/sortie/index.js"
 
 [functions.wheel]
 entrypoint = "./functions/wheel/index.js"
+
+[functions.billing]
+entrypoint = "./functions/billing/index.js"
+
+# Stripe подписывает запрос сам; Supabase JWT у внешнего webhook нет.
+[functions.stripe-webhook]
+entrypoint = "./functions/stripe-webhook/index.js"
+verify_jwt = false

@@ -1338,6 +1338,11 @@ export class CampHud {
     this.map.setCamps(live);
   }
 
+  /** Личный и клановый знаки приходят из серверного магазина. */
+  setCosmetics(personal: unknown, clan: unknown): void {
+    this.map.setCosmetics(personal, clan);
+  }
+
   private syncShop(camp: CampState): void {
     for (const id of CONSUMABLE_ORDER) {
       const def = CONSUMABLES[id];
