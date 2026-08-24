@@ -27169,6 +27169,7 @@ msgid "собрать сундук с крышкой внутри ящика"
 msgstr "собрать сундук с крышкой внутри ящика"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Событие"
 msgstr "Событие"

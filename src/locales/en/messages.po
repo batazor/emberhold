@@ -27377,6 +27377,7 @@ msgid "собрать сундук с крышкой внутри ящика"
 msgstr "collect a chest with a lid inside the box"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Событие"
 msgstr "Event"

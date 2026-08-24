@@ -107,6 +107,35 @@ const EVENT_COLOR: Record<EventId, string> = {
   vein: '#e8e2d4',
 };
 
+/** Иллюстрации карты нарисованы с прозрачным фоном: кольцо под ними всё ещё
+ * несёт ярус и богатство, а сам рисунок называет место или событие. */
+const EVENT_ICON_URL: Record<EventId, string> = {
+  storm: new URL('../../assets/world-map-icons/storm.png', import.meta.url).href,
+  collapse: new URL('../../assets/world-map-icons/collapse.png', import.meta.url).href,
+  quiet: new URL('../../assets/world-map-icons/quiet.png', import.meta.url).href,
+  vein: new URL('../../assets/world-map-icons/vein.png', import.meta.url).href,
+};
+
+/** Полноразмерные иллюстрации живут в карточке, а не на самой карте: у точки
+ * остаётся только компактный знак, а последствия события читаются до входа. */
+const EVENT_CARD_URL: Record<EventId, string> = {
+  storm: new URL('../../assets/event-cards/storm.png', import.meta.url).href,
+  collapse: new URL('../../assets/event-cards/collapse.png', import.meta.url).href,
+  quiet: new URL('../../assets/event-cards/quiet.png', import.meta.url).href,
+  vein: new URL('../../assets/event-cards/vein.png', import.meta.url).href,
+};
+
+const LOCATION_ICON_URL: Record<NodeKind, string> = {
+  'вылазка': new URL('../../assets/world-map-icons/expedition.png', import.meta.url).href,
+  'замок': new URL('../../assets/world-map-icons/castle.png', import.meta.url).href,
+  // Своей иллюстрации у замка минотавра нет — рисунок замка общий, а угрозу
+  // называет значок-череп в кольце и оранжевый цвет самого кольца.
+  'замок минотавра': new URL('../../assets/world-map-icons/castle.png', import.meta.url).href,
+  'кладбище': new URL('../../assets/world-map-icons/graveyard.png', import.meta.url).href,
+  'тропа': new URL('../../assets/world-map-icons/trail.png', import.meta.url).href,
+  'призы': new URL('../../assets/world-map-icons/prizes.png', import.meta.url).href,
+};
+
 /**
  * Глифы событий (§11.6). Прямые грани, без скруглений и полутонов — то же
  * правило, по которому нарисована шестерня настроек, и то же плоское
@@ -293,6 +322,7 @@ export class WorldMap {
   private readonly sendRow: HTMLElement;
   private readonly send: HTMLButtonElement;
   private readonly sendNote: HTMLElement;
+  private readonly markerImages = new Map<string, HTMLImageElement>();
 
   /** Выбранный узел. Карта открывается с выбранным местом, а не пустой:
    *  пустая карточка вынуждает тапнуть дважды, чтобы вообще что-то узнать. */
@@ -350,6 +380,14 @@ export class WorldMap {
     this.ctx = ctx;
     this.canvas.addEventListener('pointerdown', (e) => this.pick(e));
     this.loadMapIcons();
+    // Иллюстрации — вторым слоем поверх значков Kenney: маленький значок
+    // в кольце живёт всегда, картинка приходит на широком экране и у событий.
+    for (const url of [...Object.values(EVENT_ICON_URL), ...Object.values(LOCATION_ICON_URL)]) {
+      const image = new Image();
+      image.src = url;
+      image.addEventListener('load', () => this.paint());
+      this.markerImages.set(url, image);
+    }
 
     this.card = document.createElement('div');
     this.card.className = 'card map-card';
@@ -531,6 +569,15 @@ export class WorldMap {
     this.paintCard();
   }
 
+  /** Рисуем только готовую картинку: пока Vite-ассет грузится, остаётся
+   * прежний геометрический маркер, и карта не мигает пустыми точками. */
+  private drawMarker(url: string, x: number, y: number, size: number): boolean {
+    const image = this.markerImages.get(url);
+    if (image?.complete !== true || image.naturalWidth === 0) return false;
+    this.ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
+    return true;
+  }
+
   /* ---------- карта ---------- */
 
   private draw(): void {
@@ -545,6 +592,13 @@ export class WorldMap {
     const ctx = this.ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+    // `syncTiers` зовёт `draw` только у открытого листа, так что время здесь
+    // не заводит ни отдельного таймера, ни работы у закрытой карты.
+    const motion = performance.now() / 1000;
+    // В 24–32 px детальная иллюстрация становится кляксой. На телефоне
+    // оставляем лаконичные силуэты `NODE_ICON` и глиф события — та же
+    // семантика, но без ложной мелкой детализации.
+    const compact = w < 520 || h < 300;
 
     const spots = [...this.region.nodes, ...this.camps()];
 
@@ -630,7 +684,8 @@ export class WorldMap {
       }
 
       // Кольцо у всех точек одно: цвет занят богатством, толщина — ярусом.
-      // Вид места называет светлый рисунок Kenney внутри него.
+      // Вид места называет значок Kenney внутри кольца; на широком экране
+      // над ним встаёт иллюстрация — кольцо и значок при этом не уходят.
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(11, 10, 9, 0.85)';
@@ -642,6 +697,12 @@ export class WorldMap {
       ctx.strokeStyle = walk ? WALK_COLOR[node.kind] ?? '#c8a24a' : color;
       ctx.stroke();
       this.drawMapIcon(MAP_ICON_URL[node.kind], x, y, r, MAP_ICON_COLOR);
+
+      // На телефоне остаётся чистый силуэт; на широком экране иллюстрация не
+      // разрастается вместе с радиусом точки и не перекрывает соседей.
+      if (!compact) {
+        this.drawMarker(LOCATION_ICON_URL[node.kind], x, y, Math.min(58, Math.max(32, r * 3.8)));
+      }
 
       // Выработанная — крест. Цифру «0 из 3» на карте не прочитать, а решение
       // «сюда не иду» принимается взглядом.
@@ -664,7 +725,35 @@ export class WorldMap {
       // §11.6 — что здесь сегодня. Глиф в левом верху: нутро занято крестом,
       // правый верх флагом клана.
       const event = KIND[node.kind].events ? state?.event ?? null : null;
-      if (event !== null) drawEventGlyph(ctx, event, x, y, r, w, h);
+      if (event !== null) {
+        // Событие сидит над левым краем локации: там раньше был глиф, поэтому
+        // флаг клана справа и крест выработанной в центре не меняют места.
+        const eventSize = Math.min(38, Math.max(22, r * 2.35));
+        const ex = Math.max(eventSize / 2, Math.min(w - eventSize / 2, x - r * 1.35));
+        const ey = Math.max(eventSize / 2, Math.min(h - eventSize / 2, y - r * 1.35));
+        if (compact) {
+          drawEventGlyph(ctx, event, x, y, r, w, h);
+        } else {
+          // Микродвижение не меняет положения маркера: буря колышется,
+          // обвал оседает, тихая ночь дышит, жила пульсирует. Таким образом
+          // событие живёт, но флаг клана и зона тапа остаются неподвижными.
+          const phase = motion * (event === 'storm' ? 2.2 : event === 'vein' ? 1.8 : 1.2);
+          const pulse = event === 'vein' ? 1 + Math.sin(phase) * 0.07 : 1;
+          const tilt = event === 'storm' ? Math.sin(phase) * 0.07 : 0;
+          const bob = event === 'collapse' ? Math.max(0, Math.sin(phase)) * 1.5 : 0;
+          ctx.save();
+          ctx.translate(ex, ey + bob);
+          ctx.rotate(tilt);
+          ctx.scale(pulse, pulse);
+          if (event === 'quiet') ctx.globalAlpha = 0.78 + (Math.sin(phase) + 1) * 0.11;
+          if (!this.drawMarker(EVENT_ICON_URL[event], 0, 0, eventSize)) {
+            ctx.restore();
+            drawEventGlyph(ctx, event, x, y, r, w, h);
+          } else {
+            ctx.restore();
+          }
+        }
+      }
 
       ctx.restore();
     }
@@ -780,7 +869,15 @@ export class WorldMap {
       (_, i) => `<s class="${i < state.rich ? '' : 'off'}"></s>`,
     ).join('');
 
+    const eventCard = state.event === null
+      ? ''
+      : `<div class="event-art" style="background-image:url('${EVENT_CARD_URL[state.event]}')">` +
+        `<span>${gameMarkup(gameMessage('Событие', 'Event'))}</span>` +
+        `<b>${gameMarkup(eventMessage[state.event].name)}</b>` +
+        `<i>${gameMarkup(eventMessage[state.event].line)}</i></div>`;
+
     this.card.innerHTML =
+      eventCard +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(
         gameMessage('{rich} из {max}', '{rich} of {max}'), { rich: state.rich, max: RICH_MAX },
       )}</i></div>` +
@@ -817,15 +914,9 @@ export class WorldMap {
         : `<b style="color:${clan.color}">${worldText(clan.name)} · ${gameMarkup(
           gameMessage('ур. {level}', 'lvl {level}'), { level: clanState(state.clan, this.now).level },
         )}</b>`) +
-      '</div>' +
-      // §11.6 — событие названо до входа, как ставка и богатство. Строка
-      // появляется только тогда, когда есть что сказать: пустое «Событие: —»
-      // обещало бы, что когда-нибудь оно заполнится само.
-      (state.event === null
-        ? ''
-        : `<div class="row line"><span>${gameMarkup(eventMessage[state.event].name)}</span>` +
-          `<b class="${state.event === 'collapse' ? 'bad' : 'good'}">` +
-          `${gameMarkup(eventMessage[state.event].line)}</b></div>`);
+      '</div>';
+      // Отдельной строки события нет: название и итог стоят поверх
+      // иллюстрации (`eventCard`), и вторая строка была бы тем же дважды.
 
     // Срок восстановления — вместо запрета. Локация не закрыта, она просто
     // невыгодна, и игрок должен видеть, когда сюда снова стоит идти.

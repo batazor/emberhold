@@ -169,6 +169,30 @@
   .card canvas{display:block;width:96px;height:96px;margin:0 auto 8px;image-rendering:pixelated;background:var(--g-bg);border-radius:8px;}
   .card b{display:block;font-family:var(--ff-display);font-size:16px;margin-bottom:4px;}
   .card p{margin:0;font-size:13px;color:var(--dim);}
+  .card.event-card{padding:0;overflow:hidden;background:#0b0a09;}
+  .card.event-card img{display:block;width:100%;height:224px;object-fit:cover;object-position:center 42%;}
+  .card.event-card b{color:var(--g-text);padding:12px 14px 0;margin:0;}
+  .card.event-card p{color:var(--g-dim);padding:0 14px 14px;}
+  /* Витрина настоящих ассетов карты: PNG, которые Vite кладёт рядом с игрой,
+     а не копии на canvas. Так в артбуке видно ровно то, что попадёт в билд. */
+  .icon-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;}
+  .icon-sample{min-height:174px;border:1px solid var(--line);border-radius:10px;padding:12px;
+    background:var(--surface);display:flex;flex-direction:column;gap:8px;align-items:center;}
+  .icon-sample figure{margin:0;width:116px;height:116px;display:grid;place-items:center;border-radius:8px;
+    background:radial-gradient(120% 90% at 50% 20%,#17211f 0%,#0d1416 60%,#080d0e 100%);overflow:hidden;}
+  .icon-sample img{width:106px;height:106px;object-fit:contain;display:block;}
+  .icon-sample b{font-family:var(--ff-display);font-size:16px;font-weight:400;align-self:stretch;text-align:center;}
+  .icon-sample small{font-family:var(--ff-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--dim);text-align:center;}
+  @keyframes icon-storm{50%{transform:rotate(4deg) scale(1.04)}}
+  @keyframes icon-collapse{50%{transform:translateY(3px)}}
+  @keyframes icon-quiet{50%{opacity:.76;transform:scale(.96)}}
+  @keyframes icon-vein{50%{transform:scale(1.09)}}
+  .icon-sample.storm img{animation:icon-storm .9s ease-in-out infinite;}
+  .icon-sample.collapse img{animation:icon-collapse 1.1s ease-in-out infinite;}
+  .icon-sample.quiet img{animation:icon-quiet 1.45s ease-in-out infinite;}
+  .icon-sample.vein img{animation:icon-vein 1s ease-in-out infinite;}
+  @media (prefers-reduced-motion:reduce){.icon-sample img{animation:none!important;}}
   .flag{border-left:2px solid var(--ember);padding:2px 0 2px 18px;font-size:14.5px;max-width:70ch;color:var(--dim);}
   .flag b{color:var(--text);font-weight:600;}
 </style>
@@ -396,6 +420,23 @@
       </table>
     </div>
 
+    <div class="hd"><div class="eyebrow">Витрина</div><h2>Иконки глобальной карты</h2></div>
+    <p>Все девять финальных ассетов в одном масштабе. Первые четыре — события;
+      в этой витрине видно их движение, которое карта показывает при открытом
+      листе. На узких экранах игра заменяет детальные рисунки теми же простыми
+      глифами и силуэтами, чтобы карта не превращалась в россыпь клякс.</p>
+    <div class="icon-gallery" aria-label="Иконки событий и локаций">
+      <article class="icon-sample storm"><figure><img src="assets/world-map-icons/storm.png" alt="Соляная буря"></figure><b>Соляная буря</b><small>Событие</small></article>
+      <article class="icon-sample collapse"><figure><img src="assets/world-map-icons/collapse.png" alt="Обвал"></figure><b>Обвал</b><small>Событие</small></article>
+      <article class="icon-sample quiet"><figure><img src="assets/world-map-icons/quiet.png" alt="Тихая ночь"></figure><b>Тихая ночь</b><small>Событие</small></article>
+      <article class="icon-sample vein"><figure><img src="assets/world-map-icons/vein.png" alt="Жила"></figure><b>Жила</b><small>Событие</small></article>
+      <article class="icon-sample"><figure><img src="assets/world-map-icons/expedition.png" alt="Вылазка"></figure><b>Вылазка</b><small>Локация</small></article>
+      <article class="icon-sample"><figure><img src="assets/world-map-icons/castle.png" alt="Замок"></figure><b>Замок</b><small>Локация</small></article>
+      <article class="icon-sample"><figure><img src="assets/world-map-icons/graveyard.png" alt="Кладбище"></figure><b>Кладбище</b><small>Локация</small></article>
+      <article class="icon-sample"><figure><img src="assets/world-map-icons/trail.png" alt="Тропа"></figure><b>Тропа</b><small>Локация</small></article>
+      <article class="icon-sample"><figure><img src="assets/world-map-icons/prizes.png" alt="Колесо призов"></figure><b>Колесо призов</b><small>Локация</small></article>
+    </div>
+
     <p class="flag"><b>Две строки §11.6 при переносе в код уточнены.</b>
       «Обвал: путь назад +30%» — симуляция не различает «туда» и «назад», шаг стоит
       одинаково в обе стороны, и обвал дорожит шаг целиком; бьёт это именно
@@ -501,44 +542,13 @@
   </div>
 
 <div class="sec">
-  <div class="hd"><div class="eyebrow">Проба</div><h2>Та же карта, собранная плитками</h2></div>
-  <p><b>Проба поставлена, и карта осталась плоской (§4.2).</b> Ниже — тот опыт,
-    которым это решено: <b>ровно та же местность</b> (<code>sim/terrain.ts</code>)
-    и ровно та же раздача точек (<code>sim/world.ts</code>), выложенные плитками
-    набора-строителя (§6.1.9). Придумывать не пришлось ничего — полоса высоты ячейки
-    называет биом, путь реки даёт водяные плитки, знак «холм» и «ель» даёт объект, —
-    и плоская карта, выходит, уже была слоем данных под объёмную.</p>
-  <p>Решило дело не это. Карта — <b>экран сравнения</b>, и сравнивают на нём шесть
-    каналов узла, а не пейзаж. Плитка не несёт ни одного, и объёмная карта обязана
-    нарисовать их поверх — то есть вернуть тот же плоский слой, но уже поверх
-    мешающего рельефа. Проба остаётся здесь затем, чтобы не ставить её заново:
-    она показывает не «как будет», а почему не будет.</p>
-  <p>Рисует страница сама, тем же художником, что и книга замка: ортокамера 45°/30°,
-    плоское затенение, треугольники по цвету слота из каталога набора. Ни three, ни
-    запечённой геометрии в игре: набор так и остаётся измеренным, но не взятым.</p>
-  <div class="proto-bar">
-    <button id="pDay">Другой день</button>
-    <button id="pTurn">Повернуть</button>
-    <button id="pPal">Палитра набора</button>
-    <span id="pInfo" class="note"></span>
-  </div>
-  <canvas id="proto" class="proto-cv" width="1000" height="620"></canvas>
-  <p id="pWarn" class="flag" style="display:none"></p>
-  <div class="cols">
-    <div>
-      <h3>Что проба показала</h3>
-      <ul id="pFound"></ul>
-    </div>
-    <div>
-      <h3>Чего у набора нет</h3>
-      <p><b>Кладбища.</b> Точка-прогулка (§6.1.7) на объёмной карте остаётся камнями:
-        в наборе нет ни ограды, ни склепа, и подставить их можно только из другого
-        набора — то есть смешать два стиля на одном экране.</p>
-      <p><b>Ставки, богатства, клана и события.</b> Шесть каналов узла (см. «Цена канала»)
-        плитка не несёт ни одного. Объёмная карта их не отменяет — она обязана нарисовать
-        их поверх, и это главная незакрытая цена решения, а не мелочь оформления.</p>
-    </div>
-  </div>
+  <div class="hd"><div class="eyebrow">Генератор</div><h2>Глобальная карта: новый день — новый выбор</h2></div>
+  <p>2D-карта остаётся единственным вариантом. Кнопка собирает следующий день из того же сида:
+    меняются расположение точек и события, но весь регион сразу остаётся видимым. Цвет кольца
+    показывает богатство, толщина — ярус, а глиф в левом верхнем углу — сегодняшнее событие.</p>
+  <div class="proto-bar"><button id="global-day">Сгенерировать другой день</button><span id="global-info" class="note"></span></div>
+  <div class="board"><canvas id="global-generator"></canvas></div>
+  <div id="global-card" class="card"></div>
 </div>
 
   <div class="sec">
@@ -1143,23 +1153,13 @@ try {
   for (const id of EVENT_ORDER) {
     const def = EVENTS[id];
     const card = document.createElement('div');
-    card.className = 'card';
-    const cv = document.createElement('canvas');
-    cv.width = 96 * dpr; cv.height = 96 * dpr;
-    const ctx = cv.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // Тот же узел, что на карте: кольцо богатства, толщина яруса, глиф слева
-    // сверху. Показывать глиф отдельно от узла значило бы показывать не то,
-    // что увидит игрок.
-    const x = 56, y = 48, r = 14;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(11,10,9,0.85)'; ctx.fill();
-    ctx.strokeStyle = '#7fb069'; ctx.lineWidth = 1 + 2 * 0.9; ctx.stroke();
-    mapIcon(ctx, MAP_ICON_URL['вылазка'], x, y, r);
-    drawEventGlyph(ctx, id, x, y, r, 96, 96);
+    card.className = 'card event-card';
+    const art = document.createElement('img');
+    art.src = `assets/event-cards/${id}.png`;
+    art.alt = `Иллюстрация события: ${def.name}`;
     const name = document.createElement('b'); name.textContent = def.name;
     const line = document.createElement('p'); line.textContent = def.line;
-    card.append(cv, name, line);
+    card.append(art, name, line);
     box.append(card);
   }
 
@@ -1225,8 +1225,176 @@ try {
 </script>
 
 <script type="module">
+const generatorCanvas = document.getElementById('global-generator');
+if (generatorCanvas !== null) {
+  const [{ regionAt, eventAt }, { EVENTS }, { drawEventGlyph }, { drawMapTerrain }] = await Promise.all([
+    import('/src/sim/world.ts'), import('/src/sim/events.ts'), import('/src/ui/worldMap.ts'), import('/src/ui/mapTerrain.ts'),
+  ]);
+  const colors = ['#d4543a', '#c07a3a', '#c8a24a', '#7fb069'];
+  const markerUrl = {
+    'вылазка': 'assets/world-map-icons/expedition.png',
+    'замок': 'assets/world-map-icons/castle.png',
+    'кладбище': 'assets/world-map-icons/graveyard.png',
+    'тропа': 'assets/world-map-icons/trail.png',
+    'призы': 'assets/world-map-icons/prizes.png',
+  };
+  const markers = new Map(Object.entries(markerUrl).map(([kind, url]) => {
+    const image = new Image(); image.src = url; image.addEventListener('load', () => paintGenerator());
+    return [kind, image];
+  }));
+  const spriteUrl = {
+    caravan: 'assets/world-map-sprites/caravan-sheet.png',
+    party: 'assets/world-map-sprites/party-sheet.png',
+  };
+  const sprites = new Map(Object.entries(spriteUrl).map(([kind, url]) => {
+    const image = new Image(); image.src = url; image.addEventListener('load', () => paintGenerator());
+    return [kind, image];
+  }));
+  let generatorDay = 0;
+  let selected = 0;
+  let currentRegion;
+  const kindName = { 'вылазка': 'Вылазка', 'замок': 'Замок', 'кладбище': 'Кладбище', 'тропа': 'Тропа', 'призы': 'Колесо призов' };
+  const richAt = (node) => (node.id + generatorDay * 3) % 4;
+  const drawSprite = (ctx, image, frame, x, y, width, facing = 1, tilt = 0) => {
+    if (!image?.complete || image.naturalWidth === 0) return false;
+    const columns = 4, rows = 2;
+    const sourceWidth = image.naturalWidth / columns;
+    const sourceHeight = image.naturalHeight / rows;
+    const height = width * sourceHeight / sourceWidth;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(tilt);
+    ctx.scale(facing, 1);
+    ctx.drawImage(
+      image,
+      (frame % columns) * sourceWidth,
+      Math.floor(frame / columns) * sourceHeight,
+      sourceWidth,
+      sourceHeight,
+      -width / 2,
+      -height * .76,
+      width,
+      height,
+    );
+    ctx.restore();
+    return true;
+  };
+  const paintCard = () => {
+    const node = currentRegion.nodes.find((item) => item.id === selected) ?? currentRegion.nodes[0];
+    const rich = richAt(node);
+    const event = node.kind === 'вылазка' ? eventAt(generatorDay, node.id, generatorDay * 86400) : null;
+    document.getElementById('global-card').innerHTML =
+      `<b>${node.name}</b><div class="kv"><span>${kindName[node.kind]}</span><b>ярус ${node.tier}</b></div>` +
+      `<div class="kv"><span>Богатство</span><b>${rich} из 3</b></div>` +
+      (event === null ? '<p>Сегодня без события.</p>' : `<p><b>${EVENTS[event].name}.</b> ${EVENTS[event].line}</p>`);
+  };
+  const paintGenerator = (now = performance.now()) => {
+    const width = generatorCanvas.parentElement.clientWidth;
+    const height = Math.round(width * 0.62);
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    generatorCanvas.width = width * dpr; generatorCanvas.height = height * dpr;
+    generatorCanvas.style.height = `${height}px`;
+    const ctx = generatorCanvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const region = currentRegion = regionAt(generatorDay);
+    drawMapTerrain(ctx, generatorDay, [...region.nodes, region.camp], width, height, dpr);
+    const r = Math.max(5, width * 0.026);
+    // Дороги — только для движения караванов: они связывают ближайшие пары,
+    // но не становятся вторым смысловым каналом узла.
+    const pairs = new Set();
+    const routes = region.nodes.flatMap((from) => region.nodes
+      .filter((to) => to !== from)
+      .sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y))
+      .slice(0, 2).map((to) => [from, to]))
+      .filter(([from, to]) => { const key = [from.id, to.id].sort((a, b) => a - b).join(':'); if (pairs.has(key)) return false; pairs.add(key); return true; })
+      .slice(0, 10);
+    const road = (from, to) => {
+      const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+      const dx = to.x - from.x, dy = to.y - from.y, bend = ((from.id * 17 + to.id * 11) % 7 - 3) * .008;
+      return [mx - dy * bend, my + dx * bend];
+    };
+    ctx.strokeStyle = 'rgba(232,226,212,.2)'; ctx.lineWidth = 1.25;
+    for (const [from, to] of routes) {
+      const [qx, qy] = road(from, to); ctx.beginPath(); ctx.moveTo(from.x * width, from.y * height);
+      ctx.quadraticCurveTo(qx * width, qy * height, to.x * width, to.y * height); ctx.stroke();
+    }
+    // Караван и отряд живут в отдельных восьмикадровых sprite sheet. Оба
+    // идут по тем же дорогам и ничего не меняют в симуляции.
+    for (const [i, [from, to]] of routes.entries()) {
+      const phase = (now / 14000 + i * .23) % 1;
+      const eased = phase * phase * (3 - 2 * phase);
+      const [qx, qy] = road(from, to);
+      const caravan = (a) => [
+        (1 - a) ** 2 * from.x + 2 * (1 - a) * a * qx + a ** 2 * to.x,
+        (1 - a) ** 2 * from.y + 2 * (1 - a) * a * qy + a ** 2 * to.y,
+      ];
+      const [cx, cy] = caravan(eased); const px = cx * width, py = cy * height;
+      const tangentX = 2 * (1 - eased) * (qx - from.x) + 2 * eased * (to.x - qx);
+      const tangentY = 2 * (1 - eased) * (qy - from.y) + 2 * eased * (to.y - qy);
+      const facing = tangentX >= 0 ? 1 : -1;
+      const tilt = Math.atan2(tangentY * height, Math.abs(tangentX * width)) * .16;
+      const caravanFrame = Math.floor(now / 170 + i * 2) % 8;
+      ctx.fillStyle = 'rgba(11,10,9,.38)'; ctx.beginPath(); ctx.ellipse(px, py + 1.5, 12, 2.7, 0, 0, Math.PI * 2); ctx.fill();
+      if (!drawSprite(ctx, sprites.get('caravan'), caravanFrame, px, py + 1, 36, facing, tilt)) {
+        ctx.fillStyle = '#8a5a27'; ctx.fillRect(px - 4.5, py - 2.5, 9, 5.5);
+        ctx.fillStyle = '#c8a24a'; ctx.beginPath(); ctx.moveTo(px - 3, py - 2.5); ctx.lineTo(px, py - 6); ctx.lineTo(px + 3, py - 2.5); ctx.closePath(); ctx.fill();
+      }
+      const opposite = ((phase + .5) % 1); const [hx, hy] = caravan(opposite * opposite * (3 - 2 * opposite)); const ox = hx * width, oy = hy * height;
+      const partyA = opposite * opposite * (3 - 2 * opposite);
+      const partyTangentX = 2 * (1 - partyA) * (qx - from.x) + 2 * partyA * (to.x - qx);
+      const partyTangentY = 2 * (1 - partyA) * (qy - from.y) + 2 * partyA * (to.y - qy);
+      const partyFacing = partyTangentX >= 0 ? 1 : -1;
+      const partyTilt = Math.atan2(partyTangentY * height, Math.abs(partyTangentX * width)) * .14;
+      const partyFrame = Math.floor(now / 145 + i * 3) % 8;
+      ctx.fillStyle = 'rgba(11,10,9,.38)'; ctx.beginPath(); ctx.ellipse(ox, oy + 1.5, 9, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+      if (!drawSprite(ctx, sprites.get('party'), partyFrame, ox, oy + 1, 30, partyFacing, partyTilt)) {
+        const step = Math.sin(now / 300 + i) * .8;
+        ctx.fillStyle = '#e8e2d4'; for (const [n, dx] of [-3, 0, 3].entries()) { ctx.beginPath(); ctx.arc(ox + dx, oy + (n % 2 ? -step : step), 1.9, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }
+    // Точки интереса и события — верхний смысловой слой: путешественники
+    // проходят под ними, а не перекрывают доступные цели.
+    for (const node of region.nodes) {
+      const x = node.x * width, y = node.y * height;
+      const rich = richAt(node);
+      if (node.id === selected) {
+        ctx.beginPath(); ctx.arc(x, y, r * 2.15, 0, Math.PI * 2);
+        ctx.strokeStyle = '#c8a24a'; ctx.lineWidth = 1.6; ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(11,10,9,.85)'; ctx.fill();
+      ctx.strokeStyle = colors[rich]; ctx.lineWidth = 1 + node.tier * .9; ctx.stroke();
+      const marker = markers.get(node.kind);
+      if (marker?.complete && marker.naturalWidth > 0) {
+        const size = Math.min(40, Math.max(22, r * 2.55));
+        ctx.drawImage(marker, x - size / 2, y - size / 2, size, size);
+      }
+      const event = node.kind === 'вылазка' ? eventAt(generatorDay, node.id, generatorDay * 86400) : null;
+      if (event !== null) drawEventGlyph(ctx, event, x, y, r, width, height);
+    }
+    document.getElementById('global-info').textContent = `день ${generatorDay + 1} · ${region.nodes.length} точек · выберите точку`;
+    paintCard();
+  };
+  document.getElementById('global-day').addEventListener('click', () => { generatorDay++; selected = 0; paintGenerator(); });
+  generatorCanvas.addEventListener('pointerdown', (event) => {
+    const box = generatorCanvas.getBoundingClientRect();
+    const x = (event.clientX - box.left) / box.width, y = (event.clientY - box.top) / box.height;
+    const nearest = currentRegion.nodes.reduce((best, node) =>
+      Math.hypot(node.x - x, node.y - y) < Math.hypot(best.x - x, best.y - y) ? node : best,
+    currentRegion.nodes[0]);
+    selected = nearest.id; paintGenerator();
+  });
+  window.addEventListener('resize', paintGenerator); paintGenerator();
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const animate = (now) => { paintGenerator(now); requestAnimationFrame(animate); };
+    requestAnimationFrame(animate);
+  }
+}
+</script>
+
+<script type="text/plain">
 /*
- * Проба объёмной карты (§4.2, §6.1.9). Страница берёт местность и раздачу
+ * Снятая 3D-проба (§4.2, §6.1.9). Оставлена в исходнике как запись опыта,
+ * но больше не исполняется: в артбуке и игре остаётся только 2D-карта.
  * точек у игры, а плитки — у набора-строителя, и складывает из них тот же
  * регион, который карта в лагере рисует чертой.
  *
@@ -1480,9 +1648,17 @@ function layout(day) {
     put.push({ name: MARK[mark.kind], x: mark.x * COLS * CELL, z: mark.y * ROWS * CELL, y: cellY[j * COLS + i] + TOP, turn: (i + j) % 4 });
   }
 
-  // Точки региона. Кладбища в наборе нет — оно остаётся камнями, и это
-  // не оформление, а находка пробы.
-  const NODE = { 'вылазка': 'mine', 'замок': 'castle', 'кладбище': 'detail_rocks' };
+  // Точки региона. Набор не знает наших названий узлов, поэтому каждой
+  // сопоставлена ближайшая честная модель: тропа остаётся лесной, колесо
+  // призов — рыночной точкой. Без этого новый вид узла попадал в `model()`
+  // как undefined и гасил весь canvas ещё до первого нарисованного треугольника.
+  const NODE = {
+    'вылазка': 'mine',
+    'замок': 'castle',
+    'кладбище': 'detail_rocks',
+    'тропа': 'forest',
+    'призы': 'market',
+  };
   for (const node of region.nodes) {
     const i = Math.min(COLS - 1, Math.floor(node.x * COLS));
     const j = Math.min(ROWS - 1, Math.floor(node.y * ROWS));
