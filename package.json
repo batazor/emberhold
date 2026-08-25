@@ -22,6 +22,7 @@
     "combat": "tsx scripts/combat.ts",
     "protection": "tsx scripts/protection.ts",
     "power": "tsx scripts/power.ts",
+    "tempo": "tsx scripts/tempo.ts",
     "model": "tsx scripts/model.ts",
     "optimal": "tsx scripts/optimal.ts",
     "elites": "tsx scripts/elites.ts",

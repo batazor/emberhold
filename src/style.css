@@ -2225,6 +2225,35 @@ button[disabled] { opacity: 0.4; cursor: var(--cursor-blocked); }
    глазом неподвижна, и без цифр она читается застрявшей. */
 .workbars span { font-size: 11px; letter-spacing: 0.04em; color: var(--ink); }
 
+/* ---------- кольцо резонанса (§13.11) ---------- */
+/* Слабая точка на добыче (`render/tempoRing.ts`): круг, к которому сжимается
+   ореол. Единственный слой поверх канвы, которому можно ловить палец:
+   вердикт места выносится там же, где нарисован круг. Подпись множителя —
+   чип словаря; у кругов своего цвета нет — токены состояний и золото. */
+.temporing { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+.temporing-zone { position: absolute; width: 148px; height: 148px; }
+/* Палец зона ловит только с открытой точкой: без неё клики по добыче
+   и земле рядом принадлежат канве — разгону и ходьбе. */
+.temporing-zone[data-live] {
+  pointer-events: auto; cursor: var(--cursor-mine); touch-action: none;
+}
+.temporing-spot {
+  position: absolute; left: 50%; top: 50%; width: 40px; height: 40px;
+  margin: -20px 0 0 -20px; border: 2px solid var(--gold); border-radius: var(--r-pill);
+  background: var(--fill-2);
+}
+.temporing-halo {
+  position: absolute; inset: -2px; border: 2px solid var(--ink); border-radius: var(--r-pill);
+  opacity: 0.85; transition: opacity 0.1s linear;
+}
+.temporing-mul {
+  position: absolute; left: 50%; top: -2px; transform: translate(-50%, -100%);
+  font-size: 13px; color: var(--gold); transition: color 0.15s;
+}
+.temporing-zone[data-beat='perfect'] .temporing-mul { color: var(--good); }
+.temporing-zone[data-beat='good'] .temporing-mul { color: var(--ink); }
+.temporing-zone[data-beat='miss'] .temporing-mul { color: var(--bad); }
+
 /* ---------- знакомство у прогалины ---------- */
 /* Та же полка внизу, что у приглашения разбить лагерь и у лавки: разговор
    случается там, где игрок стоит. Кнопки «закрыть» нет — отойти можно

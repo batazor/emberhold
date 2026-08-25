@@ -455,6 +455,9 @@ import type { Talker } from './sim/talk';
 import { Bubbles } from './render/bubbles';
 import { WorkBars } from './render/workbar';
 import type { WorkItem } from './render/workbar';
+import { startTempo, stepTempo, tempoBeat, tempoBoost, tempoSpotNow } from './sim/tempo';
+import type { TempoAim } from './sim/tempo';
+import { TempoRing } from './render/tempoRing';
 import type { Bubble } from './render/bubbles';
 import { DWELLER_SPEED } from './sim/garrison';
 import { ResidentCard } from './ui/residentCard';
@@ -682,6 +685,18 @@ let campMine: { work: Work; stone: Stone } | null = null;
 let campPick: { work: Work; bush: Bush } | null = null;
 /** §13.8 — сбор в местах мира: место, узел и работа по нему. */
 let worldPick: { place: string; bush: Bush; work: Work } | null = null;
+/**
+ * Резонанс жилы (§13.11): одна серия на игру. К работе она не привязана
+ * нарочно — серия умирает временем, и перескочить с валуна на соседний,
+ * не потеряв разгона, можно ровно настолько, насколько хватит полки.
+ */
+const tempo = startTempo();
+/**
+ * Свой поток случайности с назначенным сидом: точки — кадр, мировые сиды
+ * им не сдвинуть, а одинаковая последовательность от запуска к запуску
+ * делает жалобу «точка встала в угол» воспроизводимой.
+ */
+const tempoRng = mulberry32(0x7e5017);
 
 /**
  * Что сказать игроку строкой вылазки. Не подсказка, а событие: строка
@@ -814,6 +829,10 @@ const bubbles = new Bubbles(rig);
 /** Полосы прогресса над стройкой и инструментом (`render/workbar.ts`):
  *  слой один на игру, наполняет его каждый рендер `syncWorkBars`. */
 const workBars = new WorkBars(rig);
+
+/** Кольцо резонанса (§13.11): слой один на игру, наполняет его каждый
+ *  рендер `syncTempoRing`, а клики по зоне судит `beatTempo`. */
+const tempoRing = new TempoRing(rig, (aim) => beatTempo(aim));
 
 /**
  * Ночь сцены. Заданная адресом перебивает сценарную: замер на конкретной
@@ -5030,7 +5049,9 @@ function startChopping(cell: Cell): void {
  */
 function stepChopping(dt: number): void {
   if (raid === null || chop === null) return;
-  const step = stepChop(raid, chop, dt);
+  // §13.11 — резонанс умножает только секунды работы: дорога к дереву,
+  // таймеры лагеря и всё остальное идёт своим временем.
+  const step = stepChop(raid, chop, dt * tempoBoost(tempo, clock.now()));
   if (step.stopped !== null) {
     play('deny');
     say(CHOP_REASON[step.stopped]);
@@ -5110,7 +5131,9 @@ function stepWorldPicking(dt: number): void {
     raid.path.length > 0,
     [bush],
     work,
-    dt,
+    // §13.11 — резонанс умножает и сбор: аппарат работы общий (work.ts),
+    // и выключенная у куста игра читалась бы поломкой, а не решением.
+    dt * tempoBoost(tempo, clock.now()),
     camp.resources,
     clock.now(),
   );
@@ -5166,7 +5189,8 @@ function startMining(cell: Cell): void {
 function stepMining(dt: number): void {
   if (raid === null || mine === null) return;
   const stone = stoneAt(raid.loc.stones, mine.cell);
-  const step = stepMine(raid, mine, dt);
+  // §13.11 — резонанс умножает секунды кайла тем же правилом, что у топора.
+  const step = stepMine(raid, mine, dt * tempoBoost(tempo, clock.now()));
   if (step.stopped !== null) {
     play('deny');
     say(MINE_REASON[step.stopped]);
@@ -5895,6 +5919,16 @@ function campTap(clientX: number, clientY: number): void {
   const ground = rig.screenToGround(clientX, clientY);
   if (ground === null) return;
   const hit = campLocal(ground);
+  // §13.11 — тап по клетке идущей работы подбадривает её и кайло не бросает:
+  // резонанс и просит кликать по тому, что добывают.
+  const beatCell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+  const beatAt = campHero.path.length === 0
+    ? campMine?.work.cell ?? campPick?.work.cell ?? null
+    : null;
+  if (beatAt !== null && beatAt.x === beatCell.x && beatAt.z === beatCell.z) {
+    beatTempo(null, true);
+    return;
+  }
   // Любой тап бросает кайло: игрок занялся чем-то другим. Тап по тому же
   // валуну начнёт работу заново — с нуля, а не с середины, и это честно:
   // отойти и вернуться значит начать сначала.
@@ -6072,7 +6106,8 @@ function stepCampPicking(dt: number): void {
     campHero.path.length > 0,
     camp.bushes ?? [],
     work,
-    dt,
+    // §13.11 — то же правило, что у сбора в местах мира.
+    dt * tempoBoost(tempo, clock.now()),
     camp.resources,
     clock.now(),
   );
@@ -6145,7 +6180,8 @@ function stepCampMining(dt: number): void {
     campHero.path.length > 0,
     camp.stones,
     work,
-    dt,
+    // §13.11 — резонанс общий у вылазки и лагеря, как сам аппарат работы.
+    dt * tempoBoost(tempo, clock.now()),
     camp.resources,
   );
   if (step.stopped !== null) {
@@ -6230,6 +6266,67 @@ function syncWorkBars(): void {
     });
   }
   workBars.sync(items);
+}
+
+/* ---------- резонанс жилы (§13.11) ---------- */
+
+/**
+ * Клетка работы, по которой стучат прямо сейчас, — мировыми координатами
+ * кадра. Условия те же, что у полос работ: пока герой в дороге, работы нет,
+ * и кольцо над клеткой обещало бы игру, в которую ещё не сыграть.
+ */
+function tempoWorkCell(): { x: number; z: number } | null {
+  if (
+    (mode === 'raid' || (inGladeCamp && campLocation === 'camp')) &&
+    raid !== null && raid.path.length === 0
+  ) {
+    return chop?.cell ?? mine?.cell ?? worldPick?.work.cell ?? null;
+  }
+  if (
+    mode === 'camp' && campLocation === 'camp' && !inGladeCamp &&
+    campHero.path.length === 0
+  ) {
+    const work = campMine?.work ?? campPick?.work ?? null;
+    if (work === null) return null;
+    const o = campOrigin(camp);
+    return { x: o.x + work.cell.x, z: o.z + work.cell.z };
+  }
+  return null;
+}
+
+/**
+ * Клик резонанса. Вердикт места уже вынесен — зоной кольца или обработчиком
+ * тапа, — здесь к нему добавляется вердикт времени (`sim/tempo.ts`), звук
+ * и вспышка подписи. `muted` — у тапов с канвы щелчок уже сыгран общим
+ * обработчиком, и второй нарушил бы §18.1.
+ */
+function beatTempo(aim: TempoAim, muted = false): void {
+  const beat = tempoBeat(tempo, clock.now(), tempoRng, aim);
+  tempoRing.beat(beat);
+  if (beat === 'perfect') play('levelup');
+  else if (beat === 'good') play('pick');
+  else if (beat === 'miss') play('deny');
+  else if (beat === 'ring') play('tick');
+  else if (!muted) play('tap');
+}
+
+/**
+ * Кадр резонанса. Точка живёт своим таймером (`stepTempo` перебрасывает
+ * просроченную), а кольцо пересобирается каждый рендер из того же состояния,
+ * которым считается работа, — своего состояния у кадра нет, и врать ему
+ * не из чего: кончилась работа — кончилось и кольцо, тем же кадром.
+ */
+function syncTempoRing(): void {
+  const now = clock.now();
+  stepTempo(tempo, now, tempoRng);
+  const cell = tempoWorkCell();
+  tempoRing.sync(cell === null ? null : {
+    x: cell.x,
+    y: 0.6,
+    z: cell.z,
+    spot: tempoSpotNow(tempo, now),
+    boost: tempoBoost(tempo, now),
+  });
 }
 
 /* ---------- ввод вылазки ---------- */
@@ -6654,6 +6751,12 @@ canvas.addEventListener('pointerdown', (e) => {
       return;
     }
     campHud.close();
+    // §13.11 — тап по клетке идущей рубки подбадривает её, а не перезапускает.
+    const beatAt = raid.path.length === 0 ? chop?.cell ?? mine?.cell ?? null : null;
+    if (beatAt !== null && beatAt.x === cell.x && beatAt.z === cell.z) {
+      beatTempo(null, true);
+      return;
+    }
     // Тап по дереву — рубка (§13.3), тем же жестом, что в прологе: идёт сам
     // и работает, когда дойдёт. Рубит тот, кого ведут, — герой или жилец.
     if (raid.logging && treeAt(raid.loc, cell)) {
@@ -6710,6 +6813,15 @@ canvas.addEventListener('pointerdown', (e) => {
     const reach = moves(battle, raid.loc.size, raid.loc.blocked, unit);
     const spot = reach.get(hexKey(want));
     if (spot !== undefined) commandBattle(raid, { kind: 'move', to: spot.hex });
+    return;
+  }
+  // §13.11 — тап по клетке идущей работы подбадривает её, а не перезапускает:
+  // без этой ветки второй клик начинал бы те же тридцать замахов заново.
+  const beatAt = raid.path.length === 0
+    ? chop?.cell ?? mine?.cell ?? worldPick?.work.cell ?? null
+    : null;
+  if (beatAt !== null && beatAt.x === cell.x && beatAt.z === cell.z) {
+    beatTempo(null, true);
     return;
   }
   // Тап по дереву — рубка (§13.3). Жест тот же, что у всего остального:
@@ -6987,6 +7099,11 @@ if (debugTier !== null || debugNode !== null) {
     stones: () => raid?.loc.stones ?? null,
     work: () => mine,
     chop: () => chop,
+    // §13.11 — резонанс: состояние живьём и клик без пикселей. Три быстрых
+    // `beat(null)` из консоли открывают точку, `beat('spot')` берёт ступень —
+    // окно «3 за 0,9 с» иначе проверяется только пальцем.
+    tempo: () => tempo,
+    beat: (aim: TempoAim = null) => beatTempo(aim),
   };
 }
 
@@ -7393,6 +7510,10 @@ if (debugCastle !== null) {
     // не только показывать состояние, но и двигать его.
     work: () => mine,
     hero: () => raid?.hero ?? null,
+    // §13.11 — резонанс над той же добычей: состояние живьём и клик без
+    // пикселей, ровно как в сценах `?tier=N`.
+    tempo: () => tempo,
+    beat: (aim: TempoAim = null) => beatTempo(aim),
     garrison: () => (castleNow === null ? null : garrisonOf(castleNow)),
     patrol: (t = 0) => (castleNow === null ? null : patrolAt(garrisonOf(castleNow), t)),
     archer: (t = 0) => (castleNow === null ? null : archerAt(garrisonOf(castleNow), t)),
@@ -8302,6 +8423,8 @@ startLoop({
     // Полосы прогресса — каждый кадр и в любой сцене: список сам пустеет
     // там, где работ нет, и чистить его отдельной веткой не нужно.
     syncWorkBars();
+    // Кольцо резонанса (§13.11) — тем же правилом: нет работы — нет кольца.
+    syncTempoRing();
     if (mode === 'camp' && camp.farm !== undefined) {
       const farmSecond = Math.floor(clock.now());
       if (farmSecond !== lastFarmStatusSecond) {
