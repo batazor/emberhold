@@ -36,9 +36,10 @@ describe('Первая глава: пропавший обоз', () => {
     for (let seed = 0; seed < 60; seed += 1) {
       const site = generateTrailSite(seed);
       const found = caravanEncounter(site);
-      for (const cell of [found.survivor, ...found.cargo]) {
+      for (const cell of [found.survivor, found.wagon, ...found.cargo]) {
         assert.equal(site.loc.blocked[idx(site.loc.size, cell.x, cell.z)], 0, `сид ${seed}: обоз в лесу`);
       }
+      assert.notDeepEqual(found.wagon, found.survivor, `сид ${seed}: выживший внутри кузова`);
       assert.ok(
         Math.hypot(found.survivor.x - site.loc.evac.x, found.survivor.z - site.loc.evac.z) > 8,
         `сид ${seed}: обоз виден от входа`,

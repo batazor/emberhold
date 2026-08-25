@@ -4,7 +4,7 @@ import { VILLAGE_MODELS, VILLAGE_SLOTS } from './village.data';
 import { VILLAGE_SLOT_ORDER } from './palette';
 import { heroGeometry } from './models';
 import {
-  DEPTHS, GAME_HUMAN, SPANS, VILLAGE_SCALE, houseGeometry, housePlanOf, houseSpecOf, streetOf,
+  DEPTHS, GAME_HUMAN, SPANS, VILLAGE_SCALE, houseGeometry, housePlanOf, houseSpecOf, streetOf, wagonGeometry,
 } from './village';
 import type { HouseSpec } from './village';
 
@@ -146,6 +146,21 @@ describe('Генератор домов: геометрия', () => {
       const top = (ridge + (chimney.max[1] - chimney.min[1]) / 2) * VILLAGE_SCALE;
       assert.ok(Math.abs(b.max[1]! - top) < 0.05, `сид ${seed}: верх ${b.max[1]} ≠ ${top.toFixed(2)}`);
     }
+  });
+});
+
+describe('Реквизит деревни', () => {
+  test('повозка стоит на земле и центрирована в своей клетке', () => {
+    const geometry = wagonGeometry();
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox!;
+    assert.ok(Math.abs(box.min.y) < 0.01, `подошва ${box.min.y}`);
+    assert.ok(Math.abs(box.min.x + box.max.x) < 0.01, `центр X ${box.min.x}..${box.max.x}`);
+    assert.ok(Math.abs(box.min.z + box.max.z) < 0.01, `центр Z ${box.min.z}..${box.max.z}`);
+    const source = VILLAGE_MODELS['Prop_Wagon'];
+    const expected = (source.max[1] - source.min[1]) * VILLAGE_SCALE;
+    assert.ok(Math.abs(box.max.y - expected) < 0.01, `высота ${box.max.y} ≠ ${expected}`);
+    geometry.dispose();
   });
 });
 

@@ -236,6 +236,29 @@ export function houseGeometry(spec: HouseSpec, scale = VILLAGE_SCALE): THREE.Buf
   return bakedGeometry(parts, { scale, shift: [0, 0, 0] });
 }
 
+/**
+ * Повозка обоза из того же набора, что город. В отличие от дома,
+ * модель центрируется: место аварии задано одной клеткой, и длинное
+ * дышло не должно сдвигать весь объект с дороги.
+ */
+export function wagonGeometry(scale = VILLAGE_SCALE): THREE.BufferGeometry {
+  const wagon = VILLAGE_MODELS['Prop_Wagon'];
+  return bakedGeometry([{
+    model: wagon,
+    palette: VILLAGE_PALETTE,
+  }], {
+    scale,
+    shift: [
+      (wagon.min[0] + wagon.max[0]) / 2,
+      wagon.min[1],
+      (wagon.min[2] + wagon.max[2]) / 2,
+    ],
+  });
+}
+
+/** Материал с вершинными цветами набора Medieval Village. */
+export const villageMaterial = bakedMaterial;
+
 /* ---------- улица ---------- */
 
 export interface PlacedHouse {

@@ -69,13 +69,15 @@ export function settleSupply(camp: CampState, route: SupplyRoute): boolean {
 
 export interface CaravanEncounter {
   readonly survivor: Cell;
+  readonly wagon: Cell;
   readonly cargo: readonly Cell[];
 }
 
 /**
  * Обоз стоит в тупике Тропы, а не на главном ходу: если бы ящики лежали на
  * дороге, их находили бы проходом мимо. Выживший ждёт у конца самого длинного
- * отвилка; ящики — на двух предыдущих клетках. У сида без отвилков остаётся
+ * отвилка; повозка — на предыдущей, ящики — ещё на двух шагах до неё.
+ * У сида без отвилков остаётся
  * безопасный запасной вариант на двух третях главной осевой.
  */
 export function caravanEncounter(site: TrailSite): CaravanEncounter {
@@ -90,13 +92,15 @@ export function caravanEncounter(site: TrailSite): CaravanEncounter {
   const fallback = Math.max(0, Math.floor(line.length * 2 / 3));
   const at = branch?.line.length ? line.length - 1 : fallback;
   const survivor = line[at] ?? site.exit;
+  const wagon = line[Math.max(0, at - 1)] ?? survivor;
   const cargo: Cell[] = [];
-  for (let i = 1; i <= 2; i += 1) {
+  for (let i = 2; i <= 3; i += 1) {
     const cell = line[Math.max(0, at - i)];
     if (cell === undefined || (cell.x === survivor.x && cell.z === survivor.z)) continue;
+    if (cell.x === wagon.x && cell.z === wagon.z) continue;
     if (!cargo.some((c) => c.x === cell.x && c.z === cell.z)) cargo.push(cell);
   }
-  return { survivor: { ...survivor }, cargo: cargo.map((c) => ({ ...c })) };
+  return { survivor: { ...survivor }, wagon: { ...wagon }, cargo: cargo.map((c) => ({ ...c })) };
 }
 
 /**

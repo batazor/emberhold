@@ -1792,7 +1792,7 @@ const VILLAGE: Pack = {
   grey: 0,
   categoryOf: (name) => VILLAGE_CATEGORY.find(([prefix]) => name.startsWith(prefix))?.[1] ?? 'Реквизит',
   /**
-   * Словарь генератора домов (`village.ts`) и ничего сверх него: каждая
+   * Словарь генератора домов (`village.ts`) и сюжетная повозка: каждая
    * лишняя модель — килобайты у всех игроков. Стены взяты одним видом проёма
    * на вопрос (дверь круглая, окно широкое): варианты «Flat» — разнообразие,
    * которого в кадре не видно. Тяжелее всего черепица — крыша нарезана
@@ -1813,6 +1813,8 @@ const VILLAGE: Pack = {
     'Roof_RoundTiles_6x6', 'Roof_RoundTiles_6x8', 'Roof_RoundTiles_6x10',
     // Труба на конёк.
     'Prop_Chimney2',
+    // Разбитый обоз первой сюжетной главы.
+    'Prop_Wagon',
   ],
   data: { file: 'src/render/village.data.ts', prefix: 'VILLAGE', type: 'VillagePart' },
 };
