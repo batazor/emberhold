@@ -2672,7 +2672,17 @@ const startScreen = new StartScreen(app, {
   onPlay: () => {
     if (hasSession) enterGame();
     else if (platformKind() === 'telegram') {
-      void platformAuth.then((signedIn) => signedIn ? enterGame() : authCard.show());
+      void platformAuth.then((signedIn) => {
+        if (signedIn) {
+          hasSession = true;
+          enterGame();
+          return;
+        }
+        authCard.showTelegram(cloudTelegramSignIn, () => {
+          hasSession = true;
+          enterGame();
+        });
+      });
     } else authCard.show();
   },
 });

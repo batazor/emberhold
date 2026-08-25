@@ -11127,6 +11127,16 @@ msgid "вход и возвращение"
 msgstr "вход и возвращение"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.failed"
+msgstr "Вход не получился. Закройте и заново откройте Mini App."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.title"
+msgstr "Вход через Telegram"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "вы"
 msgstr "вы"
@@ -11204,12 +11214,12 @@ msgstr "Выберите уклад хозяйства для {name}"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.chooseRecipient"
+msgid "game.clan.invite.chooseRecipient"
 msgstr "Выберите, кому отправить приглашение"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.clan.invite.chooseRecipient"
+msgid "game.referral.chooseRecipient"
 msgstr "Выберите, кому отправить приглашение"
 
 #. js-lingui-explicit-id
@@ -14437,6 +14447,11 @@ msgstr "Закрыто"
 #: locales/game-messages.ts
 msgid "Закрытый предмет · предпросмотр"
 msgstr "Закрытый предмет · предпросмотр"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.close"
+msgstr "Закрыть"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -20878,12 +20893,12 @@ msgstr "Не удалось начать покупку — проверьте �
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.shareFailed"
+msgid "game.clan.invite.shareFailed"
 msgstr "Не удалось отправить ссылку"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.clan.invite.shareFailed"
+msgid "game.referral.shareFailed"
 msgstr "Не удалось отправить ссылку"
 
 #. js-lingui-explicit-id
@@ -20893,12 +20908,17 @@ msgstr "Не удалось отправить ссылку"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.createFailed"
-msgstr "Не удалось создать приглашение — проверьте вход и сеть"
+msgid "game.auth.telegram.lead"
+msgstr "Не удалось подтвердить вход. Почта для Telegram не нужна."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
 msgid "game.clan.invite.createFailed"
+msgstr "Не удалось создать приглашение — проверьте вход и сеть"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.referral.createFailed"
 msgstr "Не удалось создать приглашение — проверьте вход и сеть"
 
 #. js-lingui-explicit-id
@@ -24372,6 +24392,11 @@ msgid "поворот тропы Kenney; прогулка без ставки"
 msgstr "поворот тропы Kenney; прогулка без ставки"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.retry"
+msgstr "Повторить вход"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "повторным тапом по карточке"
 msgstr "повторным тапом по карточке"
@@ -26190,6 +26215,11 @@ msgstr "Проверка раздачи"
 #: locales/game-messages.ts
 msgid "Проверьте дорожный сбор у торговца"
 msgstr "Проверьте дорожный сбор у торговца"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.retrying"
+msgstr "Проверяем Telegram…"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -30493,12 +30523,12 @@ msgstr "Ссылка отправлена — откройте письмо"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.copied"
+msgid "game.clan.invite.copied"
 msgstr "Ссылка приглашения скопирована"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.clan.invite.copied"
+msgid "game.referral.copied"
 msgstr "Ссылка приглашения скопирована"
 
 #. js-lingui-explicit-id

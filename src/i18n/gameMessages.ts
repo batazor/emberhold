@@ -79,6 +79,20 @@ export const gameMessages = {
   authEmail: message('game.auth.email', 'Почта', 'Email'),
   authSending: message('game.auth.sending', 'Письмо собирается…', 'Preparing the email…'),
   authSent: message('game.auth.sent', 'Ссылка отправлена — откройте письмо', 'Link sent — check your email'),
+  telegramAuthTitle: message('game.auth.telegram.title', 'Вход через Telegram', 'Telegram sign-in'),
+  telegramAuthLead: message(
+    'game.auth.telegram.lead',
+    'Не удалось подтвердить вход. Почта для Telegram не нужна.',
+    'We could not confirm your sign-in. Telegram does not require an email.',
+  ),
+  telegramAuthRetry: message('game.auth.telegram.retry', 'Повторить вход', 'Try again'),
+  telegramAuthClose: message('game.auth.telegram.close', 'Закрыть', 'Close'),
+  telegramAuthRetrying: message('game.auth.telegram.retrying', 'Проверяем Telegram…', 'Checking Telegram…'),
+  telegramAuthFailed: message(
+    'game.auth.telegram.failed',
+    'Вход не получился. Закройте и заново откройте Mini App.',
+    'Sign-in failed. Close and reopen the Mini App.',
+  ),
 
   visitCampAction: message('game.visitCamp.action', 'Посетить лагерь', 'Visit camp'),
   visitCampMode: message('game.visitCamp.mode', 'режим просмотра', 'view only'),

@@ -30,7 +30,7 @@ const CARDS = {
   },
 } as const;
 
-type Mode = keyof typeof CARDS;
+type Mode = keyof typeof CARDS | 'telegram';
 
 export class AuthCard {
   private readonly root: HTMLElement;
@@ -38,6 +38,8 @@ export class AuthCard {
   private mode: Mode = 'in';
   /** Пока облако отвечает, вторая отправка не принимается. */
   private busy = false;
+  private telegramRetry: (() => Promise<boolean>) | null = null;
+  private telegramSuccess: (() => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -56,19 +58,33 @@ export class AuthCard {
     this.card.addEventListener('click', (e) => {
       if (!(e.target instanceof HTMLButtonElement)) return;
       const act = e.target.dataset.act;
-      if (act === 'go') void this.submit();
-      else if (act === 'swap') {
+      if (act === 'go') void (this.mode === 'telegram' ? this.submitTelegram() : this.submit());
+      else if (act === 'swap' && this.mode !== 'telegram') {
         this.mode = this.mode === 'in' ? 'up' : 'in';
         this.paint();
         revealCard(this.card);
-      }
+      } else if (act === 'close') this.hide();
     });
     this.card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void this.submit();
+      if (e.key === 'Enter') void (this.mode === 'telegram' ? this.submitTelegram() : this.submit());
     });
   }
 
   show(): void {
+    this.mode = 'in';
+    this.telegramRetry = null;
+    this.telegramSuccess = null;
+    this.paint();
+    this.root.style.display = 'flex';
+    revealCard(this.card);
+  }
+
+  /** Telegram never falls back to email: a failed signed exchange is retried in place. */
+  showTelegram(retry: () => Promise<boolean>, onSuccess: () => void): void {
+    this.busy = false;
+    this.mode = 'telegram';
+    this.telegramRetry = retry;
+    this.telegramSuccess = onSuccess;
     this.paint();
     this.root.style.display = 'flex';
     revealCard(this.card);
@@ -89,6 +105,19 @@ export class AuthCard {
    * ничего не делает до кнопки, читается формой, а не выбором.
    */
   private paint(): void {
+    if (this.mode === 'telegram') {
+      this.card.innerHTML = `
+        <h2></h2>
+        <p class="sp-note"></p>
+        <p class="auth-note warn"></p>
+        <button type="button" data-act="go"></button>
+        <button type="button" class="ghost" data-act="close"></button>`;
+      setGameText(this.card.querySelector('h2') as HTMLElement, gameMessages.telegramAuthTitle);
+      setGameText(this.card.querySelector('.sp-note') as HTMLElement, gameMessages.telegramAuthLead);
+      setGameText(this.card.querySelector('[data-act="go"]') as HTMLButtonElement, gameMessages.telegramAuthRetry);
+      setGameText(this.card.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.telegramAuthClose);
+      return;
+    }
     const c = CARDS[this.mode];
     this.card.innerHTML = `
       <h2></h2>
@@ -132,5 +161,24 @@ export class AuthCard {
     // Дальше всё случится в письме: ссылка вернёт в игру уже вошедшим,
     // а эта вкладка узнает о сессии сама и уберёт карточку.
     setGameText(note, gameMessages.authSent);
+  }
+
+  private async submitTelegram(): Promise<void> {
+    if (this.busy || this.telegramRetry === null) return;
+    const note = this.card.querySelector('.auth-note');
+    const button = this.card.querySelector('[data-act="go"]');
+    if (note instanceof HTMLElement) setGameText(note, gameMessages.telegramAuthRetrying);
+    if (button instanceof HTMLButtonElement) button.disabled = true;
+    this.busy = true;
+    const signedIn = await this.telegramRetry();
+    this.busy = false;
+    if (signedIn) {
+      this.hide();
+      this.telegramSuccess?.();
+      return;
+    }
+    if (button instanceof HTMLButtonElement) button.disabled = false;
+    if (note instanceof HTMLElement) setGameText(note, gameMessages.telegramAuthFailed);
+    play('deny');
   }
 }

@@ -17,6 +17,7 @@ interface TelegramUser {
 interface TelegramWebApp {
   readonly initData: string;
   readonly initDataUnsafe?: { readonly user?: TelegramUser; readonly start_param?: string };
+  readonly platform?: string;
   ready(): void;
   expand(): void;
   disableVerticalSwipes?(): void;
@@ -29,15 +30,25 @@ declare global {
   interface Window { Telegram?: { readonly WebApp?: TelegramWebApp }; }
 }
 
+const telegramSdk = (): TelegramWebApp | null => window.Telegram?.WebApp ?? null;
+
+/** The SDK is loaded on the web too; only a real Telegram WebView has a platform. */
 const telegram = (): TelegramWebApp | null => {
+  const app = telegramSdk();
+  return app !== null && (app.initData !== '' || (app.platform !== undefined && app.platform !== 'unknown'))
+    ? app
+    : null;
+};
+
+const telegramIdentity = (): TelegramWebApp | null => {
   const app = window.Telegram?.WebApp;
-  // Наличие объекта от подключённого SDK ещё не означает запуск из Telegram:
-  // в обычном браузере initData пуст, и доверять такому окружению нельзя.
+  // Platform detection may use Telegram's host marker, but identity never may:
+  // only signed initData crosses the authentication boundary.
   return app !== undefined && app.initData !== '' ? app : null;
 };
 
 export const platformKind = (): PlatformKind => telegram() === null ? 'web' : 'telegram';
-export const telegramInitData = (): string | null => telegram()?.initData ?? null;
+export const telegramInitData = (): string | null => telegramIdentity()?.initData ?? null;
 
 /**
  * Main Mini App deep links expose the payload twice. Prefer signed initData,

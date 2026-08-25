@@ -20,7 +20,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const identity = typeof body.initData === 'string'
     ? await verifyTelegramInitData(body.initData, botToken)
     : null;
-  if (identity === null) return json({ error: 'invalid Telegram identity' }, 401);
+  if (identity === null) return json({ error: 'invalid Telegram identity', code: 'invalid_init_data' }, 401);
 
   const db = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -32,6 +32,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .select('user_id').eq('telegram_id', identity.id).maybeSingle();
     let userId: string;
     let email: string;
+    let tokenHash: string;
     if (mapped !== null) {
       userId = String(mapped.user_id);
       const currentToken = (req.headers.get('Authorization') ?? '').replace('Bearer ', '');
@@ -40,32 +41,38 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const account = await db.auth.admin.getUserById(userId);
       email = account.data.user?.email ?? '';
       if (email === '') throw new Error('Telegram account has no email identity');
+      const link = await db.auth.admin.generateLink({ type: 'magiclink', email });
+      tokenHash = link.data?.properties?.hashed_token ?? '';
+      if (link.error !== null || tokenHash === '') throw link.error ?? new Error('cannot mint Telegram session');
     }
     else {
       email = `telegram.${identity.id}@users.emberhold.invalid`;
-      const created = await db.auth.admin.createUser({
-        email,
-        email_confirm: true,
-        user_metadata: {
+      // One admin call creates the private auth identity when needed and mints
+      // its one-time session token. The old createUser + generateLink pair
+      // could leave a user behind without a telegram_identities row.
+      const link = await db.auth.admin.generateLink({
+        type: 'magiclink', email, options: { data: {
           provider: 'telegram', telegram_id: identity.id,
           first_name: identity.firstName, last_name: identity.lastName,
           username: identity.username,
-        },
+        } },
       });
-      if (created.error !== null || created.data.user === null) {
-        // Два одновременных открытия могли встретиться между select и insert.
-        ({ data: mapped } = await db.from('telegram_identities')
-          .select('user_id').eq('telegram_id', identity.id).maybeSingle());
-        if (mapped === null) throw created.error ?? new Error('cannot create Telegram user');
-        userId = String(mapped.user_id);
-      } else {
-        userId = created.data.user.id;
-        const { error } = await db.from('telegram_identities').insert({
-          telegram_id: identity.id, user_id: userId, username: identity.username,
-          first_name: identity.firstName, last_name: identity.lastName,
-          language_code: identity.languageCode,
-        });
-        if (error !== null) throw error;
+      tokenHash = link.data?.properties?.hashed_token ?? '';
+      const linkedUser = link.data?.user;
+      if (link.error !== null || linkedUser === null || linkedUser === undefined || tokenHash === '') {
+        throw link.error ?? new Error('cannot create Telegram session');
+      }
+      userId = linkedUser.id;
+      const { error } = await db.from('telegram_identities').insert({
+        telegram_id: identity.id, user_id: userId, username: identity.username,
+        first_name: identity.firstName, last_name: identity.lastName,
+        language_code: identity.languageCode,
+      });
+      if (error !== null) {
+        // Two simultaneous first launches may both mint the same private user.
+        const raced = await db.from('telegram_identities')
+          .select('user_id').eq('telegram_id', identity.id).maybeSingle();
+        if (raced.data?.user_id !== userId) throw error;
       }
     }
 
@@ -75,11 +82,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       last_seen_at: new Date().toISOString(),
     }).eq('telegram_id', identity.id).eq('user_id', userId);
 
-    const link = await db.auth.admin.generateLink({ type: 'magiclink', email });
-    const tokenHash = link.data?.properties?.hashed_token;
-    if (link.error !== null || typeof tokenHash !== 'string' || tokenHash === '') throw link.error;
     return json({ tokenHash });
-  } catch {
-    return json({ error: 'Telegram sign-in failed' }, 500);
+  } catch (error) {
+    console.error('telegram-auth exchange failed', error instanceof Error ? error.message : 'unknown');
+    return json({ error: 'Telegram sign-in failed', code: 'session_exchange_failed' }, 500);
   }
 });

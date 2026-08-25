@@ -11176,6 +11176,16 @@ msgid "вход и возвращение"
 msgstr "entry and return"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.failed"
+msgstr "Sign-in failed. Close and reopen the Mini App."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.title"
+msgstr "Telegram sign-in"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "вы"
 msgstr "you"
@@ -11254,13 +11264,13 @@ msgstr "Choose how {name} will run the farm"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.chooseRecipient"
-msgstr "Choose who to invite"
+msgid "game.clan.invite.chooseRecipient"
+msgstr "Choose who to send the invitation to"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.clan.invite.chooseRecipient"
-msgstr "Choose who to send the invitation to"
+msgid "game.referral.chooseRecipient"
+msgstr "Choose who to invite"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -14508,6 +14518,11 @@ msgstr "Locked"
 #: locales/game-messages.ts
 msgid "Закрытый предмет · предпросмотр"
 msgstr "Locked item · preview"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.close"
+msgstr "Close"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -21004,12 +21019,12 @@ msgstr "Could not start checkout — check your sign-in and connection."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.shareFailed"
+msgid "game.clan.invite.shareFailed"
 msgstr "Could not share the link"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.clan.invite.shareFailed"
+msgid "game.referral.shareFailed"
 msgstr "Could not share the link"
 
 #. js-lingui-explicit-id
@@ -21019,12 +21034,17 @@ msgstr "Could not share the link"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.createFailed"
-msgstr "Could not create an invitation — check your sign-in and connection"
+msgid "game.auth.telegram.lead"
+msgstr "We could not confirm your sign-in. Telegram does not require an email."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
 msgid "game.clan.invite.createFailed"
+msgstr "Could not create an invitation — check your sign-in and connection"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.referral.createFailed"
 msgstr "Could not create an invitation — check your sign-in and connection"
 
 #. js-lingui-explicit-id
@@ -24535,6 +24555,11 @@ msgstr "Kenney Trail Turn;\n"
 "Walk without a bet"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.retry"
+msgstr "Try again"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "повторным тапом по карточке"
 msgstr "post-card"
@@ -26367,6 +26392,11 @@ msgstr "Check of distribution"
 #: locales/game-messages.ts
 msgid "Проверьте дорожный сбор у торговца"
 msgstr "Check the road toll with the trader"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.telegram.retrying"
+msgstr "Checking Telegram…"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -30705,12 +30735,12 @@ msgstr "Link sent. Open the email to continue."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.referral.copied"
+msgid "game.clan.invite.copied"
 msgstr "Invitation link copied"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "game.clan.invite.copied"
+msgid "game.referral.copied"
 msgstr "Invitation link copied"
 
 #. js-lingui-explicit-id
