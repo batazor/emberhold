@@ -79,6 +79,29 @@ npm run build      # typecheck + check + arch + verify + vite build
 npm run typecheck
 ```
 
+## Telegram Mini App
+
+Telegram — платформенная оболочка той же игры, а не отдельная сборка. В обычном
+браузере остаются вход по почте и Stripe; внутри Mini App подписанный `initData`
+автоматически открывает Supabase-сессию, а магазин показывает Telegram Stars и
+нативный invoice. Сейвы, кланы, каталог и выданные права используют общий
+backend и внутренние UUID. Уже существующий email-аккаунт не объединяется с
+Telegram по догадке: для переноса одного сейва между ними нужен отдельный
+подтверждённый сценарий «Привязать Telegram».
+
+Для серверной части нужны секреты `TELEGRAM_BOT_TOKEN` и
+`TELEGRAM_WEBHOOK_SECRET`. После применения миграций и `npm run edge:deploy`
+webhook бота направляется на:
+
+```text
+https://ynprsyzjdaheivhfcuel.supabase.co/functions/v1/telegram-webhook
+```
+
+Тот же `TELEGRAM_WEBHOOK_SECRET` передаётся Bot API как `secret_token`. URL
+собранной игры задаётся в BotFather как Main Mini App. Клиентский Telegram ID
+не используется без серверной HMAC-проверки, а платный набор выдаётся только
+после `successful_payment`, не после закрытия окна оплаты.
+
 ## Артбуки
 
 Тридцать одна книга — раскадровки, арт-байбл, живые прототипы механик — лежит

@@ -173,6 +173,7 @@ import {
   cloudSortieClaim,
   cloudSortieStart,
   cloudTime,
+  cloudTelegramSignIn,
   cloudToggleCampLike,
   cloudUser,
   cloudWheel,
@@ -180,6 +181,7 @@ import {
   cloudVisits,
   cloudWipe,
 } from './core/cloud';
+import { initPlatform, platformKind } from './core/platform';
 import { AuthCard } from './ui/authCard';
 import { StorePanel } from './ui/storePanel';
 import { campDecorStyle, campFireStyle, clanHeraldry } from './core/cosmetics';
@@ -470,6 +472,7 @@ import {
 
 const app = document.getElementById('app');
 if (app === null) throw new Error('нет #app');
+initPlatform();
 
 /* ---------- состояние ---------- */
 /**
@@ -2635,7 +2638,9 @@ const startScreen = new StartScreen(app, {
   // и только когда входить действительно нужно.
   onPlay: () => {
     if (hasSession) enterGame();
-    else authCard.show();
+    else if (platformKind() === 'telegram') {
+      void platformAuth.then((signedIn) => signedIn ? enterGame() : authCard.show());
+    } else authCard.show();
   },
 });
 
@@ -2937,12 +2942,13 @@ new SettingsMenu(app, {
  * игра продолжается тем же нажатием, которым началась.
  */
 let hasSession = false;
-void cloudUser().then((email) => {
-  hasSession = email !== null;
+const platformAuth = cloudTelegramSignIn();
+void platformAuth.then(() => cloudUser()).then((identity) => {
+  hasSession = identity !== null;
   // §9 — с этого мига события пишутся на человека, а не на устройство:
   // иначе один игрок с телефона и с ноутбука считается двумя.
-  if (email !== null) analyticsIdentify(email);
-  if (email !== null) void syncLanguage();
+  if (identity !== null) analyticsIdentify(identity);
+  if (identity !== null) void syncLanguage();
 });
 
 /**

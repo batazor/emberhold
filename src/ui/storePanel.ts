@@ -15,6 +15,7 @@ import {
 import { play } from '../core/audio';
 import { gameMessage, setGameAttribute, setGameText } from '../i18n/game';
 import { gameMessages } from '../i18n/gameMessages';
+import { openPlatformCheckout, platformKind, platformPrice } from '../core/platform';
 
 const VALUE_NAMES: Readonly<Record<string, ReturnType<typeof gameMessage>>> = {
   default: gameMessage('Обычная палатка', 'Standard tent'),
@@ -104,7 +105,9 @@ export class StorePanel {
     this.status = this.overlay.querySelector('.store-status') as HTMLElement;
     this.primary = this.overlay.querySelector('[data-act="primary"]') as HTMLButtonElement;
     setGameText(this.overlay.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.storeClose);
-    setGameText(this.overlay.querySelector('.store-sandbox') as HTMLElement,
+    const sandbox = this.overlay.querySelector('.store-sandbox') as HTMLElement;
+    if (platformKind() === 'telegram') sandbox.hidden = true;
+    else setGameText(sandbox,
       gameMessage('Stripe Sandbox · реальные деньги не списываются', 'Stripe Sandbox · no real money is charged'));
     setGameAttribute(this.overlay, 'aria-label', gameMessage('Оформление лагеря', 'Camp appearance'));
     setGameAttribute(this.tabs, 'aria-label', gameMessage('Раздел оформления', 'Appearance category'));
@@ -263,7 +266,7 @@ export class StorePanel {
           : action === 'role' ? gameMessage('Применить может глава или офицер', 'A leader or officer can equip it')
             : action === 'obtain' ? gameMessage('Получить набор за {price}', 'Unlock pack for {price}')
               : gameMessage('Применить', 'Equip'),
-    action === 'obtain' ? { price: category.price } : undefined);
+    action === 'obtain' ? { price: platformPrice(category.price, category.stars) } : undefined);
     if (this.busy) setGameText(this.status, action === 'obtain' ? gameMessages.storeOpening
       : gameMessage('Применяем выбранное оформление…', 'Equipping the selected appearance…'));
     else if (this.newPack === category.sku && hasPack) setGameText(this.status, gameMessage(
@@ -288,7 +291,17 @@ export class StorePanel {
     if (state?.url === undefined) {
       this.busy = false; this.state = state; this.render(); play('deny'); return;
     }
-    location.assign(state.url);
+    const result = await openPlatformCheckout(state.url);
+    if (result === 'redirected') return;
+    if (result === 'paid' || result === 'pending') {
+      this.newPack = categoryOf(this.kind).sku;
+      setGameText(this.status, gameMessages.storeProcessing);
+      await this.waitForEntitlement(this.newPack);
+      return;
+    }
+    this.busy = false;
+    this.render();
+    if (result === 'failed') play('deny');
   }
 
   private async equip(): Promise<void> {

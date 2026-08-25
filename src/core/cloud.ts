@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { platformKind, telegramInitData } from './platform';
 import type {
   CampDecorStyle,
   CampFireStyle,
@@ -76,13 +77,33 @@ export async function cloudWorldSnapshot(): Promise<unknown | null> {
   }
 }
 
-/** Почта вошедшего — или null, если сессии нет. */
+/** Стабильный id вошедшего — или null, если сессии нет. */
 export async function cloudUser(): Promise<string | null> {
   try {
     const { data } = await client.auth.getSession();
-    return data.session?.user.email ?? null;
+    return data.session?.user.id ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Telegram уже доказал личность при открытии Mini App. Сервер проверяет
+ * подпись initData и выдаёт одноразовый Supabase magic-link token: так все
+ * существующие RLS и облачные таблицы продолжают работать с auth.uid().
+ */
+export async function cloudTelegramSignIn(): Promise<boolean> {
+  const initData = telegramInitData();
+  if (initData === null) return false;
+  try {
+    const { data, error } = await client.functions.invoke('telegram-auth', { body: { initData } });
+    if (error === null && data?.authenticated === true) return true;
+    const tokenHash: unknown = data?.tokenHash;
+    if (error !== null || typeof tokenHash !== 'string' || tokenHash === '') return false;
+    const verified = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
+    return verified.error === null && verified.data.session !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -470,7 +491,9 @@ export const cloudBillingStatus = (): Promise<BillingState | null> =>
 
 /** Одноразовая ссылка привязывается к сессии серверным случайным claim. */
 export const cloudBillingCheckout = (sku: string): Promise<BillingState | null> =>
-  callFunction<BillingState>('billing', { action: 'checkout', sku });
+  callFunction<BillingState>('billing', {
+    action: 'checkout', sku, platform: platformKind(), telegramInitData: telegramInitData(),
+  });
 
 /** Выбор проходит через сервер: localStorage не может надеть неоплаченное. */
 export const cloudBillingEquip = (

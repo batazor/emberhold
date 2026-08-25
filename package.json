@@ -53,7 +53,7 @@
     "ltv": "tsx scripts/ltv.ts",
     "locals": "tsx scripts/locals.ts",
     "edge": "tsx scripts/edge.ts",
-    "edge:deploy": "npm run edge && npx supabase functions deploy sortie wheel billing stripe-webhook --project-ref ynprsyzjdaheivhfcuel --use-api"
+    "edge:deploy": "npm run edge && npx supabase functions deploy sortie wheel billing stripe-webhook telegram-auth telegram-webhook --project-ref ynprsyzjdaheivhfcuel --use-api"
   },
   "dependencies": {
     "@lingui/core": "^6.6.0",
