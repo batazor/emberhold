@@ -2,18 +2,38 @@ import type { CampState } from '../sim/camp';
 import {
   FARM_CROPS,
   farmReturnActionUnlocked,
+  farmStoryReady,
   farmStatus,
 } from '../sim/farm';
-import type { FarmCropId } from '../sim/farm';
+import type { FarmCaretaker, FarmCropId } from '../sim/farm';
 import { FARM_CARE_BONUS, farmCareHelpers } from '../sim/farmResidents';
 import { clanBuilderIds } from '../sim/clan';
-import { gameDuration, gameMessage, setGameAttribute, setGameText } from '../i18n/game';
+import { gameDuration, gameMessage, gameText, setGameAttribute, setGameText } from '../i18n/game';
 import type { GameMessage } from '../i18n/gameMessages';
 
 interface FarmCropPickerCallbacks {
   onSelect(crop: FarmCropId): void;
   onReturn(): void;
+  onCaretaker(caretaker: FarmCaretaker): void;
 }
+
+const STORY: readonly { title: GameMessage; goal: GameMessage }[] = [
+  { title: gameMessage('Первая борозда', 'The first furrow'), goal: gameMessage('Засейте две грядки', 'Plant two garden beds') },
+  { title: gameMessage('Первый урожай', 'First harvest'), goal: gameMessage('Соберите урожай с двух грядок', 'Harvest two garden beds') },
+  { title: gameMessage('Следы у посадок', 'Tracks by the crops'), goal: gameMessage('Постройте ограду через меню строительства', 'Build the fence from the construction menu') },
+  { title: gameMessage('Сухая земля', 'Dry soil'), goal: gameMessage('Постройте колодец', 'Build the well') },
+  { title: gameMessage('Больше земли', 'More soil'), goal: gameMessage('Засейте четыре доступные грядки', 'Plant four available garden beds') },
+  { title: gameMessage('Работа сообща', 'Working together'), goal: gameMessage('Дождитесь помощи жителя со сбором', 'Let a resident help with a harvest') },
+  { title: gameMessage('Семена на завтра', 'Seeds for tomorrow'), goal: gameMessage('Соберите суммарно шесть грядок', 'Harvest six garden beds in total') },
+  { title: gameMessage('Место для припасов', 'Room for supplies'), goal: gameMessage('Начните строительство сарая', 'Start building the barn') },
+  { title: gameMessage('Новая рутина', 'A new routine'), goal: gameMessage('Используйте массовый сбор у готового сарая', 'Use batch harvest with the completed barn') },
+  { title: gameMessage('Запас перед ненастьем', 'Stores before the storm'), goal: gameMessage('Добудьте огородом суммарно 40 пищи', 'Produce 40 food from the farm in total') },
+  { title: gameMessage('Кому вести хозяйство', 'Who will run the farm'), goal: gameMessage('Выберите уклад смотрителя', 'Choose the caretaker’s approach') },
+  { title: gameMessage('Вода после дождя', 'After the rain'), goal: gameMessage('Проведите дренаж и откройте шесть грядок', 'Build drainage and unlock all six beds') },
+  { title: gameMessage('Свой очаг', 'A hearth of one’s own'), goal: gameMessage('Начните строительство дома фермера', 'Start building the farmhouse') },
+  { title: gameMessage('Последний венец', 'The final beam'), goal: gameMessage('Дождитесь завершения дома', 'Wait for the farmhouse to be completed') },
+  { title: gameMessage('Праздник урожая', 'Harvest festival'), goal: gameMessage('Доведите общий урожай до 70 пищи', 'Bring total farm production to 70 food') },
+];
 
 interface CropCardText {
   readonly name: GameMessage;
@@ -63,6 +83,10 @@ export class FarmCropPicker {
   private readonly helpers: HTMLElement;
   private readonly helperCopy: HTMLElement;
   private readonly returnAction: HTMLButtonElement;
+  private readonly storyTitle: HTMLElement;
+  private readonly storyGoal: HTMLElement;
+  private readonly storyState: HTMLElement;
+  private readonly caretaker: HTMLElement;
   private camp: CampState | null = null;
   private sceneVisible = false;
   private now = 0;
@@ -73,6 +97,26 @@ export class FarmCropPicker {
     this.root.className = 'panel';
     this.root.hidden = true;
     this.root.setAttribute('aria-labelledby', 'farm-crops-title');
+
+    const story = document.createElement('div');
+    story.className = 'fc-story';
+    this.storyTitle = document.createElement('b');
+    this.storyGoal = document.createElement('span');
+    this.storyState = document.createElement('small');
+    story.append(this.storyTitle, this.storyGoal, this.storyState);
+
+    this.caretaker = document.createElement('div');
+    this.caretaker.className = 'fc-caretaker';
+    for (const [id, label] of [
+      ['grower', gameMessage('Садовод · бережный урожай', 'Grower · careful harvest')],
+      ['steward', gameMessage('Завхоз · надёжный запас', 'Steward · reliable stores')],
+    ] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      setGameText(button, label);
+      button.addEventListener('click', () => cb.onCaretaker(id));
+      this.caretaker.appendChild(button);
+    }
 
     const head = document.createElement('header');
     head.className = 'row';
@@ -132,7 +176,7 @@ export class FarmCropPicker {
     this.returnAction.type = 'button';
     this.returnAction.addEventListener('click', () => cb.onReturn());
     footer.append(this.helpers, this.returnAction);
-    this.root.append(head, list, footer);
+    this.root.append(story, this.caretaker, head, list, footer);
     parent.appendChild(this.root);
     this.paintStatic();
   }
@@ -174,6 +218,21 @@ export class FarmCropPicker {
     const shown = this.sceneVisible && farm?.unlocked === true;
     this.root.hidden = !shown;
     if (!shown || farm === undefined) return;
+    const chapter = STORY[Math.max(0, Math.min(STORY.length - 1, farm.story.day - 1))]!;
+    setGameText(this.storyTitle, gameMessage('День {day} из 15 · {title}', 'Day {day} of 15 · {title}'), {
+      day: farm.story.day,
+      title: gameText(chapter.title),
+    });
+    setGameText(this.storyGoal, chapter.goal);
+    const ready = farmStoryReady(farm);
+    if (farm.story.day === 15 && ready) {
+      setGameText(this.storyState, gameMessage('Хозяйство завершено · праздник открыт', 'Farm complete · festival unlocked'));
+    } else if (ready) {
+      setGameText(this.storyState, gameMessage('Цель выполнена · продолжение завтра', 'Goal complete · continues tomorrow'));
+    } else {
+      setGameText(this.storyState, gameMessage('Цель дня', 'Today’s goal'));
+    }
+    this.caretaker.hidden = farm.story.day !== 11 || farm.story.caretaker !== null;
     for (const [crop, nodes] of this.cards) {
       const selected = farm.selectedCrop === crop;
       nodes.button.classList.toggle('selected', selected);

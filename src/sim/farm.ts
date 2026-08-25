@@ -1,4 +1,7 @@
 import type { CampState } from './camp';
+import { BUILD_COST, BUILD_SECONDS } from './camp';
+import { canAfford, spend } from './resources';
+import type { Resources } from './resources';
 
 /** Первая цель хозяйства: добыча считается после выдачи, а не по остатку. */
 export const FARM_FOOD_GOAL = 30;
@@ -14,6 +17,72 @@ export const FARM_STARTING_PLOT_COUNT = 2;
 export const FARM_RETURN_ACTION_PLOTS = 4;
 /** Порядок расширения держит огород симметричным относительно дорожки. */
 export const FARM_PLOT_UNLOCK_ORDER = [0, 3, 1, 4, 2, 5] as const;
+
+export const FARM_STORY_DAYS = 15;
+
+export const FARM_STRUCTURE_IDS = ['fence', 'well', 'barn', 'plots', 'farmhouse'] as const;
+export type FarmStructureId = typeof FARM_STRUCTURE_IDS[number];
+
+export interface FarmConstruction {
+  readonly structure: FarmStructureId;
+  readonly startedAt: number;
+  readonly endsAt: number;
+}
+
+export type FarmCaretaker = 'grower' | 'steward';
+
+export interface FarmStoryState {
+  /** День сюжетной дуги, а не возраст аккаунта. */
+  day: number;
+  /** Мировые сутки, в которые открылся текущий день; -1 до первого входа. */
+  startedDay: number;
+  plantedPlots: number;
+  harvestedPlots: number;
+  harvestedFood: number;
+  assistedPlots: number;
+  batchUses: number;
+  caretaker: FarmCaretaker | null;
+  structures: Record<FarmStructureId, boolean>;
+  construction: FarmConstruction | null;
+}
+
+export const emptyFarmStory = (): FarmStoryState => ({
+  day: 1,
+  startedDay: -1,
+  plantedPlots: 0,
+  harvestedPlots: 0,
+  harvestedFood: 0,
+  assistedPlots: 0,
+  batchUses: 0,
+  caretaker: null,
+  structures: {
+    fence: false,
+    well: false,
+    barn: false,
+    plots: false,
+    farmhouse: false,
+  },
+  construction: null,
+});
+
+interface FarmStructureDef {
+  readonly unlockDay: number;
+  readonly buildLevel: number;
+}
+
+export const FARM_STRUCTURES: Readonly<Record<FarmStructureId, FarmStructureDef>> = {
+  fence: { unlockDay: 3, buildLevel: 2 },
+  well: { unlockDay: 4, buildLevel: 3 },
+  barn: { unlockDay: 8, buildLevel: 4 },
+  plots: { unlockDay: 12, buildLevel: 3 },
+  farmhouse: { unlockDay: 13, buildLevel: 5 },
+};
+
+export const farmStructureCost = (id: FarmStructureId): Partial<Resources> =>
+  BUILD_COST[FARM_STRUCTURES[id].buildLevel] ?? {};
+
+export const farmStructureSeconds = (id: FarmStructureId): number =>
+  BUILD_SECONDS[FARM_STRUCTURES[id].buildLevel] ?? 0;
 
 export const FARM_CROP_IDS = ['turnip', 'barley'] as const;
 export type FarmCropId = typeof FARM_CROP_IDS[number];
@@ -62,6 +131,7 @@ export interface FarmState {
   selectedCrop: FarmCropId;
   /** null — свободная грядка; созревшая остаётся занятой до ручного сбора. */
   plots: (FarmPlot | null)[];
+  story: FarmStoryState;
 }
 
 export interface FarmStatus {
@@ -98,6 +168,7 @@ export function startFarmOnboarding(camp: CampState): boolean {
     activePlots: FARM_STARTING_PLOT_COUNT,
     selectedCrop: FARM_DEFAULT_CROP,
     plots: emptyFarmPlots(),
+    story: emptyFarmStory(),
   };
   return true;
 }
@@ -224,6 +295,7 @@ export function plantFarmPlot(
   if (farmPlantBlock(camp, index, crop) !== 'ok' || !Number.isFinite(now)) return false;
   camp.resources.food -= FARM_CROPS[crop].seedFood;
   camp.farm!.plots[index] = { plantedAt: now, crop };
+  camp.farm!.story.plantedPlots += 1;
   return true;
 }
 
@@ -239,12 +311,15 @@ export function harvestFarmPlot(camp: CampState, index: number, now: number): nu
   farm.plots[index] = null;
   const gathered = FARM_CROPS[plot.crop].harvestFood;
   camp.resources.food += gathered;
+  farm.story.harvestedPlots += 1;
+  farm.story.harvestedFood += gathered;
   return gathered;
 }
 
 /** Открыто ли необязательное действие возвращения для крупного огорода. */
 export function farmReturnActionUnlocked(farm: FarmState | undefined): boolean {
-  return farm?.unlocked === true && farm.activePlots >= FARM_RETURN_ACTION_PLOTS;
+  return farm?.unlocked === true && farm.activePlots >= FARM_RETURN_ACTION_PLOTS &&
+    farm.story.structures.barn;
 }
 
 /**
@@ -281,6 +356,7 @@ export function repeatReadyFarmPlots(camp: CampState, now: number): FarmReturnRe
       seedFood += FARM_CROPS[crop].seedFood;
     }
   }
+  if (harvested > 0) farm!.story.batchUses += 1;
   return {
     harvested,
     replanted,
@@ -288,4 +364,94 @@ export function repeatReadyFarmPlots(camp: CampState, now: number): FarmReturnRe
     seedFood,
     netFood: camp.resources.food - foodBefore,
   };
+}
+
+export type FarmBuildBlock = 'ok' | 'locked' | 'built' | 'busy' | 'resources';
+
+export function farmBuildBlock(camp: CampState, id: FarmStructureId): FarmBuildBlock {
+  const farm = camp.farm;
+  if (farm?.unlocked !== true || farm.story.day < FARM_STRUCTURES[id].unlockDay) return 'locked';
+  if (farm.story.structures[id]) return 'built';
+  if (farm.story.construction !== null || camp.construction !== null || camp.walls?.work != null) return 'busy';
+  if (!canAfford(camp.resources, farmStructureCost(id))) return 'resources';
+  return 'ok';
+}
+
+export function startFarmConstruction(camp: CampState, id: FarmStructureId, now: number): boolean {
+  if (farmBuildBlock(camp, id) !== 'ok' || !Number.isFinite(now)) return false;
+  const farm = camp.farm!;
+  spend(camp.resources, farmStructureCost(id));
+  const seconds = farmStructureSeconds(id);
+  farm.story.construction = { structure: id, startedAt: now, endsAt: now + seconds };
+  if (seconds === 0) completeFarmConstruction(camp, now);
+  return true;
+}
+
+export function completeFarmConstruction(camp: CampState, now: number): FarmStructureId | null {
+  const farm = camp.farm;
+  const work = farm?.story.construction;
+  if (farm === undefined || work === null || work === undefined || now < work.endsAt) return null;
+  farm.story.structures[work.structure] = true;
+  farm.story.construction = null;
+  if (work.structure === 'well') farm.activePlots = Math.max(farm.activePlots, 4);
+  if (work.structure === 'plots') farm.activePlots = FARM_PLOT_COUNT;
+  return work.structure;
+}
+
+export function farmConstructionProgress(farm: FarmState | undefined, now: number): number {
+  const work = farm?.story.construction;
+  if (work === null || work === undefined) return 0;
+  const total = Math.max(0.001, work.endsAt - work.startedAt);
+  return Math.max(0, Math.min(1, (now - work.startedAt) / total));
+}
+
+export function chooseFarmCaretaker(camp: CampState, caretaker: FarmCaretaker): boolean {
+  const farm = camp.farm;
+  if (farm?.unlocked !== true || farm.story.day < 11 || farm.story.caretaker !== null) return false;
+  farm.story.caretaker = caretaker;
+  return true;
+}
+
+/** Цель текущего дня. Она проверяется числами симуляции, а не текстом панели. */
+export function farmStoryReady(farm: FarmState | undefined): boolean {
+  if (farm?.unlocked !== true) return false;
+  const story = farm.story;
+  switch (story.day) {
+    case 1: return story.plantedPlots >= 2;
+    case 2: return story.harvestedPlots >= 2;
+    case 3: return story.structures.fence;
+    case 4: return story.structures.well;
+    case 5: return story.plantedPlots >= 4;
+    case 6: return story.assistedPlots >= 1;
+    case 7: return story.harvestedPlots >= 6;
+    case 8: return story.construction?.structure === 'barn' || story.structures.barn;
+    case 9: return story.structures.barn && story.batchUses >= 1;
+    case 10: return story.harvestedFood >= 40;
+    case 11: return story.caretaker !== null;
+    case 12: return story.structures.plots;
+    case 13: return story.construction?.structure === 'farmhouse' || story.structures.farmhouse;
+    case 14: return story.structures.farmhouse;
+    case 15: return story.structures.farmhouse && story.harvestedFood >= 70;
+    default: return false;
+  }
+}
+
+/**
+ * Не больше одного сюжетного шага за мировые сутки. Пропущенные сутки не
+ * проматывают главы: новый день начинается только после выполненной цели.
+ */
+export function syncFarmStory(camp: CampState, worldDay: number): boolean {
+  const farm = camp.farm;
+  if (farm?.unlocked !== true || !Number.isInteger(worldDay)) return false;
+  const story = farm.story;
+  if (story.startedDay < 0) {
+    story.startedDay = worldDay;
+    return true;
+  }
+  if (story.day >= FARM_STORY_DAYS || worldDay <= story.startedDay || !farmStoryReady(farm)) {
+    return false;
+  }
+  story.day += 1;
+  story.startedDay = worldDay;
+  return true;
 }

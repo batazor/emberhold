@@ -54,6 +54,7 @@ NC-лицензии несовместимы с любой монетизаци�
 | `kenney-mini-forest/glb/*.glb` — 22 модели: деревья, кусты, камни, настилы, мостки, лестница, ограда, флаг, палатка, мишень, лучник и его лук | [kenney.nl/assets/mini-forest](https://kenney.nl/assets/mini-forest), версия 1.0 | CC0 1.0 | Kenney Vleugels |
 | `kenney-mini-forest/colormap.png` — атлас набора | там же | CC0 1.0 | Kenney Vleugels |
 | `item-icons/meat.png`, `item-icons/fox-pelt.png` — иконки охотничьей добычи, сгенерированы для проекта | локальная генерация OpenAI ImageGen, 2026-08-23 | свои ассеты проекта | Emberhold |
+| `public/assets/farm/barn.glb`, `barn.webp`, `farmhouse.glb`, `farmhouse.webp` — амбар и дом фермера для огорода; каждый FBX упрощён со 120 000 до ~30–39 000 треугольников, diffuse-текстуры уменьшены до 1024 px | [xenkath.itch.io/farmhouse-pack](https://xenkath.itch.io/farmhouse-pack), бесплатный архив `farmhousezip.zip`, скачан 2026-08-25 | **не объявлена**: на странице и в архиве условий нет; автор отдельно разрешил только некоммерческое использование в комментарии. По решению владельца допущено в прототип, до релиза подтвердить коммерческое использование или заменить | xenkath |
 
 `kaykit-forest/License.txt`, `kaykit-dungeon/License.txt`,
 `kaykit-skeletons/License.txt`, `kaykit-animations/License.txt`,

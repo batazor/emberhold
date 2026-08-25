@@ -290,6 +290,7 @@ import {
   type SignLocation,
 } from './sim/signposts';
 import { FARM_CROP_TEXT, FarmCropPicker } from './ui/farmCrops';
+import { FarmBuildPanel } from './ui/farmBuildPanel';
 import { gameDuration, gameMessage, gameText } from './i18n/game';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
@@ -408,6 +409,9 @@ import {
   FARM_STARTING_PLOT_COUNT,
   advanceFarmOnboarding,
   emptyFarmPlots,
+  emptyFarmStory,
+  chooseFarmCaretaker,
+  completeFarmConstruction,
   farmPlantBlock,
   farmPlotReadyAt,
   farmPlotPhase,
@@ -417,7 +421,9 @@ import {
   plantFarmPlot,
   repeatReadyFarmPlots,
   selectFarmCrop,
+  startFarmConstruction,
   startFarmOnboarding,
+  syncFarmStory,
 } from './sim/farm';
 import { collectResidentFarmHarvest } from './sim/farmResidents';
 import {
@@ -516,6 +522,8 @@ startFarmOnboarding(camp);
 let workShown = false;
 
 const finishedOffline = completeIfDue(camp, startedAt); // стройка могла закончиться без нас
+completeFarmConstruction(camp, startedAt);
+syncFarmStory(camp, dayAt(startedAt));
 if (finishedOffline !== null) {
   track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
 }
@@ -841,7 +849,10 @@ const campHud = new CampHud(app, {
     campView.showBuildingSpot(at.x, at.z, true);
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
-  onConstruction: () => openConstructionCatalog(),
+  onConstruction: () => {
+    if (campLocation === 'farm') openFarmConstruction();
+    else openConstructionCatalog();
+  },
   onWalls: (category) => openWalls(category),
   /**
    * §14.3 — пачка стрел. Колчан наполняется только здесь: в вылазке стрелы
@@ -1181,6 +1192,34 @@ const farmCropPicker = new FarmCropPicker(app, {
     }));
     persist();
   },
+  onCaretaker: (caretaker) => {
+    if (!chooseFarmCaretaker(camp, caretaker)) return;
+    play('levelup');
+    syncFarmUi();
+    campHud.notify(gameText(gameMessage('Смотритель хозяйства выбран', 'Farm caretaker chosen')));
+    persist();
+  },
+});
+
+const farmBuildPanel = new FarmBuildPanel(app, {
+  onBuild: (id) => {
+    const now = clock.now();
+    if (!startFarmConstruction(camp, id, now)) {
+      play('deny');
+      farmBuildPanel.sync(camp, now);
+      return;
+    }
+    play('build');
+    farmBuildPanel.sync(camp, now);
+    farmView.sync(camp.farm, now);
+    campHud.sync(camp, now, 0);
+    campHud.notify(gameText(gameMessage('Стройка огорода началась', 'Farm construction started')));
+    persist();
+  },
+  onDone: () => {
+    farmBuildPanel.setVisible(false);
+    farmCropPicker.setVisible(campLocation === 'farm');
+  },
 });
 
 /**
@@ -1333,11 +1372,23 @@ const wallSite = (): WallSite => ({
 });
 
 function openConstructionCatalog(): void {
+  farmBuildPanel.setVisible(false);
   buildPanel.setVisible(false);
   buildTool = null;
   stroke = null;
   campView.hideWallGhost();
   campHud.openConstruction();
+}
+
+function openFarmConstruction(): void {
+  buildPanel.setVisible(false);
+  buildTool = null;
+  stroke = null;
+  campView.hideWallGhost();
+  campHud.close();
+  farmCropPicker.setVisible(false);
+  farmBuildPanel.sync(camp, clock.now());
+  farmBuildPanel.setVisible(true);
 }
 
 function openWalls(category: BuildCategory = 'defense'): void {
@@ -1365,7 +1416,7 @@ function buildAt(ground: { x: number; z: number }, finished: boolean): boolean {
   const site = wallSite();
   const spot = wallSpotOf(Math.round(hit.x), Math.round(hit.z));
   // Слот один на лагерь: стена и улучшение здания спорят за одно и то же.
-  const busy = camp.construction !== null;
+  const busy = camp.construction !== null || camp.farm?.story.construction != null;
 
   if (buildTool === 'стена' || buildTool === 'ограда' || buildTool === 'дорога') {
     const tool = buildTool;
@@ -3155,9 +3206,19 @@ const quietFrame = (): boolean =>
   (onboarding.step === 'build' || onboarding.step === 'craft') && camp.residents.length === 0;
 
 function syncFarmUi(): void {
+  const now = clock.now();
+  const advanced = syncFarmStory(camp, dayAt(now));
   farmOnboarding.sync(camp);
-  campLocations.sync(camp, campLocation, clock.now());
-  farmCropPicker.sync(camp, clock.now());
+  campLocations.sync(camp, campLocation, now);
+  farmCropPicker.sync(camp, now);
+  farmBuildPanel.sync(camp, now);
+  farmView.sync(camp.farm, now);
+  if (advanced) {
+    campHud.notify(gameText(gameMessage('Огород: открыт день {day} из 15', 'Farm: day {day} of 15 unlocked'), {
+      day: camp.farm?.story.day ?? 1,
+    }));
+    persist();
+  }
 }
 
 /** Первая строка Фермы отвечает на «что здесь сейчас делать». */
@@ -3208,8 +3269,10 @@ function switchCampLocation(next: CampLocation): void {
   campLocation = next;
   placingSign = null;
   const onFarm = next === 'farm';
+  if (!onFarm) farmBuildPanel.setVisible(false);
   if (onFarm) {
     buildPanel.setVisible(false);
+    farmBuildPanel.setVisible(false);
     buildTool = null;
     selected = null;
     campView.hideBuildingSpot();
@@ -3258,6 +3321,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
     clanBuildBar.setVisible(false);
     farmView.group.visible = false;
     farmCropPicker.setVisible(false);
+    farmBuildPanel.setVisible(false);
   }
   // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
   // палец поверх вылазки.
@@ -6244,7 +6308,7 @@ if (debugTier !== null || debugNode !== null) {
  *   поверху, разрыв на башне, проезд под воротами и подъём.
  * `?test=farm-intro|farm-goal|farm-reward|farm-return` — состояния огорода.
  *   Текст и адаптивную раскладку можно проверять без прохождения пролога.
- *   Последнее открывает четыре полосы и массовый повтор готового урожая.
+ *   Последнее открывает финальную стадию: шесть полос, все постройки и праздник.
  * `?test=character` — экран героя с опытом и свободным очком умения.
  * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
  * `?test=cosmetics` — личный и клановый знаки на настоящей глобальной карте.
@@ -6330,15 +6394,23 @@ if (debugCamp !== null) {
       gatheredFood: reward ? FARM_FOOD_GOAL : debugCamp === 'farm-goal' ? 14 : 0,
       step: reward ? 'reward' : debugCamp === 'farm-goal' ? 'goal' : 'intro',
       unlocked: reward,
-      activePlots: returnAction ? 4 : FARM_STARTING_PLOT_COUNT,
+      activePlots: returnAction ? 6 : FARM_STARTING_PLOT_COUNT,
       selectedCrop: FARM_DEFAULT_CROP,
       plots: emptyFarmPlots(),
+      story: emptyFarmStory(),
     };
     if (returnAction) {
       const now = clock.now();
-      camp.farm.plots[0] = { plantedAt: now - FARM_CROPS.turnip.growSeconds, crop: 'turnip' };
-      camp.farm.plots[3] = { plantedAt: now - FARM_CROPS.barley.growSeconds, crop: 'barley' };
-      camp.farm.plots[1] = { plantedAt: now - FARM_CROPS.turnip.growSeconds / 2, crop: 'turnip' };
+      const farm = camp.farm;
+      farm.story.day = 15;
+      farm.story.startedDay = dayAt(now);
+      farm.story.harvestedFood = 70;
+      for (const id of ['fence', 'well', 'barn', 'plots', 'farmhouse'] as const) {
+        farm.story.structures[id] = true;
+      }
+      farm.plots[0] = { plantedAt: now - FARM_CROPS.turnip.growSeconds, crop: 'turnip' };
+      farm.plots[3] = { plantedAt: now - FARM_CROPS.barley.growSeconds, crop: 'barley' };
+      farm.plots[1] = { plantedAt: now - FARM_CROPS.turnip.growSeconds / 2, crop: 'turnip' };
     }
     // Готовая ферма показывает не только культуры, но и связь с поручением:
     // один настоящий помощник делает строку карточки проверяемой глазом.
@@ -7078,6 +7150,13 @@ function stepCampSystems(dt: number, now: number): void {
       campHud.notify(`${BUILDINGS[finished].name} готов`);
       persist();
     }
+    const farmFinished = completeFarmConstruction(camp, now);
+    if (farmFinished !== null) {
+      play('levelup');
+      campHud.notify(gameText(gameMessage('Стройка огорода завершена', 'Farm construction completed')));
+      syncFarmUi();
+      persist();
+    }
     // §26 — отряд возвращается тем же тиком, что и стройка: слот освобождается
     // одинаково, и досчитывается он после закрытой вкладки так же.
     if (collectSortie(now)) persist();
@@ -7408,8 +7487,7 @@ startLoop({
       const farmSecond = Math.floor(clock.now());
       if (farmSecond !== lastFarmStatusSecond) {
         lastFarmStatusSecond = farmSecond;
-        campLocations.sync(camp, campLocation, farmSecond);
-        farmCropPicker.sync(camp, farmSecond);
+        syncFarmUi();
       }
     }
 
