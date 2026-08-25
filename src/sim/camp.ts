@@ -26,6 +26,7 @@ import { STONES, scatterStones, type Stone } from './stones';
 import type { Resident } from './residents';
 import type { OwnClan } from './clan';
 import type { FarmState } from './farm';
+import type { AchievementState } from './achievements';
 import type { SignpostDecor } from './signposts';
 import { emptySignpostDecor } from './signposts';
 import type { RoadStory } from './roadStory';
@@ -459,6 +460,12 @@ export interface CampState {
    * Необязательное: сейв без поля получает монеты первым же входом.
    */
   coinDay?: number;
+  /**
+   * Коллекция наград (§34). Необязательна: старые сохранения открываются
+   * без выдуманных побед, а доказуемые факты восстанавливает
+   * `reconcileAchievements`.
+   */
+  achievements?: AchievementState;
   resources: Resources;
   /** Первая локация хозяйства и её ввод. Необязательна для старых сейвов. */
   farm?: FarmState;

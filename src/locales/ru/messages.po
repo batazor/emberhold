@@ -10064,6 +10064,11 @@ msgid "Вернитесь из вылазки хотя бы с одной лис
 msgstr "Вернитесь из вылазки хотя бы с одной лисой"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstReturn.goal"
+msgstr "Вернитесь из вылазки хотя бы с одной находкой."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Вернулся"
 msgstr "Вернулся"
@@ -11813,6 +11818,11 @@ msgid "Главная семья"
 msgstr "Главная семья"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstReturn.title"
+msgstr "Главное — вернуться"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Главное решение игры принимается по двум полосам наверху, а глаза в это время смотрят на пол."
 msgstr "Главное решение игры принимается по двум полосам наверху, а глаза в это время смотрят на пол."
@@ -12128,6 +12138,11 @@ msgstr "даёт 15 провианта"
 #: locales/legacy-messages.ts
 msgid "даётся один раз"
 msgstr "даётся один раз"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstShelter.goal"
+msgstr "Дайте первому жителю место под крышей."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -15042,6 +15057,11 @@ msgstr "Здесь {value0} {value1}. {value2}"
 #: locales/legacy-messages.ts
 msgid "Здесь ZXQPH0QXZ не встать"
 msgstr "Здесь {value0} не встать"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstCamp.title"
+msgstr "Здесь будет дом"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -18431,6 +18451,11 @@ msgid "Лагерь растёт — глядеть приятно."
 msgstr "Лагерь растёт — глядеть приятно."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstShelter.description"
+msgstr "Лагерь стал больше одного героя: теперь здесь есть место и для другого человека."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "лагерь ур. 4 · 2 локации"
 msgstr "лагерь ур. 4 · 2 локации"
@@ -19286,6 +19311,11 @@ msgid "Место для припасов"
 msgstr "Место для припасов"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstShelter.title"
+msgstr "Место у огня"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "металл"
 msgstr "металл"
@@ -20107,6 +20137,11 @@ msgid "Награда на всех макетах нарисована слот
 msgstr "Награда на всех макетах нарисована слотом — ромбом с прочерком. Чем и сколько наполнить этот слот, решает баланс (§13, §20.3), и подставить туда число раньше замера значит выдать выдумку за решение."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.toast"
+msgstr "Награда получена"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Награда приходит туда, где игрок уже стоит и уже радуется, — в анимацию добычи на экране возврата."
 msgstr "Награда приходит туда, где игрок уже стоит и уже радуется, — в анимацию добычи на экране возврата."
@@ -20115,6 +20150,11 @@ msgstr "Награда приходит туда, где игрок уже ст�
 #: locales/legacy-messages.ts
 msgid "награда прицепляется к ближайшей сцене, где игрок и так смотрит на числа."
 msgstr "награда прицепляется к ближайшей сцене, где игрок и так смотрит на числа."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.title"
+msgstr "Награды"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -22363,6 +22403,11 @@ msgid "Ориентир — 60–80%"
 msgstr "Ориентир — 60–80%"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.suggested"
+msgstr "Ориентир · день {day}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Ориентир вместо зала"
 msgstr "Ориентир вместо зала"
@@ -23495,6 +23540,11 @@ msgstr "Первая лицензия не CC0"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.achievement.firstReturn.description"
+msgstr "Первая находка добралась до лагеря. Риск имеет смысл, только если есть путь домой."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Первая неделя"
 msgstr "Первая неделя"
@@ -23633,6 +23683,11 @@ msgstr "Первый же прогон завалил третью гарант�
 #: locales/legacy-messages.ts
 msgid "Первый замер здесь — не скорость, а"
 msgstr "Первый замер здесь — не скорость, а"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstCamp.description"
+msgstr "Первый костёр зажжён, и у вашей летописи появилось место на карте."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -24846,6 +24901,11 @@ msgstr "Получаете"
 #: locales/game-messages.ts
 msgid "Полученные наборы навсегда остаются на вашем аккаунте."
 msgstr "Полученные наборы навсегда остаются на вашем аккаунте."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.earned"
+msgstr "Получено · день {day}"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -26871,6 +26931,11 @@ msgstr "раз в 40 минут"
 #: locales/legacy-messages.ts
 msgid "раз за вылазку"
 msgstr "раз за вылазку"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.firstCamp.goal"
+msgstr "Разбейте лагерь на поляне."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -32454,6 +32519,11 @@ msgstr "Три модели из семнадцати. Список коротк
 #: locales/legacy-messages.ts
 msgid "Три носителя одного факта не усиливают его, а забивают три слоя из трёх (§18.1)"
 msgstr "Три носителя одного факта не усиливают его, а забивают три слоя из трёх (§18.1)"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.achievement.lead"
+msgstr "Три первых знака отмечают не время в игре, а освоенные части её главной петли."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

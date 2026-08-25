@@ -20,6 +20,7 @@ import {
   emptyFarmStory,
 } from './farm';
 import { load, save, wipe } from './save';
+import { earnAchievement, markAchievementsSeen } from './achievements';
 
 /** Поддельный localStorage: тесты сейва живут без браузера. */
 function fakeStore(): Map<string, string> {
@@ -235,6 +236,23 @@ describe('Сохранение', () => {
     assert.equal(back.construction?.building, 'storage');
     assert.equal(back.supplyPity, 7, 'гарантия ларца сбросилась при перезапуске');
     assert.equal(watermark, 777);
+    wipe();
+  });
+
+  test('коллекция наград переживает круг save → load', () => {
+    fakeStore();
+    const camp = createCamp();
+    earnAchievement(camp, 'first-camp', 100);
+    earnAchievement(camp, 'first-return', 200);
+    markAchievementsSeen(camp);
+    earnAchievement(camp, 'first-shelter', 300);
+    save(camp, createRoster(), 300);
+
+    const back = load().camp.achievements;
+    assert.equal(back?.foundedDay, 0);
+    assert.deepEqual(Object.keys(back?.earned ?? {}), ['first-camp', 'first-return', 'first-shelter']);
+    assert.deepEqual(back?.seen, ['first-camp', 'first-return']);
+    assert.equal(back?.earned['first-shelter']?.day, 1);
     wipe();
   });
 

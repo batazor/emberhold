@@ -46,6 +46,8 @@ import { ROAD_STORY_STEPS, SUPPLY_ROUTES } from './roadStory';
 import { BRIDGE_STORY_STEPS } from './roadBridge';
 import { RESEARCH_ORDER, researchedFarmPlots } from './research';
 import type { ResearchId } from './research';
+import { ACHIEVEMENT_IDS } from './achievements';
+import type { AchievementId } from './achievements';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -87,6 +89,12 @@ interface SaveV1 {
   /** §20.5 — сутки последнего начисления за вход. Без поля — начислится
    *  первым же входом. */
   coinDay?: number;
+  /** Коллекция наград (§34). Отсутствие — сохранение до появления коллекции. */
+  achievements?: {
+    foundedDay: number;
+    earned: Partial<Record<AchievementId, { at: number; day: number }>>;
+    seen: AchievementId[];
+  };
   /** Колесо призов: день последней прокрутки. Необязательно: без поля —
    *  не крутили. */
   wheelDay?: number;
@@ -350,6 +358,20 @@ export function save(
     ...(camp.trades !== undefined ? { trades: camp.trades } : {}),
     ...(camp.coins !== undefined ? { coins: camp.coins } : {}),
     ...(camp.coinDay !== undefined ? { coinDay: camp.coinDay } : {}),
+    ...(camp.achievements !== undefined
+      ? {
+          achievements: {
+            foundedDay: camp.achievements.foundedDay,
+            earned: Object.fromEntries(
+              ACHIEVEMENT_IDS.flatMap((id) => {
+                const value = camp.achievements?.earned[id];
+                return value === undefined ? [] : [[id, { ...value }]];
+              }),
+            ) as Partial<Record<AchievementId, { at: number; day: number }>>,
+            seen: [...camp.achievements.seen],
+          },
+        }
+      : {}),
     ...(camp.wheelDay !== undefined ? { wheelDay: camp.wheelDay } : {}),
     ...(camp.supplyPity !== undefined ? { supplyPity: camp.supplyPity } : {}),
     ...(camp.daily !== undefined ? { daily: { day: camp.daily.day, taken: camp.daily.taken } } : {}),
@@ -574,6 +596,30 @@ export function load(): LoadResult {
     if (typeof data.trades === 'number' && data.trades >= 0) camp.trades = Math.floor(data.trades);
     if (typeof data.coins === 'number' && data.coins >= 0) camp.coins = Math.floor(data.coins);
     if (typeof data.coinDay === 'number') camp.coinDay = Math.floor(data.coinDay);
+    const achievements = data.achievements;
+    if (
+      achievements !== undefined &&
+      typeof achievements === 'object' &&
+      typeof achievements.foundedDay === 'number' &&
+      Number.isFinite(achievements.foundedDay)
+    ) {
+      const earned: Partial<Record<AchievementId, { at: number; day: number }>> = {};
+      for (const id of ACHIEVEMENT_IDS) {
+        const value = achievements.earned?.[id];
+        if (
+          value !== undefined &&
+          typeof value.at === 'number' && Number.isFinite(value.at) &&
+          typeof value.day === 'number' && Number.isFinite(value.day)
+        ) {
+          earned[id] = { at: value.at, day: Math.max(1, Math.floor(value.day)) };
+        }
+      }
+      camp.achievements = {
+        foundedDay: Math.floor(achievements.foundedDay),
+        earned,
+        seen: ACHIEVEMENT_IDS.filter((id) => achievements.seen?.includes(id) && earned[id] !== undefined),
+      };
+    }
     if (typeof data.wheelDay === 'number') camp.wheelDay = Math.floor(data.wheelDay);
     if (typeof data.supplyPity === 'number' && Number.isFinite(data.supplyPity)) {
       camp.supplyPity = Math.max(0, Math.floor(data.supplyPity));
