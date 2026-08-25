@@ -162,8 +162,10 @@ import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
   cloudCamp,
   cloudAcceptClanInvite,
+  cloudAcceptGameReferral,
   cloudClanInvite,
   cloudClanInvitePreview,
+  cloudGameReferral,
   cloudCampLikeStates,
   cloudCamps,
   cloudEnsureClan,
@@ -187,9 +189,12 @@ import {
 import {
   clanInviteLink,
   clanInviteStartToken,
+  gameReferralStartToken,
+  gameReferralLink,
   initPlatform,
   platformKind,
   shareClanInvite,
+  shareGameInvite,
 } from './core/platform';
 import { AuthCard } from './ui/authCard';
 import { StorePanel } from './ui/storePanel';
@@ -2977,6 +2982,19 @@ async function openPendingClanInvite(): Promise<void> {
   else clanInvitePanel.open(pendingClanInvite, preview);
 }
 
+const pendingGameReferral = gameReferralStartToken();
+let gameReferralHandled = pendingGameReferral === null;
+let gameReferralOpening = false;
+async function acceptPendingGameReferral(): Promise<void> {
+  if (gameReferralHandled || gameReferralOpening || !hasSession || pendingGameReferral === null) return;
+  gameReferralOpening = true;
+  const accepted = await cloudAcceptGameReferral(pendingGameReferral);
+  gameReferralOpening = false;
+  // A valid request is terminal even when it is an old/self referral. Network
+  // failure stays retryable through the normal sign-in callback.
+  if (accepted !== null) gameReferralHandled = true;
+}
+
 const clanBuildBar = new ClanBuildBar(app, {
   onSelect: (kind) => selectClanBuilding(kind),
   onBuilder: (residentId, assigned) => {
@@ -3002,6 +3020,24 @@ new SettingsMenu(app, {
   },
   // §9 — летопись открывается из настроек: своей кнопки на экране у неё нет.
   onStats: () => statsPanel.open(camp, clock.now()),
+  onInvite: async () => {
+    const token = await cloudGameReferral();
+    if (token === null) {
+      play('deny');
+      campHud.notify(gameText(gameMessages.referralCreateFailed));
+      return;
+    }
+    const result = await shareGameInvite(
+      gameReferralLink(token),
+      gameText(gameMessages.referralShareText),
+    );
+    if (result === 'failed') {
+      play('deny');
+      campHud.notify(gameText(gameMessages.referralShareFailed));
+    } else campHud.notify(gameText(result === 'copied'
+      ? gameMessages.referralCopied
+      : gameMessages.referralChooseRecipient));
+  },
 });
 
 /**
@@ -3020,6 +3056,7 @@ void platformAuth.then(() => cloudUser()).then((identity) => {
   if (identity !== null) analyticsIdentify(identity);
   if (identity !== null) void syncLanguage();
   if (identity !== null) void openPendingClanInvite();
+  if (identity !== null) void acceptPendingGameReferral();
 });
 
 /**
@@ -3066,6 +3103,7 @@ cloudOnSignIn(() => {
   void syncLanguage();
   void syncCloud();
   void openPendingClanInvite();
+  void acceptPendingGameReferral();
 });
 
 function buy(id: ConsumableId): boolean {

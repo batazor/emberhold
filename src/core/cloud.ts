@@ -397,7 +397,8 @@ export async function cloudCamps(limit = 50): Promise<CloudCamp[]> {
       id: String(r[idField]),
       clan: typeof r.clan === 'string' && r.clan.trim() !== '' ? r.clan : null,
       clanId: typeof r.clan_id === 'string' ? r.clan_id : null,
-      icon: r.camp_icon === 'watchfire' || r.camp_icon === 'horned_tent' ? r.camp_icon : 'default',
+      icon: r.camp_icon === 'watchfire' || r.camp_icon === 'horned_tent' || r.camp_icon === 'bond_beacon'
+        ? r.camp_icon : 'default',
       clanIcon: (() => {
         const joined = Array.isArray(r.clans) ? r.clans[0] : r.clans;
         const icon = joined !== null && typeof joined === 'object'
@@ -472,6 +473,8 @@ export interface BillingState {
     readonly fire: CampFireStyle;
     readonly decorOwned: boolean;
     readonly decor: CampDecorStyle;
+    readonly referralOwned: boolean;
+    readonly referrals: number;
   };
   readonly clan: null | {
     readonly id: string;
@@ -568,6 +571,27 @@ export async function cloudAcceptClanInvite(token: string): Promise<CloudClanMem
         (row.role !== 'leader' && row.role !== 'officer' && row.role !== 'member') ||
         typeof row.createdAt !== 'number') return null;
     return row as unknown as CloudClanMembership;
+  } catch {
+    return null;
+  }
+}
+
+/** Stable personal link for inviting a new account into the game. */
+export async function cloudGameReferral(): Promise<string | null> {
+  try {
+    const { data, error } = await client.rpc('ensure_game_referral');
+    const row = record(data);
+    return error === null && typeof row?.token === 'string' ? row.token : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Attribute a fresh account once; false also covers reused and self links. */
+export async function cloudAcceptGameReferral(token: string): Promise<boolean | null> {
+  try {
+    const { data, error } = await client.rpc('accept_game_referral', { p_token: token });
+    return error === null && typeof data === 'boolean' ? data : null;
   } catch {
     return null;
   }

@@ -17,6 +17,7 @@ import {
   cosmeticCollectionAction,
   cosmeticPreviewUrl,
   personalCampIcon,
+  personalCampIconAvailable,
   personalCampIconUrl,
 } from './cosmetics';
 
@@ -27,19 +28,21 @@ function pngSize(url: string): readonly [number, number] {
 }
 
 describe('каталог оформления лагеря', () => {
-  test('каждая линия имеет отдельный sku, бесплатный первый вариант и два платных', () => {
+  test('каждая линия имеет отдельный sku и бесплатный первый вариант', () => {
     assert.equal(new Set(COSMETIC_CATEGORIES.map((category) => category.sku)).size, COSMETIC_CATEGORIES.length);
     for (const category of COSMETIC_CATEGORIES) {
-      assert.equal(category.values.length, 3);
+      assert.ok(category.values.length >= 3);
       assert.match(category.price, /^\$\d+\.\d{2}$/);
       assert.ok(Number.isInteger(category.stars) && category.stars > 0);
     }
     assert.deepEqual(categoriesOf('player').map((category) => category.kind), ['personal-icon', 'fire', 'decor']);
     assert.deepEqual(categoriesOf('clan').map((category) => category.kind), ['clan-icon', 'heraldry']);
+    assert.equal(PERSONAL_CAMP_ICONS.length, 4, 'четвёртый личный знак — отдельная реферальная награда');
   });
 
   test('неизвестное значение всегда возвращает бесплатный облик', () => {
     assert.equal(personalCampIcon('anything'), 'default');
+    assert.equal(personalCampIcon('bond_beacon'), 'bond_beacon');
     assert.equal(clanCampIcon(null), 'default');
     assert.equal(campFireStyle('paid_in_save'), 'standard');
     assert.equal(campDecorStyle({ style: 'sentinel' }), 'none');
@@ -49,7 +52,7 @@ describe('каталог оформления лагеря', () => {
   test('карточки знаков сохраняют отдельные квадратные retina-PNG', () => {
     const personal = PERSONAL_CAMP_ICONS.map(personalCampIconUrl);
     const clan = CLAN_CAMP_ICONS.map(clanCampIconUrl);
-    assert.equal(new Set(personal.slice(1)).size, 2);
+    assert.equal(new Set(personal.slice(1)).size, 3);
     assert.equal(new Set(clan.slice(1)).size, 2);
     for (const url of [...personal, ...clan]) assert.deepEqual(pngSize(url), [128, 128]);
   });
@@ -78,6 +81,13 @@ describe('каталог оформления лагеря', () => {
     assert.equal(cosmeticCollectionAction({
       signedIn: true, clanExists: true, available: true, equipped: true, canEquip: true,
     }), 'equipped');
+  });
+
+  test('платный набор не открывает реферальный маяк и наоборот', () => {
+    assert.equal(personalCampIconAvailable('watchfire', true, false), true);
+    assert.equal(personalCampIconAvailable('bond_beacon', true, false), false);
+    assert.equal(personalCampIconAvailable('bond_beacon', false, true), true);
+    assert.equal(personalCampIconAvailable('horned_tent', false, true), false);
   });
 
   test('клановое оформление не применяет участник без роли', () => {

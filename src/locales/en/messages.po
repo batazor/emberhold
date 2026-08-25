@@ -11249,8 +11249,18 @@ msgstr "Choose how {name} will run the farm"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.referral.chooseRecipient"
+msgstr "Choose who to invite"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.invite.chooseRecipient"
 msgstr "Choose who to send the invitation to"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Выберите, кому отправить приглашение"
+msgstr "Choose who to invite"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -12058,6 +12068,11 @@ msgstr "ready"
 #: locales/legacy-messages.ts
 msgid "Готов"
 msgstr "Ready."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Готовим ссылку приглашения…"
+msgstr "Preparing your invitation link…"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -14265,6 +14280,11 @@ msgstr "Behind the tree into the woods, behind the crystal into the mines, and t
 #: locales/legacy-messages.ts
 msgid "за дневной лист"
 msgstr "day-leaf"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "За приглашение"
+msgstr "Referral reward"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20225,6 +20245,11 @@ msgid "награда выдаётся на возврате, а не собир
 msgstr "The reward is given on return, not collected manually."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Награда за приглашение нового игрока"
+msgstr "Reward for inviting a new player"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Награда на всех макетах нарисована слотом — ромбом с прочерком. Чем и сколько наполнить этот слот, решает баланс (§13, §20.3), и подставить туда число раньше замера значит выдать выдумку за решение."
 msgstr "The reward on all models is drawn with a slot - a rhombus with a dash. How and how much to fill this slot, decides the balance (§ 13, § 20.3), and to substitute a number there before the measurement is to pass fiction as a solution."
@@ -20939,12 +20964,32 @@ msgstr "Could not start checkout — check your sign-in and connection."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.referral.shareFailed"
+msgstr "Could not share the link"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.invite.shareFailed"
 msgstr "Could not share the link"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Не удалось отправить ссылку"
+msgstr "Could not share the link"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.referral.createFailed"
+msgstr "Could not create an invitation — check your sign-in and connection"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.invite.createFailed"
+msgstr "Could not create an invitation — check your sign-in and connection"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Не удалось создать приглашение — проверьте вход и сеть"
 msgstr "Could not create an invitation — check your sign-in and connection"
 
 #. js-lingui-explicit-id
@@ -25964,8 +26009,18 @@ msgstr "Attachment to the nameless population is an alien mechanic. We have an a
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Пригласить в игру"
+msgstr "Invite to the game"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.panel.invite"
 msgstr "Invite to clan"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.referral.invite"
+msgstr "Invite a friend"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -25976,6 +26031,11 @@ msgstr "Clan invitation"
 #: locales/game-messages.ts
 msgid "game.clan.invite.invalid"
 msgstr "This invitation is invalid or has expired."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Приглашённые игроки: {count}/1. Награда откроется после первого входа друга."
+msgstr "Invited players: {count}/1. The reward unlocks after your friend’s first sign-in."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -26127,6 +26187,16 @@ msgstr "Send me a link"
 #: locales/legacy-messages.ts
 msgid "Прислать ссылку"
 msgstr "Email me a sign-in link"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.referral.shareText"
+msgstr "Join me in Emberhold"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Присоединяйся ко мне в Emberhold"
+msgstr "Join me in Emberhold"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -28729,6 +28799,11 @@ msgid "Связующее правило"
 msgstr "Binding rule"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Связующий маяк"
+msgstr "Bond Beacon"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Сгорание — то же сообщение той же длины"
 msgstr "Combustion is the same message of the same length"
@@ -30565,7 +30640,17 @@ msgstr "Link sent. Open the email to continue."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.referral.copied"
+msgstr "Invitation link copied"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.invite.copied"
+msgstr "Invitation link copied"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ссылка приглашения скопирована"
 msgstr "Invitation link copied"
 
 #. js-lingui-explicit-id

@@ -56,8 +56,18 @@ export const clanInviteStartToken = (): string | null => {
   return match?.[1]?.toLowerCase() ?? null;
 };
 
+export const gameReferralStartToken = (): string | null => {
+  const match = platformStartParam()?.match(
+    /^ref_([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i,
+  );
+  return match?.[1]?.toLowerCase() ?? null;
+};
+
 export const clanInviteLink = (token: string): string =>
   `https://t.me/emberhold_game_bot?startapp=clan_${encodeURIComponent(token)}`;
+
+export const gameReferralLink = (token: string): string =>
+  `https://t.me/emberhold_game_bot?startapp=ref_${encodeURIComponent(token)}`;
 
 export type ShareResult = 'shared' | 'copied' | 'failed';
 
@@ -80,6 +90,8 @@ export async function shareClanInvite(link: string, text: string): Promise<Share
     return 'failed';
   }
 }
+
+export const shareGameInvite = shareClanInvite;
 
 export function initPlatform(): void {
   const app = telegram();

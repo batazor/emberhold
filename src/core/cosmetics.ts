@@ -3,17 +3,20 @@ export const CLAN_CAMP_PACK = 'camp_marks_clan_01';
 export const CAMPFIRE_PACK = 'campfire_rites_01';
 export const CAMP_DECOR_PACK = 'camp_decor_watch_01';
 export const CLAN_HERALDRY_PACK = 'clan_heraldry_01';
+export const REFERRAL_CAMP_REWARD = 'bond_beacon';
 
 export type CosmeticOwner = 'player' | 'clan';
 export type CosmeticKind = 'personal-icon' | 'clan-icon' | 'fire' | 'decor' | 'heraldry';
-export type PersonalCampIcon = 'default' | 'watchfire' | 'horned_tent';
+export type PersonalCampIcon = 'default' | 'watchfire' | 'horned_tent' | 'bond_beacon';
 export type ClanCampIcon = 'default' | 'banner_tower' | 'council_totem';
 export type CampFireStyle = 'standard' | 'ghostfire' | 'witchfire';
 export type CampDecorStyle = 'none' | 'wayfarer' | 'sentinel';
 export type ClanHeraldry = 'plain' | 'raven' | 'sun';
 export type CosmeticValue = PersonalCampIcon | ClanCampIcon | CampFireStyle | CampDecorStyle | ClanHeraldry;
 
-export const PERSONAL_CAMP_ICONS: readonly PersonalCampIcon[] = ['default', 'watchfire', 'horned_tent'];
+export const PERSONAL_CAMP_ICONS: readonly PersonalCampIcon[] = [
+  'default', 'watchfire', 'horned_tent', REFERRAL_CAMP_REWARD,
+];
 export const CLAN_CAMP_ICONS: readonly ClanCampIcon[] = ['default', 'banner_tower', 'council_totem'];
 export const CAMP_FIRE_STYLES: readonly CampFireStyle[] = ['standard', 'ghostfire', 'witchfire'];
 export const CAMP_DECOR_STYLES: readonly CampDecorStyle[] = ['none', 'wayfarer', 'sentinel'];
@@ -50,6 +53,7 @@ const PERSONAL_CAMP_ICON_URL: Readonly<Record<PersonalCampIcon, string>> = {
   default: DEFAULT_CAMP_ICON,
   watchfire: new URL('../../assets/camp-cosmetics/personal-watchfire.png', import.meta.url).href,
   horned_tent: new URL('../../assets/camp-cosmetics/personal-horned-tent.png', import.meta.url).href,
+  bond_beacon: new URL('../../assets/camp-cosmetics/personal-bond-beacon.png', import.meta.url).href,
 };
 const CLAN_CAMP_ICON_URL: Readonly<Record<ClanCampIcon, string>> = {
   default: DEFAULT_CAMP_ICON,
@@ -87,6 +91,13 @@ export const campDecorStyle = (value: unknown): CampDecorStyle =>
   typeof value === 'string' && CAMP_DECOR_STYLES.includes(value as CampDecorStyle) ? value as CampDecorStyle : 'none';
 export const clanHeraldry = (value: unknown): ClanHeraldry =>
   typeof value === 'string' && CLAN_HERALDRY.includes(value as ClanHeraldry) ? value as ClanHeraldry : 'plain';
+
+/** The paid icon pack and the referral reward are deliberately independent. */
+export const personalCampIconAvailable = (
+  value: PersonalCampIcon,
+  paidPackOwned: boolean,
+  referralOwned: boolean,
+): boolean => value === 'default' || (value === REFERRAL_CAMP_REWARD ? referralOwned : paidPackOwned);
 
 export const personalCampIconUrl = (value: unknown): string => PERSONAL_CAMP_ICON_URL[personalCampIcon(value)];
 export const clanCampIconUrl = (value: unknown): string => CLAN_CAMP_ICON_URL[clanCampIcon(value)];

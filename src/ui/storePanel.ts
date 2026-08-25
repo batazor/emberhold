@@ -1,4 +1,4 @@
-import { cloudBillingCheckout, cloudBillingEquip, cloudBillingStatus } from '../core/cloud';
+import { cloudBillingCheckout, cloudBillingEquip, cloudBillingStatus, cloudGameReferral } from '../core/cloud';
 import type { BillingState } from '../core/cloud';
 import {
   CLAN_CAMP_PACK,
@@ -7,20 +7,31 @@ import {
   categoryOf,
   cosmeticCollectionAction,
   cosmeticPreviewUrl,
+  personalCampIconAvailable,
+  REFERRAL_CAMP_REWARD,
   type CosmeticCategory,
   type CosmeticKind,
   type CosmeticOwner,
   type CosmeticValue,
+  type PersonalCampIcon,
 } from '../core/cosmetics';
+import type { CosmeticCollectionAction } from '../core/cosmetics';
 import { play } from '../core/audio';
-import { gameMessage, setGameAttribute, setGameText } from '../i18n/game';
+import { gameMessage, gameText, setGameAttribute, setGameText } from '../i18n/game';
 import { gameMessages } from '../i18n/gameMessages';
-import { openPlatformCheckout, platformKind, platformPrice } from '../core/platform';
+import {
+  gameReferralLink,
+  openPlatformCheckout,
+  platformKind,
+  platformPrice,
+  shareGameInvite,
+} from '../core/platform';
 
 const VALUE_NAMES: Readonly<Record<string, ReturnType<typeof gameMessage>>> = {
   default: gameMessage('Обычная палатка', 'Standard tent'),
   watchfire: gameMessage('Дозорный костёр', 'Watchfire'),
   horned_tent: gameMessage('Рогатый шатёр', 'Horned tent'),
+  bond_beacon: gameMessage('Связующий маяк', 'Bond Beacon'),
   banner_tower: gameMessage('Башня знамени', 'Banner tower'),
   council_totem: gameMessage('Тотем совета', 'Council totem'),
   standard: gameMessage('Обычное пламя', 'Standard flame'),
@@ -56,6 +67,21 @@ const owned = (state: BillingState | null, kind: CosmeticKind): boolean => {
   if (kind === 'decor') return state?.personal.decorOwned === true;
   if (kind === 'clan-icon') return state?.clan?.owned === true;
   return state?.clan?.heraldryOwned === true;
+};
+
+const availableValue = (
+  state: BillingState | null,
+  kind: CosmeticKind,
+  value: CosmeticValue,
+  packOwned: boolean,
+): boolean => {
+  const category = categoryOf(kind);
+  if (value === category.values[0]) return true;
+  if (kind === 'personal-icon' && value === REFERRAL_CAMP_REWARD) {
+    return personalCampIconAvailable(value as PersonalCampIcon, packOwned, state?.personal.referralOwned === true);
+  }
+  if (kind === 'personal-icon') return personalCampIconAvailable(value as PersonalCampIcon, packOwned, false);
+  return packOwned;
 };
 
 const categoryBySku = (sku: string | null): CosmeticCategory | undefined =>
@@ -207,15 +233,18 @@ export class StorePanel {
     const clan = this.state?.clan ?? null;
     const hasPack = owned(this.state, this.kind);
     const equipped = equippedOf(this.state, this.kind);
-    const available = this.selected === category.values[0] || hasPack;
+    const available = availableValue(this.state, this.kind, this.selected, hasPack);
+    const referralLocked = this.state !== null && this.kind === 'personal-icon' &&
+      this.selected === REFERRAL_CAMP_REWARD && !available;
     const canEquip = this.owner === 'player' || clan?.role === 'leader' || clan?.role === 'officer';
-    const action = cosmeticCollectionAction({
+    const collectionAction = cosmeticCollectionAction({
       signedIn: this.state !== null,
       clanExists: this.owner === 'player' || clan !== null,
       available,
       equipped: this.selected === equipped,
       canEquip,
     });
+    const action: CosmeticCollectionAction | 'refer' = referralLocked ? 'refer' : collectionAction;
     setGameText(this.title, this.owner === 'player'
       ? gameMessage('Оформление лагеря', 'Camp appearance') : gameMessage('Оформление клана', 'Clan appearance'));
     setGameText(this.lead, this.owner === 'player'
@@ -226,7 +255,9 @@ export class StorePanel {
     this.preview.src = cosmeticPreviewUrl(this.kind, this.selected);
     this.preview.dataset.colored = String(this.kind !== 'personal-icon' && this.kind !== 'clan-icon');
     setGameText(this.previewName, VALUE_NAMES[this.selected]);
-    setGameText(this.previewState, action === 'equipped'
+    setGameText(this.previewState, referralLocked
+      ? gameMessage('Награда за приглашение нового игрока', 'Reward for inviting a new player')
+      : action === 'equipped'
       ? gameMessage('Используется сейчас', 'Currently equipped') : available
         ? gameMessage('Доступен в коллекции', 'Available in collection')
         : gameMessage('Закрытый предмет · предпросмотр', 'Locked item · preview'));
@@ -241,15 +272,18 @@ export class StorePanel {
 
     for (const button of this.choices.querySelectorAll<HTMLButtonElement>('.cosmetic-choice')) {
       const value = button.dataset.value as CosmeticValue;
-      const itemAvailable = value === category.values[0] || hasPack;
+      const itemAvailable = availableValue(this.state, this.kind, value, hasPack);
+      const referralItem = this.kind === 'personal-icon' && value === REFERRAL_CAMP_REWARD;
       const badge = button.querySelector('i') as HTMLElement;
       button.disabled = this.busy;
       button.classList.toggle('selected', value === this.selected);
       button.classList.toggle('equipped', value === equipped);
       button.classList.toggle('locked', !itemAvailable);
-      button.classList.toggle('new', this.newPack === category.sku && value !== category.values[0] && itemAvailable);
+      button.classList.toggle('new', this.newPack === category.sku && value !== category.values[0] &&
+        !referralItem && itemAvailable);
       button.setAttribute('aria-pressed', String(value === this.selected));
       setGameText(badge, value === equipped ? gameMessage('Используется', 'Equipped')
+        : referralItem && !itemAvailable ? gameMessage('За приглашение', 'Referral reward')
         : this.newPack === category.sku && value !== category.values[0] && itemAvailable
           ? gameMessage('Новое', 'New') : itemAvailable ? gameMessage('Доступен', 'Available')
             : gameMessage('Закрыт', 'Locked'));
@@ -264,14 +298,21 @@ export class StorePanel {
       : action === 'create-clan' ? gameMessage('Сначала создайте клан', 'Create a clan first')
         : action === 'equipped' ? gameMessage('Используется', 'Equipped')
           : action === 'role' ? gameMessage('Применить может глава или офицер', 'A leader or officer can equip it')
+            : action === 'refer' ? gameMessage('Пригласить в игру', 'Invite to the game')
             : action === 'obtain' ? gameMessage('Получить набор за {price}', 'Unlock pack for {price}')
               : gameMessage('Применить', 'Equip'),
     action === 'obtain' ? { price: platformPrice(category.price, category.stars) } : undefined);
     if (this.busy) setGameText(this.status, action === 'obtain' ? gameMessages.storeOpening
-      : gameMessage('Применяем выбранное оформление…', 'Equipping the selected appearance…'));
+      : action === 'refer' ? gameMessage('Готовим ссылку приглашения…', 'Preparing your invitation link…')
+        : gameMessage('Применяем выбранное оформление…', 'Equipping the selected appearance…'));
     else if (this.newPack === category.sku && hasPack) setGameText(this.status, gameMessage(
       'Набор добавлен в коллекцию. Текущее оформление не изменено — выберите и примените его сами.',
       'The set was added to the collection. Current appearance was not changed—choose and equip it yourself.'));
+    else if (action === 'refer') setGameText(this.status, gameMessage(
+      'Приглашённые игроки: {count}/1. Награда откроется после первого входа друга.',
+      'Invited players: {count}/1. The reward unlocks after your friend’s first sign-in.'), {
+      count: this.state?.personal.referrals ?? 0,
+    });
     else setGameText(this.status, action === 'obtain'
       ? gameMessage('Откроются оба варианта набора. Их можно примерить до получения.',
         'Both variants in the pack will unlock. You can preview them first.')
@@ -282,6 +323,30 @@ export class StorePanel {
   private async primaryAction(): Promise<void> {
     if (this.primary.dataset.action === 'obtain') await this.checkout();
     else if (this.primary.dataset.action === 'equip') await this.equip();
+    else if (this.primary.dataset.action === 'refer') await this.refer();
+  }
+
+  private async refer(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true; this.render();
+    const token = await cloudGameReferral();
+    if (token === null) {
+      this.busy = false; this.render(); play('deny');
+      setGameText(this.status, gameMessage(
+        'Не удалось создать приглашение — проверьте вход и сеть',
+        'Could not create an invitation — check your sign-in and connection'));
+      return;
+    }
+    const result = await shareGameInvite(
+      gameReferralLink(token),
+      gameText(gameMessage('Присоединяйся ко мне в Emberhold', 'Join me in Emberhold')),
+    );
+    this.busy = false; this.render();
+    setGameText(this.status, result === 'copied'
+      ? gameMessage('Ссылка приглашения скопирована', 'Invitation link copied')
+      : result === 'shared' ? gameMessage('Выберите, кому отправить приглашение', 'Choose who to invite')
+        : gameMessage('Не удалось отправить ссылку', 'Could not share the link'));
+    if (result === 'failed') play('deny');
   }
 
   private async checkout(): Promise<void> {

@@ -227,7 +227,7 @@ export interface LiveCamp {
   readonly id: string;
   readonly clan: string | null;
   /** Публичный личный знак лагеря; отсутствие — старая стандартная палатка. */
-  readonly icon?: 'default' | 'watchfire' | 'horned_tent';
+  readonly icon?: 'default' | 'watchfire' | 'horned_tent' | 'bond_beacon';
   /** Канонический клан нужен, чтобы не рисовать общий лагерь по одному на участника. */
   readonly clanId?: string | null;
   /** Знак принадлежит клану, а не строке участника. */

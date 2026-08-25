@@ -116,6 +116,24 @@ export const gameMessages = {
     'Could not join the clan',
   ),
   clanInviteJoined: message('game.clan.invite.joined', 'Вы в клане «{name}»', 'You joined “{name}”'),
+  referralInvite: message('game.referral.invite', 'Пригласить друга', 'Invite a friend'),
+  referralShareText: message(
+    'game.referral.shareText',
+    'Присоединяйся ко мне в Emberhold',
+    'Join me in Emberhold',
+  ),
+  referralCreateFailed: message(
+    'game.referral.createFailed',
+    'Не удалось создать приглашение — проверьте вход и сеть',
+    'Could not create an invitation — check your sign-in and connection',
+  ),
+  referralShareFailed: message('game.referral.shareFailed', 'Не удалось отправить ссылку', 'Could not share the link'),
+  referralCopied: message('game.referral.copied', 'Ссылка приглашения скопирована', 'Invitation link copied'),
+  referralChooseRecipient: message(
+    'game.referral.chooseRecipient',
+    'Выберите, кому отправить приглашение',
+    'Choose who to invite',
+  ),
   clanPanelJoinReason: message(
     'game.clan.panel.joinReason',
     'Не к кому: на карте фракции мира, а они не набирают',

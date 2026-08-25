@@ -27,6 +27,8 @@ export interface SettingsMenuCallbacks {
   onNewGame(): void;
   /** Сводка телеметрии (§9): окно открывает тот, кто им владеет. */
   onStats(): void;
+  /** Реферальная ссылка доступна сразу и не зависит от развития клана. */
+  onInvite(): Promise<void>;
 }
 
 /**
@@ -135,7 +137,8 @@ export class SettingsMenu {
       else if (act === 'stats') {
         this.close();
         cb.onStats();
-      } else if (act === 'new') this.setConfirming(true);
+      } else if (act === 'invite') void cb.onInvite();
+      else if (act === 'new') this.setConfirming(true);
       else if (act === 'cancel') this.setConfirming(false);
       else if (act === 'wipe') cb.onNewGame();
     });
@@ -178,6 +181,7 @@ export class SettingsMenu {
          <button type="button" class="danger" data-act="wipe"></button>
          <button type="button" class="ghost" data-act="cancel"></button>`
       : `<button type="button" data-act="stats"></button>
+         <button type="button" data-act="invite"></button>
          <button type="button" data-act="new"></button>
          <button type="button" class="ghost" data-act="close"></button>`;
     if (on) {
@@ -186,6 +190,7 @@ export class SettingsMenu {
       setGameText(this.acts.querySelector('[data-act="cancel"]') as HTMLButtonElement, gameMessages.settingsCancel);
     } else {
       setGameText(this.acts.querySelector('[data-act="stats"]') as HTMLButtonElement, gameMessages.settingsChronicle);
+      setGameText(this.acts.querySelector('[data-act="invite"]') as HTMLButtonElement, gameMessages.referralInvite);
       setGameText(this.acts.querySelector('[data-act="new"]') as HTMLButtonElement, gameMessages.settingsNewGame);
       setGameText(this.acts.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.settingsClose);
     }

@@ -6,6 +6,7 @@ const CLAN_SKU = 'camp_marks_clan_01';
 const FIRE_SKU = 'campfire_rites_01';
 const DECOR_SKU = 'camp_decor_watch_01';
 const HERALDRY_SKU = 'clan_heraldry_01';
+const REFERRAL_ICON = 'bond_beacon';
 
 const CATALOG = {
   [PERSONAL_SKU]: {
@@ -35,7 +36,7 @@ const CATALOG = {
   },
 } as const;
 
-const PERSONAL_ICONS = ['default', 'watchfire', 'horned_tent'] as const;
+const PERSONAL_ICONS = ['default', 'watchfire', 'horned_tent', REFERRAL_ICON] as const;
 const CLAN_ICONS = ['default', 'banner_tower', 'council_totem'] as const;
 const FIRE_STYLES = ['standard', 'ghostfire', 'witchfire'] as const;
 const DECOR_STYLES = ['none', 'wayfarer', 'sentinel'] as const;
@@ -72,7 +73,7 @@ async function membership(db: Db, userId: string): Promise<ClanMembership | null
 
 async function billingState(db: Db, userId: string): Promise<unknown> {
   const member = await membership(db, userId);
-  const [playerPacks, settings, clan, clanPacks] = await Promise.all([
+  const [playerPacks, settings, clan, clanPacks, referralReward, referrals] = await Promise.all([
     db.from('player_entitlements').select('sku').eq('user_id', userId),
     db.from('player_cosmetic_settings').select('camp_icon, fire_style, decor_style').eq('user_id', userId).maybeSingle(),
     member === null
@@ -81,8 +82,11 @@ async function billingState(db: Db, userId: string): Promise<unknown> {
     member === null
       ? Promise.resolve({ data: [], error: null })
       : db.from('clan_entitlements').select('sku').eq('clan_id', member.clan_id),
+    db.from('player_referral_rewards').select('reward').eq('user_id', userId).maybeSingle(),
+    db.from('game_referrals').select('*', { count: 'exact', head: true }).eq('inviter_user_id', userId),
   ]);
-  if (playerPacks.error !== null || settings.error !== null || clan.error !== null || clanPacks.error !== null) {
+  if (playerPacks.error !== null || settings.error !== null || clan.error !== null || clanPacks.error !== null ||
+      referralReward.error !== null || referrals.error !== null) {
     throw new Error('cannot read billing state');
   }
   const playerSkus = new Set((playerPacks.data ?? []).map((row: { sku: string }) => row.sku));
@@ -97,6 +101,8 @@ async function billingState(db: Db, userId: string): Promise<unknown> {
       fire: settings.data?.fire_style ?? 'standard',
       decorOwned: playerSkus.has(DECOR_SKU),
       decor: settings.data?.decor_style ?? 'none',
+      referralOwned: referralReward.data?.reward === REFERRAL_ICON,
+      referrals: referrals.count ?? 0,
     },
     clan: member === null || clanRow === null ? null : {
       id: clanRow.id,
@@ -190,8 +196,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
           return json({ error: 'неизвестное оформление' }, 400);
         }
         if (body.value !== choice.free) {
-          const { data } = await db.from('player_entitlements').select('sku')
-            .eq('user_id', user.id).eq('sku', choice.sku).maybeSingle();
+          const { data } = body.kind === 'personal-icon' && body.value === REFERRAL_ICON
+            ? await db.from('player_referral_rewards').select('reward')
+              .eq('user_id', user.id).eq('reward', REFERRAL_ICON).maybeSingle()
+            : await db.from('player_entitlements').select('sku')
+              .eq('user_id', user.id).eq('sku', choice.sku).maybeSingle();
           if (data === null) return json({ error: 'набор не принадлежит игроку' }, 403);
         }
         const { error } = await db.from('player_cosmetic_settings').upsert({
