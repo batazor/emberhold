@@ -207,6 +207,7 @@ export class ResidentManager {
     setGameText(scheduleLabel, gameMessage('Расписание', 'Schedule'));
     schedule.append(scheduleLabel, ' ');
     const select = document.createElement('select');
+    select.className = 'chip';
     for (const id of RESIDENT_SCHEDULE_ORDER) {
       const option = document.createElement('option');
       option.value = id;

@@ -156,7 +156,7 @@ const depthChart = (share: number, hasRaids: boolean): string => {
     </div>
     <div class="sp-route">
       <div class="sp-route-line" aria-hidden="true"><i style="width:${percent}%"></i>${[0, 25, 50, 75, 100]
-        .map((mark) => `<s class="${percent >= mark && hasRaids ? 'on' : ''}" style="left:${mark}%"></s>`)
+        .map((mark) => `<s class="chip${percent >= mark && hasRaids ? ' on' : ''}" style="left:${mark}%"></s>`)
         .join('')}</div>
       <div class="row sp-route-labels"><span>Выход</span><span>Середина</span><span>Дно</span></div>
       <p>${hasRaids ? (percent >= 50 ? 'Уверенно держите глубину' : 'Разведан первый отрезок пути') : 'Завершите вылазку, чтобы увидеть маршрут'}</p>
@@ -323,23 +323,23 @@ export class StatsPanel {
       <div class="row sp-caption"><strong>Ваш прогресс</strong><span>${s.raids} вылазок</span></div>
       <div class="sp-grid">
         <article class="card sp-card">
-          <header class="sp-card-head"><span class="lbl">Добыча за вылазку</span><b>${s.raids === 0 ? '—' : s.avgCarried.toFixed(1)}<small> в среднем</small></b></header>
+          <header class="row sp-card-head"><span class="lbl">Добыча за вылазку</span><b>${s.raids === 0 ? '—' : s.avgCarried.toFixed(1)}<small> в среднем</small></b></header>
           ${lootChart(trend.values)}
-          <footer><span class="sp-trend">${trendText}</span><small>${trend.values.length === 0 ? 'нет данных' : `последние ${trend.values.length}`}</small></footer>
+          <footer class="row"><span class="sp-trend">${trendText}</span><small>${trend.values.length === 0 ? 'нет данных' : `последние ${trend.values.length}`}</small></footer>
         </article>
         <article class="card sp-card">
-          <header class="sp-card-head"><span class="lbl">Средняя глубина</span><small>${s.raids} походов</small></header>
+          <header class="row sp-card-head"><span class="lbl">Средняя глубина</span><small>${s.raids} походов</small></header>
           ${depthChart(s.avgDepthShare, s.raids > 0)}
         </article>
         <article class="card sp-card">
-          <header class="sp-card-head"><span class="lbl">Развитие лагеря</span><b>${built}<small> / ${BUILDING_ORDER.length} зданий</small></b></header>
+          <header class="row sp-card-head"><span class="lbl">Развитие лагеря</span><b>${built}<small> / ${BUILDING_ORDER.length} зданий</small></b></header>
           ${campChart(camp)}
-          <footer><span class="sp-trend">Следом: ${html(nextBuilding(camp))}</span></footer>
+          <footer class="row"><span class="sp-trend">Следом: ${html(nextBuilding(camp))}</span></footer>
         </article>
         <article class="card sp-card">
-          <header class="sp-card-head"><span class="lbl">Покупка после похода</span><b>${returns === 0 ? '—' : pct(s.buyOfferRate)}<small> доступно</small></b></header>
+          <header class="row sp-card-head"><span class="lbl">Покупка после похода</span><b>${returns === 0 ? '—' : pct(s.buyOfferRate)}<small> доступно</small></b></header>
           ${offerChart(s.buyOfferRate, returns)}
-          <footer><span class="sp-trend">${buyGoal}</span><small>${returns} возвращений</small></footer>
+          <footer class="row"><span class="sp-trend">${buyGoal}</span><small>${returns} возвращений</small></footer>
         </article>
       </div>`;
   }
