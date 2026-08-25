@@ -95,6 +95,7 @@
   --cursor-harvest: url('../assets/ui/cursors/harvest.png') 4 43, crosshair;
   --cursor-build: url('../assets/ui/cursors/build.png') 15 42, crosshair;
   --cursor-interact: url('../assets/ui/cursors/interact.png') 7 40, pointer;
+  --cursor-pickup: url('../assets/ui/cursors/interact.png') 7 40, grab;
   --cursor-blocked: url('../assets/ui/cursors/blocked.png') 13 39, not-allowed;
 
   /* ---------- точные оттенки панелей ----------
@@ -432,6 +433,7 @@ canvas[data-cursor='mine'] { cursor: var(--cursor-mine); }
 canvas[data-cursor='harvest'] { cursor: var(--cursor-harvest); }
 canvas[data-cursor='build'] { cursor: var(--cursor-build); }
 canvas[data-cursor='interact'] { cursor: var(--cursor-interact); }
+canvas[data-cursor='pickup'] { cursor: var(--cursor-pickup); }
 canvas[data-cursor='blocked'] { cursor: var(--cursor-blocked); }
 
 #hud {

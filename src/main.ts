@@ -6243,7 +6243,24 @@ type GameCursor =
   | 'harvest'
   | 'build'
   | 'interact'
+  | 'pickup'
   | 'blocked';
+
+/** Pickup is a walk target, but its cursor promises what happens on arrival. */
+function pickupCursorAt(state: RaidState, cell: { x: number; z: number }): GameCursor | null {
+  const container = state.loc.containers.find(
+    (candidate) => !candidate.opened && candidate.x === cell.x && candidate.z === cell.z,
+  );
+  if (container === undefined) return null;
+  const locks = container.lockedBy === undefined
+    ? []
+    : Array.isArray(container.lockedBy) ? container.lockedBy : [container.lockedBy];
+  const locked = locks.length > 0 && state.loc.enemies.some(
+    (enemy) => locks.includes(enemy.kind) && enemy.hp > 0,
+  );
+  const full = container.supply !== true && state.bagTotal >= state.capacity;
+  return locked || full ? 'blocked' : 'pickup';
+}
 
 /**
  * Курсор меняется только при смене смысла. Pointermove приходит чаще кадра,
@@ -6287,6 +6304,8 @@ function gameCursorAt(hit: { x: number; z: number }): GameCursor {
       const ok = placingTent ? tentFits(camp, x, z) : chestFits(camp, x, z);
       return ok ? 'build' : 'blocked';
     }
+    const pickup = pickupCursorAt(raid, cell);
+    if (pickup !== null) return pickup;
     const resident = raidView === null ? null : raidView.residentNear(hit.x, hit.z);
     if (resident !== null) return 'interact';
     if (camp.chests.some((c) => origin.x + c.x === cell.x && origin.z + c.z === cell.z)) {
@@ -6361,6 +6380,9 @@ function gameCursorAt(hit: { x: number; z: number }): GameCursor {
       ? 'move'
       : 'blocked';
   }
+
+  const pickup = pickupCursorAt(raid, cell);
+  if (pickup !== null) return pickup;
 
   if (raid.logging && treeAt(raid.loc, cell)) {
     return raid.bagTotal < raid.capacity ? 'chop' : 'blocked';
