@@ -78,14 +78,14 @@ export function startAnalytics(): ((signal: Signal) => void) | null {
 
 /**
  * Связать события с вошедшим в облако (§6). До этого у игрока анонимный
- * distinct_id, после — почта: один и тот же человек с телефона и с ноутбука
+ * distinct_id, после — внутренний UUID: один и тот же человек с телефона и с ноутбука
  * должен быть одним человеком, иначе «уходят домой ли слишком рано»
  * считается по устройствам, а спрашивалось про людей.
  */
-export function analyticsIdentify(email: string): void {
+export function analyticsIdentify(identity: string): void {
   if (!live) return;
   try {
-    posthog.identify(email, { email });
+    posthog.identify(identity);
   } catch {
     /* см. заголовок файла */
   }

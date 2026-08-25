@@ -13,6 +13,16 @@ entrypoint = "./functions/wheel/index.js"
 [functions.billing]
 entrypoint = "./functions/billing/index.js"
 
+# До Supabase-сессии личность подтверждает подпись Telegram initData.
+[functions.telegram-auth]
+entrypoint = "./functions/telegram-auth/index.js"
+verify_jwt = false
+
+# Telegram подписывает webhook собственным секретным заголовком.
+[functions.telegram-webhook]
+entrypoint = "./functions/telegram-webhook/index.js"
+verify_jwt = false
+
 # Stripe подписывает запрос сам; Supabase JWT у внешнего webhook нет.
 [functions.stripe-webhook]
 entrypoint = "./functions/stripe-webhook/index.js"

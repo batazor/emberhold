@@ -29,7 +29,11 @@ function pngSize(url: string): readonly [number, number] {
 describe('каталог оформления лагеря', () => {
   test('каждая линия имеет отдельный sku, бесплатный первый вариант и два платных', () => {
     assert.equal(new Set(COSMETIC_CATEGORIES.map((category) => category.sku)).size, COSMETIC_CATEGORIES.length);
-    for (const category of COSMETIC_CATEGORIES) assert.equal(category.values.length, 3);
+    for (const category of COSMETIC_CATEGORIES) {
+      assert.equal(category.values.length, 3);
+      assert.match(category.price, /^\$\d+\.\d{2}$/);
+      assert.ok(Number.isInteger(category.stars) && category.stars > 0);
+    }
     assert.deepEqual(categoriesOf('player').map((category) => category.kind), ['personal-icon', 'fire', 'decor']);
     assert.deepEqual(categoriesOf('clan').map((category) => category.kind), ['clan-icon', 'heraldry']);
   });

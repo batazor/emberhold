@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { verifyTelegramInitData } from '../src/core/telegramInitData';
 
 const PERSONAL_SKU = 'camp_marks_personal_01';
 const CLAN_SKU = 'camp_marks_clan_01';
@@ -10,22 +11,27 @@ const CATALOG = {
   [PERSONAL_SKU]: {
     owner: 'player',
     paymentLink: 'https://buy.stripe.com/test_aFa3cw5qtb4G9sMaIt1VK01',
+    stars: 150, title: 'Знаки лагеря', description: 'Два постоянных знака для вашего лагеря',
   },
   [CLAN_SKU]: {
     owner: 'clan',
     paymentLink: 'https://buy.stripe.com/test_fZu28s4mp6Oq20k9Ep1VK02',
+    stars: 250, title: 'Знаки клана', description: 'Два постоянных знака для лагеря клана',
   },
   [FIRE_SKU]: {
     owner: 'player',
     paymentLink: 'https://buy.stripe.com/test_00wcN6aKNegSfRa03P1VK03',
+    stars: 100, title: 'Обряды костра', description: 'Два постоянных облика пламени',
   },
   [DECOR_SKU]: {
     owner: 'player',
     paymentLink: 'https://buy.stripe.com/test_9B69AUbOR0q28oIeYJ1VK05',
+    stars: 150, title: 'Дозорный двор', description: 'Два постоянных набора декора лагеря',
   },
   [HERALDRY_SKU]: {
     owner: 'clan',
     paymentLink: 'https://buy.stripe.com/test_fZu9AU9GJc8K20kg2N1VK04',
+    stars: 200, title: 'Геральдика клана', description: 'Два постоянных герба для вашего клана',
   },
 } as const;
 
@@ -104,6 +110,47 @@ async function billingState(db: Db, userId: string): Promise<unknown> {
   };
 }
 
+type CatalogItem = typeof CATALOG[keyof typeof CATALOG];
+
+async function telegramInvoice(
+  db: Db,
+  userId: string,
+  sku: keyof typeof CATALOG,
+  item: CatalogItem,
+  targetId: string,
+  initData: unknown,
+): Promise<string | null> {
+  const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? '';
+  const identity = typeof initData === 'string'
+    ? await verifyTelegramInitData(initData, botToken)
+    : null;
+  if (identity === null) return null;
+  const { data: mapped } = await db.from('telegram_identities').select('user_id')
+    .eq('telegram_id', identity.id).eq('user_id', userId).maybeSingle();
+  if (mapped === null) return null;
+
+  const token = crypto.randomUUID();
+  const { error: claimError } = await db.from('telegram_checkout_claims').insert({
+    token, user_id: userId, sku, target_type: item.owner,
+    target_id: targetId, stars: item.stars,
+  });
+  if (claimError !== null) throw claimError;
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/createInvoiceLink`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: item.title, description: item.description, payload: token,
+      provider_token: '', currency: 'XTR', prices: [{ label: item.title, amount: item.stars }],
+    }),
+  });
+  const result = await response.json() as { ok?: unknown; result?: unknown };
+  if (!response.ok || result.ok !== true || typeof result.result !== 'string') {
+    await db.from('telegram_checkout_claims').delete().eq('token', token);
+    return null;
+  }
+  return result.result;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
@@ -117,7 +164,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const user = got?.user;
   if (user == null) return json({ error: 'нет сессии' }, 401);
 
-  let body: { action?: string; sku?: string; owner?: string; kind?: string; value?: string };
+  let body: {
+    action?: string; sku?: string; owner?: string; kind?: string; value?: string;
+    platform?: string; telegramInitData?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -180,10 +230,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     if (body.action !== 'checkout') return json({ error: 'неизвестное действие' }, 400);
-    const item = typeof body.sku === 'string' && body.sku in CATALOG
-      ? CATALOG[body.sku as keyof typeof CATALOG]
+    const sku = typeof body.sku === 'string' && body.sku in CATALOG
+      ? body.sku as keyof typeof CATALOG
       : null;
-    if (item === null) return json({ error: 'неизвестный товар' }, 400);
+    if (sku === null) return json({ error: 'неизвестный товар' }, 400);
+    const item = CATALOG[sku];
 
     let targetId = user.id;
     if (item.owner === 'player') {
@@ -197,6 +248,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const { data } = await db.from('clan_entitlements').select('sku')
         .eq('clan_id', targetId).eq('sku', body.sku).maybeSingle();
       if (data !== null) return json(await billingState(db, user.id));
+    }
+
+    if (body.platform === 'telegram') {
+      const url = await telegramInvoice(db, user.id, sku, item, targetId, body.telegramInitData);
+      if (url === null) return json({ error: 'Telegram checkout unavailable' }, 403);
+      return json({ ...(await billingState(db, user.id) as object), url });
     }
 
     const token = crypto.randomUUID();
