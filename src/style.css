@@ -388,6 +388,10 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
    он один — остальная середина по-прежнему прозрачна для пальца. */
 .camp-space { flex: 1 1 auto; pointer-events: none; display: flex;
   align-self: stretch; justify-content: flex-end; align-items: flex-start; }
+.camp-collectibles {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 7px;
+  pointer-events: none;
+}
 
 /* ---------- подарок за вход (§29) ---------- */
 
@@ -478,6 +482,114 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
    два дня в ряд, седьмой — во всю ширину. */
 @media (max-width: 480px) {
   .gift-days { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---------- награды (§34) ---------- */
+
+.achievement-icon {
+  pointer-events: auto; position: relative; width: 46px; height: 54px; padding: 4px 3px 2px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  color: var(--dim);
+}
+.achievement-icon.ready { color: var(--gold); border-color: var(--pick-line); }
+.achievement-icon svg { width: 31px; height: 31px; }
+.achievement-icon-count { font-size: 9px; line-height: 1; font-variant-numeric: tabular-nums; }
+.achievement-mark {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: var(--r-pill); border: 2px solid var(--panel);
+  background: var(--warn); color: var(--on-warn); font: 700 10px/1 ui-sans-serif, system-ui;
+  animation: gift-breathe 2.4s ease-in-out infinite;
+}
+.achievement-lead { margin: 0; color: var(--dim); font-size: 11px; }
+.achievement-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.achievement-card {
+  position: relative; display: grid; grid-template-columns: 62px minmax(0, 1fr);
+  align-items: center; gap: 11px; padding: 11px; overflow: hidden;
+}
+.achievement-card::before {
+  content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--gold);
+  opacity: 0; transition: opacity 160ms ease-out;
+}
+.achievement-card.earned { border-color: rgba(200, 162, 74, 0.48); }
+.achievement-card.earned::before { opacity: 1; }
+.achievement-card.locked { filter: saturate(0.45); }
+.achievement-card.locked .achievement-emblem { opacity: 0.42; }
+.achievement-emblem, .achievement-toast-icon {
+  display: grid; place-items: center; color: var(--gold);
+  background: radial-gradient(circle at 35% 28%, rgba(200, 162, 74, 0.24), rgba(200, 162, 74, 0.05));
+  border: 1px solid rgba(200, 162, 74, 0.3); border-radius: var(--r-pill);
+}
+.achievement-emblem { width: 58px; height: 58px; }
+.achievement-emblem svg { width: 38px; height: 38px; }
+.achievement-emblem svg g, .achievement-icon svg g, .achievement-toast-icon svg g {
+  fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round;
+}
+.achievement-emblem svg .flame, .achievement-icon svg .flame, .achievement-toast-icon svg .flame {
+  fill: currentColor; stroke-width: 1.1;
+}
+.achievement-words { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.achievement-words > b { font-family: Georgia, "Times New Roman", serif; font-size: 16px; font-weight: 500; }
+.achievement-state {
+  color: var(--gold); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.achievement-card.locked .achievement-state { color: var(--dim); }
+.achievement-words p { margin: 0; color: var(--dim); font-size: 11px; line-height: 1.35; }
+.achievement-words small {
+  margin-top: 3px; padding-top: 5px; border-top: 1px solid var(--line);
+  color: var(--ink); font-size: 10px;
+}
+@keyframes achievement-appear {
+  from { opacity: 0; transform: translateX(8px); }
+}
+.achievement-grid.appear .achievement-card {
+  animation: achievement-appear 220ms ease-out both; animation-delay: var(--in);
+}
+
+/* HUD-сигнал живёт над сценами, поэтому не принадлежит ни `#camp`, ни `#hud`. */
+#achievement-toast {
+  position: fixed; z-index: 80; top: calc(70px + env(safe-area-inset-top)); left: 50%;
+  width: min(420px, calc(100vw - 20px)); min-height: 76px; padding: 10px 44px 10px 10px;
+  display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 10px;
+  pointer-events: none; opacity: 0; transform: translate(-50%, -12px) scale(0.98);
+  color: var(--ink); border: 1px solid var(--pick-line); border-radius: 12px;
+  background:
+    radial-gradient(circle at 10% 30%, rgba(200, 162, 74, 0.2), transparent 35%),
+    linear-gradient(145deg, rgba(48, 39, 24, 0.98), rgba(20, 18, 14, 0.98));
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.5), inset 0 1px rgba(255, 241, 207, 0.08);
+  transition: opacity 180ms ease-out, transform 220ms ease-out;
+}
+#achievement-toast.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+#achievement-toast::after {
+  content: ''; position: absolute; left: 10px; right: 10px; bottom: 4px; height: 2px;
+  transform-origin: left; background: var(--gold); opacity: 0;
+}
+#achievement-toast.on::after { opacity: 0.55; animation: achievement-life 4.4s linear both; }
+@keyframes achievement-life { to { transform: scaleX(0); } }
+.achievement-toast-icon { width: 50px; height: 50px; }
+.achievement-toast-icon svg { width: 34px; height: 34px; }
+.achievement-toast-copy { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.achievement-toast-copy > span {
+  color: var(--gold); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.achievement-toast-copy > b {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: Georgia, "Times New Roman", serif; font-size: 17px; font-weight: 500;
+}
+.achievement-toast-copy > small { color: var(--dim); font-size: 10px; }
+#achievement-toast > strong {
+  position: absolute; top: 10px; right: 11px; color: var(--gold); font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 700px) {
+  .achievement-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .achievement-card { grid-template-columns: 1fr; align-content: start; text-align: center; }
+  .achievement-emblem { justify-self: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .achievement-mark, .achievement-grid.appear .achievement-card,
+  #achievement-toast.on::after { animation: none; }
+  #achievement-toast { transition: none; }
 }
 #camp .sheet {
   display: flex; flex-direction: column; gap: 10px; pointer-events: auto;

@@ -17,6 +17,49 @@ const message = (id: string, source: string, translation: string): GameMessage =
 export const gameMessages = {
   startPlay: message('game.start.play', 'Играть', 'Play'),
 
+  achievementTitle: message('game.achievement.title', 'Награды', 'Achievements'),
+  achievementEarned: message('game.achievement.earned', 'Получено · день {day}', 'Earned · day {day}'),
+  achievementSuggested: message('game.achievement.suggested', 'Ориентир · день {day}', 'Suggested · day {day}'),
+  achievementToast: message('game.achievement.toast', 'Награда получена', 'Achievement earned'),
+  achievementLead: message(
+    'game.achievement.lead',
+    'Три первых знака отмечают не время в игре, а освоенные части её главной петли.',
+    'The first three marks celebrate parts of the core loop you have learned, not time spent in game.',
+  ),
+  achievementFirstCampTitle: message('game.achievement.firstCamp.title', 'Здесь будет дом', 'A Home Will Stand Here'),
+  achievementFirstCampDescription: message(
+    'game.achievement.firstCamp.description',
+    'Первый костёр зажжён, и у вашей летописи появилось место на карте.',
+    'The first fire is lit, and your chronicle has found its place on the map.',
+  ),
+  achievementFirstCampGoal: message(
+    'game.achievement.firstCamp.goal',
+    'Разбейте лагерь на поляне.',
+    'Establish a camp in the glade.',
+  ),
+  achievementFirstReturnTitle: message('game.achievement.firstReturn.title', 'Главное — вернуться', 'The Return Matters'),
+  achievementFirstReturnDescription: message(
+    'game.achievement.firstReturn.description',
+    'Первая находка добралась до лагеря. Риск имеет смысл, только если есть путь домой.',
+    'Your first find made it back to camp. Risk only matters when there is a way home.',
+  ),
+  achievementFirstReturnGoal: message(
+    'game.achievement.firstReturn.goal',
+    'Вернитесь из вылазки хотя бы с одной находкой.',
+    'Return from an expedition with at least one find.',
+  ),
+  achievementFirstShelterTitle: message('game.achievement.firstShelter.title', 'Место у огня', 'A Place by the Fire'),
+  achievementFirstShelterDescription: message(
+    'game.achievement.firstShelter.description',
+    'Лагерь стал больше одного героя: теперь здесь есть место и для другого человека.',
+    'The camp is more than one hero now: someone else has a place here too.',
+  ),
+  achievementFirstShelterGoal: message(
+    'game.achievement.firstShelter.goal',
+    'Дайте первому жителю место под крышей.',
+    'Give your first resident a roof.',
+  ),
+
   authSignInTitle: message('game.auth.signIn.title', 'Вход', 'Sign in'),
   authSignInLead: message(
     'game.auth.signIn.lead',

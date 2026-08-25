@@ -200,6 +200,7 @@ import { AuthCard } from './ui/authCard';
 import { StorePanel } from './ui/storePanel';
 import { campDecorStyle, campFireStyle, clanHeraldry } from './core/cosmetics';
 import {
+  DAY_SEC,
   KIND,
   SHIFT_SEC,
   WAKE_AT,
@@ -377,6 +378,15 @@ import { mulberry32 } from './core/rng';
 import { DraftScreen } from './ui/draftScreen';
 import { StartScreen } from './ui/startScreen';
 import { chronicle } from './sim/chronicle';
+import {
+  ACHIEVEMENTS,
+  earnAchievement,
+  markAchievementsSeen,
+  reconcileAchievements,
+  type AchievementDef,
+  type AchievementId,
+} from './sim/achievements';
+import { AchievementToast } from './ui/achievementToast';
 import { debugGet, debugHas, debugSceneOpen } from './debug/routes';
 import {
   SORTIE_REASON,
@@ -867,6 +877,7 @@ const hud = new Hud(app, {
     if (useSkill(raid)) track({ t: 'skill', at: clock.now(), skill: raid.loadout.skill, tier: raid.loc.tier });
   },
 }, debugHud ? { night: debugNight ?? 1, grass: grassPerTile } : null);
+const achievementToast = new AchievementToast(app);
 
 const visitCampHud = new VisitCampHud(
   app,
@@ -1098,6 +1109,9 @@ const campHud = new CampHud(app, {
   },
   /** §29 — подарок за вход. Считает и зачисляет лагерь, а не панель. */
   onClaimGift: () => claimGift(),
+  onAchievementsSeen: () => {
+    if (markAchievementsSeen(camp)) persist();
+  },
   // Значок вещи §14 рисует запечённая геометрия; панелям слой рендера
   // не виден, поэтому картинка приходит к ним отсюда (`scripts/arch.ts`).
   gearIcon: (kind, level) => gearIcon(kind, level),
@@ -2196,6 +2210,7 @@ function pitchTentAt(x: number, z: number): void {
   // `campView`, спрятанный в этой сцене, и палатка за пять дерева
   // не появлялась нигде: задание §16.1 закрывалось молча.
   placeTents();
+  if (camp.residents.length > 0) grantAchievement('first-shelter', clock.now());
   persist();
 }
 
@@ -3131,6 +3146,22 @@ function persist(): void {
   if (wiped || debugScene) return;
   save(camp, roster, clock.watermark, onboarding.step);
   pushCloud();
+}
+
+/** Очередь HUD получает честный порядковый номер даже при миграции пачкой. */
+function showAchievements(defs: readonly AchievementDef[]): void {
+  if (defs.length === 0) return;
+  const total = ACHIEVEMENTS.filter((def) => camp.achievements?.earned[def.id] !== undefined).length;
+  const before = Math.max(0, total - defs.length);
+  defs.forEach((def, index) => achievementToast.show(def, before + index + 1));
+}
+
+/** Единственная точка выдачи: состояние сначала, HUD затем, сохранение зовёт событие. */
+function grantAchievement(id: AchievementId, now: number): boolean {
+  const def = earnAchievement(camp, id, now);
+  if (def === null) return false;
+  showAchievements([def]);
+  return true;
 }
 
 /* ---------- облачная копия сейва (§6) ---------- */
@@ -5243,6 +5274,7 @@ function endGlade(): void {
     }
   }
   onboarding.set('world');
+  grantAchievement('first-camp', clock.now());
   inGlade = false;
   inGladeCamp = true;
   showScene('camp');
@@ -5390,6 +5422,11 @@ function toCamp(): void {
   leaveWalkSites();
   if (camp.glade !== undefined) toGladeCamp();
   else toPadCamp();
+  const reconciled = reconcileAchievements(camp, clock.now());
+  if (reconciled.length > 0) {
+    showAchievements(reconciled);
+    persist();
+  }
   syncRoadStoryTask();
   applyBillingAppearance();
 }
@@ -6942,6 +6979,7 @@ if (debugTier !== null || debugNode !== null) {
  * но открыть их можно лишь адресом, которого в игре нет.
  */
 const debugCamp = debugGet(debugParams, 'test');
+let debugAchievementToast: AchievementDef | null = null;
 if (debugCamp !== null) {
   if (debugCamp === 'cosmetics') {
     if (camp.clan == null) foundClan(camp, 'Артель Знака', clock.now());
@@ -7011,6 +7049,12 @@ if (debugCamp !== null) {
     camp.resources.stone = 500;
     camp.resources.iron = 100;
     camp.resources.crystal = 50;
+  }
+  if (debugCamp === 'achievements') {
+    const now = clock.now();
+    earnAchievement(camp, 'first-camp', now - DAY_SEC);
+    debugAchievementToast = earnAchievement(camp, 'first-return', now);
+    if (camp.achievements !== undefined) camp.achievements.seen = ['first-camp'];
   }
   if (
     debugCamp === 'farm-intro' || debugCamp === 'farm-goal' ||
@@ -7100,6 +7144,10 @@ if (debugCamp !== null) {
   // Площадка напрямую, мимо маршрутизатора: второй лагерь существует
   // чисто для тестов, и сейв с поляной не должен уводить кадр отладки.
   toPadCamp();
+  if (debugCamp === 'achievements') {
+    campHud.openAchievements();
+    if (debugAchievementToast !== null) achievementToast.show(debugAchievementToast, 2);
+  }
   if (
     debugCamp === 'road-trader' ||
     debugCamp === 'road-trail' ||
@@ -8143,6 +8191,9 @@ startLoop({
           // §22.6б — ярус взрослеет заходами: смягчение входа кончается.
           camp.tierRaids[result.tier] += 1;
           if (result.status === 'evacuated') grantResearchNotes(camp);
+          if (result.status === 'evacuated' && result.carriedTotal > 0) {
+            grantAchievement('first-return', now);
+          }
         }
         const progression = finishRaidForHero(
           raid,

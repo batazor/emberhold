@@ -41,6 +41,7 @@ import { clanTaskOpen } from '../sim/clan';
 import { avatarSvg } from './avatar';
 import { DailyPanel } from './dailyPanel';
 import type { GiftPic } from './dailyPanel';
+import { AchievementPanel } from './achievementPanel';
 import type { ResourceKind, Resources } from '../sim/resources';
 import { Banner } from './banner';
 import type { Roster } from '../sim/heroes';
@@ -60,6 +61,7 @@ import {
 } from '../i18n/game';
 import { buildingMessage, consumableMessage, gearMessage, offhandMessage, resourceMessage } from '../i18n/gameData';
 import type { GameMessage } from '../i18n/gameMessages';
+import { gameMessages } from '../i18n/gameMessages';
 
 /**
  * Лагерь: сцена первая, карточка по тапу.
@@ -118,6 +120,8 @@ export interface CampCallbacks {
   /** §29 — забрать сегодняшний подарок. Считает и зачисляет лагерь, а не
    *  панель: подарок проходит через кладовую наравне с добычей. */
   onClaimGift(): void;
+  /** Коллекция открыта: новые награды перестают звать числом на значке. */
+  onAchievementsSeen(): void;
   /** Поставить сундук-хранилище (`sim/chests.ts`): карточка вооружает
    *  режим, дальше тап по клетке — тем же жестом, что палатка. */
   onChest(): void;
@@ -166,8 +170,9 @@ const RESOURCE_ORDER: readonly ResourceKind[] = ['stone', 'wood', 'iron', 'cryst
 
 /** Что открыто в листе. null — лист закрыт, на экране только лагерь.
  *  'store' — кладовая (§13.6): открывается тапом по сундуку в сцене.
- *  'daily' — подарок за вход (§29): открывается тапом по значку над сценой. */
-type SheetKind = BuildingId | 'buildings' | 'tiers' | 'shop' | 'store' | 'daily' | null;
+ *  'daily' — подарок за вход (§29): открывается тапом по значку над сценой.
+ *  'achievements' — личная коллекция наград (§34). */
+type SheetKind = BuildingId | 'buildings' | 'tiers' | 'shop' | 'store' | 'daily' | 'achievements' | null;
 
 /**
  * Куда летит подарок (§29.4): к числу ресурса, к счёту кладовой или
@@ -330,6 +335,8 @@ export class CampHud {
   private readonly map: WorldMap;
   /** Подарок за вход (§29): значок над сценой и семь карточек в листе. */
   private readonly daily: DailyPanel;
+  /** Награды (§34): второй коллекционный значок и карточки первой главы. */
+  private readonly achievements: AchievementPanel;
   /** Отряд, отданный лагерю снаружи (§26): карте он нужен, чтобы знать,
    *  есть ли кого отправить. */
   private roster: Roster | null = null;
@@ -775,6 +782,13 @@ export class CampHud {
     this.sections.set('daily', this.daily.root);
     this.sheet.appendChild(this.daily.root);
 
+    this.achievements = new AchievementPanel({
+      onIcon: () => (this.open === 'achievements' ? this.close() : this.openSheet('achievements')),
+      onSeen: () => this.cb.onAchievementsSeen(),
+    });
+    this.sections.set('achievements', this.achievements.root);
+    this.sheet.appendChild(this.achievements.root);
+
     this.slot = document.createElement('div');
     this.slot.className = 'sec camp-slot';
 
@@ -825,10 +839,12 @@ export class CampHud {
       this.makeBarButton(gameMessage('В мир', 'World'), 'tiers', true),
     );
 
-    // Значок стоит в пустом месте между полосами — там же, где сцена.
-    // Отдельным слоем поверх всего он не нужен: `camp-space` и есть та
-    // середина экрана, которая принадлежит лагерю (§6.2.6).
-    space.appendChild(this.daily.icon);
+    // Два коллекционных значка образуют один HUD-ряд. Они не становятся
+    // нижней навигацией: подарок зовёт сегодня, награды — после события.
+    const collectibles = document.createElement('div');
+    collectibles.className = 'camp-collectibles';
+    collectibles.append(this.achievements.icon, this.daily.icon);
+    space.appendChild(collectibles);
 
     this.root.append(
       res, this.banner, this.task, space, this.sheet, this.slot,
@@ -1188,6 +1204,7 @@ export class CampHud {
     // её перед этим не нужно: `sync` идёт каждый кадр и для закрытого
     // раздела тоже — карточки уже знают, что на них написано.
     if (kind === 'daily') this.daily.appear();
+    if (kind === 'achievements') this.achievements.appear();
     this.paintOpen();
     // Кнопка перестановки принадлежит карточке здания и переезжает в неё:
     // здание всегда одно, а разделов много.
@@ -1216,6 +1233,11 @@ export class CampHud {
     this.openSheet('store');
   }
 
+  /** Отладочный кадр и будущие внешние входы открывают ту же коллекцию. */
+  openAchievements(): void {
+    this.openSheet('achievements');
+  }
+
   close(): void {
     this.openSheet(null);
   }
@@ -1233,6 +1255,7 @@ export class CampHud {
     if (kind === 'buildings') return gameMessage('Строительство', 'Building');
     if (kind === 'store') return gameMessage('Кладовая', 'Storage');
     if (kind === 'daily') return gameMessage('Подарок за вход', 'Daily gift');
+    if (kind === 'achievements') return gameMessages.achievementTitle;
     return buildingMessage[kind];
   }
 
@@ -1271,6 +1294,7 @@ export class CampHud {
 
     this.syncTask(camp);
     this.daily.sync(camp, now);
+    this.achievements.sync(camp);
 
     this.last = { camp, now };
     this.syncConstructionLive(camp, now);
