@@ -13,9 +13,7 @@ import type { FigureModel } from '../../render/figureView';
 import { itemIcon } from '../../render/iconView';
 import {
   BAG_CELLS,
-  FREE_SLOTS,
   ITEM,
-  MAX_FREE_SLOTS,
   SLOTS,
   equip,
   fits,
@@ -216,13 +214,16 @@ export class CharacterPage {
   private readonly xp: HTMLElement;
   private readonly xpText: HTMLElement;
   private readonly statsEl: HTMLElement;
-  private readonly note: HTMLElement;
+  private readonly points: HTMLElement;
   private readonly skill: HTMLElement;
   private readonly train: HTMLButtonElement;
   private readonly wornEl: HTMLElement;
   private readonly bagEl: HTMLElement;
+  private readonly bagCount: HTMLElement;
   private readonly raid: HTMLElement;
   private readonly hint: HTMLElement;
+  private readonly gearInfo: HTMLButtonElement;
+  private readonly gearPopup: HTMLElement;
   private readonly gear: GearSection;
   private readonly figure = new Figure();
   private pack: PackState = startPack();
@@ -256,7 +257,7 @@ export class CharacterPage {
           <span class="ch-who"><b id="ch-name"></b><span id="ch-status" class="dim"></span></span>
           <span class="ch-tabs" id="ch-tabs"></span>
           <span class="ch-level" id="ch-level"></span>
-          <button id="ch-close" class="ghost">${gameMarkup(gameMessage('Закрыть', 'Close'))}</button>
+          <button id="ch-close" class="ch-close">${gameMarkup(gameMessage('Закрыть', 'Close'))}</button>
         </div>
         <div class="ch-xp-row"><div class="bar" id="ch-bar"><i id="ch-xp"></i></div><span id="ch-xp-text"></span></div>
         <div class="ch-body">
@@ -264,23 +265,45 @@ export class CharacterPage {
             <div class="ch-slots" id="ch-worn"></div>
             <div class="ch-fig">
               <div id="ch-canvas"></div>
-              <button id="ch-turn" class="ghost">${gameMarkup(gameMessage('Ракурс лагеря', 'Camp view'))}</button>
+              <button id="ch-turn" class="ch-turn">${gameMarkup(gameMessage('Ракурс лагеря', 'Camp view'))}</button>
             </div>
           </div>
           <div class="ch-side" id="ch-side">
-            <h3>${gameMarkup(gameMessage('Сумка', 'Bag'))}</h3>
-            <div class="ch-bag" id="ch-bag"></div>
-            <h3>${gameMarkup(gameMessage('Что будет в вылазке · §14', 'Raid loadout · §14'))}</h3>
-            <div class="ch-raid" id="ch-raid"></div>
-            <h3>${gameMarkup(gameMessage('Характеристики', 'Stats'))}</h3>
-            <div class="ch-stats" id="ch-stats"></div>
+            <div class="ch-bag-panel card">
+              <div class="row mid ch-bag-head">
+                <h3>${gameMarkup(gameMessage('Сумка', 'Bag'))}</h3>
+                <span class="badge" id="ch-bag-count"></span>
+              </div>
+              <div class="ch-bag" id="ch-bag"></div>
+              <p class="ch-hint" id="ch-hint" role="status"></p>
+            </div>
+            <div class="ch-raid-panel card">
+              <div class="row mid ch-section-head">
+                <h3>${gameMarkup(gameMessage('Параметры вылазки', 'Raid loadout'))}</h3>
+                <span class="ch-gear-wrap">
+                  <button id="ch-gear-info" class="ch-info" aria-expanded="false">i</button>
+                  <span class="ch-gear-popover card" id="ch-gear-popover">
+                    <span class="row mid ch-popover-head">
+                      <h3>${gameMarkup(gameMessage('Кованое снаряжение', 'Forged gear'))}</h3>
+                      <button id="ch-gear-close" class="ch-popover-close">×</button>
+                    </span>
+                    <span id="ch-gear"></span>
+                  </span>
+                </span>
+              </div>
+              <div class="ch-raid" id="ch-raid"></div>
+            </div>
+            <div class="ch-stats-panel card">
+              <div class="row mid ch-section-head">
+                <h3>${gameMarkup(gameMessage('Характеристики', 'Attributes'))}</h3>
+                <span class="ch-points" id="ch-points"></span>
+              </div>
+              <div class="ch-stats" id="ch-stats"></div>
+            </div>
             <div class="ch-skill card" id="ch-skill"></div>
-            <div class="r-skill" id="ch-note"></div>
-            <button id="ch-train"></button>
-            <h3>${gameMarkup(gameMessage('Кованое · §14', 'Forged gear · §14'))}</h3>
+            <button id="ch-train" class="ch-train"></button>
           </div>
         </div>
-        <p class="ch-hint" id="ch-hint"></p>
       </div>`;
     const pick = <T extends HTMLElement>(id: string): T => this.root.querySelector<T>(`#${id}`)!;
     this.face = pick('ch-face');
@@ -292,22 +315,38 @@ export class CharacterPage {
     this.xp = pick('ch-xp');
     this.xpText = pick('ch-xp-text');
     this.statsEl = pick('ch-stats');
-    this.note = pick('ch-note');
+    this.points = pick('ch-points');
     this.skill = pick('ch-skill');
     this.train = pick<HTMLButtonElement>('ch-train');
     this.wornEl = pick('ch-worn');
     this.bagEl = pick('ch-bag');
+    this.bagCount = pick('ch-bag-count');
     this.raid = pick('ch-raid');
     this.hint = pick('ch-hint');
+    this.gearInfo = pick<HTMLButtonElement>('ch-gear-info');
+    this.gearPopup = pick('ch-gear-popover');
     pick('ch-canvas').appendChild(this.figure.el);
 
     // Кованые слоты — та же секция, что стояла в карточках (§14.2): механика
     // одна, и второй её набор разошёлся бы с первым молча.
     this.gear = new GearSection((hand) => this.cb.onOffhand(hand));
-    pick('ch-side').appendChild(this.gear.el);
+    pick('ch-gear').appendChild(this.gear.el);
 
     pick<HTMLButtonElement>('ch-close').addEventListener('click', () => this.cb.onClose());
     pick<HTMLButtonElement>('ch-turn').addEventListener('click', () => this.figure.reset());
+    const closeGear = (): void => {
+      this.gearPopup.classList.remove('on');
+      this.gearInfo.setAttribute('aria-expanded', 'false');
+    };
+    setGameAttribute(this.gearInfo, 'aria-label', gameMessage('Показать кованое снаряжение', 'Show forged gear'));
+    const gearClose = pick<HTMLButtonElement>('ch-gear-close');
+    setGameAttribute(gearClose, 'aria-label', gameMessage('Закрыть', 'Close'));
+    this.gearInfo.addEventListener('click', () => {
+      const open = !this.gearPopup.classList.contains('on');
+      this.gearPopup.classList.toggle('on', open);
+      this.gearInfo.setAttribute('aria-expanded', String(open));
+    });
+    gearClose.addEventListener('click', closeGear);
     this.train.addEventListener('click', () => this.cb.onTrain());
     this.skill.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('[data-skill]') !== null) this.cb.onSkill();
@@ -323,6 +362,7 @@ export class CharacterPage {
     // Тап по фону закрывает: то же, чем закрываются панели лагеря.
     this.root.addEventListener('pointerdown', (e) => {
       if (e.target === this.root) this.cb.onClose();
+      else if ((e.target as HTMLElement).closest('.ch-gear-wrap') === null) closeGear();
     });
     this.bindDrag();
     parent.appendChild(this.root);
@@ -338,7 +378,11 @@ export class CharacterPage {
     // Покой — клип, и крутится он только под открытым экраном: закрытая
     // страница не имеет права держать кадр.
     if (visible) this.figure.start();
-    else this.figure.stop();
+    else {
+      this.figure.stop();
+      this.gearPopup.classList.remove('on');
+      this.gearInfo.setAttribute('aria-expanded', 'false');
+    }
   }
 
   sync(s: CharacterSubject): void {
@@ -354,7 +398,7 @@ export class CharacterPage {
       this.packKey = s.key;
       this.packLanguage = language;
       this.pack = startPack();
-      setGameText(this.hint, gameMessage('Тащите вещь из сумки на слот — или коротко тапните по ней.', 'Drag an item from the bag to a slot, or tap it briefly.'));
+      this.hint.textContent = '';
       this.drawPack();
     } else if (language !== this.packLanguage) {
       this.packLanguage = language;
@@ -385,29 +429,44 @@ export class CharacterPage {
       // Честная пустота вместо выдуманных чисел: у жильца характеристик нет,
       // и страница говорит это словами (§11.7).
       this.statsEl.innerHTML = `<span class="dim">${gameMarkup(gameMessage('Характеристик у жильца игра не считает — есть занятие и крыша.', 'Residents have no calculated stats—only a job and a roof.'))}</span>`;
+      this.points.textContent = '';
+      this.points.classList.remove('on');
     } else {
       this.statsEl.innerHTML = s.stats.map((row) =>
-        `<span class="ch-stat">${gameMarkup(statCopy[row.name] ?? gameMessage(row.name))} <b>${row.value}</b>${
-          s.points > 0 ? `<button class="hc-plus" data-stat="${row.key}">+</button>` : ''
-        }</span>`,
-      ).join('') + (s.points > 0
-        ? `<span class="ch-stat"><b>${gameMarkup(gameMessage('очков: {points}', 'points: {points}'), { points: s.points })}</b></span>`
-        : '');
+        `<div class="ch-stat"><span><small>${gameMarkup(statCopy[row.name] ?? gameMessage(row.name))}</small><b>${row.value}</b></span>${
+          s.points > 0
+            ? `<button class="hc-plus" data-stat="${row.key}" aria-label="${gameText(gameMessage('Улучшить {stat}', 'Upgrade {stat}'), { stat: gameText(statCopy[row.name] ?? gameMessage(row.name)) })}">+</button>`
+            : ''
+        }</div>`,
+      ).join('');
+      setGameText(this.points,
+        s.points > 0
+          ? gameMessage('{points} очка свободно', '{points} points available')
+          : gameMessage('Очков нет', 'No points'),
+        { points: s.points },
+      );
+      this.points.classList.toggle('on', s.points > 0);
     }
-    this.note.textContent = characterText(s.note);
     const skillKey = s.skill === null
       ? 'none'
       : `${document.documentElement.lang}|${s.skill.name}|${s.skill.level}|${s.skill.max}|${s.skill.points}|${s.skill.effect}`;
     if (skillKey !== this.skillKey) {
       this.skillKey = skillKey;
+      const ranks = s.skill === null
+        ? ''
+        : Array.from({ length: s.skill.max }, (_, index) =>
+          `<i class="${index < s.skill!.level ? 'on' : ''}"></i>`,
+        ).join('');
       this.skill.innerHTML = s.skill === null
         ? ''
-        : `<span><b>${gameMarkup(gameMessage('{skill} · ур. {level}/{max}', '{skill} · lvl {level}/{max}'), { skill: legacyText(s.skill.name), level: s.skill.level, max: s.skill.max })}</b><small>${characterText(s.skill.effect)}</small></span>`
+        : `<div class="ch-skill-head"><span class="ch-skill-glyph">✦</span><span><small>${gameMarkup(gameMessage('Навык', 'Skill'))}</small><b>${legacyText(s.skill.name)}</b></span><strong>${s.skill.level}/${s.skill.max}</strong></div>`
+          + `<div class="ch-skill-ranks">${ranks}</div>`
+          + `<p>${characterText(s.skill.effect)}</p>`
           + (s.skill.points > 0 && s.skill.level < s.skill.max
-            ? `<button data-skill>${gameMarkup(gameMessage('Улучшить · {points}', 'Upgrade · {points}'), { points: s.skill.points })}</button>`
-            : `<i>${s.skill.level >= s.skill.max
+            ? `<button data-skill><span>${gameMarkup(gameMessage('Улучшить навык', 'Upgrade skill'))}</span><b>${gameMarkup(gameMessage('1 очко', '1 point'))}</b></button>`
+            : `<em>${s.skill.level >= s.skill.max
                 ? gameMarkup(gameMessage('максимум', 'maximum'))
-                : gameMarkup(gameMessage('очков навыка: 0', 'skill points: 0'))}</i>`);
+                : gameMarkup(gameMessage('очков навыка: 0', 'skill points: 0'))}</em>`);
       this.skill.style.display = s.skill === null ? 'none' : '';
     }
     this.train.style.display = s.train === null ? 'none' : '';
@@ -507,13 +566,6 @@ export class CharacterPage {
     );
     // Строка про свободные слоты стоит рядом с ними, а не в комментарии:
     // игрок обязан видеть, что их будет больше и от чего (`items.ts`).
-    const note = document.createElement('p');
-    note.className = 'ch-free-note dim';
-    setGameText(note, gameMessage('Свободно {free} из {max} слотов — остальные откроют навыки', 'Free slots: {free} of {max} · skills unlock the rest'), {
-      free: FREE_SLOTS, max: MAX_FREE_SLOTS,
-    });
-    this.wornEl.appendChild(note);
-
     this.bagEl.replaceChildren(
       ...Array.from({ length: BAG_CELLS }, (_, at) => {
         const el = document.createElement('div');
@@ -523,6 +575,7 @@ export class CharacterPage {
         return el;
       }),
     );
+    this.bagCount.textContent = `${this.pack.bag.filter((item) => item !== null).length}/${BAG_CELLS}`;
     // Фигура держит то, что надето: перетаскивание видно на человеке.
     if (this.shown !== null) {
       this.figure.show(this.shown.model, inHands(this.pack), FIGURE_W, FIGURE_H);
@@ -610,14 +663,22 @@ export class CharacterPage {
       if (!d.moved && Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 6) return;
       d.moved = true;
       d.source.classList.add('ch-lift');
+      this.root.classList.add('dragging');
       d.ghost.style.display = '';
       d.ghost.style.left = `${e.clientX}px`;
       d.ghost.style.top = `${e.clientY}px`;
       const over = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.ch-slot');
-      for (const el of this.wornEl.querySelectorAll('.ch-slot')) el.classList.remove('ok', 'no');
+      const item = ITEM.get(d.item);
+      for (const el of this.wornEl.querySelectorAll<HTMLElement>('.ch-slot')) {
+        const slot = SLOTS.find((candidate) => candidate.id === el.dataset['slot']);
+        const available = slot !== undefined && item !== undefined && fits(slot, item);
+        el.classList.toggle('available', available);
+        el.classList.toggle('blocked', !available);
+        el.classList.remove('ok', 'no');
+      }
+      this.bagEl.classList.toggle('available', d.from.kind === 'слот' && this.pack.bag.includes(null));
       if (over !== null && over !== undefined) {
         const slot = SLOTS.find((s) => s.id === over.dataset['slot']);
-        const item = ITEM.get(d.item);
         if (slot !== undefined && item !== undefined) {
           over.classList.add(fits(slot, item) ? 'ok' : 'no');
         }
@@ -630,7 +691,11 @@ export class CharacterPage {
       this.drag = null;
       d.ghost.remove();
       d.source.classList.remove('ch-lift');
-      for (const el of this.wornEl.querySelectorAll('.ch-slot')) el.classList.remove('ok', 'no');
+      this.root.classList.remove('dragging');
+      this.bagEl.classList.remove('available');
+      for (const el of this.wornEl.querySelectorAll('.ch-slot')) {
+        el.classList.remove('available', 'blocked', 'ok', 'no');
+      }
       if (!d.moved) {
         this.tap(d.item, d.from.kind === 'слот' ? d.from.id : null);
         return;
