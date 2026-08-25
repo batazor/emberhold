@@ -30,6 +30,7 @@ export const buildingMessage: Record<BuildingId, GameMessage> = {
   archery: gameMessage('Стрельбище', 'Archery range'),
   barracks: gameMessage('Казарма', 'Barracks'),
   watchtower: gameMessage('Дозорная башня', 'Watchtower'),
+  archive: gameMessage('Архив', 'Archive'),
 };
 
 export const gearMessage: Record<GearSlot, GameMessage> = {

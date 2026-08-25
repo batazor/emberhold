@@ -22,7 +22,7 @@ function emberArtel(): CampState {
   const camp = createCamp();
   camp.levels = {
     hq: 3, kitchen: 2, storage: 3, forge: 2, infirmary: 1, yard: 1,
-    archery: 1, barracks: 0, watchtower: 0,
+    archery: 1, barracks: 0, watchtower: 0, archive: 0,
   };
   camp.resources = { stone: 24, wood: 18, iron: 7, crystal: 0, food: 21, meat: 2, pelt: 1 };
   camp.residents = [
@@ -51,7 +51,7 @@ function northWatch(): CampState {
   const camp = createCamp();
   camp.levels = {
     hq: 4, kitchen: 4, storage: 4, forge: 3, infirmary: 2, yard: 3,
-    archery: 3, barracks: 2, watchtower: 3,
+    archery: 3, barracks: 2, watchtower: 3, archive: 0,
   };
   camp.resources = { stone: 46, wood: 31, iron: 18, crystal: 4, food: 34, meat: 5, pelt: 3 };
   camp.residents = [

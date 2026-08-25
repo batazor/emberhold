@@ -52,6 +52,8 @@ import { LIVE_SHOWN, liveCampSpots } from '../sim/world';
 import { KIND } from '../sim/world';
 import type { NodeKind, NodeState, Region, Visit, WorldNode } from '../sim/world';
 import type { RoadStoryStep } from '../sim/roadStory';
+import { activeRoadMission } from '../sim/roadBridge';
+import { ROAD_MISSION_COPY } from './roadStoryCopy';
 import { worldUnlock } from '../sim/worldUnlock';
 import type { WorldUnlock, WorldUnlockGoal } from '../sim/worldUnlock';
 import { drawMapTerrain } from './mapTerrain';
@@ -189,9 +191,16 @@ export const ROAD_STORY_TARGET: Readonly<Partial<Record<RoadStoryStep, NodeKind>
   'settle-supply': 'замок минотавра',
 };
 
-export function roadStoryTarget(camp: Pick<CampState, 'roadStory'>): NodeKind | null {
+export function roadStoryTarget(
+  camp: Pick<CampState, 'roadStory' | 'bridgeStory'>,
+  day = 0,
+): NodeKind | null {
   const step = camp.roadStory?.step;
-  return step === undefined ? null : ROAD_STORY_TARGET[step] ?? null;
+  const first = step === undefined ? null : ROAD_STORY_TARGET[step] ?? null;
+  if (first !== null) return first;
+  if (camp.bridgeStory?.step === 'shortfall') return 'замок';
+  if (camp.bridgeStory?.step === 'find-crew') return 'тропа';
+  return activeRoadMission(camp, day)?.target ?? null;
 }
 
 /**
@@ -554,7 +563,7 @@ export class WorldMap {
   /** Место, с которого карта открывается: самое богатое из тех, что есть.
    *  Это подсказка, а не выбор за игрока, — рядом видно всё остальное. */
   private defaultFocus(): number {
-    const target = this.camp === null ? null : roadStoryTarget(this.camp);
+    const target = this.camp === null ? null : roadStoryTarget(this.camp, dayAt(this.now));
     const storyNode = target === null
       ? undefined
       : this.region.nodes.find((node) => node.kind === target);
@@ -958,6 +967,35 @@ export class WorldMap {
         : gameMessage('Выполните заказ, заключите сделку или победите стражу', 'Complete an order, make a deal, or defeat the guards');
     return `<aside class="location-story">` +
       `<span>${gameMarkup(gameMessage('Первая глава · Пропавший обоз', 'Chapter One · The Missing Caravan'))}</span>` +
+      `<b>${gameMarkup(objective)}</b>` +
+      `<i>${gameMarkup(detail)}</i>` +
+      `</aside>`;
+  }
+
+  /** Вторая глава и последующие поручения используют те же карточки мест. */
+  private bridgeStoryCard(node: WorldNode): string {
+    if (this.camp === null) return '';
+    const story = this.camp.bridgeStory;
+    if (story === undefined) return '';
+    const mission = activeRoadMission(this.camp, dayAt(this.now));
+    const target = story.step === 'shortfall'
+      ? 'замок'
+      : story.step === 'find-crew'
+        ? 'тропа'
+        : mission?.target ?? null;
+    if (target !== node.kind) return '';
+    const objective = mission !== null
+      ? ROAD_MISSION_COPY[mission.id].objective
+      : story.step === 'shortfall'
+        ? gameMessage('Узнайте, почему первый обоз пришёл не весь', 'Find out why the first caravan arrived short')
+        : gameMessage('Найдите дорожную артель у старой заставы', 'Find the road crew at the old tollhouse');
+    const detail = mission !== null
+      ? ROAD_MISSION_COPY[mission.id].detail
+      : story.step === 'shortfall'
+        ? gameMessage('Торговец видел накладную и знает, чего не хватает', 'The trader saw the manifest and knows what is missing')
+        : gameMessage('Артель работает в тупике Тропы рядом с мостом', 'The crew works in a Trail dead end near the bridge');
+    return `<aside class="location-story">` +
+      `<span>${gameMarkup(gameMessage('Вторая глава · Старый мост', 'Chapter Two · The Old Bridge'))}</span>` +
       `<b>${gameMarkup(objective)}</b>` +
       `<i>${gameMarkup(detail)}</i>` +
       `</aside>`;
@@ -1386,6 +1424,7 @@ export class WorldMap {
   private paintKeepCard(node: WorldNode): void {
     this.card.innerHTML =
       this.roadStoryCard(node) +
+      this.bridgeStoryCard(node) +
       this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('постройка', 'structure'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
@@ -1404,6 +1443,7 @@ export class WorldMap {
   private paintMinotaurKeepCard(node: WorldNode): void {
     this.card.innerHTML =
       this.roadStoryCard(node) +
+      this.bridgeStoryCard(node) +
       this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('испытание', 'trial'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +
@@ -1430,6 +1470,7 @@ export class WorldMap {
   private paintTrailCard(node: WorldNode): void {
     this.card.innerHTML =
       this.roadStoryCard(node) +
+      this.bridgeStoryCard(node) +
       this.unlockCard(node) +
       `<div class="row t"><b>${worldText(node.name)}</b><i>${gameMarkup(gameMessage('прогулка', 'exploration'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Что там', 'What’s there'))}</span>` +

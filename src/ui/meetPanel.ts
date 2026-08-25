@@ -25,6 +25,9 @@ import type { HireBlock, WoodsmanPost, WoodsmanTalk } from '../sim/woodsman';
 import { avatarSvg } from './avatar';
 import { gameMessage, gameText, setGameText, type GameMessageValues } from '../i18n/game';
 import type { GameMessage } from '../i18n/gameMessages';
+import type { CampState } from '../sim/camp';
+import type { SupplyRoute } from '../sim/roadStory';
+import { bridgeDecisionBlock } from '../sim/roadBridge';
 
 const selfCopy: Record<SelfAnswer, { label: GameMessage; hint: GameMessage }> = {
   строим: {
@@ -63,6 +66,8 @@ export interface MeetPanelCallbacks {
   onInvite(): void;
   /** Выживший у пропавшего обоза — отдельная глава, но та же панель места. */
   onRoadInvite?(): void;
+  /** Кто будет содержать старый мост после разговора с артелью. */
+  onBridgeDecision?(route: SupplyRoute): void;
 }
 
 /** Почему лесника не нанять (`sim/woodsman.ts`): слова причины — в панели. */
@@ -254,6 +259,56 @@ export class MeetPanel {
       gameMessage('Идём в лагерь', 'Come to camp'),
       () => this.cb.onRoadInvite?.(),
       gameMessage('В лагере понадобится место под крышей', 'They will need shelter at camp'),
+    );
+  }
+
+  /**
+   * Бригадир у старой заставы. Три решения меняют хозяйство дороги, поэтому
+   * цена названа на самих кнопках, а недоступный вариант гаснет заранее.
+   */
+  showBridgeCrew(who: Settler, camp: CampState): void {
+    this.root.style.display = 'flex';
+    this.buttons.replaceChildren();
+    this.field.style.display = 'none';
+    this.goods.style.display = 'block';
+    const face = `${who.look}/${who.seed}`;
+    if (this.face.dataset['who'] !== face) {
+      this.face.dataset['who'] = face;
+      this.face.innerHTML = avatarSvg(who.look, who.seed);
+    }
+    setGameText(this.line, gameMessage(
+      '— Бригадир {name}. Торговец перестал платить за мост, и недостающее артель удержала из обоза. Без досок переправа встанет.',
+      '— Foreman {name}. The trader stopped paying for the bridge, so the crew held back the missing cargo. Without timber, the crossing will close.',
+    ), { name: who.name });
+    setGameText(this.goods, gameMessage(
+      'В лагере: дерево {wood} · монеты {coins}',
+      'In camp: wood {wood} · coins {coins}',
+    ), { wood: camp.resources.wood, coins: camp.coins ?? 0 });
+
+    const workBlock = bridgeDecisionBlock(camp, 'work');
+    const work = this.act(
+      gameMessage('Снабжать артель · 10 дерева', 'Supply the crew · 10 wood'),
+      () => this.cb.onBridgeDecision?.('work'),
+      workBlock === 'ok'
+        ? gameMessage('Артель чинит мост, лагерь помогает материалами', 'The crew repairs the bridge; the camp provides materials')
+        : gameMessage('Не хватает дерева', 'Not enough wood'),
+    );
+    work.disabled = workBlock !== 'ok';
+
+    const tradeBlock = bridgeDecisionBlock(camp, 'trade');
+    const trade = this.act(
+      gameMessage('Признать дорожный сбор · 5 монет', 'Recognize the road toll · 5 coins'),
+      () => this.cb.onBridgeDecision?.('trade'),
+      tradeBlock === 'ok'
+        ? gameMessage('Сбор становится платой за постоянное содержание', 'The toll becomes payment for regular upkeep')
+        : gameMessage('Не хватает монет', 'Not enough coins'),
+    );
+    trade.disabled = tradeBlock !== 'ok';
+
+    this.act(
+      gameMessage('Поставить свою охрану', 'Station your own guards'),
+      () => this.cb.onBridgeDecision?.('force'),
+      gameMessage('Лагерь отвечает за порядок у переправы', 'The camp takes responsibility for security at the crossing'),
     );
   }
 

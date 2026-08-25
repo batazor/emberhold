@@ -72,3 +72,24 @@ describe('Карточки первой главы', () => {
     assert.equal(roadStoryTarget(camp), null);
   });
 });
+
+describe('Карточки второй главы', () => {
+  test('этап и ежедневное поручение переводят фокус к нужному месту', () => {
+    const camp = createCamp();
+    camp.roadStory = { step: 'done', route: 'force' };
+    camp.bridgeStory = { step: 'maintenance', completed: 0, lastDay: -1 };
+    assert.equal(roadStoryTarget(camp, 3), 'тропа');
+    camp.bridgeStory = { step: 'shortfall', completed: 2, lastDay: 3 };
+    assert.equal(roadStoryTarget(camp, 3), 'замок');
+    camp.bridgeStory = { step: 'find-crew', completed: 2, lastDay: 3 };
+    assert.equal(roadStoryTarget(camp, 3), 'тропа');
+  });
+
+  test('выполненное сегодня поручение не перехватывает карту', () => {
+    const camp = createCamp();
+    camp.roadStory = { step: 'done', route: 'trade' };
+    camp.bridgeStory = { step: 'done', completed: 8, lastDay: 12, outcome: 'trade' };
+    assert.equal(roadStoryTarget(camp, 12), null);
+    assert.equal(roadStoryTarget(camp, 13), 'замок');
+  });
+});

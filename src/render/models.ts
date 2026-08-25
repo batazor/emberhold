@@ -80,6 +80,7 @@ const FIRE_SPOTS: Record<BuildingId, readonly (FireSpot | null)[]> = {
   archery: [null, null, null],
   barracks: [null, null, null],
   watchtower: [null, null, null],
+  archive: [null, null, null],
 };
 
 /** Доля высоты пламени, на которой стоит его свет: середина языка, не подошва. */
@@ -560,6 +561,9 @@ const BUILDING_STAGES: Record<BuildingId, [() => Piece[], () => Piece[], () => P
   archery: [archeryGround, archeryShelter, archeryStone],
   barracks: [barracksCamp, barracksTimber, barracksStone],
   watchtower: [watchtowerScaffold, watchtowerTimber, watchtowerStone],
+  // Первый визуальный срез Архива использует язык амбара: отдельная модель
+  // придёт вместе со столами и свитками, механика от неё не зависит.
+  archive: [storagePlatform, storageBarn, storageBarn],
 };
 
 const HERO_SHAPES: Record<HeroClassId, () => Piece[]> = {
