@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { MATERIAL } from '../core/palette';
-import { AVATAR_LOOKS, avatarSvg } from './avatar';
+import { AVATAR_LOOKS, avatarSvg, avatarTraits } from './avatar';
 
 const PALETTE = new Set(
   Object.values(MATERIAL).map((c) => `#${c.toString(16).padStart(6, '0')}`),
@@ -29,6 +29,33 @@ describe('Лица веера', () => {
         assert.equal(avatarSvg(look, seed), avatarSvg(look, seed), `${look}/${seed}: лицо поплыло`);
       }
     }
+  });
+
+  /**
+   * Соль вида обязана быть уникальной. Раньше она считалась из длины имени,
+   * поэтому лучник, кузнец и лесник одного сида получали одни черты.
+   */
+  test('один сид не клонирует черты между видами', () => {
+    for (const seed of [0, 1, 7, 17, 41]) {
+      const faces = AVATAR_LOOKS.map((look) => JSON.stringify(avatarTraits(look, seed)));
+      assert.equal(new Set(faces).size, AVATAR_LOOKS.length, `сид ${seed}: черты двух видов совпали`);
+    }
+  });
+
+  /** Сид хранится в сейве, поэтому рефакторинг не должен молча менять лицо. */
+  test('формат жребиев лица остаётся устойчивым', () => {
+    assert.deepEqual(avatarTraits('лесник', 17), {
+      skin: '#e3ba85',
+      cloth: '#3c332c',
+      hair: '#b06b45',
+      brows: 2,
+      beard: 1,
+      mouth: 1,
+      accent: 1,
+      face: 2,
+      eyes: 1,
+      nose: 2,
+    });
   });
 
   /**
@@ -51,6 +78,27 @@ describe('Лица веера', () => {
       const kinds = new Set<string>();
       for (let seed = 0; seed < 30; seed++) kinds.add(avatarSvg(look, seed));
       assert.ok(kinds.size >= 3, `${look}: всего ${kinds.size} лица на 30 сидов`);
+    }
+  });
+
+  /** Новые формы головы, глаз, носа и предмета не должны оказаться мёртвым кодом. */
+  test('каждый вид разыгрывает все варианты новых примет', () => {
+    for (const look of AVATAR_LOOKS) {
+      const faces = new Set<number>();
+      const eyes = new Set<number>();
+      const noses = new Set<number>();
+      const accents = new Set<number>();
+      for (let seed = 0; seed < 100; seed++) {
+        const traits = avatarTraits(look, seed);
+        faces.add(traits.face);
+        eyes.add(traits.eyes);
+        noses.add(traits.nose);
+        accents.add(traits.accent);
+      }
+      assert.equal(faces.size, 3, `${look}: не все формы головы достижимы`);
+      assert.equal(eyes.size, 3, `${look}: не все формы глаз достижимы`);
+      assert.equal(noses.size, 3, `${look}: не все формы носа достижимы`);
+      assert.equal(accents.size, 3, `${look}: не все личные предметы достижимы`);
     }
   });
 

@@ -86,6 +86,71 @@ const BACK: Record<AvatarLook, string> = {
   лесник: C.тень,
 };
 
+/**
+ * Устойчивая соль вида. Длина строки здесь не подходит: `archer`, `кузнец`
+ * и `лесник` состоят из шести символов и раньше при одном сиде получали
+ * один и тот же набор лица. Явная таблица заодно не меняется от рефакторинга
+ * названий и позволяет сохранить лицо между перерисовками и релизами.
+ */
+const LOOK_SALT: Record<AvatarLook, number> = {
+  knight: 0x0b,
+  archer: 0x1d,
+  rogue: 0x2f,
+  поселенец: 0x43,
+  поселенка: 0x59,
+  торговец: 0x6d,
+  кузнец: 0x83,
+  охотник: 0x97,
+  лесник: 0xad,
+};
+
+type TraitKind = 0 | 1 | 2;
+
+/** Жребии, из которых собирается лицо. Удобны галерее и тестам генератора. */
+export interface AvatarTraits {
+  readonly skin: string;
+  readonly cloth: string;
+  readonly hair: string;
+  readonly brows: TraitKind;
+  readonly beard: TraitKind;
+  readonly mouth: TraitKind;
+  readonly face: TraitKind;
+  readonly eyes: TraitKind;
+  readonly nose: TraitKind;
+  readonly accent: TraitKind;
+}
+
+const pickKind = (rng: () => number): TraitKind => Math.floor(rng() * 3) as TraitKind;
+
+/**
+ * Выводит внешность отдельно от разметки. Порядок бросков — часть формата:
+ * добавлять новые следует в хвост, чтобы уже живущие в сейвах люди не менялись.
+ */
+export function avatarTraits(look: AvatarLook, seed = 0): AvatarTraits {
+  const rng = mulberry32(seed * 7 + LOOK_SALT[look]);
+  const skin = SKIN[Math.floor(rng() * SKIN.length)]!;
+  const cloth = CLOTH[Math.floor(rng() * CLOTH.length)]!;
+  const hairYoung = HAIR[Math.floor(rng() * HAIR.length)]!;
+  const brows = pickKind(rng);
+  const beard = pickKind(rng);
+  const mouth = pickKind(rng);
+  const accent = pickKind(rng);
+  const hair = rng() < 0.15 ? C['соль-тень'] : hairYoung;
+
+  return {
+    skin,
+    cloth,
+    hair,
+    brows,
+    beard,
+    mouth,
+    accent,
+    face: pickKind(rng),
+    eyes: pickKind(rng),
+    nose: pickKind(rng),
+  };
+}
+
 /** Брови: нет, ровные или сдвинутые. Цвет — волос, как у живых людей. */
 const brows = (kind: number, hair: string): string => {
   if (kind === 0) return '';
@@ -119,39 +184,57 @@ const beard = (kind: number, hair: string): string => {
   );
 };
 
+/** Нос: точка света, короткая тень или угловатый профиль. */
+const nose = (kind: TraitKind): string => {
+  if (kind === 0) return `<circle cx="22" cy="25.8" r="0.9" fill="${C['дерево-свет']}"/>`;
+  if (kind === 1) return `<rect x="21.3" y="24" width="1.4" height="3.5" rx="0.7" fill="${C['дерево-тень']}"/>`;
+  return `<path d="M22 23.5l-1.5 4h3" stroke="${C['дерево-тень']}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+};
+
 /**
  * Лицо в SVG, 44×44 в собственных координатах и растягивается под слот.
  * Возвращается разметкой, а не элементом: строку одинаково легко положить
  * в `innerHTML` и проверить в Node.
  */
 export function avatarSvg(look: AvatarLook, seed = 0): string {
-  const rng = mulberry32(seed * 7 + look.length * 13 + 1);
-  const skin = SKIN[Math.floor(rng() * SKIN.length)]!;
-  const cloth = CLOTH[Math.floor(rng() * CLOTH.length)]!;
-  const hairYoung = HAIR[Math.floor(rng() * HAIR.length)]!;
-  // Приметы человека. Жребий бросается всем и всегда в одном порядке:
-  // так сид даёт то же лицо независимо от того, кому какая примета досталась.
-  const browKind = Math.floor(rng() * 3);
-  const beardKind = Math.floor(rng() * 3);
-  const mouthKind = Math.floor(rng() * 3);
-  const extra = Math.floor(rng() * 3);
-  // Седина: примерно каждый седьмой прожил дольше остальных — волосы, брови
-  // и борода выцветают в соль разом. Жребий бросается последним, чтобы старик
-  // не сдвигал приметы соседей по порядку розыгрыша.
-  const hair = rng() < 0.15 ? C['соль-тень'] : hairYoung;
+  const traits = avatarTraits(look, seed);
+  const {
+    skin,
+    cloth,
+    hair,
+    brows: browKind,
+    beard: beardKind,
+    mouth: mouthKind,
+    face: faceKind,
+    eyes: eyeKind,
+    nose: noseKind,
+    accent: extra,
+  } = traits;
 
   const body =
     `<circle cx="22" cy="22" r="22" fill="${BACK[look]}"/>` +
     `<path d="M4 44a18 14 0 0 1 36 0z" fill="${cloth}"/>`;
-  const head = `<rect x="12" y="13" width="20" height="20" rx="7" fill="${skin}"/>`;
+  const head =
+    faceKind === 0
+      ? `<rect x="13" y="13" width="18" height="20" rx="6" fill="${skin}"/>`
+      : faceKind === 1
+        ? `<rect x="12" y="13" width="20" height="20" rx="7" fill="${skin}"/>`
+        : `<rect x="11" y="13" width="22" height="20" rx="9" fill="${skin}"/>`;
   const eyes =
-    `<rect x="16" y="21" width="3" height="4" rx="1.5" fill="${C.мрак}"/>` +
-    `<rect x="25" y="21" width="3" height="4" rx="1.5" fill="${C.мрак}"/>`;
+    eyeKind === 0
+      ? `<circle cx="17.5" cy="23" r="1.6" fill="${C.мрак}"/>` +
+        `<circle cx="26.5" cy="23" r="1.6" fill="${C.мрак}"/>`
+      : eyeKind === 1
+        ? `<rect x="16" y="21" width="3" height="4" rx="1.5" fill="${C.мрак}"/>` +
+          `<rect x="25" y="21" width="3" height="4" rx="1.5" fill="${C.мрак}"/>`
+        : `<rect x="15.5" y="22" width="4" height="2" rx="1" fill="${C.мрак}"/>` +
+          `<rect x="24.5" y="22" width="4" height="2" rx="1" fill="${C.мрак}"/>`;
   // Лицо целиком: приметы поверх глаз, убор — поверх примет.
   const face =
     head +
     eyes +
     brows(browKind, hair) +
+    nose(noseKind) +
     beard(beardKind, hair) +
     (beardKind === 2 ? '' : mouth(mouthKind));
 
@@ -181,13 +264,30 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
     `<path d="M4 44a18 14 0 0 1 9-12l4 6a12 9 0 0 0-8 6z" fill="${dome}"/>` +
     `<path d="M40 44a18 14 0 0 0-9-12l-4 6a12 9 0 0 1 8 6z" fill="${dome}"/>`;
 
-  /** Гребень рыцарского шлема: щётка, перо или валик — шлем один, люди разные. */
-  const crest =
+  /**
+   * Три семейства рыцарских шлемов. Акцент меняет весь силуэт, а не только
+   * красную деталь сверху: большой шлем, вытянутый салад и турнирный купол.
+   */
+  const knightHelm =
     extra === 0
-      ? `<rect x="20" y="10" width="4" height="8" rx="2" fill="${C['краска-алая']}"/>`
+      ? `<path d="M11 18a11 9 0 0 1 22 0v10l-3 4H14l-3-4z" fill="${dome}"/>` +
+        visor +
+        rivets +
+        `<path d="M18 14V9h8v5l-2 3h-4z" fill="${C['краска-алая']}"/>` +
+        `<rect x="13" y="27" width="18" height="4" rx="1" fill="${trim}"/>`
       : extra === 1
-        ? `<path d="M22 16c0-5 3-8 8-9-1 4-3 7-6 9z" fill="${C['краска-алая']}"/>`
-        : `<rect x="16" y="10.5" width="12" height="4" rx="2" fill="${C['краска-алая']}"/>`;
+        ? `<path d="M9 22c1-8 6-13 14-13 7 0 11 5 12 13l5 3-8 2-3 5H15l-4-6z" fill="${dome}"/>` +
+          visor +
+          `<path d="M22 15c1-5 4-8 10-9-1 5-4 9-8 11z" fill="${C['краска-алая']}"/>` +
+          `<path d="M14 27h18l-3 5H16z" fill="${trim}"/>` +
+          `<circle cx="32" cy="25" r="1.2" fill="${C.латунь}"/>`
+        : `<path d="M10 22a12 11 0 0 1 24 0v7l-5 4H15l-5-4z" fill="${dome}"/>` +
+          visor +
+          rivets +
+          `<rect x="15" y="9" width="14" height="5" rx="2.5" fill="${C['краска-алая']}"/>` +
+          `<rect x="13" y="27" width="18" height="5" rx="2" fill="${trim}"/>` +
+          `<circle cx="16" cy="29.5" r="1" fill="${C.латунь}"/>` +
+          `<circle cx="28" cy="29.5" r="1" fill="${C.латунь}"/>`;
 
   /** Пряди поселенки: по плечам, коса набок или узел — из тех же волос. */
   const strands =
@@ -200,14 +300,8 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
         : `<circle cx="22" cy="11" r="4.5" fill="${hair}"/>`;
 
   const gear: Record<AvatarLook, string> = {
-    // Рыцарь: глухой шлем с забралом и гребнем. Глаз не видно — их и не должно.
-    knight:
-      pauldrons +
-      `<path d="M11 22a11 11 0 0 1 22 0v4H11z" fill="${dome}"/>` +
-      visor +
-      rivets +
-      crest +
-      `<rect x="13" y="26" width="18" height="3" rx="1.5" fill="${trim}"/>`,
+    // Рыцарь: глухие шлемы разных школ. Глаз не видно — их и не должно.
+    knight: pauldrons + knightHelm,
     // Лучник: капюшон с боковинами и тетива через плечо. Тетива идёт ниже
     // лица: через лицо она читалась царапиной, а не снаряжением.
     archer:
@@ -216,29 +310,55 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
       `<path d="M9 21a13 13 0 0 1 26 0l-4 2a9 9 0 0 0-18 0z" fill="${C.мох}"/>` +
       `<rect x="9" y="20" width="4" height="11" rx="2" fill="${C.хвоя}"/>` +
       `<rect x="31" y="20" width="4" height="11" rx="2" fill="${C.хвоя}"/>` +
+      (extra === 0
+        ? `<circle cx="22" cy="35" r="2.2" fill="${C.латунь}"/>`
+        : extra === 1
+          ? `<path d="M19 33l6 5m0-5-6 5" stroke="${C.солома}" stroke-width="1.5" stroke-linecap="round"/>`
+          : `<path d="M28 14c3-4 6-5 9-5-1 4-3 7-7 8z" fill="${C.солома}"/>`) +
       `<path d="M6 44 32 33" stroke="${C.солома}" stroke-width="1.5" fill="none"/>` +
       `<path d="M33 27a9 9 0 0 1 0 14" stroke="${C['дерево-тень']}" stroke-width="2" fill="none"/>`,
-    // Бандит: повязка на глазах и капюшон в накид. Брови и рот прячутся
-    // под повязкой и хмурью — бандита различает борода.
+    // Бандит: три разных клобука и маски. Не одна мелкая серьга поверх общего
+    // силуэта, а три фигуры, которые различаются уже на 44 px: острый хвост,
+    // короткая накидка и глубокий асимметричный капюшон.
     rogue:
       head +
       beard(beardKind, hair) +
-      `<path d="M10 21a12 12 0 0 1 24 0l-3 2a9 9 0 0 0-18 0z" fill="${C['сукно-тень']}"/>` +
-      `<rect x="11" y="21" width="22" height="5" rx="2" fill="${C.мрак}"/>` +
-      `<rect x="17" y="22" width="3" height="3" rx="1" fill="${C['соль-тень']}"/>` +
-      `<rect x="25" y="22" width="3" height="3" rx="1" fill="${C['соль-тень']}"/>`,
+      (extra === 0
+        ? `<path d="M8 26a14 15 0 0 1 28 0l-4 8-5-5H17l-5 5z" fill="${C['сукно-тень']}"/>` +
+          `<path d="M10 20l7-10 5 4 5-4 7 10-4 3a9 9 0 0 0-16 0z" fill="${C.мрак}"/>` +
+          `<path d="M11 21h22v5H11z" fill="${C['дерево-тень']}"/>` +
+          `<rect x="16" y="22" width="4" height="2.5" rx="1" fill="${C['соль-тень']}"/>` +
+          `<rect x="24" y="22" width="4" height="2.5" rx="1" fill="${C['соль-тень']}"/>` +
+          `<path d="M32 22l8-3-4 5 4 4-8-2z" fill="${C['дерево-тень']}"/>`
+        : extra === 1
+          ? `<path d="M9 27a13 13 0 0 1 26 0v5l-6-3H15l-6 3z" fill="${C.хвоя}"/>` +
+            `<path d="M11 20a11 11 0 0 1 22 0l-4 2a8 8 0 0 0-14 0z" fill="${C['сукно-тень']}"/>` +
+            `<rect x="11" y="20" width="22" height="6" rx="2" fill="${C.мрак}"/>` +
+            `<rect x="16" y="22" width="4" height="2" rx="1" fill="${C['соль-тень']}"/>` +
+            `<rect x="24" y="22" width="4" height="2" rx="1" fill="${C['соль-тень']}"/>` +
+            `<circle cx="12" cy="28.5" r="2" fill="none" stroke="${C.латунь}" stroke-width="1.3"/>`
+          : `<path d="M6 33l4-14 8-9 14 5 6 18-8-5-4 7H14z" fill="${C['сукно-тень']}"/>` +
+            `<path d="M10 19l8-9 14 5-3 6-6-3-9 5z" fill="${C.мрак}"/>` +
+            `<path d="M11 21l21-2-1 6-19 2z" fill="${C['дерево-тень']}"/>` +
+            `<path d="M16 22l4-.4v2.5l-4 .4zm8-.8 4-.4v2.5l-4 .4z" fill="${C['соль-тень']}"/>` +
+            `<path d="M29 31l3 3-3 3-3-3z" fill="${C.латунь}"/>`),
     // Поселенец: соломенная шапка и травинка — он с поля, а не из отряда.
     поселенец:
       face +
       `<path d="M7 18h30l-4-4a11 11 0 0 0-22 0z" fill="${C.солома}"/>` +
       `<path d="M7 18h30v2H7z" fill="${C['дерево-тень']}"/>` +
-      `<path d="M34 36c3-3 4-8 3-12" stroke="${C.трава}" stroke-width="1.5" fill="none"/>`,
+      (extra === 0
+        ? `<path d="M34 36c3-3 4-8 3-12" stroke="${C.трава}" stroke-width="1.5" fill="none"/>`
+        : extra === 1
+          ? `<path d="M12 13h7v4h-8z" fill="${C['дерево-тень']}"/>`
+          : `<path d="M34 37v-11m0 3-3-2m3 5 3-2" stroke="${C.солома}" stroke-width="1.4" stroke-linecap="round"/>`),
     // Поселенка: волосы с чёлкой и пряди — модель без чепца, и лицо без него:
     // волосы и есть шапка (assets/folk, Settler_Female). Бороды не бывает.
     поселенка:
       head +
       eyes +
       brows(browKind, hair) +
+      nose(noseKind) +
       mouth(mouthKind) +
       `<path d="M10 19a12 12 0 0 1 24 0v-4a12 12 0 0 0-24 0z" fill="${hair}"/>` +
       `<path d="M10 17h24v3l-5-2H15l-5 2z" fill="${hair}"/>` +
@@ -248,15 +368,24 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
       face +
       `<path d="M5 17h34v3H5z" fill="${C['дерево-тень']}"/>` +
       `<path d="M13 17a9 9 0 0 1 18 0z" fill="${C.дерево}"/>` +
-      `<circle cx="34" cy="34" r="5" fill="${C.латунь}"/>` +
-      `<circle cx="34" cy="34" r="2" fill="${C.жар}"/>`,
+      (extra === 0
+        ? `<circle cx="34" cy="34" r="5" fill="${C.латунь}"/>` +
+          `<circle cx="34" cy="34" r="2" fill="${C.жар}"/>`
+        : extra === 1
+          ? `<path d="M29 31h10l-1 9h-8z" fill="${C['дерево-тень']}"/>` +
+            `<path d="M31 31q3-5 6 0" stroke="${C.солома}" stroke-width="1.4" fill="none"/>`
+          : `<path d="M28 13c4-5 8-6 11-5-2 4-5 7-9 8z" fill="${C['краска-алая']}"/>`),
     // Кузнец (§6.1.13): тёмная косынка на лбу и молот у плеча.
     кузнец:
       face +
       `<path d="M10 19a12 12 0 0 1 24 0v-3a12 12 0 0 0-24 0z" fill="${C.мрак}"/>` +
       `<rect x="10" y="17" width="24" height="3" rx="1.5" fill="${C['сукно-тень']}"/>` +
       `<rect x="31" y="26" width="3" height="13" rx="1.5" fill="${C['дерево-тень']}"/>` +
-      `<rect x="28" y="24" width="9" height="5" rx="1" fill="${C.металл}"/>`,
+      (extra === 0
+        ? `<rect x="28" y="24" width="9" height="5" rx="1" fill="${C.металл}"/>`
+        : extra === 1
+          ? `<path d="M27 24h11l-2 5h-7z" fill="${C.металл}"/>`
+          : `<path d="M29 23h6l4 3-4 3h-6z" fill="${C.сталь}"/>`),
     // Охотник (§6.1.13): красный капюшон и перо — он из леса, а не со двора.
     охотник:
       face +
@@ -264,7 +393,12 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
       `<path d="M9 21a13 13 0 0 1 26 0l-4 2a9 9 0 0 0-18 0z" fill="${C['краска-алая']}"/>` +
       `<rect x="9" y="20" width="4" height="11" rx="2" fill="${C['сукно-тень']}"/>` +
       `<rect x="31" y="20" width="4" height="11" rx="2" fill="${C['сукно-тень']}"/>` +
-      `<path d="M31 14c3-3 6-4 9-4-1 3-3 6-7 7z" fill="${C.мох}"/>`,
+      (extra === 0
+        ? `<path d="M31 14c3-3 6-4 9-4-1 3-3 6-7 7z" fill="${C.мох}"/>`
+        : extra === 1
+          ? `<path d="M13 14c-3-3-6-4-9-4 1 3 3 6 7 7z" fill="${C.солома}"/>`
+          : `<path d="M30 14c2-4 5-6 8-7 0 4-2 7-6 9z" fill="${C.трава}"/>` +
+            `<path d="M14 14c-2-3-4-4-6-4 0 3 2 5 5 6z" fill="${C.трава}"/>`),
     // Лесник (§6.1.6.3): хвойный капюшон, наброшенный на плечи, и топор
     // у плеча. Капюшон, а не шапка, — он отличает лесника от охотника
     // в том же кружке: у охотника алый и с пером, здесь хвойный и глухой.
@@ -277,7 +411,11 @@ export function avatarSvg(look: AvatarLook, seed = 0): string {
       `<path d="M7 25l3 14h-3z" fill="${C.мох}"/>` +
       `<path d="M37 25l-3 14h3z" fill="${C.мох}"/>` +
       `<rect x="30" y="21" width="2.6" height="18" rx="1.3" fill="${C['дерево-тень']}"/>` +
-      `<path d="M28 20h4l3 3-3 3h-4z" fill="${C.сталь}"/>`,
+      (extra === 0
+        ? `<path d="M28 20h4l3 3-3 3h-4z" fill="${C.сталь}"/>`
+        : extra === 1
+          ? `<path d="M27 19h5l4 4-4 4h-5l2-4z" fill="${C.металл}"/>`
+          : `<path d="M28 19h4l4 2v4l-4 2h-4l2-4z" fill="${C.сталь}"/>`),
   };
 
   return (
