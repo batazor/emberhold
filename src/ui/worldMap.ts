@@ -305,6 +305,8 @@ export interface WorldMapCallbacks {
   onSortie(node: number): void;
   /** Открыть публичный снимок лагеря живого соседа в режиме гостя. */
   onVisitCamp(id: string): void;
+  /** Открыть коллекцию знаков из карточки собственного объекта на карте. */
+  onAppearance(owner: 'player' | 'clan'): void;
 }
 
 /**
@@ -445,6 +447,13 @@ export class WorldMap {
 
     this.card = document.createElement('div');
     this.card.className = 'card map-card';
+    this.card.addEventListener('click', (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>('[data-appearance]')
+        : null;
+      const owner = target?.dataset.appearance;
+      if (owner === 'player' || owner === 'clan') this.cb.onAppearance(owner);
+    });
 
     this.note = document.createElement('div');
     this.note.className = 'map-note';
@@ -1138,7 +1147,8 @@ export class WorldMap {
       `<div class="row t"><b style="color:${OWN_CAMP_COLOR}">${clan.name}</b>` +
       `<i>${gameMarkup(gameMessage('лагерь клана', 'clan camp'))}</i></div>` +
       `<div class="row line"><span>${gameMarkup(gameMessage('Владелец знака', 'Mark owner'))}</span>` +
-      `<b>${gameMarkup(gameMessage('клан', 'clan'))}</b></div>`;
+      `<b>${gameMarkup(gameMessage('клан', 'clan'))}</b></div>` +
+      this.appearanceRow('clan', clanCampIconUrl(this.clanIcon));
     setGameText(this.note, gameMessage(
       'Этот знак принадлежит клану и останется с ним при смене участников.',
       'This mark belongs to the clan and remains with it when members change.',
@@ -1204,7 +1214,8 @@ export class WorldMap {
       )}</b></div>` +
       (camp.clan === null || camp.clan === undefined
         ? ''
-        : `<div class="row line"><span>${gameMarkup(gameMessage('Клан', 'Clan'))}</span><b>${camp.clan.name}</b></div>`);
+        : `<div class="row line"><span>${gameMarkup(gameMessage('Клан', 'Clan'))}</span><b>${camp.clan.name}</b></div>`) +
+      this.appearanceRow('player', personalCampIconUrl(this.personalIcon));
     // Сила — число выведенное (`sim/standing.ts`), и строка обязана называть,
     // из чего оно: иначе это цифра без ориентира, то есть повод для спора.
     //
@@ -1220,6 +1231,24 @@ export class WorldMap {
       'Сила — стоимость добычи, вложенной в лагерь: в постройки, снаряжение, палатки и сундуки.',
       'Power is the value of loot invested in the camp: buildings, equipment, tents, and chests.',
     ));
+  }
+
+  /**
+   * Текущий знак стоит прямо в карточке объекта. Кнопка ведёт не к покупке,
+   * а к оформлению; источники получения появляются уже внутри коллекции.
+   */
+  private appearanceRow(owner: 'player' | 'clan', icon: string): string {
+    const label = owner === 'player'
+      ? gameMessage('Знак лагеря', 'Camp mark')
+      : gameMessage('Знак клана', 'Clan mark');
+    return `<div class="map-appearance">` +
+      `<img src="${icon}" alt="">` +
+      `<span><small>${gameMarkup(label)}</small><b>${gameMarkup(
+        gameMessage('Текущий облик', 'Current appearance'),
+      )}</b></span>` +
+      `<button type="button" class="act" data-appearance="${owner}">${gameMarkup(
+        gameMessage('Оформление', 'Appearance'),
+      )}</button></div>`;
   }
 
   private paintNeighbourCard(id: number): void {
