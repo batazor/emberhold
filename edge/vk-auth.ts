@@ -20,7 +20,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const identity = typeof body.launchParams === 'string'
     ? await verifyVkLaunchParams(body.launchParams, secret)
     : null;
-  if (identity === null) return json({ error: 'invalid VK identity', code: 'invalid_launch_params' }, 401);
+  if (identity === null) {
+    // Отказ по подписи выглядит одинаково для двух разных бед: не выдан
+    // секрет и не сошёлся счёт. В логе остаётся ровно столько, чтобы их
+    // различить, — наличие ключа, имена пришедших параметров и возраст
+    // метки времени. Ни секрет, ни подпись сюда не попадают.
+    const params = new URLSearchParams(typeof body.launchParams === 'string' ? body.launchParams : '');
+    console.error('vk-auth refused launch params', JSON.stringify({
+      secretConfigured: secret !== '',
+      keys: [...params.keys()].filter((key) => key.startsWith('vk_')).sort(),
+      signLength: (params.get('sign') ?? '').length,
+      tsAgeSeconds: Math.round(Date.now() / 1000 - Number(params.get('vk_ts'))),
+    }));
+    return json({ error: 'invalid VK identity', code: 'invalid_launch_params' }, 401);
+  }
 
   // Подпись уже привязала параметры к нашему защищённому ключу; сверка
   // номера приложения — вторая застёжка на случай, когда ключ однажды
