@@ -371,6 +371,7 @@ import type { Report, Sortie } from './sim/sortie';
 import { installBench } from './features/bench';
 import { FanControl, installFan } from './features/fan';
 import type { FanPerson } from './features/fan';
+import { installAvatarLab } from './features/avatarLab';
 import { bindCampInput } from './features/campInput';
 import { createDirector } from './features/onboarding';
 import {
@@ -7654,6 +7655,9 @@ if (debugHas(debugParams, 'fan')) {
     },
   });
 }
+
+/** `?avatars` — матрица всех видов и сидов генератора SVG-лиц. */
+if (debugHas(debugParams, 'avatars')) installAvatarLab();
 
 if (debugParams.has('bench')) {
   installBench({

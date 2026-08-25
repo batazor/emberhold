@@ -58,8 +58,8 @@ export {
   tight,
 } from './fan';
 export type { FanShape, Hand, Slot } from './fan';
-export { AVATAR_LOOKS, avatarSvg } from '../../ui/avatar';
-export type { AvatarLook } from '../../ui/avatar';
+export { AVATAR_LOOKS, avatarSvg, avatarTraits } from '../../ui/avatar';
+export type { AvatarLook, AvatarTraits } from '../../ui/avatar';
 
 export interface FanHooks {
   /** Столько людей, сколько просит ручка: свои первыми, дальше выдуманные. */
