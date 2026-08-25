@@ -71,6 +71,9 @@ export interface SortieInput {
   /** Необязательны для билетов из старых сохранений. */
   readonly quiverBonus?: number;
   readonly scouting?: number;
+  readonly foodBonus?: number;
+  readonly capacityBonus?: number;
+  readonly containerFood?: number;
 }
 
 /** Билет отряда: один на лагерь, как слот стройки (§20.1). */
@@ -169,6 +172,9 @@ export function sortieRaid(sortie: Sortie, hero: HeroState): BotRaid {
       arrows: at.arrows,
       ...(at.quiverBonus === undefined ? {} : { quiverBonus: at.quiverBonus }),
       ...(at.scouting === undefined ? {} : { scouting: at.scouting }),
+      ...(at.foodBonus === undefined ? {} : { foodBonus: at.foodBonus }),
+      ...(at.capacityBonus === undefined ? {} : { capacityBonus: at.capacityBonus }),
+      ...(at.containerFood === undefined ? {} : { containerFood: at.containerFood }),
       // Спокойная отправка пользуется тем же мягким входом, что первые
       // ручные заходы. Опасное событие снимает страховку заранее и именно
       // этим остаётся объявленной ценой места, а не скрытым броском яруса.

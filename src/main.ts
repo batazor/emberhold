@@ -38,6 +38,17 @@ import {
   watchtowerVision,
 } from './sim/camp';
 import type { BuildingId, CampState } from './sim/camp';
+import { FOOD_COST } from './sim/config';
+import {
+  completeResearchIfDue,
+  grantResearchNotes,
+  researchBagBonus,
+  researchContainerDiscount,
+  researchFoodBonus,
+  researchInfirmaryBonus,
+  researchScoutingBonus,
+  startResearch,
+} from './sim/research';
 import { GEAR, MAX_ITEM_LEVEL, OFFHAND } from './sim/gear';
 import type { GearSlot, Offhand } from './sim/gear';
 import {
@@ -191,6 +202,7 @@ import { worldUnlock } from './sim/worldUnlock';
 import { campLevel, campPower } from './sim/standing';
 import type { LiveCamp } from './sim/standing';
 import { BuildPanel, type BuildCategory } from './ui/buildPanel';
+import { ResearchPanel, researchNameMessage } from './ui/researchPanel';
 import {
   campNav,
   commandCampMove,
@@ -844,6 +856,7 @@ const visitCampHud = new VisitCampHud(
 let residentManager: ResidentManager | null = null;
 let storePanel: StorePanel | null = null;
 
+let researchPanel: ResearchPanel;
 const campHud = new CampHud(app, {
   onUpgrade: (id) => {
     // Кадр «поставьте Мастерскую» идёт обычной стройкой, без подарка.
@@ -865,6 +878,10 @@ const campHud = new CampHud(app, {
   onBuyConsumable: (id) => buy(id),
   onRefundConsumable: (at) => {
     if (refundConsumable(camp, at)) persist();
+  },
+  onResearch: () => {
+    campHud.close();
+    researchPanel.show(camp, clock.now());
   },
   onSpeedup: () => {
     const now = clock.now();
@@ -1066,6 +1083,19 @@ const campHud = new CampHud(app, {
   // §29.4 — та же дорога у картинок подарка: бревно, валун и слиток берутся
   // из тех же наборов, которыми набран лагерь.
   giftIcon: (name) => giftIcon(name),
+});
+
+researchPanel = new ResearchPanel(app, {
+  onStart: (id) => {
+    const now = clock.now();
+    if (!startResearch(camp, id, now)) return;
+    campHud.notify(gameText(gameMessage('{name}: исследование началось', '{name}: research started'), {
+      name: gameText(researchNameMessage(id)),
+    }));
+    researchPanel.sync(camp, now);
+    persist();
+  },
+  onClose: () => undefined,
 });
 
 /** Любая правка поручения сразу перестраивает людей в живой сцене лагеря. */
@@ -3324,7 +3354,7 @@ function finishRaidForHero(
     now,
     // §11.8 — Лазарет сокращает простой. Уровень читается здесь, а не внутри
     // отряда: расписание героя — его дело, а цена времени — дело лагеря.
-    camp.levels.infirmary,
+    camp.levels.infirmary + researchInfirmaryBonus(camp),
     state.combatXp,
   );
   if (outcome.xp > 0) campHud.notify(`${name}: +${outcome.xp} опыта`);
@@ -3338,7 +3368,7 @@ function finishRaidForHero(
     // не поставил, строка обязана остаться про время, а не про постройку.
     const where = camp.levels.infirmary > 0 ? `${BUILDINGS.infirmary.name}: ` : 'в строю через ';
     campHud.notify(
-      `${name} ранен — ${where}${HeroCard.healText(outcome.wounds, camp.levels.infirmary)}`,
+      `${name} ранен — ${where}${HeroCard.healText(outcome.wounds, camp.levels.infirmary + researchInfirmaryBonus(camp))}`,
     );
   }
   return { xp: outcome.xp, levels: outcome.levels, level: hero.level };
@@ -3640,7 +3670,10 @@ function sendSortie(node: number): void {
       offhand: camp.offhand,
       arrows: camp.arrows,
       quiverBonus: archeryQuiverBonus(camp.levels.archery),
-      scouting: watchtowerVision(camp.levels.watchtower),
+      scouting: watchtowerVision(camp.levels.watchtower) + researchScoutingBonus(camp),
+      foodBonus: researchFoodBonus(camp),
+      capacityBonus: researchBagBonus(camp),
+      containerFood: Math.max(0, FOOD_COST.container - researchContainerDiscount(camp)),
     },
     now,
   );
@@ -3708,8 +3741,9 @@ function applySortie(ticket: Sortie, hero: HeroState, report: Report, now: numbe
     ticket.tier,
     !report.failed,
     now,
-    camp.levels.infirmary,
+    camp.levels.infirmary + researchInfirmaryBonus(camp),
   );
+  if (!report.failed) grantResearchNotes(camp);
   track({
     t: 'sortie',
     at: now,
@@ -3862,7 +3896,10 @@ function toRaid(node: number, chosen: DraftCardId | null = null): boolean {
     // а то, что осталось в мёртвом, — нет.
     arrows: camp.arrows,
     quiverBonus: archeryQuiverBonus(camp.levels.archery),
-    scouting: watchtowerVision(camp.levels.watchtower),
+    scouting: watchtowerVision(camp.levels.watchtower) + researchScoutingBonus(camp),
+    foodBonus: researchFoodBonus(camp),
+    capacityBonus: researchBagBonus(camp),
+    containerFood: Math.max(0, FOOD_COST.container - researchContainerDiscount(camp)),
     // §21 — расходники: что взято в эту вылазку и сгорит на выходе.
     consumables: camp.loadout,
     // §19 — карта сборов. Тратится на текущую вылазку и не хранится.
@@ -6619,6 +6656,7 @@ if (debugTier !== null || debugNode !== null) {
  *   Последнее открывает финальную стадию: шесть полос, все постройки и праздник.
  * `?test=character` — экран героя с опытом и свободным очком умения.
  * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
+ * `?test=research` — личное дерево зрелого лагеря с запасом Записей.
  * `?test=cosmetics` — личный и клановый знаки на настоящей глобальной карте.
  * `?test=road-trader|road-trail|road-minotaur` — три карточки первой главы.
  *
@@ -6773,6 +6811,14 @@ if (debugCamp !== null) {
       buildTent(camp);
     }
   }
+  if (debugCamp === 'research') {
+    camp.levels.hq = 5;
+    camp.levels.archive = 2;
+    camp.research.notes = 24;
+    camp.research.levels['crop-rotation'] = 2;
+    camp.research.levels['road-provisions'] = 1;
+    camp.research.levels.cartography = 1;
+  }
   // Площадка напрямую, мимо маршрутизатора: второй лагерь существует
   // чисто для тестов, и сейв с поляной не должен уводить кадр отладки.
   toPadCamp();
@@ -6812,6 +6858,7 @@ if (debugCamp !== null) {
       { xp: 166, levels: 1, level: 3 },
     );
   }
+  if (debugCamp === 'research') researchPanel.show(camp, clock.now());
   // Ручка к состоянию сцены. Без неё отладочная сцена показывает кадр,
   // но ответить на вопрос «а герой-то поднялся?» может только глаз.
   // Живёт только вместе с отладочным адресом.
@@ -7523,6 +7570,14 @@ function stepCampSystems(dt: number, now: number): void {
       syncFarmUi();
       persist();
     }
+    const researched = completeResearchIfDue(camp, now);
+    if (researched !== null) {
+      play('levelup');
+      campHud.notify(gameText(gameMessage('{name}: изучено', '{name}: researched'), {
+        name: gameText(researchNameMessage(researched)),
+      }));
+      persist();
+    }
     // §26 — отряд возвращается тем же тиком, что и стройка: слот освобождается
     // одинаково, и досчитывается он после закрытой вкладки так же.
     if (collectSortie(now)) persist();
@@ -7542,6 +7597,7 @@ function stepCampSystems(dt: number, now: number): void {
     // На смене мировых суток завершённое вчера поручение сменяется новым.
     syncRoadStoryTask();
     campHud.sync(camp, now, dt);
+    if (researchPanel.visible) researchPanel.sync(camp, now);
     refreshNeighbours(now);
     // §30 — почта зажигается тем же порогом, что и вся остальная связь
     // с соседями: до второго жильца ящику неоткуда взяться.
@@ -7805,6 +7861,7 @@ startLoop({
           camp.raids += 1;
           // §22.6б — ярус взрослеет заходами: смягчение входа кончается.
           camp.tierRaids[result.tier] += 1;
+          if (result.status === 'evacuated') grantResearchNotes(camp);
         }
         const progression = finishRaidForHero(
           raid,

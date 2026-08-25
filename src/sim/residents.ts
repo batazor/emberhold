@@ -47,6 +47,7 @@ import { GUEST_FOOD } from './balance';
 import type { ResourceKind, Resources } from './resources';
 import { gatherFarmFood, startFarmOnboarding } from './farm';
 import { mulberry32 } from '../core/rng';
+import { researchWorkCapBonus } from './research';
 
 /**
  * Чем жилец занят. Двух первых он приносит с собой — это ответ на вопрос
@@ -699,7 +700,7 @@ export function workDone(
     // Темп и потолок спрашиваются у человека, а не берутся общими: ремесло
     // (§6.1.6.3) меняет ровно эту пару и ничего больше.
     const pace = residentPace(r);
-    const each = Math.min(pace.cap, Math.floor(active / pace.seconds));
+    const each = Math.min(pace.cap + researchWorkCapBonus(camp), Math.floor(active / pace.seconds));
     if (each === 0) continue;
     const kind = RESIDENT_WORK[r.answer];
     sum.set(kind, (sum.get(kind) ?? 0) + each);

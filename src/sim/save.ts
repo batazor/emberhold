@@ -44,6 +44,8 @@ import type { ClanBuildingKind } from './clan';
 import { validSignposts } from './signposts';
 import { ROAD_STORY_STEPS, SUPPLY_ROUTES } from './roadStory';
 import { BRIDGE_STORY_STEPS } from './roadBridge';
+import { RESEARCH_ORDER, researchedFarmPlots } from './research';
+import type { ResearchId } from './research';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -71,6 +73,7 @@ interface SaveV1 {
     salt?: number;
   };
   construction: CampState['construction'];
+  research?: CampState['research'];
   /** Якорь площадки на поляне (§16.1). Необязателен: сейв до якоря
    *  открывается, его лагерь стоит в нулевом. */
   origin?: { x: number; z: number };
@@ -353,6 +356,7 @@ export function save(
     ...(camp.guestPromised === true ? { guest: true } : {}),
     resources: camp.resources,
     construction: camp.construction,
+    research: camp.research,
     loadout: camp.loadout,
     raids: camp.raids,
     tierRaids: [0, 1, 2, 3].map((t) => camp.tierRaids[t as Tier]),
@@ -660,6 +664,35 @@ export function load(): LoadResult {
       };
     }
     if (typeof data.raids === 'number') camp.raids = data.raids;
+    const research = data.research;
+    if (research != null && typeof research === 'object') {
+      if (typeof research.notes === 'number' && Number.isFinite(research.notes) && research.notes >= 0) {
+        camp.research.notes = Math.floor(research.notes);
+      }
+      for (const id of RESEARCH_ORDER) {
+        const level = research.levels?.[id];
+        if (typeof level === 'number' && Number.isFinite(level)) {
+          camp.research.levels[id] = Math.max(0, Math.min(3, Math.floor(level)));
+        }
+      }
+      const job = research.job;
+      if (
+        job != null && RESEARCH_ORDER.includes(job.id as ResearchId) &&
+        typeof job.toLevel === 'number' && job.toLevel >= 1 && job.toLevel <= 3 &&
+        typeof job.startedAt === 'number' && Number.isFinite(job.startedAt) &&
+        typeof job.endsAt === 'number' && Number.isFinite(job.endsAt)
+      ) {
+        camp.research.job = {
+          id: job.id as ResearchId,
+          toLevel: Math.floor(job.toLevel),
+          startedAt: job.startedAt,
+          endsAt: job.endsAt,
+        };
+      }
+    }
+    if (camp.farm !== undefined) {
+      camp.farm.activePlots = Math.max(camp.farm.activePlots, researchedFarmPlots(camp));
+    }
     // §22.6б — зрелость ярусов. Нет поля — ярусы свежие, вход снова мягкий.
     if (Array.isArray(data.tierRaids)) {
       for (const t of [0, 1, 2, 3] as const) {

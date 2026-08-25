@@ -2,8 +2,9 @@ import {
   BUILDINGS,
   BUILDING_ORDER,
   BUILD_COST,
-  BUILD_SECONDS,
-  MAX_LEVEL,
+  buildingCost,
+  buildingMaxLevel,
+  buildingSeconds,
   campQuiverCapacity,
   gearBlock,
   itemCap,
@@ -121,6 +122,8 @@ export interface CampCallbacks {
   onChest(): void;
   /** Открыть общий диспетчер жителей, их смен и поручений. */
   onResidents(): void;
+  /** Архив открывает отдельный полноэкранный слой личных исследований. */
+  onResearch(): void;
   /**
    * Лист открылся или закрылся. Панель зовёт это на переходе состояния,
    * а не на каждом `openSheet`: смена раздела внутри открытого листа —
@@ -185,6 +188,7 @@ const BUILDING_GLYPH: Record<BuildingId, string> = {
   archery: '<path fill-rule="evenodd" d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 4a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>',
   barracks: '<path d="M3 10 12 4l9 6v11H3zM6 12h4v9H6zM14 12h4v9h-4zM8 7h8v3H8z"/>',
   watchtower: '<path fill-rule="evenodd" d="M5 3h3v3h3V3h3v3h3V3h3v18h-5v-6h-6v6H4V3zm5 6h4v3h-4z"/>',
+  archive: '<path d="M4 3h14a2 2 0 0 1 2 2v15H6a2 2 0 0 1-2-2zm3 4h10V5H7zm0 4h10V9H7zm0 4h7v-2H7z"/>',
 };
 
 const WALL_WORK_MESSAGE: Record<Exclude<WallTool, 'снос'>, GameMessage> = {
@@ -457,6 +461,12 @@ export class CampHud {
       this.sections.set(id, section);
       this.sheet.appendChild(section);
     }
+
+    const researchButton = document.createElement('button');
+    researchButton.className = 'primary';
+    setGameText(researchButton, gameMessage('Открыть дерево исследований', 'Open research tree'));
+    researchButton.addEventListener('click', () => this.cb.onResearch());
+    this.sections.get('archive')?.appendChild(researchButton);
 
     const buildings = document.createElement('div');
     buildings.className = 'sec build-catalog';
@@ -859,10 +869,11 @@ export class CampHud {
   private syncCostChips(
     chips: Map<ResourceKind, CostChip>,
     camp: CampState,
+    id: BuildingId,
     level: number,
     visible: boolean,
   ): void {
-    const cost = BUILD_COST[level] ?? {};
+    const cost = buildingCost(id, level);
     for (const [kind, chip] of chips) {
       const need = cost[kind] ?? 0;
       chip.root.style.display = visible && need > 0 ? '' : 'none';
@@ -1466,7 +1477,8 @@ export class CampHud {
       setGameText(card.level, level > 0
         ? gameMessage('ур. {level}', 'lvl {level}')
         : gameMessage('новое', 'new'), { level });
-      if (level >= MAX_LEVEL) setGameText(card.effect, gameMessage(
+      const max = buildingMaxLevel(id);
+      if (level >= max) setGameText(card.effect, gameMessage(
         'Улучшено до предела',
         'Fully upgraded',
       ));
@@ -1474,7 +1486,7 @@ export class CampHud {
         'Дальше · {effect}',
         'Next · {effect}',
       ), { effect: BUILDINGS[id].effect(next) });
-      this.syncCostChips(card.costs, camp, next, level < MAX_LEVEL);
+      this.syncCostChips(card.costs, camp, id, next, level < max);
       card.button.classList.toggle('locked', block === 'locked');
       card.button.classList.toggle('busy', camp.construction?.building === id);
       card.button.classList.toggle('cant', block === 'resources');
@@ -1500,7 +1512,7 @@ export class CampHud {
         'Building · {effect}',
       ), { effect: BUILDINGS[id].effect(c.toLevel) });
       row.next.style.display = '';
-      this.syncCostChips(row.costs, camp, c.toLevel, false);
+      this.syncCostChips(row.costs, camp, id, c.toLevel, false);
       row.barWrap.style.display = '';
       row.bar.style.width = `${((1 - left / total) * 100).toFixed(1)}%`;
       setGameText(row.status, gameMessage('{duration}', '{duration}'), { duration: gameDuration(left) });
@@ -1519,7 +1531,8 @@ export class CampHud {
       ? gameMessage('ур. {level}', 'lvl {level}')
       : gameMessage('не построена', 'not built'), { level });
     row.effect.textContent = BUILDINGS[id].effect(level);
-    if (level < MAX_LEVEL) {
+    const max = buildingMaxLevel(id);
+    if (level < max) {
       setGameText(row.next, gameMessage(
         'Следующий уровень · {effect}',
         'Next level · {effect}',
@@ -1530,13 +1543,13 @@ export class CampHud {
       row.next.textContent = '';
       row.next.style.display = 'none';
     }
-    this.syncCostChips(row.costs, camp, level + 1, level < MAX_LEVEL);
+    this.syncCostChips(row.costs, camp, id, level + 1, level < max);
     row.barWrap.style.display = 'none';
     row.button.dataset['mode'] = 'upgrade';
     setGameText(row.button, level > 0 ? gameMessage('Улучшить', 'Upgrade') : gameMessage('Построить', 'Build'));
     row.button.disabled = block !== 'ok';
     if (block === 'ok' || block === 'resources') {
-      const seconds = BUILD_SECONDS[level + 1] ?? 0;
+      const seconds = buildingSeconds(id, level + 1);
       setGameText(row.status, seconds === 0
         ? gameMessage('Сразу', 'Immediately')
         : gameMessage('{duration}', '{duration}'), { duration: gameDuration(seconds) });
