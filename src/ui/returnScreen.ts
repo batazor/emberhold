@@ -1,7 +1,7 @@
 import {
   BUILDINGS,
   BUILDING_ORDER,
-  BUILD_COST,
+  buildingCost,
   suggestGear,
   suggestUpgrade,
   upgradeBlock,
@@ -489,7 +489,7 @@ export class ReturnScreen {
       this.progressBar.style.width = '100%';
       return;
     }
-    const cost = BUILD_COST[next] ?? {};
+    const cost = buildingCost(id, next);
     const need = (Object.entries(cost) as [ResourceKind, number][])
       .filter(([kind, amount]) => (camp.resources[kind] ?? 0) < amount)
       .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${camp.resources[kind] ?? 0}/${amount}`)

@@ -119,6 +119,9 @@ export interface RaidOptions {
   readonly quiverBonus?: number;
   /** Разведанный Башней радиус, который складывается с обзором героя. */
   readonly scouting?: number;
+  /** Постоянные прибавки личных исследований; без них старые замеры неизменны. */
+  readonly foodBonus?: number;
+  readonly capacityBonus?: number;
   /** Что игрок купил перед входом (§21). По умолчанию — ничего. */
   readonly consumables?: readonly ConsumableId[];
   /**
@@ -209,7 +212,10 @@ export function createRaid(opts: RaidOptions): RaidState {
   const quiver = Math.min(quiverCap, Math.max(0, opts.arrows ?? quiverCap));
   // §19 — карта провианта прибавляется и к запасу, и к потолку: полоса HUD
   // читает потолок, и оставленный прежним он показал бы «103 из 78».
-  const supply = Math.max(1, (opts.food ?? kitchenFood(opts.kitchenLevel)) + draft.food);
+  const supply = Math.max(
+    1,
+    (opts.food ?? kitchenFood(opts.kitchenLevel)) + draft.food + Math.max(0, opts.foodBonus ?? 0),
+  );
 
   /**
    * §11.7 — отряд. Пока в нём один боец: состав приходит снаружи, и вылазка
@@ -288,7 +294,8 @@ export function createRaid(opts: RaidOptions): RaidState {
     capacity: Math.max(
       1,
       (opts.capacity ??
-        Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity) +
+        Math.floor(storageCapacity(opts.storageLevel) * loadout.bagMul) + mods.capacity +
+          Math.max(0, opts.capacityBonus ?? 0)) +
         draft.bag,
     ),
     path: [],
