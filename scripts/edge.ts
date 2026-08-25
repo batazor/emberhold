@@ -26,7 +26,7 @@ const ROOT = resolve(import.meta.dirname, '..');
 const OUT = join(ROOT, 'supabase', 'functions');
 
 /** Что собирается. Имя — оно же имя функции в Supabase. */
-const FUNCTIONS = ['sortie', 'wheel', 'billing', 'stripe-webhook', 'telegram-auth', 'telegram-webhook'] as const;
+const FUNCTIONS = ['sortie', 'wheel', 'billing', 'stripe-webhook', 'telegram-auth', 'telegram-webhook', 'vk-auth'] as const;
 
 /** Чего в серверной сборке быть не может: это клиент, а не симуляция. */
 const CLIENT_ONLY = ['document.', 'window.', 'localStorage', 'requestAnimationFrame'];

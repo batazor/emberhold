@@ -27,3 +27,8 @@ verify_jwt = false
 [functions.stripe-webhook]
 entrypoint = "./functions/stripe-webhook/index.js"
 verify_jwt = false
+
+# До Supabase-сессии личность подтверждает подпись параметров запуска ВК.
+[functions.vk-auth]
+entrypoint = "./functions/vk-auth/index.js"
+verify_jwt = false
