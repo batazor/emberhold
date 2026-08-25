@@ -3955,6 +3955,8 @@ let trailSite: TrailSite | null = null;
 /** Сюжетный обоз существует только на Тропе и только пока человека не позвали. */
 let roadSurvivorAt: Cell | null = null;
 let roadSurvivor: Settler | null = null;
+/** `?trail&caravan`: точка визуальной проверки, не состояние игры. */
+let debugCaravanAt: Cell | null = null;
 let roadSurvivorShown = false;
 
 /** Подход к выжившему открывает тот же нижний разговор, что другие встречи. */
@@ -4379,6 +4381,7 @@ function toTrail(node: number, seed: number): boolean {
     // Разбросанные ящики — остаток обоза. Существующая модель хранилища
     // говорит это без новой иконки или подписи поверх леса.
     raidView.setChests(encounter.cargo);
+    raidView.setBrokenCaravan(encounter.wagon, encounter.survivor);
     raidView.putSettler(
       roadSurvivor.look,
       encounter.survivor.x,
@@ -7010,8 +7013,16 @@ const debugTrail = debugGet(debugParams, 'trail');
 if (debugTrail !== null) {
   const place = today.find((n) => n.kind === 'тропа');
   const seed = debugTrail === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(debugTrail);
+  if (debugParams.has('caravan')) camp.roadStory = { step: 'find-caravan' };
   leaveTitle();
   toTrail(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
+  // `?trail&caravan` прыгает сразу к месту аварии: длинную тропу
+  // проверяет отдельная ручка, а здесь важны масштаб и силуэт реквизита.
+  if (debugParams.has('caravan') && trailSite !== null) {
+    debugCaravanAt = caravanEncounter(trailSite).wagon;
+    rig.lookAt(debugCaravanAt.x, debugCaravanAt.z, true);
+    rig.setZoom(10, true);
+  }
   (window as unknown as { debug: unknown }).debug = {
     rig,
     site: () => trailSite,
@@ -7652,6 +7663,8 @@ startLoop({
       const focus = raidView?.battleFocus() ?? null;
       if (focus !== null) {
         rig.lookAt(focus.x, focus.z);
+      } else if (debugCaravanAt !== null) {
+        rig.lookAt(debugCaravanAt.x, debugCaravanAt.z);
       } else if (raid.battle !== null) {
         const acting = current(raid.battle);
         const at = acting === undefined ? null : hexToWorld(acting.hex);

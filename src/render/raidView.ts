@@ -78,6 +78,7 @@ import type { Bubble } from './bubbles';
 import { survivalTentGeometry } from './survival';
 import { DirectionalFade, fadeSide, type FadeSide } from './directionalFade';
 import type { Piece, Role } from '../sim/castle';
+import { villageMaterial, wagonGeometry } from './village';
 
 /**
  * Вид вылазки: строит меши из состояния и синхронизирует их каждый кадр.
@@ -1344,6 +1345,8 @@ export class RaidView {
   /** Палатки жильцов на поляне — по одной на приглашённого под крышей. */
   private tents: THREE.Mesh[] = [];
   private chests: THREE.Mesh[] = [];
+  /** Место аварии обоза в первой сюжетной главе. */
+  private caravan: THREE.Group | null = null;
   /** Пятно 1×1 под палатку и сундук (`showSpot`). */
   private spot: THREE.Mesh | null = null;
 
@@ -2001,6 +2004,56 @@ export class RaidView {
       this.clearGrassCell(c.x, c.z);
       return mesh;
     });
+  }
+
+  /**
+   * Разбитая повозка на тропе. Целая модель наклонена на лопнувшую
+   * сторону, а отдельное колесо лежит рядом с кузовом. Это обычная авария,
+   * а не новый тип сущности, поэтому рендер собран из реквизита и примитивов.
+   */
+  setBrokenCaravan(at: Cell, toward: Cell): void {
+    this.caravan?.removeFromParent();
+
+    const root = new THREE.Group();
+    root.position.set(at.x, 0, at.z);
+    // Длинная ось повозки лежит вдоль Z. Дышло смотрит к выжившему,
+    // так положение выводится из самой тропы, а не из случайного поворота.
+    root.rotation.y = Math.atan2(toward.x - at.x, toward.z - at.z);
+
+    const body = new THREE.Mesh(this.track(wagonGeometry()), this.track(villageMaterial()));
+    body.position.y = 0.08;
+    body.rotation.z = 0.16;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    root.add(body);
+
+    const wood = this.track(new THREE.MeshLambertMaterial({ color: MATERIAL['дерево'] }));
+    const wheel = new THREE.Group();
+    const rim = new THREE.Mesh(this.track(new THREE.TorusGeometry(0.5, 0.09, 5, 12)), wood);
+    rim.castShadow = true;
+    wheel.add(rim);
+    const spokeGeometry = this.track(new THREE.BoxGeometry(0.82, 0.065, 0.065));
+    for (const turn of [0, Math.PI / 3, Math.PI * 2 / 3]) {
+      const spoke = new THREE.Mesh(spokeGeometry, wood);
+      spoke.rotation.z = turn;
+      spoke.castShadow = true;
+      wheel.add(spoke);
+    }
+    const hub = new THREE.Mesh(this.track(new THREE.CylinderGeometry(0.12, 0.12, 0.2, 8)), wood);
+    hub.rotation.x = Math.PI / 2;
+    hub.castShadow = true;
+    wheel.add(hub);
+    // На узкой тропе обочина закрыта кронами, поэтому колесо остаётся
+    // рядом с кузовом и лежит на ребре: так оно видно и не создаёт ложного прохода в лес.
+    wheel.position.set(-1.05, 0.32, -0.35);
+    wheel.rotation.set(1.05, 0.25, 0.1);
+    root.add(wheel);
+
+    this.caravan = root;
+    this.group.add(root);
+    for (const dx of [-1, 0, 1]) {
+      for (const dz of [-1, 0, 1]) this.clearGrassCell(at.x + dx, at.z + dz);
+    }
   }
 
   /**
