@@ -73,6 +73,13 @@ export function collectResidentFarmHarvest(
     const gathered = harvestFarmPlot(camp, index, to);
     if (gathered <= 0) continue;
     camp.resources.food += FARM_CARE_BONUS;
+    const roadStory = camp.roadStory;
+    if (
+      roadStory?.caravanerId === residentUuid(resident) ||
+      (roadStory?.caravanerId === undefined && roadStory?.caravanerName === resident.name)
+    ) {
+      farm.story.caravanAssisted = true;
+    }
     helpers.push(helper.name);
     plots += 1;
     food += gathered + FARM_CARE_BONUS;

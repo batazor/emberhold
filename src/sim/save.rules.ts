@@ -115,9 +115,15 @@ describe('Сохранение', () => {
   test('исход истории дороги переживает перезапуск, а битый исход отбрасывается', () => {
     const store = fakeStore();
     const camp = createCamp();
-    camp.roadStory = { step: 'done', route: 'trade' };
+    camp.roadStory = {
+      step: 'done',
+      route: 'trade',
+      caravanerId: 'caravaner-1',
+      caravanerName: 'Ратибор',
+      convoySupplied: true,
+    };
     save(camp, createRoster(), 0);
-    assert.deepEqual(load().camp.roadStory, { step: 'done', route: 'trade' });
+    assert.deepEqual(load().camp.roadStory, camp.roadStory);
 
     const raw = JSON.parse(store.get('emberhold/save')!) as {
       roadStory?: { step: string; route?: string };
@@ -341,6 +347,7 @@ describe('Сохранение: огород', () => {
     camp.farm.story.day = 13;
     camp.farm.story.startedDay = 42;
     camp.farm.story.harvestedFood = 55;
+    camp.farm.story.caravanAssisted = true;
     camp.farm.story.caretaker = 'grower';
     camp.farm.story.structures.barn = true;
     save(camp, createRoster(), 100);
@@ -360,6 +367,7 @@ describe('Сохранение: огород', () => {
     const restored = load().camp.farm;
     assert.equal(restored?.story.day, 13);
     assert.equal(restored?.story.harvestedFood, 55);
+    assert.equal(restored?.story.caravanAssisted, true);
     assert.equal(restored?.story.caretaker, 'grower');
     assert.equal(restored?.story.structures.barn, true);
 

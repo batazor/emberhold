@@ -28,6 +28,11 @@ export interface RoadStory {
   step: RoadStoryStep;
   /** Как открыли дорогу. Появляется только вместе с `done`. */
   route?: SupplyRoute;
+  /** Спасённый у повозки остаётся тем же человеком в фермерской линии. */
+  caravanerId?: string;
+  caravanerName?: string;
+  /** Первый новый обоз ушёл с провиантом фермы. */
+  convoySupplied?: boolean;
 }
 
 export const ROAD_STORY_STEPS: readonly RoadStoryStep[] = [
@@ -54,16 +59,30 @@ export function hearAboutCaravan(camp: CampState): boolean {
 }
 
 /** Выживший принят в лагерь — теперь проблема не в поиске, а в дороге. */
-export function rescueCaravaner(camp: CampState): boolean {
+export function rescueCaravaner(
+  camp: CampState,
+  caravaner?: Readonly<{ id: string; name: string }>,
+): boolean {
   if (camp.roadStory?.step !== 'find-caravan') return false;
-  camp.roadStory = { step: 'settle-supply' };
+  camp.roadStory = {
+    step: 'settle-supply',
+    ...(caravaner === undefined
+      ? {}
+      : { caravanerId: caravaner.id, caravanerName: caravaner.name }),
+  };
   return true;
 }
 
 /** Любой из трёх честно сыгранных исходов закрывает первую главу. */
 export function settleSupply(camp: CampState, route: SupplyRoute): boolean {
   if (camp.roadStory?.step !== 'settle-supply') return false;
-  camp.roadStory = { step: 'done', route };
+  const { caravanerId, caravanerName } = camp.roadStory;
+  camp.roadStory = {
+    step: 'done',
+    route,
+    ...(caravanerId === undefined ? {} : { caravanerId }),
+    ...(caravanerName === undefined ? {} : { caravanerName }),
+  };
   return true;
 }
 

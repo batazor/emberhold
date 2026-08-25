@@ -23,13 +23,17 @@ describe('Первая глава: пропавший обоз', () => {
     assert.equal(hearAboutCaravan(camp), false);
     assert.deepEqual(camp.roadStory, { step: 'find-caravan' });
 
-    assert.ok(rescueCaravaner(camp));
+    assert.ok(rescueCaravaner(camp, { id: 'caravaner-1', name: 'Ратибор' }));
     assert.equal(rescueCaravaner(camp), false);
-    assert.deepEqual(camp.roadStory, { step: 'settle-supply' });
+    assert.deepEqual(camp.roadStory, {
+      step: 'settle-supply', caravanerId: 'caravaner-1', caravanerName: 'Ратибор',
+    });
 
     assert.ok(settleSupply(camp, 'work'));
     assert.equal(settleSupply(camp, 'force'), false, 'готовый исход переписан вторым');
-    assert.deepEqual(camp.roadStory, { step: 'done', route: 'work' });
+    assert.deepEqual(camp.roadStory, {
+      step: 'done', route: 'work', caravanerId: 'caravaner-1', caravanerName: 'Ратибор',
+    });
   });
 
   test('обоз стоит на свободных клетках Тропы и не у самого входа', () => {

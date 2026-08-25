@@ -19,6 +19,9 @@ export const FARM_RETURN_ACTION_PLOTS = 4;
 export const FARM_PLOT_UNLOCK_ORDER = [0, 3, 1, 4, 2, 5] as const;
 
 export const FARM_STORY_DAYS = 15;
+/** Финальный обоз превращает выращенную пищу в первую вернувшуюся поставку. */
+export const FARM_CONVOY_FOOD = 20;
+export const FARM_CONVOY_IRON = 4;
 
 export const FARM_STRUCTURE_IDS = ['fence', 'well', 'barn', 'plots', 'farmhouse'] as const;
 export type FarmStructureId = typeof FARM_STRUCTURE_IDS[number];
@@ -40,6 +43,8 @@ export interface FarmStoryState {
   harvestedPlots: number;
   harvestedFood: number;
   assistedPlots: number;
+  /** Спасённый караванщик лично помог хозяйству хотя бы с одной грядкой. */
+  caravanAssisted: boolean;
   batchUses: number;
   caretaker: FarmCaretaker | null;
   structures: Record<FarmStructureId, boolean>;
@@ -53,6 +58,7 @@ export const emptyFarmStory = (): FarmStoryState => ({
   harvestedPlots: 0,
   harvestedFood: 0,
   assistedPlots: 0,
+  caravanAssisted: false,
   batchUses: 0,
   caretaker: null,
   structures: {
@@ -366,12 +372,13 @@ export function repeatReadyFarmPlots(camp: CampState, now: number): FarmReturnRe
   };
 }
 
-export type FarmBuildBlock = 'ok' | 'locked' | 'built' | 'busy' | 'resources';
+export type FarmBuildBlock = 'ok' | 'locked' | 'road' | 'built' | 'busy' | 'resources';
 
 export function farmBuildBlock(camp: CampState, id: FarmStructureId): FarmBuildBlock {
   const farm = camp.farm;
   if (farm?.unlocked !== true || farm.story.day < FARM_STRUCTURES[id].unlockDay) return 'locked';
   if (farm.story.structures[id]) return 'built';
+  if (id === 'barn' && camp.roadStory?.step !== 'done') return 'road';
   if (farm.story.construction !== null || camp.construction !== null || camp.walls?.work != null) return 'busy';
   if (!canAfford(camp.resources, farmStructureCost(id))) return 'resources';
   return 'ok';
@@ -413,7 +420,10 @@ export function chooseFarmCaretaker(camp: CampState, caretaker: FarmCaretaker): 
 }
 
 /** Цель текущего дня. Она проверяется числами симуляции, а не текстом панели. */
-export function farmStoryReady(farm: FarmState | undefined): boolean {
+export function farmStoryReady(
+  farm: FarmState | undefined,
+  roadStory?: CampState['roadStory'],
+): boolean {
   if (farm?.unlocked !== true) return false;
   const story = farm.story;
   switch (story.day) {
@@ -422,7 +432,11 @@ export function farmStoryReady(farm: FarmState | undefined): boolean {
     case 3: return story.structures.fence;
     case 4: return story.structures.well;
     case 5: return story.plantedPlots >= 4;
-    case 6: return story.assistedPlots >= 1;
+    case 6:
+      if (roadStory?.step !== 'settle-supply' && roadStory?.step !== 'done') return false;
+      return roadStory.caravanerId !== undefined || roadStory.caravanerName !== undefined
+        ? story.caravanAssisted
+        : story.assistedPlots >= 1;
     case 7: return story.harvestedPlots >= 6;
     case 8: return story.construction?.structure === 'barn' || story.structures.barn;
     case 9: return story.structures.barn && story.batchUses >= 1;
@@ -431,7 +445,8 @@ export function farmStoryReady(farm: FarmState | undefined): boolean {
     case 12: return story.structures.plots;
     case 13: return story.construction?.structure === 'farmhouse' || story.structures.farmhouse;
     case 14: return story.structures.farmhouse;
-    case 15: return story.structures.farmhouse && story.harvestedFood >= 70;
+    case 15: return story.structures.farmhouse && story.harvestedFood >= 70 &&
+      roadStory?.step === 'done' && roadStory.convoySupplied === true;
     default: return false;
   }
 }
@@ -448,10 +463,35 @@ export function syncFarmStory(camp: CampState, worldDay: number): boolean {
     story.startedDay = worldDay;
     return true;
   }
-  if (story.day >= FARM_STORY_DAYS || worldDay <= story.startedDay || !farmStoryReady(farm)) {
+  if (story.day >= FARM_STORY_DAYS || worldDay <= story.startedDay || !farmStoryReady(farm, camp.roadStory)) {
     return false;
   }
   story.day += 1;
   story.startedDay = worldDay;
+  return true;
+}
+
+export type FarmConvoyBlock = 'ok' | 'day' | 'road' | 'house' | 'harvest' | 'food' | 'done';
+
+export function farmConvoyBlock(camp: CampState): FarmConvoyBlock {
+  const farm = camp.farm;
+  if (farm?.unlocked !== true || farm.story.day < FARM_STORY_DAYS) return 'day';
+  if (camp.roadStory?.step !== 'done' || camp.roadStory.route === undefined) return 'road';
+  if (camp.roadStory.convoySupplied === true) return 'done';
+  if (!farm.story.structures.farmhouse) return 'house';
+  if (farm.story.harvestedFood < 70) return 'harvest';
+  if (camp.resources.food < FARM_CONVOY_FOOD) return 'food';
+  return 'ok';
+}
+
+/**
+ * Пища действительно уходит со склада, а железо действительно возвращается:
+ * финал связывает хозяйство с той нехваткой, с которой началась глава дороги.
+ */
+export function supplyFarmConvoy(camp: CampState): boolean {
+  if (farmConvoyBlock(camp) !== 'ok') return false;
+  camp.resources.food -= FARM_CONVOY_FOOD;
+  camp.resources.iron += FARM_CONVOY_IRON;
+  camp.roadStory = { ...camp.roadStory!, convoySupplied: true };
   return true;
 }

@@ -139,6 +139,8 @@ export class FarmBuildPanel {
         setGameText(card.state, gameMessage('Откроется в день {day}', 'Unlocks on day {day}'), {
           day: FARM_STRUCTURES[id].unlockDay,
         });
+      } else if (block === 'road') {
+        setGameText(card.state, gameMessage('Сначала откройте дорогу для обозов', 'Reopen the caravan road first'));
       } else if (block === 'busy') {
         setGameText(card.state, gameMessage('Строительный слот занят', 'Construction slot is busy'));
       } else {

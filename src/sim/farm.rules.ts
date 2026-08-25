@@ -8,6 +8,8 @@ import { FOOD_PER_MOUTH } from './balance';
 import { createCamp, upgradeBlock } from './camp';
 import { WORK_SECONDS, admit } from './residents';
 import {
+  FARM_CONVOY_FOOD,
+  FARM_CONVOY_IRON,
   FARM_FOOD_GOAL,
   FARM_CROPS,
   FARM_DEFAULT_CROP,
@@ -20,11 +22,13 @@ import {
   advanceFarmOnboarding,
   chooseFarmCaretaker,
   completeFarmConstruction,
+  farmConvoyBlock,
   farmBuildBlock,
   farmStructureCost,
   farmPlantBlock,
   farmPlotPhase,
   farmReturnActionUnlocked,
+  farmStoryReady,
   farmStatus,
   gatherFarmFood,
   harvestFarmPlot,
@@ -32,6 +36,7 @@ import {
   repeatReadyFarmPlots,
   selectFarmCrop,
   startFarmConstruction,
+  supplyFarmConvoy,
   syncFarmStory,
 } from './farm';
 
@@ -295,6 +300,20 @@ describe('Ферма: история развития на 15 дней', () => {
     assert.equal(farm.activePlots, FARM_PLOT_COUNT);
   });
 
+  test('шестой день ждёт именно спасённого у обоза помощника', () => {
+    const camp = openedFarm();
+    const story = camp.farm!.story;
+    story.day = 6;
+    story.assistedPlots = 1;
+    assert.equal(farmStoryReady(camp.farm, camp.roadStory), false, 'случайный помощник заменил сюжет');
+    camp.roadStory = {
+      step: 'settle-supply', caravanerId: 'caravaner-1', caravanerName: 'Ратибор',
+    };
+    assert.equal(farmStoryReady(camp.farm, camp.roadStory), false);
+    story.caravanAssisted = true;
+    assert.equal(farmStoryReady(camp.farm, camp.roadStory), true);
+  });
+
   test('сарай и дом появляются только в своих главах, выбор смотрителя одноразовый', () => {
     const camp = openedFarm();
     const farm = camp.farm!;
@@ -304,6 +323,8 @@ describe('Ферма: история развития на 15 дней', () => {
     camp.resources.crystal = 10_000;
     assert.equal(farmBuildBlock(camp, 'barn'), 'locked');
     farm.story.day = 8;
+    assert.equal(farmBuildBlock(camp, 'barn'), 'road');
+    camp.roadStory = { step: 'done', route: 'trade' };
     assert.equal(startFarmConstruction(camp, 'barn', 10), true);
     completeFarmConstruction(camp, farm.story.construction!.endsAt);
     assert.equal(farm.story.structures.barn, true);
@@ -314,5 +335,23 @@ describe('Ферма: история развития на 15 дней', () => {
     assert.equal(startFarmConstruction(camp, 'farmhouse', 20), true);
     completeFarmConstruction(camp, farm.story.construction!.endsAt);
     assert.equal(farm.story.structures.farmhouse, true);
+  });
+
+  test('финал отправляет настоящий запас и принимает первую поставку железа', () => {
+    const camp = openedFarm();
+    const farm = camp.farm!;
+    farm.story.day = 15;
+    farm.story.harvestedFood = 70;
+    farm.story.structures.farmhouse = true;
+    camp.roadStory = { step: 'done', route: 'work' };
+    camp.resources.food = FARM_CONVOY_FOOD;
+    const ironBefore = camp.resources.iron;
+
+    assert.equal(farmConvoyBlock(camp), 'ok');
+    assert.equal(supplyFarmConvoy(camp), true);
+    assert.equal(camp.resources.food, 0);
+    assert.equal(camp.resources.iron, ironBefore + FARM_CONVOY_IRON);
+    assert.equal(camp.roadStory.convoySupplied, true);
+    assert.equal(supplyFarmConvoy(camp), false, 'один обоз отправился дважды');
   });
 });
