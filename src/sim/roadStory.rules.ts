@@ -5,6 +5,7 @@ import { idx } from './grid';
 import {
   caravanEncounter,
   caravanSurvivor,
+  clearCaravanApproach,
   hearAboutCaravan,
   rescueCaravaner,
   settleSupply,
@@ -52,5 +53,16 @@ describe('Первая глава: пропавший обоз', () => {
     assert.deepEqual(caravanSurvivor(17, new Set()), first);
     const next = caravanSurvivor(17, new Set([first.name]));
     assert.notEqual(next.name, first.name);
+  });
+
+  test('сюжетный разговор не начинается одновременно с боем', () => {
+    for (let seed = 0; seed < 60; seed += 1) {
+      const site = generateTrailSite(seed);
+      const found = caravanEncounter(site);
+      clearCaravanApproach(site, found);
+      assert.ok(site.loc.enemies.every((enemy) =>
+        Math.hypot(enemy.x - found.survivor.x, enemy.z - found.survivor.z) > 5
+      ));
+    }
   });
 });

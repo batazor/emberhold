@@ -259,12 +259,22 @@ import { generateTrailSite, type TrailSite } from './sim/trailSite';
 import {
   caravanEncounter,
   caravanSurvivor,
+  clearCaravanApproach,
   hearAboutCaravan,
   rescueCaravaner,
   settleSupply,
   startRoadStory,
 } from './sim/roadStory';
 import type { SupplyRoute } from './sim/roadStory';
+import {
+  activeRoadMission,
+  completeRoadMission as recordRoadMission,
+  reportBridgeShortfall,
+  settleBridge,
+  startBridgeStory,
+} from './sim/roadBridge';
+import type { RoadMissionAction } from './sim/roadBridge';
+import { ROAD_MISSION_COPY } from './ui/roadStoryCopy';
 import { DEAL_REASON, askOf, dealBlock, makeDeal, marketKey, pruneBought, stockOf, worthOf } from './sim/trade';
 import type { Stock } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
@@ -300,6 +310,7 @@ import {
 } from './sim/signposts';
 import { FARM_CROP_TEXT, FarmCropPicker } from './ui/farmCrops';
 import { gameDuration, gameMessage, gameText } from './i18n/game';
+import { resourceMessage } from './i18n/gameData';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
 import type { ReturnProgress } from './ui/returnScreen';
@@ -460,6 +471,8 @@ const clock = new Clock(loaded.watermark);
 if (serverNow !== null) clock.sync(serverNow);
 let camp: CampState = loaded.camp;
 const roster: Roster = loaded.roster;
+// Завершённый старый сейв продолжает историю без повторного розыгрыша обоза.
+startBridgeStory(camp);
 
 // §20.5 — монеты за вход: десять в сутки, один раз. Считается здесь, а не
 // в лагере: заход в игру — это заход, независимо от того, дошёл ли игрок
@@ -1796,6 +1809,7 @@ const meetPanel = new MeetPanel(app, {
   onAdvance: () => meetOn?.onAdvance(),
   onInvite: () => meetOn?.onInvite(),
   onRoadInvite: () => inviteRoadSurvivor(),
+  onBridgeDecision: (route) => decideBridge(route),
 });
 
 /**
@@ -2517,6 +2531,8 @@ const campPrompt = new CampPrompt(hud.promptSlot, {
  * подход открыл бы лавку обратно тем же тиком. Сбрасывается уходом ногами.
  */
 let tradeLeft = false;
+/** Подход, а не каждый кадр рядом: отчёт о недостаче ждёт нового визита. */
+let traderWasNear = false;
 
 /**
  * Прилавок торговца (§13.5). Ничего не хранит: пища на нём — ровно та, что
@@ -2534,19 +2550,55 @@ function traderStock(): Stock | null {
 /** Одна ведущая строка первой главы; кнопка всегда ведёт на карту мира. */
 function syncRoadStoryTask(): void {
   const step = camp.roadStory?.step;
-  const text = step === 'return-to-trader'
+  let text = step === 'return-to-trader'
     ? gameText(gameMessage('Расспросите торговца о поставках железа', 'Ask the trader about iron supplies'))
     : step === 'find-caravan'
       ? gameText(gameMessage('Осмотрите лесную дорогу', 'Search the forest road'))
       : step === 'settle-supply'
         ? gameText(gameMessage('Решите вопрос с дорогой у минотавра', 'Settle the road dispute with the minotaur'))
         : null;
+  if (text === null) {
+    const bridge = camp.bridgeStory;
+    const mission = activeRoadMission(camp, dayAt(clock.now()));
+    text = mission !== null
+      ? gameText(ROAD_MISSION_COPY[mission.id].objective)
+      : bridge?.step === 'shortfall'
+        ? gameText(gameMessage('Поговорите с торговцем о первом обозе', 'Ask the trader about the first caravan'))
+        : bridge?.step === 'find-crew'
+          ? gameText(gameMessage('Найдите старую заставу на Тропе', 'Find the old tollhouse on the Trail'))
+          : null;
+  }
   campHud.setStoryTask(text);
+}
+
+/** Сделки, охота и проход через Тропу выдают награду одним путём. */
+function completeBridgeMission(action: RoadMissionAction): boolean {
+  const mission = recordRoadMission(camp, dayAt(clock.now()), action);
+  if (mission === null) return false;
+  const reward = mission.reward;
+  if (reward.kind === 'coins') {
+    camp.coins = (camp.coins ?? 0) + reward.amount;
+  } else if (stash(camp, { [reward.kind]: reward.amount }) > 0) {
+    campHud.notify(STORE_FULL);
+  }
+  const rewardName = reward.kind === 'coins'
+    ? gameText(gameMessage('Монеты', 'Coins'))
+    : gameText(resourceMessage[reward.kind]);
+  const line = gameText(gameMessage(
+    'Дорожное поручение выполнено · {reward} +{amount}',
+    'Road mission complete · {reward} +{amount}',
+  ), { reward: rewardName, amount: reward.amount });
+  raid?.events.push(line);
+  if (raid === null) campHud.notify(line);
+  syncRoadStoryTask();
+  persist();
+  return true;
 }
 
 /** Закончить главу одним из трёх сыгранных, а не выбранных в меню исходов. */
 function finishRoadStory(route: SupplyRoute, line: string): void {
   if (!settleSupply(camp, route)) return;
+  startBridgeStory(camp);
   raid?.events.push(line);
   syncRoadStoryTask();
   persist();
@@ -2578,6 +2630,7 @@ const tradePanel = new TradePanel(app, {
     // сколько переплачивают сверх спроса торговца.
     track({ t: 'trade', at: clock.now(), offer: 'deal', worth: worthOf(give), ask: askOf(take, (camp.trades ?? 0) - 1) });
     if (raid !== null) raid.events.push(TradePanel.gained(give, take));
+    completeBridgeMission('trade');
     tradePanel.sync(camp, traderStock());
     persist();
     return true;
@@ -3962,19 +4015,41 @@ let roadSurvivorShown = false;
 /** Подход к выжившему открывает тот же нижний разговор, что другие встречи. */
 function syncRoadSurvivor(): void {
   if (raid === null || roadSurvivorAt === null || roadSurvivor === null) return;
-  if (camp.roadStory?.step !== 'find-caravan') return;
+  const caravan = camp.roadStory?.step === 'find-caravan';
+  const bridge = camp.bridgeStory?.step === 'find-crew';
+  if (!caravan && !bridge) return;
   const near = Math.hypot(
     raid.hero.x - roadSurvivorAt.x,
     raid.hero.z - roadSurvivorAt.z,
   ) <= 2.5;
   if (near && !roadSurvivorShown) {
     roadSurvivorShown = true;
-    meetPanel.showRoadSurvivor(roadSurvivor);
+    if (bridge) meetPanel.showBridgeCrew(roadSurvivor, camp);
+    else meetPanel.showRoadSurvivor(roadSurvivor);
     setHint('');
   } else if (!near && roadSurvivorShown) {
     roadSurvivorShown = false;
     meetPanel.hide();
   }
+}
+
+/** У заставы выбирают устройство работы, а не «правильную» реплику. */
+function decideBridge(route: SupplyRoute): void {
+  if (raid === null || !settleBridge(camp, route, dayAt(clock.now()))) {
+    play('deny');
+    return;
+  }
+  const line = route === 'work'
+    ? gameMessage('Артель получает лес и отвечает за настил', 'The crew gets timber and takes responsibility for the decking')
+    : route === 'trade'
+      ? gameMessage('Дорожный сбор признан платой за содержание моста', 'The road toll is recognized as payment for bridge upkeep')
+      : gameMessage('Лагерь выставляет свою охрану у переправы', 'The camp stations its own guards at the crossing');
+  raid.events.push(gameText(line));
+  play('build');
+  roadSurvivorShown = false;
+  meetPanel.hide();
+  syncRoadStoryTask();
+  persist();
 }
 
 /** Человек уходит в лагерь, а рассказ о нападении переводит цель к дороге. */
@@ -4155,6 +4230,7 @@ function leaveWalkSites(): void {
   if (roadSurvivorShown) meetPanel.hide();
   roadSurvivorShown = false;
   tradePanel.setVisible(false);
+  traderWasNear = false;
   // Гость живёт при сцене замка: сцены нет — нет ни гостя, ни разговора.
   castleGuest = null;
   guestMeet = null;
@@ -4352,6 +4428,10 @@ function toTrail(node: number, seed: number): boolean {
   const hero = heroForRaid() ?? roster.heroes[0]!;
   chop = null;
   const site = generateTrailSite(seed);
+  const roadEncounter = camp.roadStory?.step === 'find-caravan' || camp.bridgeStory?.step === 'find-crew'
+    ? caravanEncounter(site)
+    : null;
+  if (roadEncounter !== null) clearCaravanApproach(site, roadEncounter);
   leaveWalkSites();
   trailSite = site;
   raidNode = node;
@@ -4375,13 +4455,28 @@ function toTrail(node: number, seed: number): boolean {
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'trail', null, null, site, camp.gear.weapon, mateClasses(raid));
   if (camp.roadStory?.step === 'find-caravan') {
-    const encounter = caravanEncounter(site);
+    const encounter = roadEncounter!;
     roadSurvivorAt = encounter.survivor;
     roadSurvivor = caravanSurvivor(seed, new Set(camp.residents.map((r) => r.name)));
     // Разбросанные ящики — остаток обоза. Существующая модель хранилища
     // говорит это без новой иконки или подписи поверх леса.
     raidView.setChests(encounter.cargo);
     raidView.setBrokenCaravan(encounter.wagon, encounter.survivor);
+    raidView.putSettler(
+      roadSurvivor.look,
+      encounter.survivor.x,
+      encounter.survivor.z,
+      0,
+    );
+  } else if (camp.bridgeStory?.step === 'find-crew') {
+    const encounter = roadEncounter!;
+    roadSurvivorAt = encounter.survivor;
+    roadSurvivor = caravanSurvivor(
+      seed ^ 0x6d6f7374,
+      new Set(camp.residents.map((r) => r.name)),
+    );
+    // Ящики у заставы обозначают инструмент и припасы артели.
+    raidView.setChests(encounter.cargo.slice(0, 2));
     raidView.putSettler(
       roadSurvivor.look,
       encounter.survivor.x,
@@ -4407,6 +4502,11 @@ function toTrail(node: number, seed: number): boolean {
     raid.events.push(gameText(gameMessage(
       'На боковой дороге видны брошенные ящики',
       'Abandoned crates are visible down a side road',
+    )));
+  } else if (camp.bridgeStory?.step === 'find-crew') {
+    raid.events.push(gameText(gameMessage(
+      'У старой заставы ждёт дорожная артель',
+      'A road crew is waiting at the old tollhouse',
     )));
   }
   return true;
@@ -7014,6 +7114,12 @@ if (debugTrail !== null) {
   const place = today.find((n) => n.kind === 'тропа');
   const seed = debugTrail === '' ? nodeSeed(dayAt(clock.now()), place?.id ?? 0) : Number(debugTrail);
   if (debugParams.has('caravan')) camp.roadStory = { step: 'find-caravan' };
+  if (debugParams.has('bridge')) {
+    camp.roadStory = { step: 'done', route: 'work' };
+    camp.bridgeStory = { step: 'find-crew', completed: 2, lastDay: dayAt(clock.now()) - 1 };
+    camp.resources.wood = Math.max(camp.resources.wood, 20);
+    camp.coins = Math.max(camp.coins ?? 0, 10);
+  }
   leaveTitle();
   toTrail(place?.id ?? 0, Number.isFinite(seed) ? seed : 1);
   // `?trail&caravan` прыгает сразу к месту аварии: длинную тропу
@@ -7021,6 +7127,17 @@ if (debugTrail !== null) {
   if (debugParams.has('caravan') && trailSite !== null) {
     debugCaravanAt = caravanEncounter(trailSite).wagon;
     rig.lookAt(debugCaravanAt.x, debugCaravanAt.z, true);
+    rig.setZoom(10, true);
+  }
+  // `?trail&bridge` открывает сам выбор у артели: отладочная сцена нужна
+  // для проверки длинной реплики, трёх кнопок и их цены одним кадром.
+  const bridgeDebugRaid = raid as RaidState | null;
+  if (debugParams.has('bridge') && trailSite !== null && bridgeDebugRaid !== null) {
+    const at = caravanEncounter(trailSite).survivor;
+    bridgeDebugRaid.hero.x = at.x;
+    bridgeDebugRaid.hero.z = at.z;
+    bridgeDebugRaid.path = [];
+    rig.lookAt(at.x, at.z, true);
     rig.setZoom(10, true);
   }
   (window as unknown as { debug: unknown }).debug = {
@@ -7262,6 +7379,8 @@ function stepCampSystems(dt: number, now: number): void {
       persist();
     }
     if (tickHeroes(now)) persist();
+    // На смене мировых суток завершённое вчера поручение сменяется новым.
+    syncRoadStoryTask();
     campHud.sync(camp, now, dt);
     refreshNeighbours(now);
     // §30 — почта зажигается тем же порогом, что и вся остальная связь
@@ -7369,14 +7488,27 @@ startLoop({
       if (castleNow !== null) {
         const near = atTrader(castleNow, raid.hero.x, raid.hero.z);
         if (!near) tradeLeft = false;
-        if (near && hearAboutCaravan(camp)) {
-          raid.events.push(gameText(gameMessage(
-            'Торговец: «Последний обоз с железом не пришёл»',
-            'Trader: “The last iron caravan never arrived”',
-          )));
-          syncRoadStoryTask();
-          persist();
+        const arrived = near && !traderWasNear;
+        if (arrived) {
+          if (hearAboutCaravan(camp)) {
+            raid.events.push(gameText(gameMessage(
+              'Торговец: «Последний обоз с железом не пришёл»',
+              'Trader: “The last iron caravan never arrived”',
+            )));
+            syncRoadStoryTask();
+            persist();
+          } else if (reportBridgeShortfall(camp)) {
+            raid.events.push(gameText(gameMessage(
+              'Торговец: «В обозе недостача. Ответ знает артель»',
+              'Trader: “The caravan is short. The road crew knows why.”',
+            )));
+            syncRoadStoryTask();
+            persist();
+          } else {
+            completeBridgeMission('visit-trader');
+          }
         }
+        traderWasNear = near;
         const show = near && !tradeLeft;
         if (show !== tradePanel.visible) tradePanel.setVisible(show);
         if (show) tradePanel.sync(camp, traderStock());
@@ -7437,6 +7569,7 @@ startLoop({
         raid.hero.x === trailSite.exit.x &&
         raid.hero.z === trailSite.exit.z
       ) {
+        completeBridgeMission('cross-trail');
         raid.status = 'evacuated';
         raid.path = [];
       }
@@ -7506,6 +7639,7 @@ startLoop({
         if ((supplyClaim?.overflow ?? 0) > 0) campHud.notify(STORE_FULL);
         if (raid.foxesCaught > 0) {
           camp.foxesCaught = (camp.foxesCaught ?? 0) + raid.foxesCaught;
+          if (trailSite !== null) completeBridgeMission('hunt-trail');
         }
         if (counts) {
           camp.raids += 1;

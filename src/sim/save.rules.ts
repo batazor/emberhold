@@ -433,3 +433,15 @@ describe('Сохранение: стены лагеря', () => {
     assert.deepEqual(back.walls?.stairs, {});
   });
 });
+
+describe('Сохранение: старый мост', () => {
+  test('этап, счётчик и выбранное устройство дороги переживают перезапуск', () => {
+    fakeStore();
+    const camp = createCamp();
+    camp.roadStory = { step: 'done', route: 'work' };
+    camp.bridgeStory = { step: 'done', completed: 9, lastDay: 42, outcome: 'trade' };
+    save(camp, createRoster(), 100);
+    assert.deepEqual(load().camp.bridgeStory, camp.bridgeStory);
+    wipe();
+  });
+});

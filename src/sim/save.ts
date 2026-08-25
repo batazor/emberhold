@@ -39,6 +39,7 @@ import { CLAN_BUILDING_ORDER, startingClanResources } from './clan';
 import type { ClanBuildingKind } from './clan';
 import { validSignposts } from './signposts';
 import { ROAD_STORY_STEPS, SUPPLY_ROUTES } from './roadStory';
+import { BRIDGE_STORY_STEPS } from './roadBridge';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -254,6 +255,8 @@ interface SaveV1 {
   minotaurQuests?: CampState['minotaurQuests'];
   /** Первая глава после онбординга. Необязательна для старых лагерей. */
   roadStory?: CampState['roadStory'];
+  /** Старый мост: состояние второй главы и последний день поручения. */
+  bridgeStory?: CampState['bridgeStory'];
 }
 
 export interface LoadResult {
@@ -392,6 +395,7 @@ export function save(
     ...(camp.minotaurRelics !== undefined ? { minotaurRelics: { ...camp.minotaurRelics } } : {}),
     ...(camp.minotaurQuests !== undefined ? { minotaurQuests: camp.minotaurQuests } : {}),
     ...(camp.roadStory !== undefined ? { roadStory: { ...camp.roadStory } } : {}),
+    ...(camp.bridgeStory !== undefined ? { bridgeStory: { ...camp.bridgeStory } } : {}),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -916,6 +920,25 @@ export function load(): LoadResult {
         }
       } else {
         camp.roadStory = { step: story.step };
+      }
+    }
+
+    const bridge = data.bridgeStory;
+    if (
+      bridge != null &&
+      typeof bridge === 'object' &&
+      BRIDGE_STORY_STEPS.includes(bridge.step) &&
+      typeof bridge.completed === 'number' && Number.isFinite(bridge.completed) && bridge.completed >= 0 &&
+      typeof bridge.lastDay === 'number' && Number.isFinite(bridge.lastDay)
+    ) {
+      const completed = Math.floor(bridge.completed);
+      const lastDay = Math.floor(bridge.lastDay);
+      if (bridge.step === 'done') {
+        if (bridge.outcome !== undefined && SUPPLY_ROUTES.includes(bridge.outcome)) {
+          camp.bridgeStory = { step: 'done', completed, lastDay, outcome: bridge.outcome };
+        }
+      } else {
+        camp.bridgeStory = { step: bridge.step, completed, lastDay };
       }
     }
 

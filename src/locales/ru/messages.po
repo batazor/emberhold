@@ -259,6 +259,21 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+#~ msgid "— Я {name}, бригадир. Торговец перестал платить за мост, и недостающее мы удержали из обоза. Без досок переправа встанет."
+#~ msgstr "— Я {name}, бригадир. Торговец перестал платить за мост, и недостающее мы удержали из обоза. Без досок переправа встанет."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Торговец: «Первый обоз пришёл не весь. Ищите старую заставу у моста»"
+#~ msgstr "Торговец: «Первый обоз пришёл не весь. Ищите старую заставу у моста»"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Торговец: «Первый обоз пришёл не весь. Ответ знает артель у старой заставы»"
+#~ msgstr "Торговец: «Первый обоз пришёл не весь. Ответ знает артель у старой заставы»"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "—"
 msgstr "—"
 
@@ -312,6 +327,11 @@ msgstr "— А тебя как звать?"
 #: locales/legacy-messages.ts
 msgid "— алую и синюю краску бочек, снятые с этого же атласа."
 msgstr "— алую и синюю краску бочек, снятые с этого же атласа."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "— Бригадир {name}. Торговец перестал платить за мост, и недостающее артель удержала из обоза. Без досок переправа встанет."
+msgstr "— Бригадир {name}. Торговец перестал платить за мост, и недостающее артель удержала из обоза. Без досок переправа встанет."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -8343,9 +8363,34 @@ msgid "артбуков"
 msgstr "артбуков"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Артели нужны регулярные, а не разовые поставки"
+msgstr "Артели нужны регулярные, а не разовые поставки"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Артель ZXQPH0QXZ"
 msgstr "Артель {value0}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Артель получает лес и отвечает за настил"
+msgstr "Артель получает лес и отвечает за настил"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Артель просит проверить старый мост после первого обоза"
+msgstr "Артель просит проверить старый мост после первого обоза"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Артель работает в тупике Тропы рядом с мостом"
+msgstr "Артель работает в тупике Тропы рядом с мостом"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Артель чинит мост, лагерь помогает материалами"
+msgstr "Артель чинит мост, лагерь помогает материалами"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -9479,6 +9524,11 @@ msgstr "В лагере, без ран. Единственное состоян�
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "В лагере: дерево {wood} · монеты {coins}"
+msgstr "В лагере: дерево {wood} · монеты {coins}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "В лагерь"
 msgstr "В лагерь"
@@ -9807,6 +9857,11 @@ msgstr "Вернётся завтра"
 #: locales/legacy-messages.ts
 msgid "Вернётся сегодня"
 msgstr "Вернётся сегодня"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Вернитесь из вылазки хотя бы с одной лисой"
+msgstr "Вернитесь из вылазки хотя бы с одной лисой"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -10705,6 +10760,11 @@ msgstr "Вся конструкция глубины держится на од�
 #: locales/legacy-messages.ts
 msgid "Вторая вылазка"
 msgstr "Вторая вылазка"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Вторая глава · Старый мост"
+msgstr "Вторая глава · Старый мост"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -12650,6 +12710,11 @@ msgid "Добейтесь безопасного прохода для обоз�
 msgstr "Добейтесь безопасного прохода для обозов"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Доберитесь до дальнего выхода"
+msgstr "Доберитесь до дальнего выхода"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Добудьте {goal} пищи"
 msgstr "Добудьте '{'goal'}' пищи"
@@ -13011,9 +13076,19 @@ msgstr "Дорожки пишут все"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Дорожное поручение выполнено · {reward} +{amount}"
+msgstr "Дорожное поручение выполнено · {reward} +{amount}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Дорожный паёк"
 msgstr "Дорожный паёк"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дорожный сбор признан платой за содержание моста"
+msgstr "Дорожный сбор признан платой за содержание моста"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13054,6 +13129,11 @@ msgstr "Доска: блокинг"
 #: locales/legacy-messages.ts
 msgid "Доска: три состояния дня"
 msgstr "Доска: три состояния дня"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Доставьте инструменты через Тропу"
+msgstr "Доставьте инструменты через Тропу"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -13936,6 +14016,11 @@ msgstr "закат"
 #: locales/legacy-messages.ts
 msgid "Заклад"
 msgstr "Заклад"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Заключите сделку с торговцем"
+msgstr "Заключите сделку с торговцем"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17818,6 +17903,11 @@ msgid "Лагерь встаёт там, где решили остаться"
 msgstr "Лагерь встаёт там, где решили остаться"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Лагерь выставляет свою охрану у переправы"
+msgstr "Лагерь выставляет свою охрану у переправы"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Лагерь идёт на"
 msgstr "Лагерь идёт на"
@@ -17841,6 +17931,11 @@ msgstr "лагерь ночью — то состояние, в котором �
 #: locales/legacy-messages.ts
 msgid "Лагерь опускается на 6–8° и подходит на полшага: читается как «посмотрел на доску», а не «открыл меню»"
 msgstr "Лагерь опускается на 6–8° и подходит на полшага: читается как «посмотрел на доску», а не «открыл меню»"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Лагерь отвечает за порядок у переправы"
+msgstr "Лагерь отвечает за порядок у переправы"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -18377,6 +18472,11 @@ msgstr "Любой → урон"
 #: locales/legacy-messages.ts
 msgid "любой объект прячет героя на 2,45·(h − 1,15) клеток позади себя."
 msgstr "любой объект прячет героя на 2,45·(h − 1,15) клеток позади себя."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Любой честный обмен поддержит дорожные поставки"
+msgstr "Любой честный обмен поддержит дорожные поставки"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19031,6 +19131,11 @@ msgid "Монетизация отложена целиком. Важно лиш
 msgstr "Монетизация отложена целиком. Важно лишь, чтобы её появление позже не потребовало переделки: камень и деньги — разные входы в один и тот же расчёт."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Монеты"
+msgstr "Монеты"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "монеты ZXQPH0QXZ"
 msgstr "монеты {value0}"
@@ -19606,8 +19711,18 @@ msgstr "называет нехватку железа и место, где е�
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Найдите дорожную артель у старой заставы"
+msgstr "Найдите дорожную артель у старой заставы"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Найдите пропавший обоз на боковой дороге"
 msgstr "Найдите пропавший обоз на боковой дороге"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Найдите старую заставу на Тропе"
+msgstr "Найдите старую заставу на Тропе"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20154,6 +20269,11 @@ msgstr "Не хватает железа"
 #: locales/legacy-messages.ts
 msgid "Не хватает камня"
 msgstr "Не хватает камня"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Не хватает монет"
+msgstr "Не хватает монет"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23456,6 +23576,11 @@ msgstr "погасший горн читался бы как «закрыто»"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Поговорите с торговцем о первом обозе"
+msgstr "Поговорите с торговцем о первом обозе"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Поговорите с хозяином. За сундук придётся сразиться; торг или заказ безопаснее, но принесут меньшую награду."
 msgstr "Поговорите с хозяином. За сундук придётся сразиться; торг или заказ безопаснее, но принесут меньшую награду."
 
@@ -23604,6 +23729,11 @@ msgid "Подойдите ближе"
 msgstr "Подойдите ближе"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Подойдите к прилавку в замковом дворе"
+msgstr "Подойдите к прилавку в замковом дворе"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Подол приколот, гребень летает: амплитуда умножена на"
 msgstr "Подол приколот, гребень летает: амплитуда умножена на"
@@ -23721,6 +23851,11 @@ msgstr "Позы, а не клипы"
 #: locales/legacy-messages.ts
 msgid "Поиск по книгам и разделам"
 msgstr "Поиск по книгам и разделам"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Поймайте лису на Тропе"
+msgstr "Поймайте лису на Тропе"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -24221,6 +24356,11 @@ msgstr "Поставить"
 #: locales/legacy-messages.ts
 msgid "поставить камень, передвинуть героя, передвинуть противника. Подсветка считается теми же"
 msgstr "поставить камень, передвинуть героя, передвинуть противника. Подсветка считается теми же"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Поставить свою охрану"
+msgstr "Поставить свою охрану"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -24848,6 +24988,11 @@ msgid "Приём v0.2"
 msgstr "Приём v0.2"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Признать дорожный сбор · 5 монет"
+msgstr "Признать дорожный сбор · 5 монет"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "призы"
 msgstr "призы"
@@ -25009,9 +25154,19 @@ msgid "Провалы почти целиком боевые, а §11.3 треб
 msgstr "Провалы почти целиком боевые, а §11.3 требует обратного. Причина не в числах: пошаговый бой"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Проведите ещё одну сделку с торговцем"
+msgstr "Проведите ещё одну сделку с торговцем"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "проведите по поверхности"
 msgstr "проведите по поверхности"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Проведите телегу через Тропу"
+msgstr "Проведите телегу через Тропу"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25042,6 +25197,11 @@ msgstr "Проверка не в том, что стало красивее, а 
 #: locales/legacy-messages.ts
 msgid "Проверка раздачи"
 msgstr "Проверка раздачи"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Проверьте дорожный сбор у торговца"
+msgstr "Проверьте дорожный сбор у торговца"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25260,6 +25420,21 @@ msgstr "Производство встало: ни одного цвета из
 #: locales/legacy-messages.ts
 msgid "производство остановлено, нужен игрок"
 msgstr "производство остановлено, нужен игрок"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Пройдите Тропу дозором"
+msgstr "Пройдите Тропу дозором"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Пройдите Тропу и осмотрите настил"
+msgstr "Пройдите Тропу и осмотрите настил"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Пройдите Тропу от одного выхода до другого"
+msgstr "Пройдите Тропу от одного выхода до другого"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -27139,6 +27314,11 @@ msgid "Сбор ресурсов жителями"
 msgstr "Сбор ресурсов жителями"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сбор становится платой за постоянное содержание"
+msgstr "Сбор становится платой за постоянное содержание"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "сборов"
 msgstr "сборов"
@@ -28361,6 +28541,11 @@ msgstr "Смотреть регион"
 #: locales/legacy-messages.ts
 msgid "Смотрит, как числа набегают, а полоса заполняется до конца. Внизу — «Лагерь открыт»."
 msgstr "Смотрит, как числа набегают, а полоса заполняется до конца. Внизу — «Лагерь открыт»."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Снабжать артель · 10 дерева"
+msgstr "Снабжать артель · 10 дерева"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -30765,6 +30950,16 @@ msgstr "Торговец в замке"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Торговец видел накладную и знает, чего не хватает"
+msgstr "Торговец видел накладную и знает, чего не хватает"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Торговец: «В обозе недостача. Ответ знает артель»"
+msgstr "Торговец: «В обозе недостача. Ответ знает артель»"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Торговец: «Последний обоз с железом не пришёл»"
 msgstr "Торговец: «Последний обоз с железом не пришёл»"
 
@@ -31451,6 +31646,11 @@ msgid "у своих моделей его нечем угадывать"
 msgstr "у своих моделей его нечем угадывать"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "У старой заставы ждёт дорожная артель"
+msgstr "У старой заставы ждёт дорожная артель"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "У трёх моделей —"
 msgstr "У трёх моделей —"
@@ -31645,6 +31845,11 @@ msgstr "Узкая стена"
 #: locales/legacy-messages.ts
 msgid "узкий конус капюшона"
 msgstr "узкий конус капюшона"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Узнайте, почему первый обоз пришёл не весь"
+msgstr "Узнайте, почему первый обоз пришёл не весь"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts

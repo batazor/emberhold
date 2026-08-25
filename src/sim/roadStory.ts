@@ -74,6 +74,25 @@ export interface CaravanEncounter {
 }
 
 /**
+ * Разговор и бой не могут делить один тупик. Лисы остаются на остальных
+ * отвилках, а при следующем обычном входе генератор вернёт исходную стаю.
+ */
+export function clearCaravanApproach(
+  site: TrailSite,
+  encounter: CaravanEncounter,
+  radius = 5,
+): number {
+  const before = site.loc.enemies.length;
+  for (let i = site.loc.enemies.length - 1; i >= 0; i -= 1) {
+    const enemy = site.loc.enemies[i]!;
+    if (Math.hypot(enemy.x - encounter.survivor.x, enemy.z - encounter.survivor.z) <= radius) {
+      site.loc.enemies.splice(i, 1);
+    }
+  }
+  return before - site.loc.enemies.length;
+}
+
+/**
  * Обоз стоит в тупике Тропы, а не на главном ходу: если бы ящики лежали на
  * дороге, их находили бы проходом мимо. Выживший ждёт у конца самого длинного
  * отвилка; повозка — на предыдущей, ящики — ещё на двух шагах до неё.

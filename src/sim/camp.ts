@@ -29,6 +29,7 @@ import type { FarmState } from './farm';
 import type { SignpostDecor } from './signposts';
 import { emptySignpostDecor } from './signposts';
 import type { RoadStory } from './roadStory';
+import type { BridgeStory } from './roadBridge';
 
 export type BuildingId =
   | 'hq'
@@ -494,6 +495,8 @@ export interface CampState {
   }>;
   /** Первая сюжетная глава после ковки: перебитая поставка железа. */
   roadStory?: RoadStory;
+  /** Вторая дорожная глава и её суточные поручения у старого моста. */
+  bridgeStory?: BridgeStory;
   /**
    * §14.2 — что в левой руке. Поле лагеря, а не шестой слот GearState:
    * уровень предмета куётся, а рука перекладывается — бесплатно, мгновенно
