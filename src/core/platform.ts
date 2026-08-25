@@ -69,6 +69,15 @@ export const platformKind = (): PlatformKind =>
 export const telegramInitData = (): string | null => telegramIdentity()?.initData ?? null;
 
 /**
+ * Подписанные параметры запуска ВК — то же, чем для Telegram служит
+ * `initData`: единственное, что доказывает личность игрока. Отдаются как
+ * есть, целой строкой запроса: проверять подпись можно только над тем же
+ * набором пар, что подписывал ВК, а разбор по дороге его бы испортил.
+ */
+export const vkLaunchParams = (): string | null =>
+  vk() ? location.search.replace(/^\?/, '') : null;
+
+/**
  * Main Mini App deep links expose the payload twice. Prefer signed initData,
  * but keep the documented query fallback for older Telegram clients.
  *
@@ -194,16 +203,15 @@ export function platformCharge(webMinor: number, stars: number): { priceMinor: n
 /**
  * Telegram оставляет игрока в игре; веб передаёт управление Stripe.
  *
- * В ВК игра живёт в кадре, а Stripe в кадр не встраивается — увести туда
- * `location` значило бы обменять оплату на пустой прямоугольник. Оплата
- * уходит наружу, а игра остаётся открытой там, где была.
+ * В ВК оплаты нет: голоса не подключены, а Stripe в кадр не встраивается,
+ * и уводить игрока наружу за деньгами из приложения, где он этого не ждёт,
+ * мы не будем. Витрина там кнопку не показывает, сервер такой заказ
+ * отклоняет, и эта ветка — последняя застёжка, а не рабочий путь.
  */
 export async function openPlatformCheckout(url: string): Promise<CheckoutResult> {
   const app = telegram();
   if (app === null) {
-    // Не «redirected»: уходит соседняя вкладка, а не эта. Для витрины это
-    // начатая оплата, которую ещё предстоит дождаться, — то есть «pending».
-    if (vk()) return window.open(url, '_blank', 'noopener') === null ? 'failed' : 'pending';
+    if (vk()) return 'failed';
     location.assign(url);
     return 'redirected';
   }

@@ -178,7 +178,7 @@ import {
   cloudSortieClaim,
   cloudSortieStart,
   cloudTime,
-  cloudTelegramSignIn,
+  cloudPlatformSignIn,
   cloudToggleCampLike,
   cloudUser,
   cloudWheel,
@@ -2694,14 +2694,14 @@ const startScreen = new StartScreen(app, {
   // и только когда входить действительно нужно.
   onPlay: () => {
     if (hasSession) enterGame();
-    else if (platformKind() === 'telegram') {
+    else if (platformKind() !== 'web') {
       void platformAuth.then((signedIn) => {
         if (signedIn) {
           hasSession = true;
           enterGame();
           return;
         }
-        authCard.showTelegram(cloudTelegramSignIn, () => {
+        authCard.showPlatform(cloudPlatformSignIn, () => {
           hasSession = true;
           enterGame();
         });
@@ -3098,7 +3098,7 @@ new SettingsMenu(app, {
  * игра продолжается тем же нажатием, которым началась.
  */
 let hasSession = false;
-const platformAuth = cloudTelegramSignIn();
+const platformAuth = cloudPlatformSignIn();
 void platformAuth.then(() => cloudUser()).then((identity) => {
   hasSession = identity !== null;
   // §9 — с этого мига события пишутся на человека, а не на устройство:

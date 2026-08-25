@@ -93,6 +93,18 @@ export const gameMessages = {
     'Вход не получился. Закройте и заново откройте Mini App.',
     'Sign-in failed. Close and reopen the Mini App.',
   ),
+  vkAuthTitle: message('game.auth.vk.title', 'Вход через ВКонтакте', 'VK sign-in'),
+  vkAuthLead: message(
+    'game.auth.vk.lead',
+    'Не удалось подтвердить вход. Почта для ВКонтакте не нужна.',
+    'We could not confirm your sign-in. VK does not require an email.',
+  ),
+  vkAuthRetrying: message('game.auth.vk.retrying', 'Проверяем ВКонтакте…', 'Checking VK…'),
+  vkAuthFailed: message(
+    'game.auth.vk.failed',
+    'Вход не получился. Закройте и заново откройте приложение.',
+    'Sign-in failed. Close and reopen the app.',
+  ),
 
   visitCampAction: message('game.visitCamp.action', 'Посетить лагерь', 'Visit camp'),
   visitCampMode: message('game.visitCamp.mode', 'режим просмотра', 'view only'),

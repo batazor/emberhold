@@ -158,7 +158,7 @@ export class StorePanel {
     this.primary = this.overlay.querySelector('[data-act="primary"]') as HTMLButtonElement;
     setGameText(this.overlay.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.storeClose);
     const sandbox = this.overlay.querySelector('.store-sandbox') as HTMLElement;
-    if (platformKind() === 'telegram') sandbox.hidden = true;
+    if (platformKind() !== 'web') sandbox.hidden = true;
     else setGameText(sandbox,
       gameMessage('Stripe Sandbox · реальные деньги не списываются', 'Stripe Sandbox · no real money is charged'));
     setGameAttribute(this.overlay, 'aria-label', gameMessage('Оформление лагеря', 'Camp appearance'));
@@ -272,8 +272,17 @@ export class StorePanel {
       equipped: this.selected === equipped,
       canEquip,
     });
-    const action: CosmeticCollectionAction | 'refer' = referralLocked ? 'refer' : collectionAction;
-    if (!hasPack) {
+    /**
+     * В ВК покупок пока нет: голоса не подключены, а уводить игрока из
+     * приложения к Stripe — это платёж, которого он там не ждёт. Набор
+     * остаётся видимым и примеряемым, недоступна ровно кнопка.
+     */
+    const platformLocked = collectionAction === 'obtain' && platformKind() === 'vk';
+    const action: CosmeticCollectionAction | 'refer' | 'unavailable' = referralLocked ? 'refer'
+      : platformLocked ? 'unavailable' : collectionAction;
+    // Предложение, которого нельзя принять, предложением не считается:
+    // иначе в §9 у ВК окажется витрина со стопроцентным отказом.
+    if (!hasPack && !platformLocked) {
       this.trackOffer(category.sku, action === 'sign-in' ? 'sign-in'
         : action === 'create-clan' ? 'create-clan' : 'none');
     }
@@ -325,8 +334,11 @@ export class StorePanel {
       tab.setAttribute('aria-pressed', String(tab.dataset.kind === this.kind));
     }
     this.primary.dataset.action = action;
-    this.primary.disabled = this.busy || ['sign-in', 'create-clan', 'equipped', 'role'].includes(action);
+    this.primary.disabled = this.busy ||
+      ['sign-in', 'create-clan', 'equipped', 'role', 'unavailable'].includes(action);
     setGameText(this.primary, action === 'sign-in' ? gameMessages.storeSignIn
+      : action === 'unavailable' ? gameMessage('Покупки во ВКонтакте пока недоступны',
+        'Purchases are not available in VK yet')
       : action === 'create-clan' ? gameMessage('Сначала создайте клан', 'Create a clan first')
         : action === 'equipped' ? gameMessage('Используется', 'Equipped')
           : action === 'role' ? gameMessage('Применить может глава или офицер', 'A leader or officer can equip it')
@@ -345,6 +357,9 @@ export class StorePanel {
       'Invited players: {count}/1. The reward unlocks after your friend’s first sign-in.'), {
       count: this.state?.personal.referrals ?? 0,
     });
+    else if (action === 'unavailable') setGameText(this.status, gameMessage(
+      'Набор можно примерить: предпросмотр работает целиком. Открыть его во ВКонтакте пока нельзя.',
+      'You can still preview the whole set. Unlocking it inside VK is not possible yet.'));
     else setGameText(this.status, action === 'obtain'
       ? gameMessage('Откроются оба варианта набора. Их можно примерить до получения.',
         'Both variants in the pack will unlock. You can preview them first.')

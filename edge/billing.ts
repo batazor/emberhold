@@ -259,6 +259,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (data !== null) return json(await billingState(db, user.id));
     }
 
+    // Витрина в ВК кнопку покупки не показывает, но запрет обязан жить и
+    // здесь: клиент — не место для правила о том, где можно брать деньги.
+    if (body.platform === 'vk') {
+      return json({ error: 'purchases are not available in VK yet', code: 'platform_unavailable' }, 403);
+    }
+
     if (body.platform === 'telegram') {
       const url = await telegramInvoice(db, user.id, sku, item, targetId, body.telegramInitData);
       if (url === null) return json({ error: 'Telegram checkout unavailable' }, 403);

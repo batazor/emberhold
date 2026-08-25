@@ -11182,8 +11182,18 @@ msgstr "Sign-in failed. Close and reopen the Mini App."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.auth.vk.failed"
+msgstr "Sign-in failed. Close and reopen the app."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.auth.telegram.title"
 msgstr "Telegram sign-in"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.vk.title"
+msgstr "VK sign-in"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -20190,6 +20200,11 @@ msgid "Набор моделей: ресурсы"
 msgstr "Model Set: Resources"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Набор можно примерить: предпросмотр работает целиком. Открыть его во ВКонтакте пока нельзя."
+msgstr "You can still preview the whole set. Unlocking it inside VK is not possible yet."
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Набор нарисован под сетку в четыре единицы: стена — четыре в ширину, большая плитка пола — 4×4, малая — 2×2. Наша клетка —"
 msgstr "The set is drawn under a grid of four units: the wall is four in width, a large floor tile is 4×4, a small one is 2×2. Our cell --"
@@ -21036,6 +21051,11 @@ msgstr "Could not share the link"
 #: locales/game-messages.ts
 msgid "game.auth.telegram.lead"
 msgstr "We could not confirm your sign-in. Telegram does not require an email."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.vk.lead"
+msgstr "We could not confirm your sign-in. VK does not require an email."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -25011,6 +25031,11 @@ msgid "Покупка предлагалась"
 msgstr "Purchase was offered"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Покупки во ВКонтакте пока недоступны"
+msgstr "Purchases are not available in VK yet"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Поле"
 msgstr "Field."
@@ -26397,6 +26422,11 @@ msgstr "Check the road toll with the trader"
 #: locales/game-messages.ts
 msgid "game.auth.telegram.retrying"
 msgstr "Checking Telegram…"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.auth.vk.retrying"
+msgstr "Checking VK…"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

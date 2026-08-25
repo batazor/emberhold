@@ -1,5 +1,6 @@
 import { play } from '../core/audio';
 import { cloudLink } from '../core/cloud';
+import { platformKind } from '../core/platform';
 import { clearGameText, setGameAttribute, setGameText } from '../i18n/game';
 import { gameMessages } from '../i18n/gameMessages';
 import { revealCard } from './cardReveal';
@@ -30,7 +31,33 @@ const CARDS = {
   },
 } as const;
 
-type Mode = keyof typeof CARDS | 'telegram';
+type Mode = keyof typeof CARDS | 'platform';
+
+/**
+ * Платформа доказывает личность сама, и карточка здесь — не форма входа,
+ * а объяснение осечки. Кнопки «Повторить» и «Закрыть» у платформ общие и
+ * намеренно остались под своими прежними ключами перевода: текст у них
+ * нейтральный, а переименование ключа стоило бы правки словаря ради
+ * ничего не меняющей строки.
+ */
+const PLATFORM_CARDS = {
+  telegram: {
+    title: gameMessages.telegramAuthTitle,
+    lead: gameMessages.telegramAuthLead,
+    retrying: gameMessages.telegramAuthRetrying,
+    failed: gameMessages.telegramAuthFailed,
+  },
+  vk: {
+    title: gameMessages.vkAuthTitle,
+    lead: gameMessages.vkAuthLead,
+    retrying: gameMessages.vkAuthRetrying,
+    failed: gameMessages.vkAuthFailed,
+  },
+} as const;
+
+/** Веб сюда не попадает: у него платформенного входа нет, есть почта. */
+const platformCard = (): typeof PLATFORM_CARDS[keyof typeof PLATFORM_CARDS] =>
+  platformKind() === 'vk' ? PLATFORM_CARDS.vk : PLATFORM_CARDS.telegram;
 
 export class AuthCard {
   private readonly root: HTMLElement;
@@ -38,8 +65,8 @@ export class AuthCard {
   private mode: Mode = 'in';
   /** Пока облако отвечает, вторая отправка не принимается. */
   private busy = false;
-  private telegramRetry: (() => Promise<boolean>) | null = null;
-  private telegramSuccess: (() => void) | null = null;
+  private platformRetry: (() => Promise<boolean>) | null = null;
+  private platformSuccess: (() => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -58,33 +85,33 @@ export class AuthCard {
     this.card.addEventListener('click', (e) => {
       if (!(e.target instanceof HTMLButtonElement)) return;
       const act = e.target.dataset.act;
-      if (act === 'go') void (this.mode === 'telegram' ? this.submitTelegram() : this.submit());
-      else if (act === 'swap' && this.mode !== 'telegram') {
+      if (act === 'go') void (this.mode === 'platform' ? this.submitPlatform() : this.submit());
+      else if (act === 'swap' && this.mode !== 'platform') {
         this.mode = this.mode === 'in' ? 'up' : 'in';
         this.paint();
         revealCard(this.card);
       } else if (act === 'close') this.hide();
     });
     this.card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void (this.mode === 'telegram' ? this.submitTelegram() : this.submit());
+      if (e.key === 'Enter') void (this.mode === 'platform' ? this.submitPlatform() : this.submit());
     });
   }
 
   show(): void {
     this.mode = 'in';
-    this.telegramRetry = null;
-    this.telegramSuccess = null;
+    this.platformRetry = null;
+    this.platformSuccess = null;
     this.paint();
     this.root.style.display = 'flex';
     revealCard(this.card);
   }
 
-  /** Telegram never falls back to email: a failed signed exchange is retried in place. */
-  showTelegram(retry: () => Promise<boolean>, onSuccess: () => void): void {
+  /** A platform never falls back to email: a failed signed exchange is retried in place. */
+  showPlatform(retry: () => Promise<boolean>, onSuccess: () => void): void {
     this.busy = false;
-    this.mode = 'telegram';
-    this.telegramRetry = retry;
-    this.telegramSuccess = onSuccess;
+    this.mode = 'platform';
+    this.platformRetry = retry;
+    this.platformSuccess = onSuccess;
     this.paint();
     this.root.style.display = 'flex';
     revealCard(this.card);
@@ -105,15 +132,16 @@ export class AuthCard {
    * ничего не делает до кнопки, читается формой, а не выбором.
    */
   private paint(): void {
-    if (this.mode === 'telegram') {
+    if (this.mode === 'platform') {
+      const card = platformCard();
       this.card.innerHTML = `
         <h2></h2>
         <p class="sp-note"></p>
         <p class="auth-note warn"></p>
         <button type="button" data-act="go"></button>
         <button type="button" class="ghost" data-act="close"></button>`;
-      setGameText(this.card.querySelector('h2') as HTMLElement, gameMessages.telegramAuthTitle);
-      setGameText(this.card.querySelector('.sp-note') as HTMLElement, gameMessages.telegramAuthLead);
+      setGameText(this.card.querySelector('h2') as HTMLElement, card.title);
+      setGameText(this.card.querySelector('.sp-note') as HTMLElement, card.lead);
       setGameText(this.card.querySelector('[data-act="go"]') as HTMLButtonElement, gameMessages.telegramAuthRetry);
       setGameText(this.card.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.telegramAuthClose);
       return;
@@ -163,22 +191,22 @@ export class AuthCard {
     setGameText(note, gameMessages.authSent);
   }
 
-  private async submitTelegram(): Promise<void> {
-    if (this.busy || this.telegramRetry === null) return;
+  private async submitPlatform(): Promise<void> {
+    if (this.busy || this.platformRetry === null) return;
     const note = this.card.querySelector('.auth-note');
     const button = this.card.querySelector('[data-act="go"]');
-    if (note instanceof HTMLElement) setGameText(note, gameMessages.telegramAuthRetrying);
+    if (note instanceof HTMLElement) setGameText(note, platformCard().retrying);
     if (button instanceof HTMLButtonElement) button.disabled = true;
     this.busy = true;
-    const signedIn = await this.telegramRetry();
+    const signedIn = await this.platformRetry();
     this.busy = false;
     if (signedIn) {
       this.hide();
-      this.telegramSuccess?.();
+      this.platformSuccess?.();
       return;
     }
     if (button instanceof HTMLButtonElement) button.disabled = false;
-    if (note instanceof HTMLElement) setGameText(note, gameMessages.telegramAuthFailed);
+    if (note instanceof HTMLElement) setGameText(note, platformCard().failed);
     play('deny');
   }
 }

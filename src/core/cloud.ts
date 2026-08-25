@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { platformKind, telegramInitData } from './platform';
+import { platformKind, telegramInitData, vkLaunchParams } from './platform';
 import type {
   CampDecorStyle,
   CampFireStyle,
@@ -92,11 +92,40 @@ export async function cloudUser(): Promise<string | null> {
  * подпись initData и выдаёт одноразовый Supabase magic-link token: так все
  * существующие RLS и облачные таблицы продолжают работать с auth.uid().
  */
-export async function cloudTelegramSignIn(): Promise<boolean> {
+export const cloudTelegramSignIn = (): Promise<boolean> => {
   const initData = telegramInitData();
-  if (initData === null) return false;
+  return initData === null ? Promise.resolve(false) : mintSession('telegram-auth', { initData });
+};
+
+/**
+ * ВК доказал личность тем же способом и в тот же миг: параметры запуска
+ * подписаны защищённым ключом приложения, и сервер проверяет подпись
+ * ровно так же, как подпись Telegram. Дальше обмен общий — одноразовый
+ * токен Supabase, и все существующие RLS продолжают работать с auth.uid().
+ */
+export const cloudVkSignIn = (): Promise<boolean> => {
+  const launchParams = vkLaunchParams();
+  return launchParams === null ? Promise.resolve(false) : mintSession('vk-auth', { launchParams });
+};
+
+/**
+ * Вход платформой, какой бы она ни была. Веб платформенного входа не имеет
+ * вовсе — там остаётся почта, и «нет» здесь означает именно это, а не сбой.
+ */
+export const cloudPlatformSignIn = (): Promise<boolean> => {
+  const kind = platformKind();
+  return kind === 'telegram' ? cloudTelegramSignIn()
+    : kind === 'vk' ? cloudVkSignIn() : Promise.resolve(false);
+};
+
+/**
+ * Обмен доказательства платформы на сессию Supabase. Один ответ значит
+ * «эта сессия уже твоя» и не требует ничего менять; другой приносит
+ * одноразовый токен, которым сессия заводится.
+ */
+async function mintSession(fn: 'telegram-auth' | 'vk-auth', body: object): Promise<boolean> {
   try {
-    const { data, error } = await client.functions.invoke('telegram-auth', { body: { initData } });
+    const { data, error } = await client.functions.invoke(fn, { body });
     if (error === null && data?.authenticated === true) return true;
     const tokenHash: unknown = data?.tokenHash;
     if (error !== null || typeof tokenHash !== 'string' || tokenHash === '') return false;
