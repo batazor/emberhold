@@ -11127,6 +11127,11 @@ msgid "вы"
 msgstr "вы"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.joined"
+msgstr "Вы в клане «{name}»"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Вы забрали отсюда всё за три захода. Полное восстановление — через 6 часов, первый заход вернётся через два."
 msgstr "Вы забрали отсюда всё за три захода. Полное восстановление — через 6 часов, первый заход вернётся через два."
@@ -11191,6 +11196,11 @@ msgstr "Выберите уклад смотрителя"
 #: locales/game-messages.ts
 msgid "Выберите уклад хозяйства для {name}"
 msgstr "Выберите уклад хозяйства для {name}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.chooseRecipient"
+msgstr "Выберите, кому отправить приглашение"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -20793,8 +20803,23 @@ msgstr "не тот силуэт"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.clan.invite.joinFailed"
+msgstr "Не удалось вступить в клан"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.store.failed"
 msgstr "Не удалось начать покупку — проверьте вход и сеть."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.shareFailed"
+msgstr "Не удалось отправить ссылку"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.createFailed"
+msgstr "Не удалось создать приглашение — проверьте вход и сеть"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -30325,6 +30350,11 @@ msgstr "Ссылка отправлена — откройте письмо"
 #: locales/legacy-messages.ts
 msgid "Ссылка отправлена — откройте письмо"
 msgstr "Ссылка отправлена — откройте письмо"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.copied"
+msgstr "Ссылка приглашения скопирована"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

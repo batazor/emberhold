@@ -11176,6 +11176,11 @@ msgid "вы"
 msgstr "you"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.joined"
+msgstr "You joined “{name}”"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Вы забрали отсюда всё за три захода. Полное восстановление — через 6 часов, первый заход вернётся через два."
 msgstr "You've taken everything from here in three runs.\n"
@@ -11241,6 +11246,11 @@ msgstr "Choose the caretaker’s approach"
 #: locales/game-messages.ts
 msgid "Выберите уклад хозяйства для {name}"
 msgstr "Choose how {name} will run the farm"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.chooseRecipient"
+msgstr "Choose who to send the invitation to"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -20919,8 +20929,23 @@ msgstr "silhouette"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "game.clan.invite.joinFailed"
+msgstr "Could not join the clan"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.store.failed"
 msgstr "Could not start checkout — check your sign-in and connection."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.shareFailed"
+msgstr "Could not share the link"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.createFailed"
+msgstr "Could not create an invitation — check your sign-in and connection"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -30537,6 +30562,11 @@ msgstr "Link sent — check your email"
 #: locales/legacy-messages.ts
 msgid "Ссылка отправлена — откройте письмо"
 msgstr "Link sent. Open the email to continue."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "game.clan.invite.copied"
+msgstr "Invitation link copied"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

@@ -90,6 +90,32 @@ export const gameMessages = {
     'This invitation is invalid or has expired.',
   ),
   clanInviteLater: message('game.clan.invite.later', 'Не сейчас', 'Not now'),
+  clanInviteCreateFailed: message(
+    'game.clan.invite.createFailed',
+    'Не удалось создать приглашение — проверьте вход и сеть',
+    'Could not create an invitation — check your sign-in and connection',
+  ),
+  clanInviteShareFailed: message(
+    'game.clan.invite.shareFailed',
+    'Не удалось отправить ссылку',
+    'Could not share the link',
+  ),
+  clanInviteCopied: message(
+    'game.clan.invite.copied',
+    'Ссылка приглашения скопирована',
+    'Invitation link copied',
+  ),
+  clanInviteChooseRecipient: message(
+    'game.clan.invite.chooseRecipient',
+    'Выберите, кому отправить приглашение',
+    'Choose who to send the invitation to',
+  ),
+  clanInviteJoinFailed: message(
+    'game.clan.invite.joinFailed',
+    'Не удалось вступить в клан',
+    'Could not join the clan',
+  ),
+  clanInviteJoined: message('game.clan.invite.joined', 'Вы в клане «{name}»', 'You joined “{name}”'),
   clanPanelJoinReason: message(
     'game.clan.panel.joinReason',
     'Не к кому: на карте фракции мира, а они не набирают',

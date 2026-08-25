@@ -335,6 +335,7 @@ import {
 import { FARM_CROP_TEXT, FarmCropPicker } from './ui/farmCrops';
 import { FarmBuildPanel } from './ui/farmBuildPanel';
 import { gameDuration, gameMessage, gameText } from './i18n/game';
+import { gameMessages } from './i18n/gameMessages';
 import { resourceMessage } from './i18n/gameData';
 import { HeroCard } from './ui/heroCard';
 import { ReturnScreen } from './ui/returnScreen';
@@ -2921,7 +2922,7 @@ const clanPanel = new ClanPanel(app, {
     const token = await cloudClanInvite();
     if (token === null) {
       play('deny');
-      campHud.notify('Не удалось создать приглашение — проверьте вход и сеть');
+      campHud.notify(gameText(gameMessages.clanInviteCreateFailed));
       return;
     }
     const link = clanInviteLink(token);
@@ -2933,8 +2934,10 @@ const clanPanel = new ClanPanel(app, {
     );
     if (result === 'failed') {
       play('deny');
-      campHud.notify('Не удалось отправить ссылку');
-    } else campHud.notify(result === 'copied' ? 'Ссылка приглашения скопирована' : 'Выберите, кому отправить приглашение');
+      campHud.notify(gameText(gameMessages.clanInviteShareFailed));
+    } else campHud.notify(gameText(result === 'copied'
+      ? gameMessages.clanInviteCopied
+      : gameMessages.clanInviteChooseRecipient));
   },
 });
 
@@ -2951,7 +2954,7 @@ const clanInvitePanel = new ClanInvitePanel(app, {
       membership.role === 'leader',
     )) {
       play('deny');
-      campHud.notify('Не удалось вступить в клан');
+      campHud.notify(gameText(gameMessages.clanInviteJoinFailed));
       return false;
     }
     play('build');
@@ -2959,7 +2962,7 @@ const clanInvitePanel = new ClanInvitePanel(app, {
     campHud.sync(camp, clock.now(), 0);
     syncFarmUi();
     void storePanel.refresh();
-    campHud.notify(`Вы в клане «${membership.name}»`);
+    campHud.notify(gameText(gameMessages.clanInviteJoined, { name: membership.name }));
     return true;
   },
 });
