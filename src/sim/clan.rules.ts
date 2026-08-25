@@ -24,6 +24,7 @@ import {
   createClanLocation,
   ensureClanLocation,
   foundClan,
+  joinClan,
   nameBlock,
   neighboursOpen,
   placeClanBuilding,
@@ -109,6 +110,13 @@ describe('Клан: имя', () => {
   test('клановая опушка воспроизводится из имени и часа основания', () => {
     assert.deepEqual(createClanLocation('Артель Гиты', 42), createClanLocation('Артель Гиты', 42));
     assert.notDeepEqual(createClanLocation('Артель Гиты', 42), createClanLocation('Другой клан', 42));
+  });
+
+  test('приглашение ставит серверное имя, время и роль участника', () => {
+    const camp = withFolk(2);
+    assert.ok(joinClan(camp, '  Северный дозор  ', 1234));
+    assert.deepEqual(camp.clan, { name: 'Северный дозор', at: 1234, leader: false });
+    assert.equal(joinClan(camp, 'я', 1234), false);
   });
 
   test('старый клан без локации получает её при первом входе', () => {

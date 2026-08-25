@@ -346,6 +346,22 @@ export function foundClan(camp: CampState, name: string, t: number): boolean {
   return true;
 }
 
+/** Install the canonical membership returned by the invitation RPC. */
+export function joinClan(camp: CampState, name: string, t: number, leader = false): boolean {
+  const trimmed = name.trim();
+  if (trimmed.length < CLAN_NAME_MIN || trimmed.length > CLAN_NAME_MAX || !Number.isFinite(t)) return false;
+  const previous = camp.clan;
+  camp.clan = {
+    name: trimmed,
+    at: t,
+    leader,
+    // Preserve the local shared-glade snapshot for an idempotent reopen of the
+    // same clan. A genuinely different accepted clan receives its own glade.
+    ...(previous?.name === trimmed && previous.location !== undefined ? { location: previous.location } : {}),
+  };
+  return true;
+}
+
 /**
  * Что сейчас просит задание про клан. `none` — слой ещё не открыт или клан
  * уже есть; `ask` — открыт, а клана нет.

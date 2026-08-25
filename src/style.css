@@ -1361,23 +1361,23 @@ button[disabled] { opacity: 0.4; cursor: var(--cursor-blocked); }
 /* Окно спрашивает одно поле, и выглядит оно как знакомство: 16px в поле —
    не вкус, на меньшем телефон зумит страницу на фокусе и кадр уезжает
    из-под окна. */
-#clan {
+#clan, #clan-invite {
   position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   background: var(--scrim); backdrop-filter: blur(5px); padding: 18px; z-index: 60;
 }
-#clan.on { display: flex; }
-#clan .panel {
+#clan.on, #clan-invite.on { display: flex; }
+#clan .panel, #clan-invite .panel {
   width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 8px;
 }
-#clan h2 { margin: 0; font-size: 18px; }
-#clan p { margin: 0; font-size: 13px; }
+#clan h2, #clan-invite h2 { margin: 0; font-size: 18px; }
+#clan p, #clan-invite p { margin: 0; font-size: 13px; }
 #clan input { font: inherit; font-size: 16px; padding: 9px 12px; width: 100%; }
 /* Отказ красится цветом потери и пропадает вместе с причиной: пустая строка
    между полем и кнопками дёргала бы окно на каждой букве. */
-#clan .why { font-size: 12px; color: var(--bad); min-height: 15px; }
-#clan .acts { display: flex; flex-direction: column; gap: 7px; }
-#clan .acts button { width: 100%; padding: 11px; }
-#clan .acts button:disabled { opacity: 0.45; }
+#clan .why, #clan-invite .why { font-size: 12px; color: var(--bad); min-height: 15px; }
+#clan .acts, #clan-invite .acts { display: flex; flex-direction: column; gap: 7px; }
+#clan .acts button, #clan-invite .acts button { width: 100%; padding: 11px; }
+#clan .acts button:disabled, #clan-invite .acts button:disabled { opacity: 0.45; }
 #clan .sp-note { margin: 0; }
 
 #settings {

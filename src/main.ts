@@ -161,6 +161,9 @@ import { claimSupplyBox, supplyClaimSeed } from './sim/lootboxClaim';
 import { adoptRaw, load, rawSave, save, wipe } from './sim/save';
 import {
   cloudCamp,
+  cloudAcceptClanInvite,
+  cloudClanInvite,
+  cloudClanInvitePreview,
   cloudCampLikeStates,
   cloudCamps,
   cloudEnsureClan,
@@ -181,7 +184,13 @@ import {
   cloudVisits,
   cloudWipe,
 } from './core/cloud';
-import { initPlatform, platformKind } from './core/platform';
+import {
+  clanInviteLink,
+  clanInviteStartToken,
+  initPlatform,
+  platformKind,
+  shareClanInvite,
+} from './core/platform';
 import { AuthCard } from './ui/authCard';
 import { StorePanel } from './ui/storePanel';
 import { campDecorStyle, campFireStyle, clanHeraldry } from './core/cosmetics';
@@ -332,6 +341,7 @@ import { ReturnScreen } from './ui/returnScreen';
 import type { ReturnProgress } from './ui/returnScreen';
 import { StatsPanel } from './ui/statsPanel';
 import { ClanPanel } from './ui/clanPanel';
+import { ClanInvitePanel } from './ui/clanInvitePanel';
 import { ClanBuildBar } from './ui/clanBuildBar';
 import { MailButton } from './ui/mail';
 import {
@@ -345,6 +355,7 @@ import {
   clanResourceShortage,
   ensureClanLocation,
   foundClan,
+  joinClan,
   neighboursOpen,
   placeClanBuilding,
 } from './sim/clan';
@@ -948,7 +959,7 @@ const campHud = new CampHud(app, {
    * заведённый одним тапом клан назывался бы сам собой, а имя — это
    * единственное, что у него сейчас есть.
    */
-  onClan: () => clanPanel.open(),
+  onClan: () => clanPanel.open(camp.clan),
   /**
    * Задание «поставить палатку» (`sim/residents.ts`). Кнопка не ставит,
    * а вооружает: место выбирает игрок следующим тапом — тем же жестом,
@@ -2905,7 +2916,62 @@ const clanPanel = new ClanPanel(app, {
     campHud.sync(camp, clock.now(), 0);
     syncFarmUi();
   },
+  onInvite: async () => {
+    const token = await cloudClanInvite();
+    if (token === null) {
+      play('deny');
+      campHud.notify('Не удалось создать приглашение — проверьте вход и сеть');
+      return;
+    }
+    const link = clanInviteLink(token);
+    const result = await shareClanInvite(
+      link,
+      gameText(gameMessage('Вступай в мой клан «{name}» в Emberhold', 'Join my clan “{name}” in Emberhold'), {
+        name: camp.clan?.name ?? '',
+      }),
+    );
+    if (result === 'failed') {
+      play('deny');
+      campHud.notify('Не удалось отправить ссылку');
+    } else campHud.notify(result === 'copied' ? 'Ссылка приглашения скопирована' : 'Выберите, кому отправить приглашение');
+  },
 });
+
+const pendingClanInvite = clanInviteStartToken();
+let clanInviteHandled = pendingClanInvite === null;
+let clanInviteOpening = false;
+const clanInvitePanel = new ClanInvitePanel(app, {
+  onAccept: async (token) => {
+    const membership = await cloudAcceptClanInvite(token);
+    if (membership === null || !joinClan(
+      camp,
+      membership.name,
+      membership.createdAt,
+      membership.role === 'leader',
+    )) {
+      play('deny');
+      campHud.notify('Не удалось вступить в клан');
+      return false;
+    }
+    play('build');
+    persist();
+    campHud.sync(camp, clock.now(), 0);
+    syncFarmUi();
+    void storePanel.refresh();
+    campHud.notify(`Вы в клане «${membership.name}»`);
+    return true;
+  },
+});
+
+async function openPendingClanInvite(): Promise<void> {
+  if (clanInviteHandled || clanInviteOpening || !hasSession || pendingClanInvite === null) return;
+  clanInviteOpening = true;
+  const preview = await cloudClanInvitePreview(pendingClanInvite);
+  clanInviteOpening = false;
+  clanInviteHandled = true;
+  if (preview === null) clanInvitePanel.invalid();
+  else clanInvitePanel.open(pendingClanInvite, preview);
+}
 
 const clanBuildBar = new ClanBuildBar(app, {
   onSelect: (kind) => selectClanBuilding(kind),
@@ -2949,6 +3015,7 @@ void platformAuth.then(() => cloudUser()).then((identity) => {
   // иначе один игрок с телефона и с ноутбука считается двумя.
   if (identity !== null) analyticsIdentify(identity);
   if (identity !== null) void syncLanguage();
+  if (identity !== null) void openPendingClanInvite();
 });
 
 /**
@@ -2994,6 +3061,7 @@ cloudOnSignIn(() => {
   });
   void syncLanguage();
   void syncCloud();
+  void openPendingClanInvite();
 });
 
 function buy(id: ConsumableId): boolean {

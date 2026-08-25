@@ -16,10 +16,11 @@ interface TelegramUser {
 
 interface TelegramWebApp {
   readonly initData: string;
-  readonly initDataUnsafe?: { readonly user?: TelegramUser };
+  readonly initDataUnsafe?: { readonly user?: TelegramUser; readonly start_param?: string };
   ready(): void;
   expand(): void;
   disableVerticalSwipes?(): void;
+  openTelegramLink?(url: string): void;
   openInvoice(url: string, callback?: (status: 'paid' | 'cancelled' | 'failed' | 'pending') => void): void;
   readonly HapticFeedback?: { impactOccurred(style: 'light' | 'medium' | 'heavy'): void };
 }
@@ -37,6 +38,48 @@ const telegram = (): TelegramWebApp | null => {
 
 export const platformKind = (): PlatformKind => telegram() === null ? 'web' : 'telegram';
 export const telegramInitData = (): string | null => telegram()?.initData ?? null;
+
+/**
+ * Main Mini App deep links expose the payload twice. Prefer signed initData,
+ * but keep the documented query fallback for older Telegram clients.
+ */
+export function platformStartParam(): string | null {
+  const fromInitData = telegram()?.initDataUnsafe?.start_param;
+  const raw = fromInitData ?? new URLSearchParams(location.search).get('tgWebAppStartParam');
+  return raw !== null && /^[A-Za-z0-9_-]{1,512}$/.test(raw) ? raw : null;
+}
+
+export const clanInviteStartToken = (): string | null => {
+  const match = platformStartParam()?.match(
+    /^clan_([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i,
+  );
+  return match?.[1]?.toLowerCase() ?? null;
+};
+
+export const clanInviteLink = (token: string): string =>
+  `https://t.me/emberhold_game_bot?startapp=clan_${encodeURIComponent(token)}`;
+
+export type ShareResult = 'shared' | 'copied' | 'failed';
+
+/** Telegram gets its native chat picker; browsers use the OS share sheet. */
+export async function shareClanInvite(link: string, text: string): Promise<ShareResult> {
+  const app = telegram();
+  if (app?.openTelegramLink !== undefined) {
+    app.HapticFeedback?.impactOccurred('light');
+    app.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+    return 'shared';
+  }
+  try {
+    if (navigator.share !== undefined) {
+      await navigator.share({ title: 'Emberhold', text, url: link });
+      return 'shared';
+    }
+    await navigator.clipboard.writeText(link);
+    return 'copied';
+  } catch {
+    return 'failed';
+  }
+}
 
 export function initPlatform(): void {
   const app = telegram();
@@ -63,4 +106,3 @@ export async function openPlatformCheckout(url: string): Promise<CheckoutResult>
     app.openInvoice(url, resolve);
   });
 }
-

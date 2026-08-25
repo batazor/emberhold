@@ -29,6 +29,8 @@ const NAME_MESSAGES: Record<Exclude<NameBlock, 'ok'>, () => readonly [
 export interface ClanPanelCallbacks {
   /** Игрок назвал клан. Панель уже проверила имя — лагерь проверит ещё раз. */
   onFound(name: string): void;
+  /** Создать серверную ссылку и открыть платформенный экран отправки. */
+  onInvite(): Promise<void>;
 }
 
 export class ClanPanel {
@@ -36,6 +38,11 @@ export class ClanPanel {
   private readonly input: HTMLInputElement;
   private readonly found: HTMLButtonElement;
   private readonly why: HTMLElement;
+  private readonly title: HTMLElement;
+  private readonly lead: HTMLElement;
+  private readonly join: HTMLButtonElement;
+  private readonly reason: HTMLElement;
+  private readonly invite: HTMLButtonElement;
 
   constructor(parent: HTMLElement, private readonly cb: ClanPanelCallbacks) {
     this.overlay = document.createElement('div');
@@ -49,6 +56,7 @@ export class ClanPanel {
         <div class="why" id="clan-why"></div>
         <div class="acts">
           <button id="clan-found"></button>
+          <button data-clan-invite hidden></button>
           <button class="ghost" data-clan-join disabled></button>
           <button class="ghost" data-close></button>
         </div>
@@ -58,34 +66,53 @@ export class ClanPanel {
     this.input = this.overlay.querySelector('#clan-name') as HTMLInputElement;
     this.found = this.overlay.querySelector('#clan-found') as HTMLButtonElement;
     this.why = this.overlay.querySelector('#clan-why') as HTMLElement;
-    setGameText(this.overlay.querySelector('h2') as HTMLElement, gameMessages.clanPanelTitle);
-    setGameText(this.overlay.querySelector('[data-clan-lead]') as HTMLElement, gameMessages.clanPanelLead);
+    this.title = this.overlay.querySelector('h2') as HTMLElement;
+    this.lead = this.overlay.querySelector('[data-clan-lead]') as HTMLElement;
+    this.join = this.overlay.querySelector('[data-clan-join]') as HTMLButtonElement;
+    this.reason = this.overlay.querySelector('[data-clan-reason]') as HTMLElement;
+    this.invite = this.overlay.querySelector('[data-clan-invite]') as HTMLButtonElement;
+    setGameText(this.title, gameMessages.clanPanelTitle);
+    setGameText(this.lead, gameMessages.clanPanelLead);
     setGameAttribute(this.input, 'placeholder', gameMessages.clanPanelName);
     setGameText(this.found, gameMessages.clanPanelFound);
-    const join = this.overlay.querySelector('[data-clan-join]') as HTMLButtonElement;
-    setGameText(join, gameMessages.clanPanelJoin);
-    setGameAttribute(join, 'title', gameMessages.clanPanelJoinReason);
+    setGameText(this.join, gameMessages.clanPanelJoin);
+    setGameAttribute(this.join, 'title', gameMessages.clanPanelJoinReason);
+    setGameText(this.invite, gameMessages.clanPanelInvite);
     setGameText(this.overlay.querySelector('[data-close]') as HTMLButtonElement, gameMessages.clanPanelClose);
-    setGameText(this.overlay.querySelector('[data-clan-reason]') as HTMLElement, gameMessages.clanPanelJoinReason);
+    setGameText(this.reason, gameMessages.clanPanelJoinReason);
 
     this.input.addEventListener('input', () => this.sync());
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.submit();
     });
     this.found.addEventListener('click', () => this.submit());
+    this.invite.addEventListener('click', () => {
+      this.invite.disabled = true;
+      void this.cb.onInvite().finally(() => { this.invite.disabled = false; });
+    });
     this.overlay.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target === this.overlay || target.hasAttribute('data-close')) this.close();
     });
   }
 
-  open(): void {
+  open(clan: { readonly name: string } | null = null): void {
+    const exists = clan !== null;
+    setGameText(this.title, exists ? gameMessages.clanPanelExistingTitle : gameMessages.clanPanelTitle,
+      exists ? { name: clan.name } : undefined);
+    setGameText(this.lead, exists ? gameMessages.clanPanelInviteLead : gameMessages.clanPanelLead);
+    this.input.hidden = exists;
+    this.why.hidden = exists;
+    this.found.hidden = exists;
+    this.join.hidden = exists;
+    this.reason.hidden = exists;
+    this.invite.hidden = !exists;
     this.input.value = '';
     this.sync();
     this.overlay.classList.add('on');
     // Клавиатура поднимается сама: окно спрашивает одно поле, и лишний тап
     // по нему — это тап ни за чем.
-    this.input.focus();
+    if (!exists) this.input.focus();
   }
 
   close(): void {

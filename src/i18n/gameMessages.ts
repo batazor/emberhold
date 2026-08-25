@@ -64,6 +64,32 @@ export const gameMessages = {
   clanPanelFound: message('game.clan.panel.found', 'Основать', 'Found clan'),
   clanPanelJoin: message('game.clan.panel.join', 'Вступить в чужой', 'Join another clan'),
   clanPanelClose: message('game.clan.panel.close', 'Закрыть', 'Close'),
+  clanPanelExistingTitle: message('game.clan.panel.existingTitle', 'Клан «{name}»', 'Clan “{name}”'),
+  clanPanelInviteLead: message(
+    'game.clan.panel.inviteLead',
+    'Позовите друга: ссылка откроет игру и покажет ваш клан.',
+    'Invite a friend: the link opens the game and shows your clan.',
+  ),
+  clanPanelInvite: message('game.clan.panel.invite', 'Пригласить в клан', 'Invite to clan'),
+  clanInviteTitle: message('game.clan.invite.title', 'Приглашение в клан', 'Clan invitation'),
+  clanInviteSummary: message(
+    'game.clan.invite.summary',
+    '«{name}» · участников: {members}',
+    '“{name}” · members: {members}',
+  ),
+  clanInviteAccept: message('game.clan.invite.accept', 'Вступить', 'Join'),
+  clanInviteAcceptAgain: message('game.clan.invite.acceptAgain', 'Открыть свой клан', 'Open your clan'),
+  clanInviteConflict: message(
+    'game.clan.invite.conflict',
+    'Вы уже состоите в другом клане.',
+    'You already belong to another clan.',
+  ),
+  clanInviteInvalid: message(
+    'game.clan.invite.invalid',
+    'Приглашение недействительно или уже истекло.',
+    'This invitation is invalid or has expired.',
+  ),
+  clanInviteLater: message('game.clan.invite.later', 'Не сейчас', 'Not now'),
   clanPanelJoinReason: message(
     'game.clan.panel.joinReason',
     'Не к кому: на карте фракции мира, а они не набирают',

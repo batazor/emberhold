@@ -512,6 +512,67 @@ export async function cloudEnsureClan(name: string): Promise<string | null> {
   }
 }
 
+export interface CloudClanInvitePreview {
+  readonly clanId: string;
+  readonly name: string;
+  readonly memberCount: number;
+  readonly alreadyMember: boolean;
+  readonly canJoin: boolean;
+}
+
+export interface CloudClanMembership {
+  readonly status: 'joined' | 'already_joined';
+  readonly clanId: string;
+  readonly name: string;
+  readonly role: 'leader' | 'officer' | 'member';
+  readonly createdAt: number;
+}
+
+const record = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+
+/** Return the clan's active opaque invitation token. */
+export async function cloudClanInvite(): Promise<string | null> {
+  try {
+    const { data, error } = await client.rpc('ensure_clan_invite');
+    const row = record(data);
+    return error === null && typeof row?.token === 'string' ? row.token : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve only the confirmation-card fields; the token remains authoritative. */
+export async function cloudClanInvitePreview(token: string): Promise<CloudClanInvitePreview | null> {
+  try {
+    const { data, error } = await client.rpc('preview_clan_invite', { p_token: token });
+    const row = record(data);
+    if (error !== null || row === null || typeof row.clanId !== 'string' || typeof row.name !== 'string' ||
+        typeof row.memberCount !== 'number' || typeof row.alreadyMember !== 'boolean' ||
+        typeof row.canJoin !== 'boolean') return null;
+    return row as unknown as CloudClanInvitePreview;
+  } catch {
+    return null;
+  }
+}
+
+/** Atomically join the invited clan, or return null for an invalid/conflicting link. */
+export async function cloudAcceptClanInvite(token: string): Promise<CloudClanMembership | null> {
+  try {
+    const { data, error } = await client.rpc('accept_clan_invite', { p_token: token });
+    const row = record(data);
+    if (error !== null || row === null || (row.status !== 'joined' && row.status !== 'already_joined') ||
+        typeof row.clanId !== 'string' || typeof row.name !== 'string' ||
+        (row.role !== 'leader' && row.role !== 'officer' && row.role !== 'member') ||
+        typeof row.createdAt !== 'number') return null;
+    return row as unknown as CloudClanMembership;
+  } catch {
+    return null;
+  }
+}
+
 /** «Новая игра» стирает и облачные следы — иначе сейв воскреснет при входе. */
 export async function cloudWipe(): Promise<void> {
   const uid = await userId();
