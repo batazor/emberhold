@@ -58,6 +58,7 @@
   "dependencies": {
     "@lingui/core": "^6.6.0",
     "@supabase/supabase-js": "^2.112.3",
+    "@vkontakte/vk-bridge": "^3.0.2",
     "posthog-js": "^1.418.10",
     "three": "^0.185.1"
   },
