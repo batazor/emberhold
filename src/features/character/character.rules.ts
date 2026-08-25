@@ -31,6 +31,17 @@ import {
 import type { PackState } from './items';
 import { raidSummary } from './summary';
 import { emptyGear, gearMods } from '../../sim/gear';
+import { storageCapacity } from '../../sim/camp';
+import { visionRadius } from '../../sim/config';
+import { DEFAULT_LOADOUT } from '../../sim/heroes';
+
+const RAID_CONTEXT = {
+  loadout: DEFAULT_LOADOUT,
+  storageLevel: 2,
+  capacityBonus: 0,
+  visionBonus: 0,
+  quiverBonus: 0,
+};
 
 /** Все вещи раскладки — надетые и лежащие: их число обязано быть постоянным. */
 function everything(pack: PackState): string[] {
@@ -143,11 +154,11 @@ describe('вещи страницы персонажа', () => {
   test('сводка вылазки не переписывает формулы игры', () => {
     const gear = { ...emptyGear(), weapon: 3, armor: 2, torch: 2, bag: 1, ring: 1 };
     const mods = gearMods(gear, 'torch');
-    const rows = raidSummary(gear, 'torch', false).rows;
+    const rows = raidSummary(RAID_CONTEXT, gear, 'torch').rows;
     const value = (name: string): string | undefined => rows.find((r) => r.name === name)?.now;
-    assert.equal(value('Атака'), `${mods.attack}`, 'атака в сводке не та, что считает игра');
-    assert.equal(value('Обзор'), `+${mods.vision}`, 'обзор в сводке не тот, что считает игра');
-    assert.equal(value('Рюкзак'), `${mods.capacity}`, 'рюкзак в сводке не тот, что считает игра');
+    assert.equal(value('Атака'), `${DEFAULT_LOADOUT.attack + mods.attack}`, 'атака в сводке не та, что считает игра');
+    assert.equal(value('Обзор'), `${visionRadius(DEFAULT_LOADOUT.knowledge, false, true) + mods.vision}`, 'обзор в сводке не тот, что считает игра');
+    assert.equal(value('Рюкзак'), `${Math.floor(storageCapacity(2) * DEFAULT_LOADOUT.bagMul) + mods.capacity}`, 'рюкзак в сводке не тот, что считает игра');
   });
 
   test('цена левой руки видна до того, как рука переложена', () => {
@@ -155,7 +166,7 @@ describe('вещи страницы персонажа', () => {
     // Со фонарём в руке строка «Защита» обязана показывать, чем станет
     // защита со щитом, и наоборот.
     const gear = { ...emptyGear(), torch: 3 };
-    const withTorch = raidSummary(gear, 'torch', false).rows;
+    const withTorch = raidSummary(RAID_CONTEXT, gear, 'torch').rows;
     const defense = withTorch.find((r) => r.name === 'Защита');
     const vision = withTorch.find((r) => r.name === 'Обзор');
     assert.notEqual(defense?.other, null, 'щит не обещает защиты — выбора не видно');
@@ -163,7 +174,7 @@ describe('вещи страницы персонажа', () => {
 
     // А там, где рука ничего не меняет, третьей колонки нет: «→ 0» рядом
     // с нулём — шум, а не выбор.
-    const bare = raidSummary(emptyGear(), 'torch', false).rows;
+    const bare = raidSummary(RAID_CONTEXT, emptyGear(), 'torch').rows;
     assert.deepEqual(
       bare.filter((r) => r.other !== null).map((r) => r.name),
       [],
@@ -173,8 +184,12 @@ describe('вещи страницы персонажа', () => {
 
   test('колчан показывается только стрелку', () => {
     const gear = { ...emptyGear(), weapon: 2 };
-    const near = raidSummary(gear, 'torch', false).rows.map((r) => r.name);
-    const far = raidSummary(gear, 'torch', true).rows.map((r) => r.name);
+    const near = raidSummary(RAID_CONTEXT, gear, 'torch').rows.map((r) => r.name);
+    const far = raidSummary(
+      { ...RAID_CONTEXT, loadout: { ...DEFAULT_LOADOUT, ranged: true } },
+      gear,
+      'torch',
+    ).rows.map((r) => r.name);
     assert.ok(!near.includes('Колчан'), 'ближнику показали колчан');
     assert.ok(far.includes('Колчан'), 'стрелку колчан не показали');
   });

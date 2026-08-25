@@ -3,6 +3,7 @@ import {
   BUILDINGS,
   MAX_LEVEL,
   TIER_KITCHEN_GATE,
+  buildingMaxLevel,
   isUnlocked,
   tierBlock,
 } from '../sim/camp';
@@ -110,6 +111,86 @@ const bar = (share: number, kind = ''): string =>
   `<div class="bar"><i${kind === '' ? '' : ` class="${kind}"`} style="width:${Math.round(
     Math.max(0, Math.min(1, share)) * 100,
   )}%"></i></div>`;
+
+const clampShare = (value: number): number => Math.max(0, Math.min(1, value));
+
+/** Линия, а не ряд столбиков: так последние походы читаются как движение. */
+const lootChart = (values: readonly number[]): string => {
+  if (values.length === 0) {
+    return '<div class="sp-chart-empty"><i></i><span>Первый поход<br>начнёт график</span></div>';
+  }
+  const width = 280;
+  const height = 78;
+  const left = 8;
+  const top = 9;
+  const bottom = 66;
+  const high = Math.max(1, ...values);
+  const x = (index: number): number => values.length === 1
+    ? width / 2
+    : left + (index / (values.length - 1)) * (width - left * 2);
+  const y = (value: number): number => bottom - (value / high) * (bottom - top);
+  const points = values.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
+  const firstX = x(0).toFixed(1);
+  const lastX = x(values.length - 1).toFixed(1);
+  const area = `${firstX},${bottom} ${points} ${lastX},${bottom}`;
+
+  return `<svg class="sp-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Добыча в последних ${values.length} вылазках">
+    <line x1="${left}" y1="${bottom}" x2="${width - left}" y2="${bottom}"></line>
+    <line x1="${left}" y1="${Math.round((top + bottom) / 2)}" x2="${width - left}" y2="${Math.round((top + bottom) / 2)}"></line>
+    <polygon points="${area}"></polygon>
+    <polyline points="${points}"></polyline>
+    ${values.map((value, index) => `<circle cx="${x(index).toFixed(1)}" cy="${y(value).toFixed(1)}" r="3"><title>Поход ${index + 1}: ${value}</title></circle>`).join('')}
+  </svg>`;
+};
+
+const depthChart = (share: number, hasRaids: boolean): string => {
+  const value = clampShare(share);
+  const percent = Math.round(value * 100);
+  return `<div class="sp-depth-chart">
+    <div class="sp-ring" role="img" aria-label="Пройдено в среднем ${percent} процентов маршрута">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="sp-ring-track" cx="50" cy="50" r="40" pathLength="100"></circle>
+        <circle class="sp-ring-value" cx="50" cy="50" r="40" pathLength="100" stroke-dasharray="${percent} 100"></circle>
+      </svg>
+      <b>${hasRaids ? `${percent}%` : '—'}</b><small>маршрута</small>
+    </div>
+    <div class="sp-route">
+      <div class="sp-route-line" aria-hidden="true"><i style="width:${percent}%"></i>${[0, 25, 50, 75, 100]
+        .map((mark) => `<s class="${percent >= mark && hasRaids ? 'on' : ''}" style="left:${mark}%"></s>`)
+        .join('')}</div>
+      <div class="row sp-route-labels"><span>Выход</span><span>Середина</span><span>Дно</span></div>
+      <p>${hasRaids ? (percent >= 50 ? 'Уверенно держите глубину' : 'Разведан первый отрезок пути') : 'Завершите вылазку, чтобы увидеть маршрут'}</p>
+    </div>
+  </div>`;
+};
+
+const campChart = (camp: CampState): string => {
+  const levels = BUILDING_ORDER.reduce((sum, id) => sum + camp.levels[id], 0);
+  const possible = BUILDING_ORDER.reduce((sum, id) => sum + buildingMaxLevel(id), 0);
+  return `<div class="sp-build-chart" role="img" aria-label="Уровни зданий лагеря">
+    ${BUILDING_ORDER.map((id) => {
+      const level = camp.levels[id];
+      const max = buildingMaxLevel(id);
+      return `<span title="${html(BUILDINGS[id].name)}: уровень ${level} из ${max}">
+        <i><b style="height:${Math.round((level / max) * 100)}%"></b></i>
+        <small>${html(BUILDINGS[id].name.slice(0, 1))}</small>
+      </span>`;
+    }).join('')}
+    <em>${levels}<small> / ${possible} уровней</small></em>
+  </div>`;
+};
+
+const offerChart = (share: number, returns: number): string => {
+  const percent = Math.round(clampShare(share) * 100);
+  const marker = returns === 0 ? 0 : Math.max(1, Math.min(99, percent));
+  return `<div class="sp-bullet-chart" role="img" aria-label="Покупка доступна в ${percent} процентах возвращений, целевой диапазон от 60 до 80 процентов">
+    <div class="sp-bullet-track">
+      <span class="sp-bullet-goal"></span>
+      ${returns === 0 ? '' : `<i style="left:${marker}%"><b>${percent}%</b></i>`}
+    </div>
+    <div class="row sp-bullet-labels"><span>0</span><strong>цель 60–80%</strong><span>100%</span></div>
+  </div>`;
+};
 
 const highestVisitedTier = (camp: CampState): Tier => {
   let best: Tier = 0;
@@ -225,47 +306,40 @@ export class StatsPanel {
     const list = events();
     const s = summarize(list);
     const trend = raidTrend(list);
-    const max = Math.max(1, ...trend.values);
-    const trendText = trend.change === null
-      ? 'Нужно ещё несколько вылазок для сравнения'
+    const trendText = s.raids === 0
+      ? 'История появится после первого похода'
+      : trend.change === null
+      ? 'Нужно 6+ походов для сравнения'
       : `${trend.change >= 0 ? '↗' : '↘'} ${trend.change >= 0 ? '+' : ''}${pct(trend.change)} за последние 5`;
     const built = BUILDING_ORDER.filter((id) => camp.levels[id] > 0).length;
-    const buyGoal = s.raids === 0
-      ? 'Появится после первого возвращения'
+    const returns = list.filter((event) => event.t === 'return_screen').length;
+    const buyGoal = returns === 0
+      ? 'Нет завершённых возвращений'
       : s.buyOfferRate >= 0.6 && s.buyOfferRate <= 0.8
         ? 'Цель 60–80% достигнута'
         : 'Ориентир — 60–80%';
-    const spark = trend.values.length === 0
-      ? '<p class="sp-note">Ещё ни одной завершённой вылазки</p>'
-      : `<div class="sp-spark" aria-label="Добыча последних вылазок">${trend.values
-          .map((value) => `<i style="height:${Math.max(12, Math.round((value / max) * 100))}%"></i>`)
-          .join('')}</div>`;
 
     return `
       <div class="row sp-caption"><strong>Ваш прогресс</strong><span>${s.raids} вылазок</span></div>
       <div class="sp-grid">
         <article class="card sp-card">
-          <span class="lbl">Вынесено за вылазку</span>
-          <b class="sp-value">${s.avgCarried.toFixed(1)} <small>ресурса</small></b>
-          <span class="sp-trend">${trendText}</span>${spark}
+          <header class="sp-card-head"><span class="lbl">Добыча за вылазку</span><b>${s.raids === 0 ? '—' : s.avgCarried.toFixed(1)}<small> в среднем</small></b></header>
+          ${lootChart(trend.values)}
+          <footer><span class="sp-trend">${trendText}</span><small>${trend.values.length === 0 ? 'нет данных' : `последние ${trend.values.length}`}</small></footer>
         </article>
         <article class="card sp-card">
-          <span class="lbl">Средняя глубина</span>
-          <b class="sp-value">${pct(s.avgDepthShare)}</b>
-          ${bar(s.avgDepthShare, s.avgDepthShare >= 0.5 ? 'good' : 'warn')}
-          <span class="row sp-scale"><small>Выход</small><small>Дно</small></span>
+          <header class="sp-card-head"><span class="lbl">Средняя глубина</span><small>${s.raids} походов</small></header>
+          ${depthChart(s.avgDepthShare, s.raids > 0)}
         </article>
         <article class="card sp-card">
-          <span class="lbl">Развитие лагеря</span>
-          <b class="sp-value">${built} <small>из ${BUILDING_ORDER.length} зданий</small></b>
-          ${bar(built / BUILDING_ORDER.length)}
-          <span class="sp-trend">Следом: ${html(nextBuilding(camp))}</span>
+          <header class="sp-card-head"><span class="lbl">Развитие лагеря</span><b>${built}<small> / ${BUILDING_ORDER.length} зданий</small></b></header>
+          ${campChart(camp)}
+          <footer><span class="sp-trend">Следом: ${html(nextBuilding(camp))}</span></footer>
         </article>
         <article class="card sp-card">
-          <span class="lbl">Возвраты с покупкой</span>
-          <b class="sp-value">${pct(s.buyOfferRate)}</b>
-          ${bar(s.buyOfferRate, s.buyOfferRate >= 0.6 && s.buyOfferRate <= 0.8 ? 'good' : 'warn')}
-          <span class="sp-trend">${buyGoal}</span>
+          <header class="sp-card-head"><span class="lbl">Покупка после похода</span><b>${returns === 0 ? '—' : pct(s.buyOfferRate)}<small> доступно</small></b></header>
+          ${offerChart(s.buyOfferRate, returns)}
+          <footer><span class="sp-trend">${buyGoal}</span><small>${returns} возвращений</small></footer>
         </article>
       </div>`;
   }

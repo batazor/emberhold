@@ -24,6 +24,7 @@ import {
 import { GEAR, GEAR_COST, GEAR_ORDER, OFFHAND, OFFHAND_ORDER, gearItemLine, gearLine } from '../sim/gear';
 import type { GearSlot, Offhand } from '../sim/gear';
 import {
+  buyBlock,
   CONSUMABLES,
   CONSUMABLE_ORDER,
   CONSUMABLE_SLOTS,
@@ -191,6 +192,21 @@ const BUILDING_GLYPH: Record<BuildingId, string> = {
   archive: '<path d="M4 3h14a2 2 0 0 1 2 2v15H6a2 2 0 0 1-2-2zm3 4h10V5H7zm0 4h10V9H7zm0 4h7v-2H7z"/>',
 };
 
+type SupplyGlyph = ConsumableId | 'loadout' | 'rule' | 'quiver' | 'offhand';
+
+const SUPPLY_GLYPH: Record<SupplyGlyph, string> = {
+  ration: '<path d="M7 5h10l2 4-2 10H7L5 9zM8 9h8M9 13h6"/><path d="M10 5V3h4v2"/>',
+  smoke: '<path d="M8 9h8l2 3-2 8H8l-2-8zM10 9V6h4v3"/><path d="M12 6c-2-2 2-2 0-4M15 7c3-2 0-3 2-5"/>',
+  bandage: '<path d="M7 5h10a3 3 0 0 1 0 6H7a3 3 0 0 1 0-6zm0 8h10a3 3 0 0 1 0 6H7a3 3 0 0 1 0-6z"/><path d="M10 5v6m4 2v6"/>',
+  loadout: '<path d="M7 5h10l2 5-2 10H7L5 10zM9 5V3h6v2"/><path d="M9 11h6M10 15h4"/>',
+  rule: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',
+  quiver: '<path d="M8 6h8l-1 15H9zM7 6h10"/><path d="M10 6 8 2m4 4V2m2 4 2-4"/>',
+  offhand: '<path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M12 7v9M8 11h8"/>',
+};
+
+const supplyGlyph = (kind: SupplyGlyph): string =>
+  `<svg class="supply-icon" viewBox="0 0 24 24" aria-hidden="true">${SUPPLY_GLYPH[kind]}</svg>`;
+
 const WALL_WORK_MESSAGE: Record<Exclude<WallTool, 'снос'>, GameMessage> = {
   'стена': gameMessage('Стена · строится', 'Wall · building'),
   'ограда': gameMessage('Ограда · строится', 'Fence · building'),
@@ -205,6 +221,15 @@ interface CostChip {
   readonly root: HTMLElement;
   readonly have: HTMLElement;
   readonly need: HTMLElement;
+}
+
+interface SupplyCard {
+  readonly button: HTMLButtonElement;
+  readonly name: HTMLElement;
+  readonly trigger: HTMLElement;
+  readonly effect: HTMLElement;
+  readonly price: HTMLElement;
+  readonly action: HTMLElement;
 }
 
 interface BuildingCard {
@@ -308,7 +333,10 @@ export class CampHud {
   /** Отряд, отданный лагерю снаружи (§26): карте он нужен, чтобы знать,
    *  есть ли кого отправить. */
   private roster: Roster | null = null;
-  private readonly shopButtons = new Map<ConsumableId, HTMLButtonElement>();
+  private readonly shopCards = new Map<ConsumableId, SupplyCard>();
+  private supplyCount!: HTMLElement;
+  private supplyFill!: HTMLElement;
+  private supplyStatus!: HTMLElement;
   private readonly banner: HTMLElement;
   private readonly task: HTMLElement;
   private readonly taskFace: HTMLElement;
@@ -323,6 +351,7 @@ export class CampHud {
   private storyTask: string | null = null;
 
   private readonly sheet: HTMLElement;
+  private readonly sheetKicker: HTMLElement;
   private readonly sheetTitle: HTMLElement;
   private readonly sheetClose: HTMLButtonElement;
   private readonly sections = new Map<string, HTMLElement>();
@@ -347,6 +376,9 @@ export class CampHud {
   private readonly res: HTMLElement;
   private slots!: HTMLElement;
   private quiver!: HTMLButtonElement;
+  private quiverValue!: HTMLElement;
+  private quiverNote!: HTMLElement;
+  private quiverCost!: HTMLElement;
   private offhand!: HTMLElement;
   private readonly offhandButtons = new Map<Offhand, HTMLButtonElement>();
   /**
@@ -446,12 +478,16 @@ export class CampHud {
     this.sheet.className = 'panel sheet';
     const head = document.createElement('div');
     head.className = 'row mid sheet-head';
+    const heading = document.createElement('span');
+    this.sheetKicker = document.createElement('small');
+    this.sheetKicker.style.display = 'none';
     this.sheetTitle = document.createElement('b');
+    heading.append(this.sheetKicker, this.sheetTitle);
     this.sheetClose = document.createElement('button');
     this.sheetClose.className = 'ghost sheet-x';
     setGameText(this.sheetClose, gameMessage('Закрыть', 'Close'));
     this.sheetClose.addEventListener('click', () => this.close());
-    head.append(this.sheetTitle, this.sheetClose);
+    head.append(heading, this.sheetClose);
     this.sheet.appendChild(head);
 
     for (const id of BUILDING_ORDER) {
@@ -565,20 +601,99 @@ export class CampHud {
       this.close();
     });
 
-    // §21: строка, а не магазин. Отдельный экран превратил бы лагерь
-    // в витрину, а туда возвращаются смотреть на выросшие постройки.
+    // §21: подготовка к походу, а не магазин. Карточка показывает сначала
+    // два занятых места и правила автосрабатывания, затем сами предметы:
+    // игрок собирает набор, а не рассматривает витрину цен.
     const shop = document.createElement('div');
     shop.className = 'sec shop';
+
+    const overview = document.createElement('div');
+    overview.className = 'supply-overview';
+    const loadout = document.createElement('section');
+    loadout.className = 'card supply-summary supply-loadout';
+    loadout.innerHTML = `<span class="supply-summary-icon">${supplyGlyph('loadout')}</span>`;
+    const loadoutCopy = document.createElement('span');
+    loadoutCopy.className = 'supply-summary-copy';
+    const loadoutLabel = document.createElement('small');
+    setGameText(loadoutLabel, gameMessage('Набор в поход', 'Expedition loadout'));
+    this.supplyCount = document.createElement('strong');
+    loadoutCopy.append(loadoutLabel, this.supplyCount);
+    const loadoutTrack = document.createElement('span');
+    loadoutTrack.className = 'supply-track';
+    this.supplyFill = document.createElement('i');
+    loadoutTrack.append(this.supplyFill);
+    this.supplyStatus = document.createElement('small');
+    loadout.append(loadoutCopy, loadoutTrack, this.supplyStatus);
+
+    const makeRule = (icon: SupplyGlyph, title: GameMessage, copy: GameMessage): HTMLElement => {
+      const rule = document.createElement('section');
+      rule.className = 'card supply-rule';
+      rule.innerHTML = `<span class="supply-summary-icon">${supplyGlyph(icon)}</span>`;
+      const words = document.createElement('span');
+      const strong = document.createElement('b');
+      const small = document.createElement('small');
+      setGameText(strong, title);
+      setGameText(small, copy);
+      words.append(strong, small);
+      rule.append(words);
+      return rule;
+    };
+    overview.append(
+      loadout,
+      makeRule('rule', gameMessage('Срабатывают сами', 'Automatic use'), gameMessage('Предмет сам выберет нужный момент', 'Each item waits for the right moment')),
+      makeRule('loadout', gameMessage('На одну вылазку', 'One expedition'), gameMessage('Перед выходом набор можно вернуть', 'The loadout can be returned before departure')),
+    );
+    shop.append(overview);
+
+    const itemHead = document.createElement('div');
+    itemHead.className = 'row supply-section-head';
+    const itemTitle = document.createElement('b');
+    const itemNote = document.createElement('small');
+    setGameText(itemTitle, gameMessage('Походные предметы', 'Expedition items'));
+    setGameText(itemNote, gameMessage('Выберите не больше двух', 'Choose up to two'));
+    itemHead.append(itemTitle, itemNote);
+    shop.append(itemHead);
+
+    const items = document.createElement('div');
+    items.className = 'supply-items';
     for (const id of CONSUMABLE_ORDER) {
       const b = document.createElement('button');
+      b.className = 'card supply-item';
       b.dataset['buy'] = id;
       b.addEventListener('click', () => this.cb.onBuyConsumable(id));
-      shop.appendChild(b);
-      this.shopButtons.set(id, b);
+      const icon = document.createElement('span');
+      icon.className = 'supply-item-icon';
+      icon.innerHTML = supplyGlyph(id);
+      const copy = document.createElement('span');
+      copy.className = 'supply-item-copy';
+      const name = document.createElement('b');
+      const trigger = document.createElement('small');
+      const effect = document.createElement('strong');
+      copy.append(name, trigger, effect);
+      const foot = document.createElement('span');
+      foot.className = 'supply-item-foot';
+      const price = document.createElement('small');
+      const action = document.createElement('b');
+      foot.append(price, action);
+      b.append(icon, copy, foot);
+      items.appendChild(b);
+      this.shopCards.set(id, { button: b, name, trigger, effect, price, action });
     }
+    shop.append(items);
+
+    const picked = document.createElement('section');
+    picked.className = 'card supply-picked';
+    const pickedHead = document.createElement('div');
+    pickedHead.className = 'row';
+    const pickedTitle = document.createElement('b');
+    const pickedNote = document.createElement('small');
+    setGameText(pickedTitle, gameMessage('Взято с собой', 'Packed'));
+    setGameText(pickedNote, gameMessage('Нажмите предмет, чтобы вернуть', 'Select an item to return it'));
+    pickedHead.append(pickedTitle, pickedNote);
     this.slots = document.createElement('div');
-    this.slots.className = 'slots';
-    shop.appendChild(this.slots);
+    this.slots.className = 'slots supply-slots';
+    picked.append(pickedHead, this.slots);
+    shop.appendChild(picked);
 
     /**
      * §14.3 и §14.2 — колчан и левая рука.
@@ -595,19 +710,46 @@ export class CampHud {
      * когда игрок берёт расходники.
      */
     this.quiver = document.createElement('button');
+    this.quiver.className = 'card supply-utility supply-quiver';
+    this.quiver.innerHTML = `<span class="supply-summary-icon">${supplyGlyph('quiver')}</span>`;
+    const quiverCopy = document.createElement('span');
+    const quiverTitle = document.createElement('b');
+    setGameText(quiverTitle, gameMessage('Колчан', 'Quiver'));
+    this.quiverNote = document.createElement('small');
+    quiverCopy.append(quiverTitle, this.quiverNote);
+    const quiverRight = document.createElement('span');
+    this.quiverValue = document.createElement('strong');
+    this.quiverCost = document.createElement('small');
+    quiverRight.append(this.quiverValue, this.quiverCost);
+    this.quiver.append(quiverCopy, quiverRight);
     this.quiver.addEventListener('click', () => this.cb.onBuyArrows());
-    shop.appendChild(this.quiver);
 
     this.offhand = document.createElement('div');
-    this.offhand.className = 'slots';
+    this.offhand.className = 'card supply-offhand';
+    const offhandHead = document.createElement('span');
+    offhandHead.className = 'supply-offhand-head';
+    offhandHead.innerHTML = `<span class="supply-summary-icon">${supplyGlyph('offhand')}</span>`;
+    const offhandWords = document.createElement('span');
+    const offhandTitle = document.createElement('b');
+    const offhandNote = document.createElement('small');
+    setGameText(offhandTitle, gameMessage('Левая рука', 'Off hand'));
+    setGameText(offhandNote, gameMessage('Выберите предмет перед выходом', 'Choose an item before departure'));
+    offhandWords.append(offhandTitle, offhandNote);
+    offhandHead.append(offhandWords);
+    const offhandChoices = document.createElement('span');
+    offhandChoices.className = 'slots supply-offhand-choices';
     for (const hand of OFFHAND_ORDER) {
       const b = document.createElement('button');
       b.className = 'slot';
       b.addEventListener('click', () => this.cb.onOffhand(hand));
       this.offhandButtons.set(hand, b);
-      this.offhand.appendChild(b);
+      offhandChoices.appendChild(b);
     }
-    shop.appendChild(this.offhand);
+    this.offhand.append(offhandHead, offhandChoices);
+    const utilities = document.createElement('div');
+    utilities.className = 'supply-utilities';
+    utilities.append(this.quiver, this.offhand);
+    shop.appendChild(utilities);
     this.sections.set('shop', shop);
     this.sheet.appendChild(shop);
 
@@ -1022,6 +1164,10 @@ export class CampHud {
   openSheet(kind: SheetKind): void {
     const was = this.open !== null;
     this.open = kind;
+    this.root.classList.toggle('supply-open', kind === 'shop');
+    this.sheet.classList.toggle('supply-sheet', kind === 'shop');
+    this.sheetKicker.style.display = kind === 'shop' ? '' : 'none';
+    if (kind === 'shop') setGameText(this.sheetKicker, gameMessage('Подготовка к вылазке', 'Expedition preparation'));
     if (kind === 'tiers') this.taskNudge = null;
     this.sheet.style.display = kind === null ? 'none' : '';
     for (const [key, el] of this.sections) el.style.display = key === kind ? '' : 'none';
@@ -1365,25 +1511,37 @@ export class CampHud {
   }
 
   private syncShop(camp: CampState): void {
+    const takenCount = camp.loadout.length;
+    this.supplyCount.textContent = `${takenCount}/${CONSUMABLE_SLOTS}`;
+    this.supplyFill.style.width = `${(takenCount / CONSUMABLE_SLOTS) * 100}%`;
+    setGameText(this.supplyStatus, takenCount === 0
+      ? gameMessage('Два свободных места', 'Two slots available')
+      : takenCount >= CONSUMABLE_SLOTS
+        ? gameMessage('Набор готов', 'Loadout ready')
+        : gameMessage('Осталось одно место', 'One slot available'));
+
     for (const id of CONSUMABLE_ORDER) {
       const def = CONSUMABLES[id];
-      const button = this.shopButtons.get(id);
-      if (button === undefined) continue;
+      const card = this.shopCards.get(id);
+      if (card === undefined) continue;
       const price = (Object.entries(def.price) as [ResourceKind, number][])
         .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
         .join(' · ');
       const copy = consumableMessage[id];
-      setGameText(button, gameMessage('{name} · {price}', '{name} · {price}'), {
-        name: gameText(copy.name), price,
+      setGameText(card.name, copy.name);
+      setGameText(card.trigger, gameMessage('Когда: {trigger}', 'When: {trigger}'), {
+        trigger: gameText(copy.trigger),
       });
-      setGameAttribute(button, 'title', gameMessage('{trigger} → {effect}', '{trigger} → {effect}'), {
-        trigger: gameText(copy.trigger), effect: gameText(copy.effect),
-      });
-      const full = camp.loadout.length >= CONSUMABLE_SLOTS;
-      const afford = (Object.entries(def.price) as [ResourceKind, number][]).every(
-        ([kind, amount]) => (camp.resources[kind] ?? 0) >= amount,
-      );
-      button.disabled = full || !afford;
+      setGameText(card.effect, gameMessage('→ {effect}', '→ {effect}'), { effect: gameText(copy.effect) });
+      setGameText(card.price, gameMessage('Цена · {price}', 'Cost · {price}'), { price });
+      const block = buyBlock(camp, id);
+      setGameText(card.action, block === 'ok'
+        ? gameMessage('Взять', 'Pack')
+        : block === 'slots'
+          ? gameMessage('Слоты заняты', 'Slots full')
+          : gameMessage('Не хватает', 'Not enough'));
+      card.button.disabled = block !== 'ok';
+      card.button.classList.toggle('ready', block === 'ok');
     }
     /**
      * §14.3 — колчан. Вместимость даёт лук (`gearMods`), и без лука строка
@@ -1396,10 +1554,13 @@ export class CampHud {
       const price = (Object.entries(ARROW_PACK_COST) as [ResourceKind, number][])
         .map(([kind, amount]) => `${gameText(resourceMessage[kind])} ${amount}`)
         .join(' · ');
-      setGameText(this.quiver, gameMessage(
-        'Стрелы {arrows} / {capacity} · +{pack} · {price}',
-        'Arrows {arrows} / {capacity} · +{pack} · {price}',
-      ), { arrows: camp.arrows, capacity: cap, pack: ARROW_PACK, price });
+      setGameText(this.quiverValue, gameMessage('{arrows} / {capacity}', '{arrows} / {capacity}'), {
+        arrows: camp.arrows, capacity: cap,
+      });
+      setGameText(this.quiverNote, gameMessage('Стрелы возвращаются после вылазки', 'Unused arrows return after the raid'));
+      setGameText(this.quiverCost, gameMessage('+{pack} · {price}', '+{pack} · {price}'), {
+        pack: ARROW_PACK, price,
+      });
       setGameAttribute(this.quiver, 'title', gameMessage(
         'Стрелы тратятся в вылазке; неиспользованные возвращаются в лагерь',
         'Arrows are spent during a raid; unused arrows return to camp',
@@ -1429,8 +1590,16 @@ export class CampHud {
     for (let i = 0; i < CONSUMABLE_SLOTS; i++) {
       const taken = camp.loadout[i];
       const slot = document.createElement('button');
-      slot.className = 'slot' + (taken === undefined ? ' empty' : '');
-      setGameText(slot, taken === undefined ? gameMessage('пусто', 'empty') : consumableMessage[taken].name);
+      slot.className = 'slot supply-picked-slot' + (taken === undefined ? ' empty' : '');
+      const icon = document.createElement('span');
+      icon.innerHTML = supplyGlyph(taken ?? 'loadout');
+      const words = document.createElement('span');
+      const name = document.createElement('b');
+      const note = document.createElement('small');
+      setGameText(name, taken === undefined ? gameMessage('Свободный слот', 'Open slot') : consumableMessage[taken].name);
+      setGameText(note, taken === undefined ? gameMessage('Выберите предмет выше', 'Choose an item above') : gameMessage('Нажмите, чтобы вернуть', 'Select to return'));
+      words.append(name, note);
+      slot.append(icon, words);
       slot.disabled = taken === undefined;
       if (taken !== undefined) {
         setGameAttribute(slot, 'title', gameMessage('Вернуть', 'Return'));

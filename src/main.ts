@@ -1724,7 +1724,13 @@ function characterSubject(): CharacterSubject | null {
       },
       gear: camp.gear,
       offhand: camp.offhand,
-      ranged: def.ranged,
+      raid: {
+        loadout: loadout(hero),
+        storageLevel: camp.levels.storage,
+        capacityBonus: researchBagBonus(camp),
+        visionBonus: watchtowerVision(camp.levels.watchtower) + researchScoutingBonus(camp),
+        quiverBonus: archeryQuiverBonus(camp.levels.archery),
+      },
       model: { kind: 'герой', cls: hero.cls, weapon: camp.gear.weapon },
       people: characterPeople(),
     };
@@ -1749,9 +1755,9 @@ function characterSubject(): CharacterSubject | null {
     note: `Занятие: носит ${carry} — прибавка в кладовую, пока есть крыша`,
     skill: null,
     train: null,
-    gear: camp.gear,
+    gear: null,
     offhand: camp.offhand,
-    ranged: false,
+    raid: null,
     // Инструмент — тот же, что у жильца в кадре (§6.1.14): занятие видно
     // по руке, и разбор обязан показывать ту же руку, а не пустую.
     model: { kind: 'жилец', look: residentLook(r), tool: r.rest ? null : RESIDENT_TOOL[r.answer] },

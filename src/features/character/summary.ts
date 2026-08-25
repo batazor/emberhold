@@ -1,64 +1,94 @@
+import { HERO_HP } from '../../sim/balance';
+import { storageCapacity } from '../../sim/camp';
+import { FOOD_COST, visionRadius } from '../../sim/config';
 import { OFFHAND, gearMods } from '../../sim/gear';
 import type { GearState, Offhand } from '../../sim/gear';
+import type { HeroLoadout } from '../../sim/heroes';
 
-/**
- * Сводка «что будет в вылазке» — числами, а не подписями.
- *
- * Считает её `gearMods()` из `sim/gear.ts`, и это главное правило файла:
- * ни одной своей формулы. Табличка, набранная руками рядом с формулой,
- * уже расходилась с ней в этом проекте — и стоила класса (`NO_MODS`
- * в `sim/gear.ts` помнит, как лучник остался без колчана, потому что
- * второй список написал ноль).
- *
- * Третья колонка — цена левой руки (§14.2). Она показывает, чем станет
- * то же число, если переложить руку: обзор против защиты. Появляется
- * только там, где число действительно меняется, — «→ 0 с фонарём» рядом
- * с нулём было бы шумом, а не выбором.
- *
- * Считается вне вёрстки, чтобы её можно было проверить в Node
- * (`character.rules.ts`): экран, который показывает числа, обязан быть
- * проверяемым без экрана.
- */
+/** Всё постоянное, что войдёт в следующую вылазку до выбора места и карт. */
+export interface RaidContext {
+  readonly loadout: HeroLoadout;
+  readonly storageLevel: number;
+  readonly capacityBonus: number;
+  readonly visionBonus: number;
+  readonly quiverBonus: number;
+}
+
+export type RaidMetric =
+  | 'attack'
+  | 'health'
+  | 'vision'
+  | 'defense'
+  | 'capacity'
+  | 'provisions'
+  | 'risk'
+  | 'quiver';
+
 export interface RaidRow {
+  readonly metric: RaidMetric;
+  readonly group: 'combat' | 'journey';
   readonly name: string;
-  /** Что будет сейчас. */
+  /** Итог, а не прибавка снаряжения. */
   readonly now: string;
-  /** Чем станет с другой вещью в левой руке. `null` — не изменится. */
+  /** Итог после смены предмета в левой руке. */
   readonly other: string | null;
 }
 
 export interface RaidSummary {
   readonly rows: readonly RaidRow[];
-  /** Подпись третьей колонки: «со щитом» или «с фонарём». */
   readonly withOther: string;
+  readonly hand: string;
 }
 
-const signed = (n: number): string => (n > 0 ? `+${n}` : `${n}`);
-const percent = (x: number): string => `${signed(Math.round((x - 1) * 100))}%`;
+const nice = (n: number): string =>
+  Number.isInteger(n) ? `${n}` : n.toFixed(1).replace(/\.0$/, '');
 
-export function raidSummary(gear: GearState, offhand: Offhand, ranged: boolean): RaidSummary {
+/**
+ * Итог следующей вылазки. Здесь нет параллельных формул: здоровье, обзор,
+ * вместимость и модификаторы берутся из тех же функций, что собирают RaidState.
+ * Не входят только место, событие и карты — их ещё не выбрали.
+ */
+export function raidSummary(
+  context: RaidContext,
+  gear: GearState,
+  offhand: Offhand,
+): RaidSummary {
+  const { loadout } = context;
   const now = gearMods(gear, offhand);
   const hand: Offhand = offhand === 'torch' ? 'shield' : 'torch';
   const alt = gearMods(gear, hand);
-  const row = (name: string, a: number, b: number, fmt: (n: number) => string): RaidRow => ({
-    name,
-    now: fmt(a),
-    other: a === b ? null : fmt(b),
-  });
-  const plain = (n: number): string => `${n}`;
+  const capacity = (mods: typeof now): number => Math.max(
+    1,
+    Math.floor(storageCapacity(context.storageLevel) * loadout.bagMul)
+      + mods.capacity
+      + Math.max(0, context.capacityBonus),
+  );
+  const vision = (mods: typeof now): number =>
+    visionRadius(loadout.knowledge, false, true) + mods.vision + Math.max(0, context.visionBonus);
+  const row = (
+    metric: RaidMetric,
+    group: RaidRow['group'],
+    name: string,
+    a: number,
+    b: number,
+    format: (value: number) => string = nice,
+  ): RaidRow => ({ metric, group, name, now: format(a), other: a === b ? null : format(b) });
+  const percent = (value: number): string => `${Math.round(value * 100)}%`;
+
   return {
+    hand: OFFHAND[offhand].name,
     withOther: `с ${OFFHAND[hand].name.toLowerCase()}`,
     rows: [
-      row('Атака', now.attack, alt.attack, plain),
-      row('HP', now.wounds, alt.wounds, signed),
-      row('Обзор', now.vision, alt.vision, signed),
-      row('Защита', now.defense, alt.defense, plain),
-      row('Рюкзак', now.capacity, alt.capacity, signed),
-      row('Провиант за шаг', now.foodStep, alt.foodStep, percent),
-      row('Под угрозой', now.risk, alt.risk, percent),
-      // §14.3 — колчан показывается только тому, кто стреляет: ближнику
-      // вместимость колчана не значит ничего, и строка была бы шумом.
-      ...(ranged ? [row('Колчан', now.arrows, alt.arrows, plain)] : []),
+      row('attack', 'combat', 'Атака', loadout.attack + now.attack, loadout.attack + alt.attack),
+      row('health', 'combat', 'Здоровье', HERO_HP + loadout.hp + now.wounds, HERO_HP + loadout.hp + alt.wounds),
+      row('vision', 'combat', 'Обзор', vision(now), vision(alt)),
+      row('defense', 'combat', 'Защита', loadout.defense + now.defense, loadout.defense + alt.defense),
+      row('capacity', 'journey', 'Рюкзак', capacity(now), capacity(alt)),
+      row('provisions', 'journey', 'Пища / шаг', FOOD_COST.step * now.foodStep, FOOD_COST.step * alt.foodStep),
+      row('risk', 'journey', 'Защита добычи', 1 - now.risk, 1 - alt.risk, percent),
+      ...(loadout.ranged
+        ? [row('quiver', 'journey', 'Колчан', now.arrows + context.quiverBonus, alt.arrows + context.quiverBonus)]
+        : []),
     ],
   };
 }

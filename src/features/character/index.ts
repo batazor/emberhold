@@ -24,6 +24,7 @@ import {
 } from './items';
 import type { ItemPicture, PackState } from './items';
 import { raidSummary } from './summary';
+import type { RaidContext, RaidMetric, RaidRow } from './summary';
 import { gameMarkup, gameMessage, gameText, setGameAttribute, setGameText } from '../../i18n/game';
 
 const itemCopy: Record<string, { name: ReturnType<typeof gameMessage>; effect: ReturnType<typeof gameMessage>; cost: ReturnType<typeof gameMessage> }> = {
@@ -73,7 +74,12 @@ const characterText = (text: string): string => {
     'Рюкзак': gameMessage('Рюкзак', 'Backpack'),
     'Провиант за шаг': gameMessage('Провиант за шаг', 'Provisions per step'),
     'Под угрозой': gameMessage('Под угрозой', 'At risk'),
+    'Здоровье': gameMessage('Здоровье', 'Health'),
+    'Пища / шаг': gameMessage('Пища / шаг', 'Food / step'),
+    'Защита добычи': gameMessage('Защита добычи', 'Loot protection'),
     'Колчан': gameMessage('Колчан', 'Quiver'),
+    'Рудничный фонарь': gameMessage('Рудничный фонарь', 'Mining lantern'),
+    'Щит': gameMessage('Щит', 'Shield'),
     'Лучник': gameMessage('Лучник', 'Archer'),
     'Рыцарь': gameMessage('Рыцарь', 'Knight'),
     'Бандит': gameMessage('Бандит', 'Rogue'),
@@ -101,6 +107,21 @@ const ITEM_PICTURE: Record<ItemPicture, string> = {
   'calm-ring': calmRingIcon,
   tincture: tinctureIcon,
 };
+
+/** Простые силуэты читаются в 20 px и не тянут в карточку ещё один арт-пак. */
+const RAID_GLYPH: Record<RaidMetric, string> = {
+  attack: '<path d="M5 19l4-4m-2 6l-4-4M10 14l8-8 2-3-3 1-8 8m5-6 4 4"/>',
+  health: '<path d="M12 20S4 15.6 4 9.5C4 5.8 8.5 4.6 12 8c3.5-3.4 8-2.2 8 1.5C20 15.6 12 20 12 20z"/>',
+  vision: '<path d="M2.8 12s3.4-5.2 9.2-5.2 9.2 5.2 9.2 5.2-3.4 5.2-9.2 5.2S2.8 12 2.8 12z"/><circle cx="12" cy="12" r="2.5"/>',
+  defense: '<path d="M12 3l7 3v5.2c0 4.4-2.8 7.7-7 9.8-4.2-2.1-7-5.4-7-9.8V6l7-3z"/><path d="M9 12l2 2 4-5"/>',
+  capacity: '<path d="M7 8h10l2 12H5L7 8z"/><path d="M9 8V6a3 3 0 016 0v2m-7 5h8"/>',
+  provisions: '<path d="M7 20h10m-9-3c-2-2-2-7 1-10 1.4-1.4 2-2.5 2-4 3 2 5 5 5 8 0 3-1.8 6-4 6s-4-2-4-5c0-1 .3-2 .8-2.8"/>',
+  risk: '<path d="M12 3l7 3v5.2c0 4.4-2.8 7.7-7 9.8-4.2-2.1-7-5.4-7-9.8V6l7-3z"/><path d="M8 13l2.2 2.2L16 9.5"/>',
+  quiver: '<path d="M7 5l10 14M5 8l2-3 3 1m7 10l2 3-3-1M9 18l6-8m-2-4l3-2 2 3"/>',
+};
+
+const raidGlyph = (metric: RaidMetric): string =>
+  `<svg viewBox="0 0 24 24" aria-hidden="true">${RAID_GLYPH[metric]}</svg>`;
 
 /**
  * Страница персонажа — то, что открывает команда «О персонаже» на любом
@@ -181,8 +202,8 @@ export interface CharacterSubject {
   readonly train: { readonly text: string; readonly disabled: boolean } | null;
   readonly gear: GearState | null;
   readonly offhand: Offhand;
-  /** §14.3 — колчан показывается только тому, кто стреляет. */
-  readonly ranged: boolean;
+  /** `null` у жильца: он не выходит в вылазку и чужие числа ему не приписываются. */
+  readonly raid: RaidContext | null;
   readonly model: FigureModel;
   readonly people: readonly PersonTab[];
 }
@@ -207,6 +228,7 @@ export class CharacterPage {
   private readonly root: HTMLElement;
   private readonly face: HTMLElement;
   private readonly tabs: HTMLElement;
+  private readonly modeTabs: HTMLElement;
   private readonly name: HTMLElement;
   private readonly status: HTMLElement;
   private readonly level: HTMLElement;
@@ -216,16 +238,21 @@ export class CharacterPage {
   private readonly statsEl: HTMLElement;
   private readonly points: HTMLElement;
   private readonly skill: HTMLElement;
+  private readonly trainWrap: HTMLElement;
   private readonly train: HTMLButtonElement;
+  private readonly trainStatus: HTMLElement;
+  private readonly trainStatusText: HTMLElement;
   private readonly wornEl: HTMLElement;
   private readonly bagEl: HTMLElement;
   private readonly bagCount: HTMLElement;
   private readonly raid: HTMLElement;
+  private readonly raidPanel: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly gearInfo: HTMLButtonElement;
   private readonly gearPopup: HTMLElement;
   private readonly gear: GearSection;
   private readonly figure = new Figure();
+  private mode: 'equipment' | 'growth' = 'equipment';
   private pack: PackState = startPack();
   /** Чья раскладка сейчас разложена: у другого человека она своя. */
   private packKey = '';
@@ -259,6 +286,10 @@ export class CharacterPage {
           <span class="ch-level" id="ch-level"></span>
           <button id="ch-close" class="ch-close">${gameMarkup(gameMessage('Закрыть', 'Close'))}</button>
         </div>
+        <div class="ch-mode-tabs" id="ch-mode-tabs" role="tablist" aria-label="${gameText(gameMessage('Раздел персонажа', 'Character section'))}">
+          <button type="button" role="tab" data-mode="equipment" aria-selected="true">${gameMarkup(gameMessage('Снаряжение', 'Equipment'))}</button>
+          <button type="button" role="tab" data-mode="growth" aria-selected="false">${gameMarkup(gameMessage('Навыки и развитие', 'Skills and progression'))}</button>
+        </div>
         <div class="ch-xp-row"><div class="bar" id="ch-bar"><i id="ch-xp"></i></div><span id="ch-xp-text"></span></div>
         <div class="ch-body">
           <div class="ch-doll">
@@ -277,9 +308,12 @@ export class CharacterPage {
               <div class="ch-bag" id="ch-bag"></div>
               <p class="ch-hint" id="ch-hint" role="status"></p>
             </div>
-            <div class="ch-raid-panel card">
+            <div class="ch-raid-panel card" id="ch-raid-panel">
               <div class="row mid ch-section-head">
-                <h3>${gameMarkup(gameMessage('Параметры вылазки', 'Raid loadout'))}</h3>
+                <span class="ch-raid-heading">
+                  <h3>${gameMarkup(gameMessage('Параметры вылазки', 'Raid loadout'))}</h3>
+                  <small>${gameMarkup(gameMessage('Итог до выбора места и карт', 'Final values before location and cards'))}</small>
+                </span>
                 <span class="ch-gear-wrap">
                   <button id="ch-gear-info" class="ch-info" aria-expanded="false">i</button>
                   <span class="ch-gear-popover card" id="ch-gear-popover">
@@ -301,13 +335,20 @@ export class CharacterPage {
               <div class="ch-stats" id="ch-stats"></div>
             </div>
             <div class="ch-skill card" id="ch-skill"></div>
-            <button id="ch-train" class="ch-train"></button>
+            <div class="ch-train-wrap" id="ch-train-wrap">
+              <button id="ch-train" class="ch-train"></button>
+              <div class="ch-train-status" id="ch-train-status" role="status">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3M12 14v2"/></svg>
+                <span id="ch-train-status-text"></span>
+              </div>
+            </div>
           </div>
         </div>
       </div>`;
     const pick = <T extends HTMLElement>(id: string): T => this.root.querySelector<T>(`#${id}`)!;
     this.face = pick('ch-face');
     this.tabs = pick('ch-tabs');
+    this.modeTabs = pick('ch-mode-tabs');
     this.name = pick('ch-name');
     this.status = pick('ch-status');
     this.level = pick('ch-level');
@@ -317,11 +358,15 @@ export class CharacterPage {
     this.statsEl = pick('ch-stats');
     this.points = pick('ch-points');
     this.skill = pick('ch-skill');
+    this.trainWrap = pick('ch-train-wrap');
     this.train = pick<HTMLButtonElement>('ch-train');
+    this.trainStatus = pick('ch-train-status');
+    this.trainStatusText = pick('ch-train-status-text');
     this.wornEl = pick('ch-worn');
     this.bagEl = pick('ch-bag');
     this.bagCount = pick('ch-bag-count');
     this.raid = pick('ch-raid');
+    this.raidPanel = pick('ch-raid-panel');
     this.hint = pick('ch-hint');
     this.gearInfo = pick<HTMLButtonElement>('ch-gear-info');
     this.gearPopup = pick('ch-gear-popover');
@@ -359,6 +404,11 @@ export class CharacterPage {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-who]');
       if (b !== null) this.cb.onPick(b.dataset['who'] as string);
     });
+    this.modeTabs.addEventListener('click', (e) => {
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-mode]');
+      const mode = button?.dataset['mode'];
+      if (mode === 'equipment' || mode === 'growth') this.setMode(mode);
+    });
     // Тап по фону закрывает: то же, чем закрываются панели лагеря.
     this.root.addEventListener('pointerdown', (e) => {
       if (e.target === this.root) this.cb.onClose();
@@ -377,7 +427,10 @@ export class CharacterPage {
     this.root.classList.toggle('on', visible);
     // Покой — клип, и крутится он только под открытым экраном: закрытая
     // страница не имеет права держать кадр.
-    if (visible) this.figure.start();
+    if (visible) {
+      this.setMode('equipment');
+      this.figure.start();
+    }
     else {
       this.figure.stop();
       this.gearPopup.classList.remove('on');
@@ -387,6 +440,8 @@ export class CharacterPage {
 
   sync(s: CharacterSubject): void {
     this.shown = s;
+    this.modeTabs.style.display = s.kind === 'герой' ? '' : 'none';
+    if (s.kind !== 'герой' && this.mode !== 'equipment') this.setMode('equipment');
     if (s.key !== this.faceKey) {
       this.faceKey = s.key;
       this.face.innerHTML = avatarSvg(s.look, s.seed);
@@ -469,14 +524,36 @@ export class CharacterPage {
                 : gameMarkup(gameMessage('очков навыка: 0', 'skill points: 0'))}</em>`);
       this.skill.style.display = s.skill === null ? 'none' : '';
     }
-    this.train.style.display = s.train === null ? 'none' : '';
+    this.trainWrap.style.display = s.train === null ? 'none' : '';
     if (s.train !== null) {
-      this.train.textContent = characterText(s.train.text);
+      const locked = s.train.disabled;
+      this.train.style.display = locked ? 'none' : '';
+      this.trainStatus.style.display = locked ? '' : 'none';
+      if (locked) {
+        if (s.train.text === 'Нужен Плац') {
+          setGameText(this.trainStatusText, gameMessage(
+            'Тренировка недоступна · постройте Плац',
+            'Training unavailable · build a Training Yard',
+          ));
+        } else this.trainStatusText.textContent = characterText(s.train.text);
+      } else this.train.textContent = characterText(s.train.text);
       this.train.disabled = s.train.disabled;
     }
     this.gear.sync(s.gear, s.offhand);
+    this.raidPanel.style.display = s.raid === null || s.gear === null ? 'none' : '';
     this.drawRaid(s);
     this.figure.show(s.model, inHands(this.pack), FIGURE_W, FIGURE_H);
+  }
+
+  /** Две задачи страницы не конкурируют за один экран. */
+  private setMode(mode: 'equipment' | 'growth'): void {
+    this.mode = mode;
+    this.root.dataset['view'] = mode;
+    for (const button of this.modeTabs.querySelectorAll<HTMLButtonElement>('[data-mode]')) {
+      button.setAttribute('aria-selected', String(button.dataset['mode'] === mode));
+    }
+    this.gearPopup.classList.remove('on');
+    this.gearInfo.setAttribute('aria-expanded', 'false');
   }
 
   /* ---------- сводка вылазки ---------- */
@@ -488,22 +565,36 @@ export class CharacterPage {
    * показывающий только плюс, превращает выбор в «надеть всё».
    */
   private drawRaid(s: CharacterSubject): void {
-    if (s.gear === null) {
+    if (s.gear === null || s.raid === null) {
       this.raid.replaceChildren();
       this.raidKey = '';
       return;
     }
-    const key = `${document.documentElement.lang}:${Object.values(s.gear).join(',')}:${s.offhand}:${s.ranged}`;
+    const context = s.raid;
+    const key = `${document.documentElement.lang}:${Object.values(s.gear).join(',')}:${s.offhand}:` +
+      `${Object.values(context.loadout).join(',')}:${context.storageLevel}:${context.capacityBonus}:` +
+      `${context.visionBonus}:${context.quiverBonus}`;
     if (key === this.raidKey) return;
     this.raidKey = key;
-    const summary = raidSummary(s.gear, s.offhand, s.ranged);
-    this.raid.innerHTML = summary.rows
-      .map(
-        (row) =>
-          `<span class="dim">${characterText(row.name)}</span><b>${row.now}</b>` +
-          `<i>${row.other === null ? '' : `→ ${row.other} ${characterText(summary.withOther)}`}</i>`,
-      )
-      .join('');
+    const summary = raidSummary(context, s.gear, s.offhand);
+    const metric = (row: RaidRow): string => `
+      <span class="ch-raid-metric" data-metric="${row.metric}">
+        <span class="ch-raid-glyph">${raidGlyph(row.metric)}</span>
+        <span class="ch-raid-copy">
+          <small>${characterText(row.name)}</small>
+          <strong>${row.now}</strong>
+          ${row.other === null ? '' : `<em>→ ${row.other} ${characterText(summary.withOther)}</em>`}
+        </span>
+      </span>`;
+    const combat = summary.rows.filter((row) => row.group === 'combat').map(metric).join('');
+    const journey = summary.rows.filter((row) => row.group === 'journey').map(metric).join('');
+    this.raid.innerHTML = `
+      <span class="ch-raid-core">${combat}</span>
+      <span class="ch-raid-journey">${journey}</span>
+      <span class="ch-raid-foot">
+        <span class="ch-raid-hand"><i></i>${characterText(summary.hand)}</span>
+        <small>${gameMarkup(gameMessage('Учтены герой, лагерь, исследования и ковка', 'Hero, camp, research, and forged gear included'))}</small>
+      </span>`;
   }
 
   /* ---------- лица в шапке ---------- */
