@@ -13,7 +13,13 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import { KIND } from '../sim/world';
 import type { NodeKind } from '../sim/world';
-import { CAMP_ICON_URL, MAP_ICON_DIAMETER, MAP_ICON_URL } from './worldMap';
+import { createCamp } from '../sim/camp';
+import {
+  CAMP_ICON_URL,
+  MAP_ICON_DIAMETER,
+  MAP_ICON_URL,
+  roadStoryTarget,
+} from './worldMap';
 
 const KINDS = Object.keys(KIND) as NodeKind[];
 
@@ -45,5 +51,24 @@ describe('Картинки глобальной карты', () => {
   test('рисунок остаётся внутри кольца и не наступает на служебные метки', () => {
     assert.ok(MAP_ICON_DIAMETER > 1.4, 'рисунок слишком мелкий для карты');
     assert.ok(MAP_ICON_DIAMETER <= 1.8, 'рисунок добрался до события или флага');
+  });
+});
+
+describe('Карточки первой главы', () => {
+  test('каждый незавершённый шаг ведёт к своей локации', () => {
+    const camp = createCamp();
+    assert.equal(roadStoryTarget(camp), null);
+    camp.roadStory = { step: 'return-to-trader' };
+    assert.equal(roadStoryTarget(camp), 'замок');
+    camp.roadStory = { step: 'find-caravan' };
+    assert.equal(roadStoryTarget(camp), 'тропа');
+    camp.roadStory = { step: 'settle-supply' };
+    assert.equal(roadStoryTarget(camp), 'замок минотавра');
+  });
+
+  test('завершённая глава больше не перехватывает фокус карты', () => {
+    const camp = createCamp();
+    camp.roadStory = { step: 'done', route: 'trade' };
+    assert.equal(roadStoryTarget(camp), null);
   });
 });

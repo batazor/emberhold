@@ -11216,6 +11216,11 @@ msgid "Выполнимость («дойти до дальней точки и 
 msgstr "Feasibility (\"to reach the far point and return fits in 85% of the stock\") was considered in the clearings; with pockets it must be recalculated at cost - otherwise the tier will lie to the player exactly on the price of cutting through. This is the first thing a forest generator profile must do in the code."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Выполните заказ, заключите сделку или победите стражу"
+msgstr "Complete an order, make a deal, or defeat the guards"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "выработана"
 msgstr "depleted"
@@ -12696,6 +12701,11 @@ msgid "добег числа награды"
 msgstr "win-off"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Добейтесь безопасного прохода для обозов"
+msgstr "Secure safe passage for the caravans"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Добудьте {goal} пищи"
 msgstr "Get some food."
@@ -13550,6 +13560,11 @@ msgstr "Iron 31"
 #: locales/legacy-messages.ts
 msgid "Железо 61% · Детали 39%"
 msgstr "Iron 61% Parts 39%"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Железо для Мастерской приходит через этот двор"
+msgstr "Workshop iron passes through this courtyard"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -15557,6 +15572,11 @@ msgstr "Their hammer and knife are baked into a brush when redrawn into a common
 #: locales/legacy-messages.ts
 msgid "Их нельзя выбрать, им нельзя приказать, они не собирают ресурсы."
 msgstr "They cannot be selected, they cannot be ordered, they do not collect resources."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ищите развилки и тупики Тропы"
+msgstr "Search the Trail’s forks and dead ends"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19709,6 +19729,11 @@ msgid "называет нехватку железа и место, где её
 msgstr "Iron deficiency and where to close it (§ 13.5, § 16.2). There are no boards, curtains, charcoal, burning notes and marks in the sortie - as well as a day sheet, which the document itself does not want on the first day: \"Empty board on the first day is better than full.\" The reward at the same time ceased to be a slot-rombus: the player changes his own, and the question of “what to pay” is removed not by the number, but by the fact that there is nothing to pay."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Найдите пропавший обоз на боковой дороге"
+msgstr "Find the missing caravan on a side road"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Найма и гачи нет."
 msgstr "No hiring or gachy."
@@ -22755,6 +22780,11 @@ msgstr "The first raid starts elsewhere—the available location is highlighted 
 #: locales/legacy-messages.ts
 msgid "Первая вылазка при этом идёт"
 msgstr "The first sortie is coming."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Первая глава · Пропавший обоз"
+msgstr "Chapter One · The Missing Caravan"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

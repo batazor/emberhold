@@ -582,6 +582,33 @@ button:active { filter: brightness(1.25); }
 .map-card .map-appearance small { color: var(--dim); font-size: 10px; }
 .map-card .map-appearance b { overflow: hidden; text-overflow: ellipsis; font-size: 12px; white-space: nowrap; }
 .map-card .map-appearance button { padding: 7px 9px; font-size: 11px; }
+.map-card .location-story {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -2px -2px 8px;
+  padding: 10px 11px 10px 12px;
+  border: 1px solid var(--pick-line);
+  border-left-width: 3px;
+  background: linear-gradient(135deg, var(--pick), var(--event-art-bg));
+}
+.map-card .location-story span {
+  color: var(--gold);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.map-card .location-story b {
+  font-family: Georgia, serif;
+  font-size: 15px;
+  font-weight: 400;
+}
+.map-card .location-story i {
+  color: var(--paper);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.3;
+}
 .map-card .location-unlock {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
@@ -624,6 +651,29 @@ button:active { filter: brightness(1.25); }
   font-size: 13px;
   font-style: normal;
   font-variant-numeric: tabular-nums;
+}
+/* Когда место одновременно ведёт главу и ещё закрыто, две карточки должны
+   назвать и цель, и препятствие в одном первом экране. Арт условия здесь
+   становится миниатюрой; без этого его 120 px оставляли под сюжетом только
+   край картинки, а само условие пряталось ниже сгиба. */
+.map-card .location-story + .location-unlock {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+.map-card .location-story + .location-unlock img {
+  width: 64px;
+  height: 78px;
+}
+.map-card .location-story + .location-unlock figcaption {
+  padding: 6px 8px;
+  gap: 2px;
+}
+.map-card .location-story + .location-unlock b { font-size: 13px; }
+.map-card .location-story + .location-unlock i { font-size: 9px; }
+/* Автофокус уже выбрал нужную точку, поэтому в единственном состоянии с
+   двумя вводными карточками карта на телефоне уступает им немного высоты.
+   Иначе условие открытия снова оказывалось ниже первого экрана. */
+@media (max-width: 520px) {
+  #camp .map:has(.location-story + .location-unlock) .map-cv { max-height: 18vh; }
 }
 /* Богатство — три засечки, а не число: «сколько ещё заходов» читается
    взглядом, а число заставляет считать. */
