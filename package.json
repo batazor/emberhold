@@ -37,6 +37,7 @@
     "gift": "tsx scripts/gift.ts",
     "lootbox": "tsx scripts/lootbox.ts",
     "models": "tsx scripts/models.ts",
+    "farmhouse": "node scripts/farmhouse.mjs",
     "clips": "tsx scripts/clips.ts",
     "resample": "tsx scripts/resample.ts",
     "ual": "tsx scripts/ual.ts",
@@ -68,6 +69,7 @@
     "@rolldown/plugin-babel": "^0.2.3",
     "@types/node": "^26.2.0",
     "@types/three": "^0.185.4",
+    "meshoptimizer": "^1.2.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"

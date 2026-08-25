@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { FOOD_PER_MOUTH } from './balance';
-import { createCamp } from './camp';
+import { createCamp, upgradeBlock } from './camp';
 import { WORK_SECONDS, admit } from './residents';
 import {
   FARM_FOOD_GOAL,
@@ -18,6 +18,10 @@ import {
   FARM_SEED_FOOD,
   FARM_STARTING_PLOT_COUNT,
   advanceFarmOnboarding,
+  chooseFarmCaretaker,
+  completeFarmConstruction,
+  farmBuildBlock,
+  farmStructureCost,
   farmPlantBlock,
   farmPlotPhase,
   farmReturnActionUnlocked,
@@ -27,6 +31,8 @@ import {
   plantFarmPlot,
   repeatReadyFarmPlots,
   selectFarmCrop,
+  startFarmConstruction,
+  syncFarmStory,
 } from './farm';
 
 const resident = (name: string, seed: number) => ({
@@ -206,6 +212,7 @@ describe('Ферма: первая цель', () => {
     admit(camp, resident('Второй', 2));
     gatherFarmFood(camp, FARM_FOOD_GOAL);
     camp.farm!.activePlots = FARM_RETURN_ACTION_PLOTS;
+    camp.farm!.story.structures.barn = true;
     const now = 20_000;
     plantFarmPlot(camp, 0, 'turnip', now - FARM_CROPS.turnip.growSeconds);
     plantFarmPlot(camp, 3, 'barley', now - FARM_CROPS.barley.growSeconds);
@@ -239,5 +246,73 @@ describe('Ферма: первая цель', () => {
     assert.equal(repeatReadyFarmPlots(camp, FARM_CROPS.turnip.growSeconds).harvested, 0);
     assert.equal(camp.resources.food, before);
     assert.notEqual(camp.farm?.plots[0], null);
+  });
+});
+
+describe('Ферма: история развития на 15 дней', () => {
+  const openedFarm = () => {
+    const camp = createCamp();
+    admit(camp, resident('Первый', 1));
+    admit(camp, resident('Второй', 2));
+    gatherFarmFood(camp, FARM_FOOD_GOAL);
+    return camp;
+  };
+
+  test('за мировые сутки открывается не больше одной выполненной главы', () => {
+    const camp = openedFarm();
+    const story = camp.farm!.story;
+    assert.equal(syncFarmStory(camp, 100), true);
+    story.plantedPlots = 2;
+    assert.equal(syncFarmStory(camp, 101), true);
+    assert.equal(story.day, 2);
+    story.harvestedPlots = 2;
+    assert.equal(syncFarmStory(camp, 101), false, 'две главы открылись в одни сутки');
+    assert.equal(syncFarmStory(camp, 105), true, 'пропущенные дни не мешают продолжить');
+    assert.equal(story.day, 3, 'пропуск промотал главы вперёд');
+  });
+
+  test('стройки огорода делят слот с лагерем и дают обещанное расширение', () => {
+    const camp = openedFarm();
+    const farm = camp.farm!;
+    farm.story.day = 4;
+    camp.resources.wood = 1_000;
+    camp.resources.stone = 1_000;
+    camp.resources.iron = 1_000;
+    camp.resources.crystal = 1_000;
+    const before = { ...camp.resources };
+    const cost = farmStructureCost('well');
+    assert.equal(farmBuildBlock(camp, 'well'), 'ok');
+    assert.equal(startFarmConstruction(camp, 'well', 1_000), true);
+    assert.equal(upgradeBlock(camp, 'hq'), 'slot-busy');
+    assert.equal(camp.resources.wood, before.wood - (cost.wood ?? 0));
+    assert.equal(completeFarmConstruction(camp, farm.story.construction!.endsAt - 1), null);
+    assert.equal(completeFarmConstruction(camp, farm.story.construction!.endsAt), 'well');
+    assert.equal(farm.activePlots, 4);
+
+    farm.story.day = 12;
+    assert.equal(startFarmConstruction(camp, 'plots', 2_000), true);
+    assert.equal(completeFarmConstruction(camp, farm.story.construction!.endsAt), 'plots');
+    assert.equal(farm.activePlots, FARM_PLOT_COUNT);
+  });
+
+  test('сарай и дом появляются только в своих главах, выбор смотрителя одноразовый', () => {
+    const camp = openedFarm();
+    const farm = camp.farm!;
+    camp.resources.wood = 10_000;
+    camp.resources.stone = 10_000;
+    camp.resources.iron = 10_000;
+    camp.resources.crystal = 10_000;
+    assert.equal(farmBuildBlock(camp, 'barn'), 'locked');
+    farm.story.day = 8;
+    assert.equal(startFarmConstruction(camp, 'barn', 10), true);
+    completeFarmConstruction(camp, farm.story.construction!.endsAt);
+    assert.equal(farm.story.structures.barn, true);
+    farm.story.day = 11;
+    assert.equal(chooseFarmCaretaker(camp, 'grower'), true);
+    assert.equal(chooseFarmCaretaker(camp, 'steward'), false);
+    farm.story.day = 13;
+    assert.equal(startFarmConstruction(camp, 'farmhouse', 20), true);
+    completeFarmConstruction(camp, farm.story.construction!.endsAt);
+    assert.equal(farm.story.structures.farmhouse, true);
   });
 });

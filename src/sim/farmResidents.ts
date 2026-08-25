@@ -78,5 +78,7 @@ export function collectResidentFarmHarvest(
     food += gathered + FARM_CARE_BONUS;
   }
 
+  farm.story.assistedPlots += plots;
+
   return { helpers, plots, food, bonus: plots * FARM_CARE_BONUS };
 }

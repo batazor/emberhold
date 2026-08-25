@@ -32,9 +32,13 @@ import {
   FARM_DEFAULT_CROP,
   FARM_PLOT_COUNT,
   FARM_STARTING_PLOT_COUNT,
+  FARM_STORY_DAYS,
+  FARM_STRUCTURE_IDS,
+  emptyFarmStory,
   emptyFarmPlots,
   isFarmCropId,
 } from './farm';
+import type { FarmCaretaker, FarmStoryState, FarmStructureId } from './farm';
 import { CLAN_BUILDING_ORDER, startingClanResources } from './clan';
 import type { ClanBuildingKind } from './clan';
 import { validSignposts } from './signposts';
@@ -205,6 +209,19 @@ interface SaveV1 {
     selectedCrop?: string;
     /** Необязательно: сейв до появления огорода открывается с пустыми грядками. */
     plots?: ({ plantedAt: number; crop?: string } | null)[];
+    /** Сюжет развития огорода. Отсутствие начинает первый из 15 дней. */
+    story?: {
+      day?: number;
+      startedDay?: number;
+      plantedPlots?: number;
+      harvestedPlots?: number;
+      harvestedFood?: number;
+      assistedPlots?: number;
+      batchUses?: number;
+      caretaker?: string | null;
+      structures?: Partial<Record<FarmStructureId, boolean>>;
+      construction?: { structure?: string; startedAt?: number; endsAt?: number } | null;
+    };
   };
   /** Декор моложе версии сохранения: отсутствие означает пустые локации. */
   signposts?: CampState['signposts'];
@@ -261,6 +278,50 @@ export interface LoadResult {
   readonly roster: Roster;
   readonly watermark: number;
   readonly onboarding: OnbStep;
+}
+
+function savedCounter(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+function readFarmStory(
+  value: NonNullable<NonNullable<SaveV1['farm']>['story']> | undefined,
+): FarmStoryState {
+  const story = emptyFarmStory();
+  if (value === undefined || value === null || typeof value !== 'object') return story;
+  story.day = typeof value.day === 'number' && Number.isFinite(value.day)
+    ? Math.max(1, Math.min(FARM_STORY_DAYS, Math.floor(value.day)))
+    : 1;
+  story.startedDay = typeof value.startedDay === 'number' && Number.isFinite(value.startedDay)
+    ? Math.floor(value.startedDay)
+    : -1;
+  story.plantedPlots = savedCounter(value.plantedPlots);
+  story.harvestedPlots = savedCounter(value.harvestedPlots);
+  story.harvestedFood = savedCounter(value.harvestedFood);
+  story.assistedPlots = savedCounter(value.assistedPlots);
+  story.batchUses = savedCounter(value.batchUses);
+  story.caretaker = value.caretaker === 'grower' || value.caretaker === 'steward'
+    ? value.caretaker as FarmCaretaker
+    : null;
+  if (value.structures != null && typeof value.structures === 'object') {
+    for (const id of FARM_STRUCTURE_IDS) story.structures[id] = value.structures[id] === true;
+  }
+  const work = value.construction;
+  if (
+    work != null && typeof work === 'object' &&
+    typeof work.structure === 'string' &&
+    FARM_STRUCTURE_IDS.includes(work.structure as FarmStructureId) &&
+    typeof work.startedAt === 'number' && Number.isFinite(work.startedAt) &&
+    typeof work.endsAt === 'number' && Number.isFinite(work.endsAt) &&
+    work.endsAt >= work.startedAt
+  ) {
+    story.construction = {
+      structure: work.structure as FarmStructureId,
+      startedAt: work.startedAt,
+      endsAt: work.endsAt,
+    };
+  }
+  return story;
 }
 
 export function save(
@@ -330,6 +391,13 @@ export function save(
             plots: camp.farm.plots.map((plot) => plot === null
               ? null
               : { plantedAt: plot.plantedAt, crop: plot.crop }),
+            story: {
+              ...camp.farm.story,
+              structures: { ...camp.farm.story.structures },
+              construction: camp.farm.story.construction === null
+                ? null
+                : { ...camp.farm.story.construction },
+            },
           },
         }
       : {}),
@@ -575,6 +643,7 @@ export function load(): LoadResult {
         activePlots,
         selectedCrop,
         plots,
+        story: readFarmStory(farm.story),
       };
     }
     const signs = data.signposts;
