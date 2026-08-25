@@ -907,7 +907,8 @@ export class CampView {
 
     this.syncSite(now);
     this.syncFire(now, day);
-    this.cosmeticDecor.update(day);
+    this.cosmeticDecor.update(day, now);
+    this.cosmeticHeraldry.update(now);
   }
 
   /**

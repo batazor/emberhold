@@ -56,24 +56,24 @@ const CLAN_CAMP_ICON_URL: Readonly<Record<ClanCampIcon, string>> = {
   council_totem: new URL('../../assets/camp-cosmetics/clan-council-totem.png', import.meta.url).href,
 };
 
-/** Code-native previews keep the collection in the same graphic language as the map. */
+/** Free previews stay code-native; paid variants use their final store art. */
 const svg = (body: string, background = '#1c1a16'): string =>
   `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="12" fill="${background}"/>${body}</svg>`)}`;
 
 const FIRE_PREVIEW: Readonly<Record<CampFireStyle, string>> = {
   standard: svg('<path fill="#8f4e33" d="M22 70l48-8 4 10-48 8zM26 61l45 13-4 10-45-13z"/><path fill="#dfa53c" d="M49 70C27 58 44 42 51 19c18 20 22 41-2 51z"/><path fill="#c9722a" d="M49 68c-9-8-3-19 3-28 7 10 8 21-3 28z"/>'),
-  ghostfire: svg('<path fill="#465c39" d="M22 70l48-8 4 10-48 8zM26 61l45 13-4 10-45-13z"/><path fill="#b7f4ef" d="M49 70C27 58 44 42 51 19c18 20 22 41-2 51z"/><path fill="#f4ffff" d="M49 68c-9-8-3-19 3-28 7 10 8 21-3 28z"/>', '#112321'),
-  witchfire: svg('<path fill="#3c332c" d="M22 70l48-8 4 10-48 8zM26 61l45 13-4 10-45-13z"/><path fill="#b26cff" d="M49 70C27 58 44 42 51 19c18 20 22 41-2 51z"/><path fill="#f2ddff" d="M49 68c-9-8-3-19 3-28 7 10 8 21-3 28z"/>', '#21152c'),
+  ghostfire: new URL('../../assets/camp-cosmetics/fire-ghostfire.png', import.meta.url).href,
+  witchfire: new URL('../../assets/camp-cosmetics/fire-witchfire.png', import.meta.url).href,
 };
 const DECOR_PREVIEW: Readonly<Record<CampDecorStyle, string>> = {
   none: svg('<path fill="#8f4e33" d="M48 18l27 24v33H21V42z"/><path fill="#e3ba85" d="M15 43l33-29 33 29-7 7-26-22-26 22z"/>'),
-  wayfarer: svg('<path stroke="#8f4e33" stroke-width="7" d="M28 75V24m40 51V24"/><path fill="#dfa53c" d="M18 31h20v25H18zm40 0h20v25H58z"/><path fill="#cb9160" d="M21 70h54v9H21z"/>'),
-  sentinel: svg('<path fill="#8f4e33" d="M18 72h60v8H18zM25 24h7v49h-7zm39 0h7v49h-7z"/><path fill="#7d8892" d="M29 31l16 18-6 6-16-18zm38 0L51 49l6 6 16-18z"/><circle cx="48" cy="66" r="13" fill="#d83f35"/><circle cx="48" cy="66" r="5" fill="#dfa53c"/>'),
+  wayfarer: new URL('../../assets/camp-cosmetics/decor-wayfarer.png', import.meta.url).href,
+  sentinel: new URL('../../assets/camp-cosmetics/decor-sentinel.png', import.meta.url).href,
 };
 const HERALDRY_PREVIEW: Readonly<Record<ClanHeraldry, string>> = {
   plain: svg('<path fill="#8f4e33" d="M25 14h7v70h-7z"/><path fill="#847263" d="M32 20h42v43L53 76 32 63z"/>'),
-  raven: svg('<path fill="#8f4e33" d="M25 14h7v70h-7z"/><path fill="#9d3434" d="M32 20h42v43L53 76 32 63z"/><path fill="#171713" d="M41 48l11-16 5 12 12 4-12 5-5 12-4-12z"/>'),
-  sun: svg('<path fill="#8f4e33" d="M25 14h7v70h-7z"/><path fill="#315d82" d="M32 20h42v43L53 76 32 63z"/><circle cx="53" cy="47" r="11" fill="#dfa53c"/><path stroke="#dfa53c" stroke-width="4" d="M53 27v8m0 24v8M33 47h8m24 0h8M39 33l6 6m16 16 6 6m0-28-6 6M45 55l-6 6"/>'),
+  raven: new URL('../../assets/camp-cosmetics/heraldry-black-sigil.png', import.meta.url).href,
+  sun: new URL('../../assets/camp-cosmetics/heraldry-golden-sigil.png', import.meta.url).href,
 };
 
 export const personalCampIcon = (value: unknown): PersonalCampIcon =>

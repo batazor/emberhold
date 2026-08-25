@@ -101,6 +101,21 @@ describe('огонь', () => {
     fire.dispose();
   });
 
+  test('магический облик добавляет только декоративные искры', () => {
+    const fire = new Fire();
+    fire.set('kitchen', 1, 0, 0, SCALE);
+    const wisps = fire.group.children.find((object) => (object as THREE.Points).isPoints);
+    assert.ok(wisps !== undefined);
+    assert.equal(wisps.visible, false);
+    fire.setStyle('witchfire');
+    fire.update(500, 0.5);
+    assert.equal(wisps.visible, true);
+    assert.equal((wisps as THREE.Points).geometry.getAttribute('position').count, 12);
+    fire.setStyle('standard');
+    assert.equal(wisps.visible, false);
+    fire.dispose();
+  });
+
   test('погашенный огонь не светит и не рисуется', () => {
     const fire = new Fire();
     fire.set('kitchen', 1, 0, 0, SCALE);

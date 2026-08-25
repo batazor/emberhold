@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   COSMETIC_CATEGORIES,
+  CAMP_DECOR_STYLES,
+  CAMP_FIRE_STYLES,
   CLAN_CAMP_ICONS,
+  CLAN_HERALDRY,
   PERSONAL_CAMP_ICONS,
   campDecorStyle,
   campFireStyle,
@@ -12,6 +15,7 @@ import {
   clanCampIcon,
   clanCampIconUrl,
   cosmeticCollectionAction,
+  cosmeticPreviewUrl,
   personalCampIcon,
   personalCampIconUrl,
 } from './cosmetics';
@@ -44,6 +48,20 @@ describe('каталог оформления лагеря', () => {
     assert.equal(new Set(personal.slice(1)).size, 2);
     assert.equal(new Set(clan.slice(1)).size, 2);
     for (const url of [...personal, ...clan]) assert.deepEqual(pngSize(url), [128, 128]);
+  });
+
+  test('платные наборы показывают финальные PNG, а не временные SVG', () => {
+    const previews = [
+      ...CAMP_FIRE_STYLES.slice(1).map((value) => cosmeticPreviewUrl('fire', value)),
+      ...CAMP_DECOR_STYLES.slice(1).map((value) => cosmeticPreviewUrl('decor', value)),
+      ...CLAN_HERALDRY.slice(1).map((value) => cosmeticPreviewUrl('heraldry', value)),
+    ];
+    assert.equal(new Set(previews).size, 6);
+    for (const url of previews) {
+      const [width, height] = pngSize(url);
+      assert.equal(Math.max(width, height), 384);
+      assert.ok(Math.min(width, height) >= 256);
+    }
   });
 
   test('предпросмотр не считается применением', () => {

@@ -11,8 +11,34 @@ export class CampDecorLayer {
   private readonly glow = lampGlowMaterial();
   private readonly lights: THREE.PointLight[] = [];
   private readonly generated: THREE.BufferGeometry[] = [];
+  private readonly motePositions = new Float32Array(6 * 3);
+  private readonly moteGeometry = new THREE.BufferGeometry();
+  private readonly moteMaterial = new THREE.PointsMaterial({
+    color: '#ffd27a',
+    size: 0.065,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+  });
+  private readonly motes = new THREE.Points(this.moteGeometry, this.moteMaterial);
+  private readonly glintGeometry = new THREE.RingGeometry(0.055, 0.13, 4);
+  private readonly glintMaterial = new THREE.MeshBasicMaterial({
+    color: C.lat,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  private readonly shieldGlint = new THREE.Mesh(this.glintGeometry, this.glintMaterial);
   private current: CampDecorStyle = 'none';
   private currentArea = -1;
+
+  constructor() {
+    this.moteGeometry.setAttribute('position', new THREE.BufferAttribute(this.motePositions, 3));
+  }
 
   set(value: unknown, area: number): void {
     const style = campDecorStyle(value);
@@ -24,15 +50,45 @@ export class CampDecorLayer {
       this.addLamp(1.1, 1.1, 0.25);
       this.addLamp(area - 1.1, area - 1.1, Math.PI + 0.25);
       this.addBench(area * 0.5, area - 0.75, 0);
+      this.group.add(this.motes);
     } else if (style === 'sentinel') {
       this.addRack(1.1, area - 1.05, 0.35);
       this.addRack(area - 1.1, 1.05, Math.PI + 0.35);
       this.addShield(area * 0.5, area - 0.72);
+      this.shieldGlint.position.set(area * 0.5, 0.67, area - 0.82);
+      this.group.add(this.shieldGlint);
     }
   }
 
-  update(day: number): void {
+  update(day: number, now = 0): void {
     setLampsNight(1 - day, this.glow, this.lights);
+    const seconds = now / 1000;
+    if (this.current === 'wayfarer') {
+      const night = Math.min(1, Math.max(0, 1 - day));
+      this.motes.visible = night > 0.08;
+      this.moteMaterial.opacity = night * (0.48 + Math.sin(seconds * 2.7) * 0.12);
+      for (let i = 0; i < 6; i++) {
+        const secondLamp = i >= 3;
+        const phase = seconds * (0.34 + (i % 3) * 0.055) + i * 1.73;
+        const baseX = secondLamp ? this.currentArea - 1.1 : 1.1;
+        const baseZ = secondLamp ? this.currentArea - 1.1 : 1.1;
+        const at = i * 3;
+        this.motePositions[at] = baseX + Math.sin(phase * 2.2) * 0.23;
+        this.motePositions[at + 1] = 1.15 + (phase % 1) * 0.72;
+        this.motePositions[at + 2] = baseZ + Math.cos(phase * 1.7) * 0.2;
+      }
+      this.moteGeometry.getAttribute('position').needsUpdate = true;
+    } else {
+      this.motes.visible = false;
+    }
+    if (this.current === 'sentinel') {
+      const pulse = 0.5 + Math.sin(seconds * 1.9) * 0.5;
+      this.glintMaterial.opacity = 0.08 + pulse * 0.24;
+      this.shieldGlint.rotation.z = seconds * 0.34;
+      this.shieldGlint.scale.setScalar(0.85 + pulse * 0.3);
+    } else {
+      this.glintMaterial.opacity = 0;
+    }
   }
 
   private addLamp(x: number, z: number, turn: number): void {
@@ -103,6 +159,10 @@ export class CampDecorLayer {
     this.material.dispose();
     this.props.dispose();
     this.glow.dispose();
+    this.moteGeometry.dispose();
+    this.moteMaterial.dispose();
+    this.glintGeometry.dispose();
+    this.glintMaterial.dispose();
   }
 }
 
@@ -112,6 +172,32 @@ export class ClanHeraldryLayer {
   private readonly material = blockingMaterial();
   private geometry: THREE.BufferGeometry | null = null;
   private current: ClanHeraldry = 'plain';
+  private readonly uniforms: Record<string, THREE.IUniform> = {
+    uBannerTime: { value: 0 },
+  };
+
+  constructor() {
+    this.material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, this.uniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          uniform float uBannerTime;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          // Only cloth and its emblem move: the pole and crossbar remain rigid.
+          if (position.x > 0.1 && position.y > 1.4 && position.y < 2.82) {
+            float loose = clamp((position.x - 0.1) / 1.35, 0.0, 1.0);
+            transformed.z += sin(uBannerTime * 1.75 + position.x * 3.2) * 0.055 * loose;
+            transformed.y += cos(uBannerTime * 1.25 + position.x * 2.4) * 0.012 * loose;
+          }`,
+        );
+    };
+    this.material.customProgramCacheKey = () => 'clan-banner-sway-v1';
+  }
 
   set(value: unknown, x: number, z: number, turn = 0): void {
     const style = clanHeraldry(value);
@@ -138,6 +224,10 @@ export class ClanHeraldryLayer {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.group.add(mesh);
+  }
+
+  update(now: number): void {
+    this.uniforms['uBannerTime']!.value = now / 1000;
   }
 
   dispose(): void {

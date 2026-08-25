@@ -3125,7 +3125,8 @@ export class RaidView {
     // что поляна — это поверхность, а вылазка — ночь под землёй.
     this.fire.update(time, day);
     for (const f of this.fires) f.fire.update(time, day);
-    this.cosmeticDecor.update(day);
+    this.cosmeticDecor.update(day, time);
+    this.cosmeticHeraldry.update(time);
     // Фонари замка живут тем же днём: гаснут к полудню, горят к ночи.
     const night = 1 - day;
     if (this.lampGlow !== null) setLampsNight(night, this.lampGlow, this.lampLights);
