@@ -171,6 +171,7 @@ import {
 } from './core/cloud';
 import { AuthCard } from './ui/authCard';
 import { StorePanel } from './ui/storePanel';
+import { campDecorStyle, campFireStyle, clanHeraldry } from './core/cosmetics';
 import {
   KIND,
   SHIFT_SEC,
@@ -767,6 +768,31 @@ const setNight = (value: number): void => {
   rig.night = debugNight ?? value;
 };
 const campView = new CampView(camp);
+let billingAppearance = {
+  fire: campFireStyle(null),
+  decor: campDecorStyle(null),
+  heraldry: clanHeraldry(null),
+};
+
+const applyBillingAppearance = (): void => {
+  if (visitingCamp !== null) {
+    campView.setAppearance({ fire: 'standard', decor: 'none', heraldry: 'plain' });
+    return;
+  }
+  campView.setAppearance(billingAppearance);
+  if (raidView === null || raid === null || (!inGladeCamp && !inClanCamp)) return;
+  if (inClanCamp) {
+    const center = raid.loc.evac;
+    raidView.setCampAppearance(
+      { fire: 'standard', decor: 'none', heraldry: billingAppearance.heraldry },
+      { x: center.x - 3, z: center.z - 3 }, 6, center,
+    );
+    return;
+  }
+  const origin = campOrigin(camp);
+  const hq = { x: origin.x + camp.layout.hq.x, z: origin.z + camp.layout.hq.z };
+  raidView.setCampAppearance(billingAppearance, origin, campArea(camp.levels.hq), hq);
+};
 rig.world.add(campView.group);
 const farmView = new FarmView();
 rig.world.add(farmView.group);
@@ -2760,10 +2786,15 @@ const statsPanel = new StatsPanel(app);
  */
 const mailButton = new MailButton(app);
 storePanel = new StorePanel(app, {
-  onState: (state) => campHud.setCosmetics(
-    state.personal.equipped,
-    state.clan?.equipped ?? 'default',
-  ),
+  onState: (state) => {
+    campHud.setCosmetics(state.personal.equipped, state.clan?.equipped ?? 'default');
+    billingAppearance = {
+      fire: campFireStyle(state.personal.fire),
+      decor: campDecorStyle(state.personal.decor),
+      heraldry: clanHeraldry(state.clan?.heraldry),
+    };
+    applyBillingAppearance();
+  },
 });
 const clanPanel = new ClanPanel(app, {
   onFound: (name) => {
@@ -5099,6 +5130,7 @@ function toCamp(): void {
   if (camp.glade !== undefined) toGladeCamp();
   else toPadCamp();
   syncRoadStoryTask();
+  applyBillingAppearance();
 }
 
 /**
@@ -5135,6 +5167,7 @@ function visitNeighbourCamp(id: string): void {
   raid = null;
 
   campView.group.visible = true;
+  campView.setAppearance({ fire: 'standard', decor: 'none', heraldry: 'plain' });
   campView.setCamp(target.camp);
   const walls = target.camp.walls ?? emptyWalls();
   campView.setWalls(wallPieces(walls));
@@ -5341,6 +5374,7 @@ function toClanCamp(): void {
   campHud.setVisible(false);
   heroFan.setVisible(false);
   clanBuildBar.sync(camp, clanPlacing, true);
+  applyBillingAppearance();
   syncFarmUi();
   persist();
 }
@@ -6494,6 +6528,10 @@ if (debugCamp !== null) {
   if (debugCamp === 'cosmetics') {
     if (camp.clan == null) foundClan(camp, 'Артель Знака', clock.now());
     campHud.setCosmetics('watchfire', 'banner_tower');
+    billingAppearance = { fire: 'ghostfire', decor: 'wayfarer', heraldry: 'sun' };
+    applyBillingAppearance();
+    const collection = debugGet(debugParams, 'collection');
+    if (collection === 'player' || collection === 'clan') storePanel?.open(collection);
   } else if (debugCamp === 'walls') {
     // Площадь по максимуму и полный карман камня: сцена заведена, чтобы
     // смотреть стену, а не чтобы копить на неё. При Жилье ур. 1 кольцо

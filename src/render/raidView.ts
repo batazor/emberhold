@@ -41,6 +41,8 @@ import type { DwellerLook } from '../sim/garrison';
 import { cryptStyleOf, type GraveSite } from '../sim/graveSite';
 import type { TrailSite } from '../sim/trailSite';
 import { Fire } from './fire';
+import { CampDecorLayer, ClanHeraldryLayer } from './campCosmetics';
+import type { CampDecorStyle, CampFireStyle, ClanHeraldry } from '../core/cosmetics';
 import { fireOf } from './models';
 import { Rigged } from './rigged';
 import type { RigClipName } from './rigged';
@@ -449,6 +451,9 @@ export class RaidView {
   private readonly placed = new Map<BuildingId, THREE.Mesh>();
   /** Свет поставленного костра. Тот же, что потом горит в лагере. */
   private readonly fire = new Fire();
+  private readonly cosmeticDecor = new CampDecorLayer();
+  private readonly cosmeticHeraldry = new ClanHeraldryLayer();
+  private fireStyle: CampFireStyle = 'standard';
   /** Костры гостей (`sim/castleGuest.ts`): свой меш и свой огонь каждому. */
   private fires: { mesh: THREE.Mesh; fire: Fire }[] = [];
   /** Плафоны фонарей замка: один материал на все, ночь поднимает эмиссию. */
@@ -577,6 +582,22 @@ export class RaidView {
     this.buildHero();
     this.buildMarker();
     this.buildHintRing();
+    this.group.add(this.cosmeticDecor.group, this.cosmeticHeraldry.group);
+  }
+
+  /** Appearance is injected from server billing state and never enters raid rules. */
+  setCampAppearance(
+    appearance: { readonly fire: CampFireStyle; readonly decor: CampDecorStyle; readonly heraldry: ClanHeraldry },
+    origin: { readonly x: number; readonly z: number },
+    area: number,
+    hq: { readonly x: number; readonly z: number },
+  ): void {
+    this.fireStyle = appearance.fire;
+    this.fire.setStyle(appearance.fire);
+    for (const guest of this.fires) guest.fire.setStyle(appearance.fire);
+    this.cosmeticDecor.group.position.set(origin.x, 0, origin.z);
+    this.cosmeticDecor.set(appearance.decor, area);
+    this.cosmeticHeraldry.set(appearance.heraldry, hq.x + 2.15, hq.z - 0.45, -0.35);
   }
 
   private track<T extends THREE.BufferGeometry | THREE.Material>(x: T): T {
@@ -2082,6 +2103,7 @@ export class RaidView {
       mesh.position.set(f.x, 0, f.z);
       this.group.add(mesh);
       const fire = new Fire();
+      fire.setStyle(this.fireStyle);
       fire.set('kitchen', 1, f.x, f.z, BUILDING_SCALE * TENT_LOOK);
       this.group.add(fire.group);
       this.clearGrassCell(f.x, f.z);
@@ -3156,6 +3178,8 @@ export class RaidView {
     // что поляна — это поверхность, а вылазка — ночь под землёй.
     this.fire.update(time, day);
     for (const f of this.fires) f.fire.update(time, day);
+    this.cosmeticDecor.update(day, time);
+    this.cosmeticHeraldry.update(time);
     // Фонари замка живут тем же днём: гаснут к полудню, горят к ночи.
     const night = 1 - day;
     if (this.lampGlow !== null) setLampsNight(night, this.lampGlow, this.lampLights);
@@ -3451,6 +3475,8 @@ export class RaidView {
     this.grass?.dispose();
     this.meadow?.dispose();
     this.fire.dispose();
+    this.cosmeticDecor.dispose();
+    this.cosmeticHeraldry.dispose();
     this.castleOcclusion.dispose();
     for (const f of this.fires) f.fire.dispose();
     this.grass = null;

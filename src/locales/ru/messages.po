@@ -284,6 +284,81 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+#~ msgid "Все полученные здесь знаки принадлежат клану «{clan}», а не отдельному игроку."
+#~ msgstr "Все полученные здесь знаки принадлежат клану «{clan}», а не отдельному игроку."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Выберите знак, примерьте его и установите отдельным действием."
+#~ msgstr "Выберите знак, примерьте его и установите отдельным действием."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Закрытый знак · предпросмотр"
+#~ msgstr "Закрытый знак · предпросмотр"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Знаки клана"
+#~ msgstr "Знаки клана"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Знаки лагеря"
+#~ msgstr "Знаки лагеря"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Набор добавлен в коллекцию. Текущий знак не изменён — выберите и установите его сами."
+#~ msgstr "Набор добавлен в коллекцию. Текущий знак не изменён — выберите и установите его сами."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Общий знак виден на глобальной карте рядом с лагерем клана."
+#~ msgstr "Общий знак виден на глобальной карте рядом с лагерем клана."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Откроются оба закрытых знака набора. Их можно примерить до получения."
+#~ msgstr "Откроются оба закрытых знака набора. Их можно примерить до получения."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Передать набор клану за $4.99"
+#~ msgstr "Передать набор клану за $4.99"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Полученные знаки навсегда остаются на вашем аккаунте."
+#~ msgstr "Полученные знаки навсегда остаются на вашем аккаунте."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Получить набор за $2.99"
+#~ msgstr "Получить набор за $2.99"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Устанавливаем выбранный знак…"
+#~ msgstr "Устанавливаем выбранный знак…"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Установить"
+#~ msgstr "Установить"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Установить может глава или офицер"
+#~ msgstr "Установить может глава или офицер"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Чтобы собирать общие знаки, сначала создайте клан."
+#~ msgstr "Чтобы собирать общие знаки, сначала создайте клан."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "—"
 msgstr "—"
 
@@ -8591,6 +8666,11 @@ msgstr "без вылазок: 1 уровень за 2 часа"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Без герба"
+msgstr "Без герба"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "без ковки"
 msgstr "без ковки"
 
@@ -8619,6 +8699,11 @@ msgstr "Без крыши: {who}"
 #: locales/game-messages.ts
 msgid "Без крыши: {who} и ещё {count}"
 msgstr "Без крыши: {who} и ещё {count}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Без набора"
+msgstr "Без набора"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -9803,6 +9888,11 @@ msgid "Ведите указателем вдоль поверхности. Кр
 msgstr "Ведите указателем вдоль поверхности. Красная зона — где опорная ось почти параллельна нормали."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Ведьмин огонь"
+msgstr "Ведьмин огонь"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Вейн"
 msgstr "Вейн"
@@ -10575,11 +10665,6 @@ msgid "Все под крышей"
 msgstr "Все под крышей"
 
 #. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Все полученные здесь знаки принадлежат клану «{clan}», а не отдельному игроку."
-msgstr "Все полученные здесь знаки принадлежат клану «{clan}», а не отдельному игроку."
-
-#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "всё помещается, площадь не ограничивает"
 msgstr "всё помещается, площадь не ограничивает"
@@ -10895,11 +10980,6 @@ msgstr "Выберите здание, затем место 2×2"
 #: locales/legacy-messages.ts
 msgid "Выберите здание, затем место 2×2"
 msgstr "Выберите здание, затем место 2×2"
-
-#. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Выберите знак, примерьте его и установите отдельным действием."
-msgstr "Выберите знак, примерьте его и установите отдельным действием."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -11414,6 +11494,11 @@ msgstr "Генератор отбрасывает результат и увел
 #: locales/legacy-messages.ts
 msgid "Геометрия, которой"
 msgstr "Геометрия, которой"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Геральдика"
+msgstr "Геральдика"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -12191,6 +12276,11 @@ msgid "действие невозможно"
 msgstr "действие невозможно"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Декор"
+msgstr "Декор"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Делает"
 msgstr "Делает"
@@ -12896,6 +12986,11 @@ msgstr "Дожимает стройку и остаётся в сессии."
 #: locales/game-messages.ts
 msgid "Дозорная башня"
 msgstr "Дозорная башня"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дозорный двор"
+msgstr "Дозорный двор"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -14065,8 +14160,8 @@ msgstr "Закрыто"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Закрытый знак · предпросмотр"
-msgstr "Закрытый знак · предпросмотр"
+msgid "Закрытый предмет · предпросмотр"
+msgstr "Закрытый предмет · предпросмотр"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -14856,6 +14951,11 @@ msgstr "Зеркалирование направлений"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Знак"
+msgstr "Знак"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Знак клана"
 msgstr "Знак клана"
 
@@ -14873,16 +14973,6 @@ msgstr "знак не ближе 0,075 ширины, русло — дальше
 #: locales/legacy-messages.ts
 msgid "Знак фона, повторяющий глиф события, — это уже не фон, а ложное сообщение."
 msgstr "Знак фона, повторяющий глиф события, — это уже не фон, а ложное сообщение."
-
-#. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Знаки клана"
-msgstr "Знаки клана"
-
-#. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Знаки лагеря"
-msgstr "Знаки лагеря"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -14979,6 +15069,11 @@ msgstr "Золото и огонь — один слот"
 #: locales/legacy-messages.ts
 msgid "золотой"
 msgstr "золотой"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Золотой знак"
+msgstr "Золотой знак"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -17518,6 +17613,7 @@ msgid "костей:"
 msgstr "костей:"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Костёр"
 msgstr "Костёр"
@@ -19432,8 +19528,8 @@ msgstr "набор героев ≤ 230 КБ gzip"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Набор добавлен в коллекцию. Текущий знак не изменён — выберите и установите его сами."
-msgstr "Набор добавлен в коллекцию. Текущий знак не изменён — выберите и установите его сами."
+msgid "Набор добавлен в коллекцию. Текущее оформление не изменено — выберите и примените его сами."
+msgstr "Набор добавлен в коллекцию. Текущее оформление не изменено — выберите и примените его сами."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21269,8 +21365,8 @@ msgstr "Общее"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Общий знак виден на глобальной карте рядом с лагерем клана."
-msgstr "Общий знак виден на глобальной карте рядом с лагерем клана."
+msgid "Общие знаки и геральдика принадлежат клану. Выбор подтверждается отдельно."
+msgstr "Общие знаки и геральдика принадлежат клану. Выбор подтверждается отдельно."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -21306,6 +21402,11 @@ msgstr "Объявляется до входа"
 #: locales/game-messages.ts
 msgid "Обычная палатка"
 msgstr "Обычная палатка"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Обычное пламя"
+msgstr "Обычное пламя"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -22148,8 +22249,8 @@ msgstr "Откройте дорогу у минотавра"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Откроются оба закрытых знака набора. Их можно примерить до получения."
-msgstr "Откроются оба закрытых знака набора. Их можно примерить до получения."
+msgid "Откроются оба варианта набора. Их можно примерить до получения."
+msgstr "Откроются оба варианта набора. Их можно примерить до получения."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -22487,6 +22588,11 @@ msgstr "Оттуда же вторая правка, и тоже про пере
 #: locales/game-messages.ts
 msgid "Оформление"
 msgstr "Оформление"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Оформление клана"
+msgstr "Оформление клана"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -23087,11 +23193,6 @@ msgstr "перевыборка по длине дуги и репер — чис
 #: locales/legacy-messages.ts
 msgid "Перевыборка штриха"
 msgstr "Перевыборка штриха"
-
-#. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Передать набор клану за $4.99"
-msgstr "Передать набор клану за $4.99"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -24188,8 +24289,8 @@ msgstr "Получаете"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Полученные знаки навсегда остаются на вашем аккаунте."
-msgstr "Полученные знаки навсегда остаются на вашем аккаунте."
+msgid "Полученные наборы навсегда остаются на вашем аккаунте."
+msgstr "Полученные наборы навсегда остаются на вашем аккаунте."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -24199,8 +24300,8 @@ msgstr "Получено урона"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Получить набор за $2.99"
-msgstr "Получить набор за $2.99"
+msgid "Получить набор за {price}"
+msgstr "Получить набор за {price}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25110,6 +25211,11 @@ msgid "Приём v0.2"
 msgstr "Приём v0.2"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Призрачный огонь"
+msgstr "Призрачный огонь"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "призы"
 msgstr "призы"
@@ -25150,6 +25256,21 @@ msgid "Приманка: жадность без наказания"
 msgstr "Приманка: жадность без наказания"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Применить"
+msgstr "Применить"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Применить может глава или офицер"
+msgstr "Применить может глава или офицер"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Применяем выбранное оформление…"
+msgstr "Применяем выбранное оформление…"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "применяет скиннинг на запекании и кладёт в игру"
 msgstr "применяет скиннинг на запекании и кладёт в игру"
@@ -25173,6 +25294,11 @@ msgstr "примеренные к бюджету"
 #: locales/legacy-messages.ts
 msgid "примеренные к палитре"
 msgstr "примеренные к палитре"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Примерьте знак, огонь или набор двора. Ни одна покупка не применяется автоматически."
+msgstr "Примерьте знак, огонь или набор двора. Ни одна покупка не применяется автоматически."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -26187,6 +26313,11 @@ msgstr "Раздать заново"
 #: locales/legacy-messages.ts
 msgid "раздача полная"
 msgstr "раздача полная"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Раздел оформления"
+msgstr "Раздел оформления"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -29908,6 +30039,11 @@ msgstr "Сторож"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Стоянка путника"
+msgstr "Стоянка путника"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Стража разбита — дорога снова открыта для обозов"
 msgstr "Стража разбита — дорога снова открыта для обозов"
 
@@ -32557,21 +32693,6 @@ msgid "Условие, при котором лес имеет право на �
 msgstr "Условие, при котором лес имеет право на существование"
 
 #. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Устанавливаем выбранный знак…"
-msgstr "Устанавливаем выбранный знак…"
-
-#. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Установить"
-msgstr "Установить"
-
-#. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Установить может глава или офицер"
-msgstr "Установить может глава или офицер"
-
-#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "уступает удару"
 msgstr "уступает удару"
@@ -33550,6 +33671,11 @@ msgid "череп Kenney; угроза читается до карточки"
 msgstr "череп Kenney; угроза читается до карточки"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Чёрный знак"
+msgstr "Чёрный знак"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Чёрный шурф"
 msgstr "Чёрный шурф"
@@ -34153,8 +34279,8 @@ msgstr "чтобы пиксель не мылился"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Чтобы собирать общие знаки, сначала создайте клан."
-msgstr "Чтобы собирать общие знаки, сначала создайте клан."
+msgid "Чтобы собирать общее оформление, сначала создайте клан."
+msgstr "Чтобы собирать общее оформление, сначала создайте клан."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -34696,6 +34822,11 @@ msgstr "Этот знак принадлежит клану и останетс�
 #: locales/legacy-messages.ts
 msgid "Этот куст обобрали, пусть стоит."
 msgstr "Этот куст обобрали, пусть стоит."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Этот набор станет имуществом клана «{clan}», а не отдельного игрока."
+msgstr "Этот набор станет имуществом клана «{clan}», а не отдельного игрока."
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
