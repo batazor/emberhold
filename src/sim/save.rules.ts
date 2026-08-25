@@ -221,7 +221,7 @@ describe('Сохранение', () => {
 
   test('сейв переживает круг save → load', () => {
     const camp = createCamp();
-    camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0 };
+    camp.levels = { hq: 4, kitchen: 3, storage: 2, forge: 0, infirmary: 0, yard: 0, archery: 0, barracks: 0, watchtower: 0, archive: 0 };
     camp.resources = { stone: 50, wood: 40, iron: 20, crystal: 3, food: 0 };
     camp.layout.kitchen = { x: 6, z: 3 };
     camp.supplyPity = 7;

@@ -2,6 +2,7 @@ import type { CampState } from './camp';
 import { BUILD_COST, BUILD_SECONDS } from './camp';
 import { canAfford, spend } from './resources';
 import type { Resources } from './resources';
+import { researchedFarmPlots } from './research';
 
 /** Первая цель хозяйства: добыча считается после выдачи, а не по остатку. */
 export const FARM_FOOD_GOAL = 30;
@@ -171,7 +172,7 @@ export function startFarmOnboarding(camp: CampState): boolean {
     gatheredFood: 0,
     step: 'intro',
     unlocked: false,
-    activePlots: FARM_STARTING_PLOT_COUNT,
+    activePlots: researchedFarmPlots(camp),
     selectedCrop: FARM_DEFAULT_CROP,
     plots: emptyFarmPlots(),
     story: emptyFarmStory(),

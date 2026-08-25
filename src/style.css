@@ -1265,6 +1265,41 @@ button[disabled] { opacity: 0.4; cursor: default; }
 #draft .card b { font-size: 15px; }
 #draft .card .gives { font-size: 13px; color: var(--good); }
 #draft .card .costs { font-size: 13px; color: var(--bad); }
+
+/* ---------- личные исследования лагеря ---------- */
+#research {
+  position: fixed; inset: 0; z-index: 55; display: grid; place-items: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: var(--scrim-soft); pointer-events: auto;
+}
+#research[hidden] { display: none; }
+#research .research-panel { width: min(900px, 100%); max-height: calc(100dvh - 24px); overflow: auto; }
+#research .research-head { position: sticky; top: 0; z-index: 2; padding-bottom: 10px; background: var(--panel); }
+#research .research-head small { color: var(--gold); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+#research h2 { margin: 2px 0 0; font-size: 22px; }
+#research .research-summary { margin: 8px 0 14px; padding: 9px 11px; }
+#research .research-current { font-size: 12px; text-align: right; }
+#research .research-tree { display: flex; flex-direction: column; gap: 14px; }
+#research .research-row h3 { margin: 0 0 7px; color: var(--dim); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+#research .research-row-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+#research .research-card { position: relative; min-height: 150px; align-items: flex-start; padding: 12px 82px 12px 12px; text-align: left; }
+#research .research-icon {
+  position: absolute; top: 10px; right: 10px; width: 64px; height: 64px;
+  object-fit: contain; filter: drop-shadow(0 3px 5px var(--shadow)); pointer-events: none;
+}
+#research .research-card small { color: var(--dim); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+#research .research-card b { margin-top: 2px; font-size: 15px; }
+#research .research-card span { color: var(--gold); font-size: 11px; }
+#research .research-card p { flex: 1; margin: 8px 0; color: var(--ink); font-size: 12px; line-height: 1.35; }
+#research .research-card i { color: var(--dim); font-size: 10px; font-style: normal; }
+#research .research-card.active { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+#research .research-card.done { border-color: var(--good); }
+#research .research-card:disabled { opacity: .58; }
+@media (max-width: 620px) {
+  #research .research-row-grid { grid-template-columns: 1fr; }
+  #research .research-card { min-height: 122px; }
+}
 /* ---------- задание лагеря ---------- */
 /* Строка, а не уведомление: «кому-то негде спать» не перестаёт быть правдой
    оттого, что игрок отвернулся. Стоит под ресурсами, потому что просит она

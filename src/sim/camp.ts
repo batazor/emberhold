@@ -29,6 +29,8 @@ import type { FarmState } from './farm';
 import type { SignpostDecor } from './signposts';
 import { emptySignpostDecor } from './signposts';
 import type { RoadStory } from './roadStory';
+import { createResearch, researchStoreBonus } from './research';
+import type { ResearchState } from './research';
 
 export type BuildingId =
   | 'hq'
@@ -39,14 +41,24 @@ export type BuildingId =
   | 'yard'
   | 'archery'
   | 'barracks'
-  | 'watchtower';
+  | 'watchtower'
+  | 'archive';
 
 export const BUILDING_ORDER: readonly BuildingId[] = [
   'hq', 'kitchen', 'storage', 'forge', 'infirmary', 'yard',
   'archery', 'barracks', 'watchtower',
+  'archive',
 ];
 
 export const MAX_LEVEL = 6;
+export const buildingMaxLevel = (id: BuildingId): number => id === 'archive' ? 3 : MAX_LEVEL;
+
+/** Архив приходит в зрелый лагерь: его три ступени стоят как уровни 4–6 здания. */
+export const buildingCost = (id: BuildingId, toLevel: number): Partial<Resources> =>
+  BUILD_COST[id === 'archive' ? Math.min(6, toLevel + 3) : toLevel] ?? {};
+
+export const buildingSeconds = (id: BuildingId, toLevel: number): number =>
+  BUILD_SECONDS[id === 'archive' ? Math.min(6, toLevel + 3) : toLevel] ?? 0;
 
 export interface BuildingDef {
   readonly id: BuildingId;
@@ -126,7 +138,7 @@ export const CHEST_BONUS = 30;
 
 /** Вместимость кладовой: база плюс сундуки. Общий счёт, как у рюкзака. */
 export const storeCapacity = (camp: CampState): number =>
-  STORE_BASE + camp.chests.length * CHEST_BONUS;
+  STORE_BASE + camp.chests.length * CHEST_BONUS + researchStoreBonus(camp);
 
 /**
  * Занято в кладовой. **Пища (§13.7) не считается**, и это решение, а не
@@ -289,6 +301,14 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
         : `Разведка +${watchtowerVision(l).toLocaleString('ru-RU')} к обзору`,
     unlockHq: 4,
   },
+  archive: {
+    id: 'archive',
+    name: 'Архив',
+    effect: (l) => l <= 0
+      ? 'Личное дерево развития лагеря'
+      : `Открывает ${Math.min(3, l)}-й ряд исследований`,
+    unlockHq: 5,
+  },
 };
 
 /** Минуты строкой для ценников зданий: «6 мин», «1 ч 30 мин». */
@@ -445,6 +465,8 @@ export interface CampState {
   signposts?: SignpostDecor;
   /** §20.1 — один слот. Это и делает вопрос «что дальше» настоящим выбором. */
   construction: Construction | null;
+  /** Личные исследования лагеря: своя очередь, параллельная строительству. */
+  research: ResearchState;
   /** §14 — снаряжение живёт в лагере, а не в вылазке: при провале не теряется. */
   gear: GearState;
   /** Приглашённые жильцы (`residents.ts`). Герой в список не входит: он
@@ -621,6 +643,7 @@ const START_LAYOUT: Record<BuildingId, { x: number; z: number }> = {
   archery: { x: 1, z: 6 },
   barracks: { x: 4, z: 7 },
   watchtower: { x: 7, z: 7 },
+  archive: { x: 8, z: 4 },
 };
 
 /**
@@ -669,6 +692,7 @@ export function createCamp(): CampState {
     levels: {
       hq: 1, kitchen: 1, storage: 1, forge: 0, infirmary: 0, yard: 0,
       archery: 0, barracks: 0, watchtower: 0,
+      archive: 0,
     },
     layout: {
       hq: { ...START_LAYOUT.hq },
@@ -680,11 +704,13 @@ export function createCamp(): CampState {
       archery: { ...START_LAYOUT.archery },
       barracks: { ...START_LAYOUT.barracks },
       watchtower: { ...START_LAYOUT.watchtower },
+      archive: { ...START_LAYOUT.archive },
     },
     // §13.7 — лагерь начинается с запаса пищи: содержание обязано ждать,
     // пока игрок с ним познакомится, а не встречать его голодом.
     resources: { ...emptyResources(), food: START_FOOD },
     construction: null,
+    research: createResearch(),
     gear: emptyGear(),
     residents: [],
     tents: [],
@@ -737,7 +763,7 @@ export type UpgradeBlock =
  */
 export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
   const level = camp.levels[id];
-  if (level >= MAX_LEVEL) return 'max';
+  if (level >= buildingMaxLevel(id)) return 'max';
   // Здание, которого ещё нет: причина «нужен Жильё ур. N», а не пустое место.
   if (!isUnlocked(camp, id)) return 'locked';
   // §20.4 — единственный настоящий ограничитель: никакое здание не может
@@ -749,7 +775,7 @@ export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
   if (camp.construction !== null || camp.farm?.story.construction != null || camp.walls?.work != null) {
     return 'slot-busy';
   }
-  if (!canAfford(camp.resources, BUILD_COST[level + 1] ?? {})) return 'resources';
+  if (!canAfford(camp.resources, buildingCost(id, level + 1))) return 'resources';
   return 'ok';
 }
 
@@ -761,13 +787,12 @@ export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
  * `ok` в таблице нет намеренно: строка отказа существует только там, где есть
  * отказ, и звать таблицу с `ok` неоткуда — причина известна до строки.
  *
- * `locked` называет ур. 2 числом, потому что это единственный `unlockHq`
- * выше единицы во всём списке зданий. Появится второй — число уйдёт отсюда
- * к зданию.
+ * Точный порог уже показывает карточка здания; событие называет причину,
+ * не притворяясь, что у всех закрытых зданий один и тот же уровень.
  */
 export const UPGRADE_REASON: Record<Exclude<UpgradeBlock, 'ok'>, string> = {
   max: 'Максимальный уровень',
-  locked: 'Нужно Жильё ур. 2',
+  locked: 'Нужно повысить Жильё',
   'hq-cap': 'Жильё не пускает выше',
   'slot-busy': 'Слот занят другой стройкой',
   resources: 'Не хватает ресурсов',
@@ -776,8 +801,8 @@ export const UPGRADE_REASON: Record<Exclude<UpgradeBlock, 'ok'>, string> = {
 export function startUpgrade(camp: CampState, id: BuildingId, now: number): boolean {
   if (upgradeBlock(camp, id) !== 'ok') return false;
   const toLevel = camp.levels[id] + 1;
-  spend(camp.resources, BUILD_COST[toLevel] ?? {});
-  const seconds = BUILD_SECONDS[toLevel] ?? 0;
+  spend(camp.resources, buildingCost(id, toLevel));
+  const seconds = buildingSeconds(id, toLevel);
   camp.construction = { building: id, toLevel, startedAt: now, endsAt: now + seconds };
   // Ур. 1 мгновенный (§20.2) — здание вырастает на глазах в онбординге.
   if (seconds === 0) completeIfDue(camp, now);
@@ -919,7 +944,7 @@ export function suggestUpgrade(camp: CampState): BuildingId | null {
   let bestCost = Infinity;
   for (const id of BUILDING_ORDER) {
     if (upgradeBlock(camp, id) !== 'ok') continue;
-    const cost = BUILD_COST[camp.levels[id] + 1] ?? {};
+    const cost = buildingCost(id, camp.levels[id] + 1);
     const total = Object.values(cost).reduce((a, b) => a + b, 0);
     if (total < bestCost) {
       bestCost = total;
@@ -1051,7 +1076,7 @@ export function gearProgress(camp: CampState, slot: GearSlot): number {
  * улучшения», и эта доля показывает, попадаем ли мы туда.
  */
 export function upgradeProgress(camp: CampState, id: BuildingId): number {
-  const cost = BUILD_COST[camp.levels[id] + 1];
+  const cost = buildingCost(id, camp.levels[id] + 1);
   if (cost === undefined) return 1;
   let worst = 1;
   for (const [kind, amount] of Object.entries(cost) as [keyof Resources, number][]) {
