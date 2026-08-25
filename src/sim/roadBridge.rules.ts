@@ -13,7 +13,7 @@ import type { SupplyRoute } from './roadStory';
 
 function campAfter(route: SupplyRoute) {
   const camp = createCamp();
-  camp.roadStory = { step: 'done', route };
+  camp.roadStory = { step: 'done', route, convoySupplied: true };
   assert.ok(startBridgeStory(camp));
   return camp;
 }
@@ -23,6 +23,8 @@ describe('Вторая глава: старый мост', () => {
     const camp = createCamp();
     assert.equal(startBridgeStory(camp), false);
     camp.roadStory = { step: 'done', route: 'work' };
+    assert.equal(startBridgeStory(camp), false, 'первый новый обоз ещё не снаряжён');
+    camp.roadStory.convoySupplied = true;
     assert.ok(startBridgeStory(camp));
     assert.equal(startBridgeStory(camp), false);
     assert.deepEqual(camp.bridgeStory, { step: 'maintenance', completed: 0, lastDay: -1 });

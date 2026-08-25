@@ -1,5 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
-import type { ClanCampIcon, PersonalCampIcon } from './cosmetics';
+import type {
+  CampDecorStyle,
+  CampFireStyle,
+  ClanCampIcon,
+  ClanHeraldry,
+  CosmeticKind,
+  CosmeticOwner,
+  CosmeticValue,
+  PersonalCampIcon,
+} from './cosmetics';
 
 /**
  * Облачная копия сейва (§6). Модуль ничего не знает о форме сохранения —
@@ -438,6 +447,10 @@ export interface BillingState {
   readonly personal: {
     readonly owned: boolean;
     readonly equipped: PersonalCampIcon;
+    readonly fireOwned: boolean;
+    readonly fire: CampFireStyle;
+    readonly decorOwned: boolean;
+    readonly decor: CampDecorStyle;
   };
   readonly clan: null | {
     readonly id: string;
@@ -445,6 +458,8 @@ export interface BillingState {
     readonly role: 'leader' | 'officer' | 'member';
     readonly owned: boolean;
     readonly equipped: ClanCampIcon;
+    readonly heraldryOwned: boolean;
+    readonly heraldry: ClanHeraldry;
   };
   readonly url?: string;
 }
@@ -459,9 +474,10 @@ export const cloudBillingCheckout = (sku: string): Promise<BillingState | null> 
 
 /** Выбор проходит через сервер: localStorage не может надеть неоплаченное. */
 export const cloudBillingEquip = (
-  owner: 'player' | 'clan',
-  icon: PersonalCampIcon | ClanCampIcon,
-): Promise<BillingState | null> => callFunction<BillingState>('billing', { action: 'equip', owner, icon });
+  owner: CosmeticOwner,
+  kind: CosmeticKind,
+  value: CosmeticValue,
+): Promise<BillingState | null> => callFunction<BillingState>('billing', { action: 'equip', owner, kind, value });
 
 /** Канонический UUID заводится после локального основания и переживает имя. */
 export async function cloudEnsureClan(name: string): Promise<string | null> {

@@ -3,6 +3,7 @@ import { C } from './blocking';
 import { FIRE_MID, fireOf } from './models';
 import type { FireSpot } from './models';
 import { PALETTE } from './palette';
+import { campFireStyle, type CampFireStyle } from '../core/cosmetics';
 
 /**
  * Огонь: пламя и его свет. Костёр под открытым небом, очаг под навесом.
@@ -41,6 +42,21 @@ const FIRE_RANGE = 6.5;
 
 /** Затухание. Мягче квадрата: у костра нет одной точки, из которой он светит. */
 const FIRE_DECAY = 1.3;
+
+const FIRE_STYLE: Readonly<Record<CampFireStyle, {
+  readonly hot: string;
+  readonly cool: string;
+  readonly ember: string;
+  readonly light: string | number;
+  readonly wisp: string | number;
+}>> = {
+  standard: { hot: C.lat, cool: C.plam, ember: C.zhar, light: PALETTE.torch, wisp: C.lat },
+  ghostfire: { hot: '#f4ffff', cool: '#75d9d1', ember: '#315d5a', light: '#9ff5ed', wisp: '#c9ffff' },
+  witchfire: { hot: '#f2ddff', cool: '#a258e8', ember: '#4c216e', light: '#c37cff', wisp: '#e8b9ff' },
+};
+
+/** Paid flames get a tiny render-only corona; the light numbers above stay untouched. */
+const WISP_COUNT = 12;
 
 /**
  * Языки пламени в единицах модели, размер 1. Числа те же, которыми пламя
@@ -156,11 +172,37 @@ export class Fire {
   private readonly geometry = flameGeometry();
   private readonly material = flameMaterial(this.uniforms);
   private readonly flame = new THREE.Mesh(this.geometry, this.material);
+  private readonly wispPositions = new Float32Array(WISP_COUNT * 3);
+  private readonly wispGeometry = new THREE.BufferGeometry();
+  private readonly wispMaterial = new THREE.PointsMaterial({
+    color: C.lat,
+    size: 0.075,
+    transparent: true,
+    opacity: 0.8,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+  });
+  private readonly wisps = new THREE.Points(this.wispGeometry, this.wispMaterial);
   private spot: FireSpot | null = null;
+  private style: CampFireStyle = 'standard';
 
   constructor() {
-    this.group.add(this.light, this.flame);
+    this.wispGeometry.setAttribute('position', new THREE.BufferAttribute(this.wispPositions, 3));
+    this.group.add(this.light, this.flame, this.wisps);
     this.clear();
+  }
+
+  /** Cosmetic fire changes colour only; size, range and intensity stay on the balance path above. */
+  setStyle(value: unknown): void {
+    this.style = campFireStyle(value);
+    const style = FIRE_STYLE[this.style];
+    (this.uniforms['uFireHot']!.value as THREE.Color).set(style.hot);
+    (this.uniforms['uFireCool']!.value as THREE.Color).set(style.cool);
+    (this.uniforms['uFireEmber']!.value as THREE.Color).set(style.ember);
+    this.light.color.set(style.light);
+    this.wispMaterial.color.set(style.wisp);
+    this.wisps.visible = this.spot !== null && this.style !== 'standard';
   }
 
   /**
@@ -181,6 +223,9 @@ export class Fire {
     this.flame.visible = true;
     this.flame.position.set(x + dx * scale, dy * scale, z + dz * scale);
     this.flame.scale.setScalar(size * scale);
+    this.wisps.position.copy(this.flame.position);
+    this.wisps.scale.setScalar(size * scale);
+    this.wisps.visible = this.style !== 'standard';
     // Свет стоит в середине языка пламени, а не в его подошве: из подошвы
     // костёр светил бы себе под угли.
     this.light.position.set(x + dx * scale, (dy + FIRE_MID * size) * scale, z + dz * scale);
@@ -192,12 +237,27 @@ export class Fire {
     this.spot = null;
     this.light.visible = false;
     this.flame.visible = false;
+    this.wisps.visible = false;
   }
 
   /** now — миллисекунды сессии, day — доля дня (1 — полдень). */
   update(now: number, day: number): void {
     if (this.spot === null) return;
     this.uniforms['uFireTime']!.value = now / 1000;
+    if (this.style !== 'standard') {
+      const time = now / 1000;
+      for (let i = 0; i < WISP_COUNT; i++) {
+        const phase = (time * (0.22 + (i % 3) * 0.035) + i * 0.173) % 1;
+        const turn = time * (1.1 + (i % 4) * 0.13) + i * 2.17;
+        const radius = 0.08 + phase * 0.22;
+        const at = i * 3;
+        this.wispPositions[at] = Math.sin(turn) * radius;
+        this.wispPositions[at + 1] = 0.16 + phase * 1.28;
+        this.wispPositions[at + 2] = Math.cos(turn * 0.91) * radius;
+      }
+      this.wispGeometry.getAttribute('position').needsUpdate = true;
+      this.wispMaterial.opacity = 0.58 + Math.sin(time * 5.7) * 0.14;
+    }
     // Мерцание света двумя несоразмерными волнами — тот же приём, что
     // у дыхания пламени, но волны другие: свет и форма не обязаны совпадать.
     const flicker = 1 + Math.sin(now / 90) * 0.06 + Math.sin(now / 37) * 0.035;
@@ -208,5 +268,7 @@ export class Fire {
   dispose(): void {
     this.geometry.dispose();
     this.material.dispose();
+    this.wispGeometry.dispose();
+    this.wispMaterial.dispose();
   }
 }

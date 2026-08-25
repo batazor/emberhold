@@ -17,6 +17,7 @@ import {
   FARM_PLOT_COUNT,
   FARM_STARTING_PLOT_COUNT,
   emptyFarmPlots,
+  emptyFarmStory,
 } from './farm';
 import { load, save, wipe } from './save';
 
@@ -114,9 +115,15 @@ describe('Сохранение', () => {
   test('исход истории дороги переживает перезапуск, а битый исход отбрасывается', () => {
     const store = fakeStore();
     const camp = createCamp();
-    camp.roadStory = { step: 'done', route: 'trade' };
+    camp.roadStory = {
+      step: 'done',
+      route: 'trade',
+      caravanerId: 'caravaner-1',
+      caravanerName: 'Ратибор',
+      convoySupplied: true,
+    };
     save(camp, createRoster(), 0);
-    assert.deepEqual(load().camp.roadStory, { step: 'done', route: 'trade' });
+    assert.deepEqual(load().camp.roadStory, camp.roadStory);
 
     const raw = JSON.parse(store.get('emberhold/save')!) as {
       roadStory?: { step: string; route?: string };
@@ -335,27 +342,46 @@ describe('Сохранение: огород', () => {
       activePlots: FARM_STARTING_PLOT_COUNT,
       selectedCrop: 'turnip',
       plots: emptyFarmPlots(),
+      story: emptyFarmStory(),
     };
+    camp.farm.story.day = 13;
+    camp.farm.story.startedDay = 42;
+    camp.farm.story.harvestedFood = 55;
+    camp.farm.story.caravanAssisted = true;
+    camp.farm.story.caretaker = 'grower';
+    camp.farm.story.structures.barn = true;
     save(camp, createRoster(), 100);
     const raw = JSON.parse(store.get('emberhold/save')!) as {
       farm: {
         activePlots?: number;
         selectedCrop?: string;
         plots: ({ plantedAt: number; crop?: string } | null)[];
+        story?: { day?: number; structures?: { barn?: boolean } };
       };
     };
     assert.equal(raw.farm.activePlots, FARM_STARTING_PLOT_COUNT);
     assert.equal(raw.farm.selectedCrop, 'turnip');
+    assert.equal(raw.farm.story?.day, 13);
+    assert.equal(raw.farm.story?.structures?.barn, true);
+
+    const restored = load().camp.farm;
+    assert.equal(restored?.story.day, 13);
+    assert.equal(restored?.story.harvestedFood, 55);
+    assert.equal(restored?.story.caravanAssisted, true);
+    assert.equal(restored?.story.caretaker, 'grower');
+    assert.equal(restored?.story.structures.barn, true);
 
     // Срез до балансировки не писал вместимость и позволял сеять все шесть.
     delete raw.farm.activePlots;
     delete raw.farm.selectedCrop;
+    delete raw.farm.story;
     raw.farm.plots = Array(FARM_PLOT_COUNT).fill(null);
     raw.farm.plots[5] = { plantedAt: 50 };
     store.set('emberhold/save', JSON.stringify(raw));
     const back = load().camp.farm;
     assert.equal(back?.activePlots, FARM_STARTING_PLOT_COUNT);
     assert.equal(back?.selectedCrop, FARM_DEFAULT_CROP, 'старый сейв остался без выбора культуры');
+    assert.equal(back?.story.day, 1, 'старый сейв не начал историю с первой главы');
     assert.deepEqual(
       back?.plots[5],
       { plantedAt: 50, crop: FARM_DEFAULT_CROP },

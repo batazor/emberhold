@@ -749,7 +749,9 @@ export function upgradeBlock(camp: CampState, id: BuildingId): UpgradeBlock {
   // Слот один на лагерь, и стена в нём — такая же стройка, как улучшение
   // (§20.1, §6.1.6). Стена и здание впервые спорят за одно и то же, и это
   // ровно тот вопрос «что дальше», ради которого слот и один.
-  if (camp.construction !== null || camp.walls?.work != null) return 'slot-busy';
+  if (camp.construction !== null || camp.farm?.story.construction != null || camp.walls?.work != null) {
+    return 'slot-busy';
+  }
   if (!canAfford(camp.resources, BUILD_COST[level + 1] ?? {})) return 'resources';
   return 'ok';
 }

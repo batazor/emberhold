@@ -66,9 +66,14 @@ const DAILY: Readonly<Record<SupplyRoute, readonly RoadMissionId[]>> = {
   force: ['patrol-road', 'clear-foxes', 'check-toll'],
 };
 
-/** Глава начинается только после честно закрытого «Пропавшего обоза». */
+/** Глава начинается, когда Ферма снарядила первый новый обоз по открытой дороге. */
 export function startBridgeStory(camp: CampState): boolean {
-  if (camp.bridgeStory !== undefined || camp.roadStory?.step !== 'done' || camp.roadStory.route === undefined) {
+  if (
+    camp.bridgeStory !== undefined ||
+    camp.roadStory?.step !== 'done' ||
+    camp.roadStory.route === undefined ||
+    camp.roadStory.convoySupplied !== true
+  ) {
     return false;
   }
   camp.bridgeStory = { step: 'maintenance', completed: 0, lastDay: -1 };

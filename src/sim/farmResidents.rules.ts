@@ -8,7 +8,7 @@ import {
   collectResidentFarmHarvest,
   farmCareHelpers,
 } from './farmResidents';
-import { admit, buildTent } from './residents';
+import { admit, buildTent, residentUuid } from './residents';
 
 const makeCamp = () => {
   const camp = createCamp();
@@ -24,6 +24,12 @@ const makeCamp = () => {
 describe('Ферма: помощь жителей', () => {
   test('добытчик пищи собирает одну созревшую грядку и даёт бонус за уход', () => {
     const camp = makeCamp();
+    camp.roadStory = {
+      step: 'done',
+      route: 'trade',
+      caravanerId: residentUuid(camp.residents[0]!),
+      caravanerName: camp.residents[0]!.name,
+    };
     plantFarmPlot(camp, 0, 'turnip', 0);
     plantFarmPlot(camp, 3, 'barley', 0);
     const before = camp.resources.food;
@@ -40,6 +46,7 @@ describe('Ферма: помощь жителей', () => {
     assert.equal(camp.resources.food, before + report.food);
     assert.equal(camp.farm?.plots[0], null, 'собранная репа осталась на грядке');
     assert.notEqual(camp.farm?.plots[3], null, 'один помощник собрал больше одной грядки');
+    assert.equal(camp.farm?.story.caravanAssisted, true, 'спасённый караванщик не связан с урожаем');
   });
 
   test('без рабочей смены, крыши или еды урожай ждёт игрока', () => {

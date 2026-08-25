@@ -171,6 +171,7 @@ import {
 } from './core/cloud';
 import { AuthCard } from './ui/authCard';
 import { StorePanel } from './ui/storePanel';
+import { campDecorStyle, campFireStyle, clanHeraldry } from './core/cosmetics';
 import {
   KIND,
   SHIFT_SEC,
@@ -309,6 +310,7 @@ import {
   type SignLocation,
 } from './sim/signposts';
 import { FARM_CROP_TEXT, FarmCropPicker } from './ui/farmCrops';
+import { FarmBuildPanel } from './ui/farmBuildPanel';
 import { gameDuration, gameMessage, gameText } from './i18n/game';
 import { resourceMessage } from './i18n/gameData';
 import { HeroCard } from './ui/heroCard';
@@ -386,6 +388,7 @@ import {
   homeless,
   recallHunt,
   residentLook,
+  residentUuid,
   residentPhaseAt,
   residentState,
   roofs,
@@ -422,12 +425,16 @@ import { panelsFor, soundFor } from './features/scene';
 import type { Scene } from './features/scene';
 import { createRaidEar } from './features/raidAudio';
 import {
+  FARM_CONVOY_IRON,
   FARM_FOOD_GOAL,
   FARM_CROPS,
   FARM_DEFAULT_CROP,
   FARM_STARTING_PLOT_COUNT,
   advanceFarmOnboarding,
   emptyFarmPlots,
+  emptyFarmStory,
+  chooseFarmCaretaker,
+  completeFarmConstruction,
   farmPlantBlock,
   farmPlotReadyAt,
   farmPlotPhase,
@@ -437,7 +444,10 @@ import {
   plantFarmPlot,
   repeatReadyFarmPlots,
   selectFarmCrop,
+  supplyFarmConvoy,
+  startFarmConstruction,
   startFarmOnboarding,
+  syncFarmStory,
 } from './sim/farm';
 import { collectResidentFarmHarvest } from './sim/farmResidents';
 import {
@@ -538,6 +548,8 @@ startFarmOnboarding(camp);
 let workShown = false;
 
 const finishedOffline = completeIfDue(camp, startedAt); // стройка могла закончиться без нас
+completeFarmConstruction(camp, startedAt);
+syncFarmStory(camp, dayAt(startedAt));
 if (finishedOffline !== null) {
   track({ t: 'build_done', at: startedAt, building: finishedOffline, level: camp.levels[finishedOffline] });
 }
@@ -769,6 +781,31 @@ const setNight = (value: number): void => {
   rig.night = debugNight ?? value;
 };
 const campView = new CampView(camp);
+let billingAppearance = {
+  fire: campFireStyle(null),
+  decor: campDecorStyle(null),
+  heraldry: clanHeraldry(null),
+};
+
+const applyBillingAppearance = (): void => {
+  if (visitingCamp !== null) {
+    campView.setAppearance({ fire: 'standard', decor: 'none', heraldry: 'plain' });
+    return;
+  }
+  campView.setAppearance(billingAppearance);
+  if (raidView === null || raid === null || (!inGladeCamp && !inClanCamp)) return;
+  if (inClanCamp) {
+    const center = raid.loc.evac;
+    raidView.setCampAppearance(
+      { fire: 'standard', decor: 'none', heraldry: billingAppearance.heraldry },
+      { x: center.x - 3, z: center.z - 3 }, 6, center,
+    );
+    return;
+  }
+  const origin = campOrigin(camp);
+  const hq = { x: origin.x + camp.layout.hq.x, z: origin.z + camp.layout.hq.z };
+  raidView.setCampAppearance(billingAppearance, origin, campArea(camp.levels.hq), hq);
+};
 rig.world.add(campView.group);
 const farmView = new FarmView();
 rig.world.add(farmView.group);
@@ -865,7 +902,10 @@ const campHud = new CampHud(app, {
     campView.showBuildingSpot(at.x, at.z, true);
     campHud.notify(`${BUILDINGS[id].name}: коснитесь свободного места`);
   },
-  onConstruction: () => openConstructionCatalog(),
+  onConstruction: () => {
+    if (campLocation === 'farm') openFarmConstruction();
+    else openConstructionCatalog();
+  },
   onWalls: (category) => openWalls(category),
   /**
    * §14.3 — пачка стрел. Колчан наполняется только здесь: в вылазке стрелы
@@ -1205,6 +1245,53 @@ const farmCropPicker = new FarmCropPicker(app, {
     }));
     persist();
   },
+  onCaretaker: (caretaker) => {
+    if (!chooseFarmCaretaker(camp, caretaker)) return;
+    play('levelup');
+    syncFarmUi();
+    campHud.notify(gameText(gameMessage('Смотритель хозяйства выбран', 'Farm caretaker chosen')));
+    persist();
+  },
+  onConvoy: () => {
+    if (!supplyFarmConvoy(camp)) {
+      play('deny');
+      syncFarmUi();
+      return;
+    }
+    play('levelup');
+    const message = camp.roadStory?.route === 'work'
+      ? gameMessage('Работники минотавра приняли провиант · железо +{iron}', 'The minotaur’s workers took the provisions · iron +{iron}')
+      : camp.roadStory?.route === 'force'
+        ? gameMessage('Охраняемый обоз ушёл с провиантом · железо +{iron}', 'The guarded convoy left with provisions · iron +{iron}')
+        : gameMessage('Торговый обоз ушёл с провиантом · железо +{iron}', 'The trade convoy left with provisions · iron +{iron}');
+    startBridgeStory(camp);
+    syncFarmUi();
+    syncRoadStoryTask();
+    campHud.sync(camp, clock.now(), 0);
+    campHud.notify(gameText(message, { iron: FARM_CONVOY_IRON }));
+    persist();
+  },
+});
+
+const farmBuildPanel = new FarmBuildPanel(app, {
+  onBuild: (id) => {
+    const now = clock.now();
+    if (!startFarmConstruction(camp, id, now)) {
+      play('deny');
+      farmBuildPanel.sync(camp, now);
+      return;
+    }
+    play('build');
+    farmBuildPanel.sync(camp, now);
+    farmView.sync(camp.farm, now);
+    campHud.sync(camp, now, 0);
+    campHud.notify(gameText(gameMessage('Стройка огорода началась', 'Farm construction started')));
+    persist();
+  },
+  onDone: () => {
+    farmBuildPanel.setVisible(false);
+    farmCropPicker.setVisible(campLocation === 'farm');
+  },
 });
 
 /**
@@ -1357,11 +1444,23 @@ const wallSite = (): WallSite => ({
 });
 
 function openConstructionCatalog(): void {
+  farmBuildPanel.setVisible(false);
   buildPanel.setVisible(false);
   buildTool = null;
   stroke = null;
   campView.hideWallGhost();
   campHud.openConstruction();
+}
+
+function openFarmConstruction(): void {
+  buildPanel.setVisible(false);
+  buildTool = null;
+  stroke = null;
+  campView.hideWallGhost();
+  campHud.close();
+  farmCropPicker.setVisible(false);
+  farmBuildPanel.sync(camp, clock.now());
+  farmBuildPanel.setVisible(true);
 }
 
 function openWalls(category: BuildCategory = 'defense'): void {
@@ -1389,7 +1488,7 @@ function buildAt(ground: { x: number; z: number }, finished: boolean): boolean {
   const site = wallSite();
   const spot = wallSpotOf(Math.round(hit.x), Math.round(hit.z));
   // Слот один на лагерь: стена и улучшение здания спорят за одно и то же.
-  const busy = camp.construction !== null;
+  const busy = camp.construction !== null || camp.farm?.story.construction != null;
 
   if (buildTool === 'стена' || buildTool === 'ограда' || buildTool === 'дорога') {
     const tool = buildTool;
@@ -2556,7 +2655,11 @@ function syncRoadStoryTask(): void {
       ? gameText(gameMessage('Осмотрите лесную дорогу', 'Search the forest road'))
       : step === 'settle-supply'
         ? gameText(gameMessage('Решите вопрос с дорогой у минотавра', 'Settle the road dispute with the minotaur'))
-        : null;
+        : step === undefined && camp.farm?.unlocked === true && camp.farm.story.day >= 8
+          ? gameText(gameMessage('Скуйте первую вещь и откройте дорогу для обозов', 'Forge your first item and reopen the caravan road'))
+          : step === 'done' && camp.farm?.story.day === 15 && camp.roadStory?.convoySupplied !== true
+            ? gameText(gameMessage('Снарядите первый обоз на Ферме', 'Supply the first convoy at the Farm'))
+            : null;
   if (text === null) {
     const bridge = camp.bridgeStory;
     const mission = activeRoadMission(camp, dayAt(clock.now()));
@@ -2738,10 +2841,15 @@ const statsPanel = new StatsPanel(app);
  */
 const mailButton = new MailButton(app);
 storePanel = new StorePanel(app, {
-  onState: (state) => campHud.setCosmetics(
-    state.personal.equipped,
-    state.clan?.equipped ?? 'default',
-  ),
+  onState: (state) => {
+    campHud.setCosmetics(state.personal.equipped, state.clan?.equipped ?? 'default');
+    billingAppearance = {
+      fire: campFireStyle(state.personal.fire),
+      decor: campDecorStyle(state.personal.decor),
+      heraldry: clanHeraldry(state.clan?.heraldry),
+    };
+    applyBillingAppearance();
+  },
 });
 const clanPanel = new ClanPanel(app, {
   onFound: (name) => {
@@ -3262,9 +3370,20 @@ const quietFrame = (): boolean =>
   (onboarding.step === 'build' || onboarding.step === 'craft') && camp.residents.length === 0;
 
 function syncFarmUi(): void {
+  const now = clock.now();
+  const advanced = syncFarmStory(camp, dayAt(now));
   farmOnboarding.sync(camp);
-  campLocations.sync(camp, campLocation, clock.now());
-  farmCropPicker.sync(camp, clock.now());
+  campLocations.sync(camp, campLocation, now);
+  farmCropPicker.sync(camp, now);
+  farmBuildPanel.sync(camp, now);
+  farmView.sync(camp.farm, now);
+  syncRoadStoryTask();
+  if (advanced) {
+    campHud.notify(gameText(gameMessage('Огород: открыт день {day} из 15', 'Farm: day {day} of 15 unlocked'), {
+      day: camp.farm?.story.day ?? 1,
+    }));
+    persist();
+  }
 }
 
 /** Первая строка Фермы отвечает на «что здесь сейчас делать». */
@@ -3315,8 +3434,10 @@ function switchCampLocation(next: CampLocation): void {
   campLocation = next;
   placingSign = null;
   const onFarm = next === 'farm';
+  if (!onFarm) farmBuildPanel.setVisible(false);
   if (onFarm) {
     buildPanel.setVisible(false);
+    farmBuildPanel.setVisible(false);
     buildTool = null;
     selected = null;
     campView.hideBuildingSpot();
@@ -3365,6 +3486,7 @@ function showScene(scene: Scene, tier: Tier = 0): void {
     clanBuildBar.setVisible(false);
     farmView.group.visible = false;
     farmCropPicker.setVisible(false);
+    farmBuildPanel.setVisible(false);
   }
   // Панель стройки живёт только в лагере: оставшись открытой, она вооружала бы
   // палец поверх вылазки.
@@ -4059,13 +4181,14 @@ function inviteRoadSurvivor(): void {
     roadSurvivor === null ||
     raid === null
   ) return;
-  if (!admit(camp, {
+  const caravaner = {
     name: roadSurvivor.name,
     look: roadSurvivor.look,
     seed: roadSurvivor.seed,
-    answer: 'строим',
+    answer: 'кормим' as const,
     rest: false,
-  })) {
+  };
+  if (!admit(camp, caravaner)) {
     play('deny');
     raid.events.push(gameText(gameMessage(
       'В лагере уже есть человек с таким именем',
@@ -4073,11 +4196,16 @@ function inviteRoadSurvivor(): void {
     )));
     return;
   }
-  rescueCaravaner(camp);
+  const admitted = camp.residents.find((resident) =>
+    resident.name === caravaner.name && resident.seed === caravaner.seed
+  );
+  rescueCaravaner(camp, admitted === undefined
+    ? undefined
+    : { id: residentUuid(admitted), name: admitted.name });
   syncFarmUi();
   raid.events.push(gameText(gameMessage(
-    '{name} идёт в лагерь · железо забрали люди минотавра',
-    '{name} heads to camp · the minotaur’s people took the iron',
+    '{name} идёт в лагерь · у повозки уцелел мешок зерна',
+    '{name} heads to camp · a sack of grain survived by the wagon',
   ), { name: roadSurvivor.name }));
   play('build');
   raidView?.callSettler(raid.hero.x, raid.hero.z);
@@ -5104,6 +5232,7 @@ function toCamp(): void {
   if (camp.glade !== undefined) toGladeCamp();
   else toPadCamp();
   syncRoadStoryTask();
+  applyBillingAppearance();
 }
 
 /**
@@ -5140,6 +5269,7 @@ function visitNeighbourCamp(id: string): void {
   raid = null;
 
   campView.group.visible = true;
+  campView.setAppearance({ fire: 'standard', decor: 'none', heraldry: 'plain' });
   campView.setCamp(target.camp);
   const walls = target.camp.walls ?? emptyWalls();
   campView.setWalls(wallPieces(walls));
@@ -5346,6 +5476,7 @@ function toClanCamp(): void {
   campHud.setVisible(false);
   heroFan.setVisible(false);
   clanBuildBar.sync(camp, clanPlacing, true);
+  applyBillingAppearance();
   syncFarmUi();
   persist();
 }
@@ -6485,7 +6616,7 @@ if (debugTier !== null || debugNode !== null) {
  *   поверху, разрыв на башне, проезд под воротами и подъём.
  * `?test=farm-intro|farm-goal|farm-reward|farm-return` — состояния огорода.
  *   Текст и адаптивную раскладку можно проверять без прохождения пролога.
- *   Последнее открывает четыре полосы и массовый повтор готового урожая.
+ *   Последнее открывает финальную стадию: шесть полос, все постройки и праздник.
  * `?test=character` — экран героя с опытом и свободным очком умения.
  * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
  * `?test=cosmetics` — личный и клановый знаки на настоящей глобальной карте.
@@ -6499,6 +6630,10 @@ if (debugCamp !== null) {
   if (debugCamp === 'cosmetics') {
     if (camp.clan == null) foundClan(camp, 'Артель Знака', clock.now());
     campHud.setCosmetics('watchfire', 'banner_tower');
+    billingAppearance = { fire: 'ghostfire', decor: 'wayfarer', heraldry: 'sun' };
+    applyBillingAppearance();
+    const collection = debugGet(debugParams, 'collection');
+    if (collection === 'player' || collection === 'clan') storePanel?.open(collection);
   } else if (debugCamp === 'walls') {
     // Площадь по максимуму и полный карман камня: сцена заведена, чтобы
     // смотреть стену, а не чтобы копить на неё. При Жилье ур. 1 кольцо
@@ -6572,15 +6707,23 @@ if (debugCamp !== null) {
       gatheredFood: reward ? FARM_FOOD_GOAL : debugCamp === 'farm-goal' ? 14 : 0,
       step: reward ? 'reward' : debugCamp === 'farm-goal' ? 'goal' : 'intro',
       unlocked: reward,
-      activePlots: returnAction ? 4 : FARM_STARTING_PLOT_COUNT,
+      activePlots: returnAction ? 6 : FARM_STARTING_PLOT_COUNT,
       selectedCrop: FARM_DEFAULT_CROP,
       plots: emptyFarmPlots(),
+      story: emptyFarmStory(),
     };
     if (returnAction) {
       const now = clock.now();
-      camp.farm.plots[0] = { plantedAt: now - FARM_CROPS.turnip.growSeconds, crop: 'turnip' };
-      camp.farm.plots[3] = { plantedAt: now - FARM_CROPS.barley.growSeconds, crop: 'barley' };
-      camp.farm.plots[1] = { plantedAt: now - FARM_CROPS.turnip.growSeconds / 2, crop: 'turnip' };
+      const farm = camp.farm;
+      farm.story.day = 15;
+      farm.story.startedDay = dayAt(now);
+      farm.story.harvestedFood = 70;
+      for (const id of ['fence', 'well', 'barn', 'plots', 'farmhouse'] as const) {
+        farm.story.structures[id] = true;
+      }
+      farm.plots[0] = { plantedAt: now - FARM_CROPS.turnip.growSeconds, crop: 'turnip' };
+      farm.plots[3] = { plantedAt: now - FARM_CROPS.barley.growSeconds, crop: 'barley' };
+      farm.plots[1] = { plantedAt: now - FARM_CROPS.turnip.growSeconds / 2, crop: 'turnip' };
     }
     // Готовая ферма показывает не только культуры, но и связь с поручением:
     // один настоящий помощник делает строку карточки проверяемой глазом.
@@ -6593,6 +6736,16 @@ if (debugCamp !== null) {
         rest: false,
       });
       buildTent(camp);
+    }
+    if (returnAction) {
+      const helper = camp.residents.find((resident) => resident.answer === 'кормим');
+      camp.roadStory = {
+        step: 'done',
+        route: 'trade',
+        ...(helper === undefined
+          ? { caravanerName: 'Тихон' }
+          : { caravanerId: residentUuid(helper), caravanerName: helper.name }),
+      };
     }
   }
   if (
@@ -7363,6 +7516,13 @@ function stepCampSystems(dt: number, now: number): void {
       campHud.notify(`${BUILDINGS[finished].name} готов`);
       persist();
     }
+    const farmFinished = completeFarmConstruction(camp, now);
+    if (farmFinished !== null) {
+      play('levelup');
+      campHud.notify(gameText(gameMessage('Стройка огорода завершена', 'Farm construction completed')));
+      syncFarmUi();
+      persist();
+    }
     // §26 — отряд возвращается тем же тиком, что и стройка: слот освобождается
     // одинаково, и досчитывается он после закрытой вкладки так же.
     if (collectSortie(now)) persist();
@@ -7723,8 +7883,7 @@ startLoop({
       const farmSecond = Math.floor(clock.now());
       if (farmSecond !== lastFarmStatusSecond) {
         lastFarmStatusSecond = farmSecond;
-        campLocations.sync(camp, campLocation, farmSecond);
-        farmCropPicker.sync(camp, farmSecond);
+        syncFarmUi();
       }
     }
 

@@ -14,7 +14,8 @@ export type DebugRoute =
   | 'trail'
   | 'wheel'
   | 'town'
-  | 'fan';
+  | 'fan'
+  | 'collection';
 
 const DEBUG_SCENE_ROUTES: readonly (DebugRoute | 'tier' | 'node' | 'castle' | 'grave')[] = [
   'tier',

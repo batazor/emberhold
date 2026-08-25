@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MATERIAL, PALETTE } from './palette';
 import { FARM_CROPS, farmPlotIsActive, farmPlotReadyAt } from '../sim/farm';
 import type { FarmCropId, FarmState } from '../sim/farm';
@@ -14,6 +15,11 @@ interface FarmPlotView {
   readonly blocked: THREE.Group;
 }
 
+const BARN_MODEL_URL = `${import.meta.env.BASE_URL}assets/farm/barn.glb`;
+const BARN_TEXTURE_URL = `${import.meta.env.BASE_URL}assets/farm/barn.webp`;
+const FARMHOUSE_MODEL_URL = `${import.meta.env.BASE_URL}assets/farm/farmhouse.glb`;
+const FARMHOUSE_TEXTURE_URL = `${import.meta.env.BASE_URL}assets/farm/farmhouse.webp`;
+
 /**
  * Первый вид Фермы: шесть длинных грядок — те же шесть слотов симуляции.
  * Геометрия не хранит состояние: при входе и в кадре она читает `FarmState`,
@@ -21,16 +27,25 @@ interface FarmPlotView {
  */
 export class FarmView {
   readonly group = new THREE.Group();
-  readonly center = { x: 4.5, z: 4.5 };
+  readonly center = { x: 6.5, z: 4.5 };
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
+  private readonly textures: THREE.Texture[] = [];
   private readonly plots: FarmPlotView[] = [];
+  private readonly fence = new THREE.Group();
+  private readonly well = new THREE.Group();
+  private barn: THREE.Object3D | null = null;
+  private farmhouse: THREE.Object3D | null = null;
+  private barnLoading: Promise<void> | null = null;
+  private farmhouseLoading: Promise<void> | null = null;
+  private disposed = false;
 
   constructor() {
+    this.group.add(this.fence, this.well);
     this.buildGround();
     this.buildBeds();
     this.buildFence();
-    this.buildShed();
+    this.buildFarmProps();
     this.group.visible = false;
   }
 
@@ -48,6 +63,7 @@ export class FarmView {
     size: [number, number, number],
     color: number,
     at: [number, number, number],
+    parent: THREE.Object3D = this.group,
   ): THREE.Mesh {
     const mesh = new THREE.Mesh(
       this.geometry(new THREE.BoxGeometry(...size)),
@@ -56,12 +72,12 @@ export class FarmView {
     mesh.position.set(...at);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    this.group.add(mesh);
+    parent.add(mesh);
     return mesh;
   }
 
   private buildGround(): void {
-    this.box([10, 0.35, 10], PALETTE.grassBase, [4.5, -0.2, 4.5]);
+    this.box([14, 0.35, 10], PALETTE.grassBase, [6.5, -0.2, 4.5]);
     // Тропа связывает вход с сараем и делит поле на читаемые участки.
     this.box([1.1, 0.06, 8.6], MATERIAL['солома'], [4.5, 0.01, 4.7]);
   }
@@ -173,6 +189,13 @@ export class FarmView {
 
   /** Рост только меняет показ; момент созревания решает `sim/farm.ts`. */
   sync(farm: FarmState | undefined, now: number): void {
+    const structures = farm?.story.structures;
+    this.fence.visible = structures?.fence === true;
+    this.well.visible = structures?.well === true;
+    if (this.group.visible && structures?.barn === true) this.ensureBarn();
+    if (this.group.visible && structures?.farmhouse === true) this.ensureFarmhouse();
+    if (this.barn !== null) this.barn.visible = structures?.barn === true;
+    if (this.farmhouse !== null) this.farmhouse.visible = structures?.farmhouse === true;
     this.plots.forEach((view, index) => {
       const plot = farm?.plots[index] ?? null;
       view.blocked.visible = farm !== undefined && plot === null && !farmPlotIsActive(farm, index);
@@ -193,27 +216,22 @@ export class FarmView {
 
   private buildFence(): void {
     const wood = MATERIAL['дерево'];
-    for (let x = 0; x <= 9; x++) {
-      this.box([0.09, 0.65, 0.09], wood, [x, 0.3, 0]);
-      this.box([0.09, 0.65, 0.09], wood, [x, 0.3, 9]);
+    for (let x = 0; x <= 13; x++) {
+      this.box([0.09, 0.65, 0.09], wood, [x, 0.3, 0], this.fence);
+      this.box([0.09, 0.65, 0.09], wood, [x, 0.3, 9], this.fence);
     }
     for (let z = 1; z < 9; z++) {
-      this.box([0.09, 0.65, 0.09], wood, [0, 0.3, z]);
-      this.box([0.09, 0.65, 0.09], wood, [9, 0.3, z]);
+      this.box([0.09, 0.65, 0.09], wood, [0, 0.3, z], this.fence);
+      this.box([0.09, 0.65, 0.09], wood, [13, 0.3, z], this.fence);
     }
-    this.box([9, 0.1, 0.1], wood, [4.5, 0.48, 0]);
-    this.box([9, 0.1, 0.1], wood, [4.5, 0.48, 9]);
-    this.box([0.1, 0.1, 9], wood, [0, 0.48, 4.5]);
-    this.box([0.1, 0.1, 9], wood, [9, 0.48, 4.5]);
+    this.box([13, 0.1, 0.1], wood, [6.5, 0.48, 0], this.fence);
+    this.box([13, 0.1, 0.1], wood, [6.5, 0.48, 9], this.fence);
+    this.box([0.1, 0.1, 9], wood, [0, 0.48, 4.5], this.fence);
+    this.box([0.1, 0.1, 9], wood, [13, 0.48, 4.5], this.fence);
   }
 
-  private buildShed(): void {
-    const wall = MATERIAL['дерево-свет'];
+  private buildFarmProps(): void {
     const dark = MATERIAL['дерево-тень'];
-    this.box([2.2, 1.55, 1.8], wall, [4.5, 0.78, 8.05]);
-    this.box([0.65, 1.2, 0.08], dark, [4.5, 0.58, 7.1]);
-    const roof = this.box([2.65, 0.18, 2.15], dark, [4.5, 1.68, 8.05]);
-    roof.rotation.z = 0.08;
     // Бочки и ящики дают масштабу хозяйственный, а не декоративный смысл.
     this.box([0.55, 0.55, 0.55], MATERIAL['солома'], [6.2, 0.27, 8.1]);
     const barrel = new THREE.Mesh(
@@ -223,11 +241,91 @@ export class FarmView {
     barrel.position.set(2.9, 0.32, 8.1);
     barrel.castShadow = true;
     this.group.add(barrel);
+
+    // Колодец появляется отдельной стадией и одновременно открывает ещё две
+    // грядки. Простая геометрия остаётся в палитре игры; здания идут из пака.
+    const stone = MATERIAL['камень'];
+    const ring = new THREE.Mesh(
+      this.geometry(new THREE.CylinderGeometry(0.58, 0.65, 0.58, 12, 1, true)),
+      this.material(new THREE.MeshLambertMaterial({ color: stone, side: THREE.DoubleSide })),
+    );
+    ring.position.set(8.35, 0.3, 3.1);
+    ring.castShadow = true;
+    this.well.add(ring);
+    this.box([0.1, 1.25, 0.1], dark, [7.85, 0.72, 3.1], this.well);
+    this.box([0.1, 1.25, 0.1], dark, [8.85, 0.72, 3.1], this.well);
+    this.box([1.25, 0.1, 0.1], dark, [8.35, 1.27, 3.1], this.well);
+  }
+
+  /**
+   * Амбар из Farmhouse Pack грузится только при первом входе на ферму.
+   */
+  private ensureBarn(): void {
+    if (this.barnLoading !== null || this.disposed) return;
+    this.barnLoading = this.loadBuilding(BARN_MODEL_URL, BARN_TEXTURE_URL, 1.6, 4.5, 8.05, Math.PI / 2)
+      .then((scene) => { this.barn = scene; })
+      .catch((error: unknown) => console.warn(`Не удалось загрузить амбар ${BARN_MODEL_URL}`, error));
+  }
+
+  private ensureFarmhouse(): void {
+    if (this.farmhouseLoading !== null || this.disposed) return;
+    this.farmhouseLoading = this.loadBuilding(FARMHOUSE_MODEL_URL, FARMHOUSE_TEXTURE_URL, 2.2, 10.3, 6.9, 0)
+      .then((scene) => { this.farmhouse = scene; })
+      .catch((error: unknown) => console.warn(`Не удалось загрузить дом ${FARMHOUSE_MODEL_URL}`, error));
+  }
+
+  private async loadBuilding(
+    modelUrl: string,
+    textureUrl: string,
+    height: number,
+    x: number,
+    z: number,
+    rotation: number,
+  ): Promise<THREE.Object3D | null> {
+    const [{ scene }, map] = await Promise.all([
+      new GLTFLoader().loadAsync(modelUrl),
+      new THREE.TextureLoader().loadAsync(textureUrl),
+    ]);
+      if (this.disposed) {
+        map.dispose();
+        scene.traverse((child) => {
+          if (child instanceof THREE.Mesh) child.geometry.dispose();
+        });
+        return null;
+      }
+      map.colorSpace = THREE.SRGBColorSpace;
+      map.flipY = false;
+      map.anisotropy = 4;
+      this.textures.push(map);
+      const material = this.material(new THREE.MeshLambertMaterial({ map }));
+      scene.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const previous = child.material;
+        child.material = material;
+        child.castShadow = true;
+        child.receiveShadow = true;
+        this.geometries.push(child.geometry);
+        if (Array.isArray(previous)) previous.forEach((value) => value.dispose());
+        else previous.dispose();
+      });
+      scene.updateMatrixWorld(true);
+      const initial = new THREE.Box3().setFromObject(scene);
+      const size = initial.getSize(new THREE.Vector3());
+      scene.scale.setScalar(height / Math.max(size.y, 0.001));
+      scene.rotation.y = rotation;
+      scene.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(scene);
+      const center = box.getCenter(new THREE.Vector3());
+      scene.position.set(x - center.x, -box.min.y, z - center.z);
+      this.group.add(scene);
+      return scene;
   }
 
   dispose(): void {
+    this.disposed = true;
     this.group.removeFromParent();
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
+    for (const texture of this.textures) texture.dispose();
   }
 }
