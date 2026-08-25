@@ -783,6 +783,7 @@ const visitCampHud = new VisitCampHud(
 );
 
 let residentManager: ResidentManager | null = null;
+let storePanel: StorePanel | null = null;
 
 const campHud = new CampHud(app, {
   onUpgrade: (id) => {
@@ -828,6 +829,7 @@ const campHud = new CampHud(app, {
   },
   onSortie: (node) => sendSortie(node),
   onVisitCamp: (id) => visitNeighbourCamp(id),
+  onAppearance: (owner) => storePanel?.open(owner),
   onCraft: (slot) => forge(slot),
   // §20.4 — карточка вооружает перестановку, дальше игрок бьёт по клетке.
   onMove: (id) => {
@@ -2630,7 +2632,7 @@ const statsPanel = new StatsPanel(app);
  * слоем соседей; окно клана открывает строка задания.
  */
 const mailButton = new MailButton(app);
-new StorePanel(app, {
+storePanel = new StorePanel(app, {
   onState: (state) => campHud.setCosmetics(
     state.personal.equipped,
     state.clan?.equipped ?? 'default',

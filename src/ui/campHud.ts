@@ -85,6 +85,8 @@ export interface CampCallbacks {
   onSortie(node: number): void;
   /** Открыть доступный для осмотра лагерь живого соседа. */
   onVisitCamp(id: string): void;
+  /** Открыть оформление собственного лагеря или общего лагеря клана. */
+  onAppearance(owner: 'player' | 'clan'): void;
   /** §14 — ковка и улучшение это одно действие: слот один, предмет один. */
   onCraft(slot: GearSlot): void;
   /** §20.4 — перестановка: карточка вооружает режим, дальше тап по клетке. */
@@ -602,6 +604,7 @@ export class CampHud {
       onRaid: (node) => this.cb.onRaid(node),
       onSortie: (node) => this.cb.onSortie(node),
       onVisitCamp: (id) => this.cb.onVisitCamp(id),
+      onAppearance: (owner) => this.cb.onAppearance(owner),
     });
     tiers.append(this.map.root);
     this.sections.set('tiers', tiers);

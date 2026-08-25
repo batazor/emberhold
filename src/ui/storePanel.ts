@@ -5,9 +5,12 @@ import {
 } from '../core/cloud';
 import type { BillingState } from '../core/cloud';
 import {
+  CLAN_CAMP_ICONS,
   CLAN_CAMP_PACK,
+  PERSONAL_CAMP_ICONS,
   PERSONAL_CAMP_PACK,
   clanCampIconUrl,
+  cosmeticCollectionAction,
   personalCampIconUrl,
 } from '../core/cosmetics';
 import type { ClanCampIcon, PersonalCampIcon } from '../core/cosmetics';
@@ -15,10 +18,8 @@ import { play } from '../core/audio';
 import { gameMessage, setGameAttribute, setGameText } from '../i18n/game';
 import { gameMessages } from '../i18n/gameMessages';
 
-const EMBER = `
-<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-  <path fill="currentColor" d="M12 1.8c1.1 4.1-2.7 5.4-.6 8.2 1.2-1.2 1.8-2.7 1.7-4.4 3.2 2.4 5.1 5 5.1 8.4A6.2 6.2 0 0 1 5.8 14c0-2.8 1.5-5.2 4.5-7.4-.3 2.1.2 3.6 1.1 4.4C8.8 6.8 13.2 5.2 12 1.8Zm0 10.2c-1.8 1.4-2.7 2.8-2.7 4.2a2.7 2.7 0 1 0 5.4 0c0-1.2-.6-2.3-1.8-3.4 0 1-.3 1.8-.9 2.5.2-1.4-.2-2.5 0-3.3Z"/>
-</svg>`;
+type CosmeticOwner = 'player' | 'clan';
+type CosmeticIcon = PersonalCampIcon | ClanCampIcon;
 
 const PERSONAL_NAMES: Readonly<Record<PersonalCampIcon, ReturnType<typeof gameMessage>>> = {
   default: gameMessage('Обычная палатка', 'Standard tent'),
@@ -32,86 +33,98 @@ const CLAN_NAMES: Readonly<Record<ClanCampIcon, ReturnType<typeof gameMessage>>>
   council_totem: gameMessage('Тотем совета', 'Council totem'),
 };
 
+const iconName = (owner: CosmeticOwner, icon: CosmeticIcon) => owner === 'player'
+  ? PERSONAL_NAMES[icon as PersonalCampIcon]
+  : CLAN_NAMES[icon as ClanCampIcon];
+
+const iconUrl = (owner: CosmeticOwner, icon: CosmeticIcon): string => owner === 'player'
+  ? personalCampIconUrl(icon)
+  : clanCampIconUrl(icon);
+
+const iconsOf = (owner: CosmeticOwner): readonly CosmeticIcon[] => owner === 'player'
+  ? PERSONAL_CAMP_ICONS
+  : CLAN_CAMP_ICONS;
+
+const packOf = (owner: CosmeticOwner): string => owner === 'player'
+  ? PERSONAL_CAMP_PACK
+  : CLAN_CAMP_PACK;
+
 export interface StorePanelCallbacks {
   onState(state: BillingState): void;
 }
 
+/**
+ * Коллекция знаков открывается из карточки лагеря на карте. Нажатие по знаку
+ * только меняет предпросмотр; серверный выбор происходит единственной
+ * отдельной кнопкой «Установить». Так получение предмета и изменение мира
+ * не могут случиться одним неосторожным тапом.
+ */
 export class StorePanel {
-  private readonly button: HTMLButtonElement;
   private readonly overlay: HTMLElement;
-  private readonly personalStatus: HTMLElement;
-  private readonly clanStatus: HTMLElement;
-  private readonly personalBuy: HTMLButtonElement;
-  private readonly clanBuy: HTMLButtonElement;
+  private readonly title: HTMLElement;
+  private readonly lead: HTMLElement;
+  private readonly preview: HTMLImageElement;
+  private readonly previewName: HTMLElement;
+  private readonly previewState: HTMLElement;
+  private readonly choices: HTMLElement;
+  private readonly ownership: HTMLElement;
+  private readonly status: HTMLElement;
+  private readonly primary: HTMLButtonElement;
   private state: BillingState | null = null;
+  private owner: CosmeticOwner = 'player';
+  private selected: CosmeticIcon = 'default';
+  private newPack: string | null = null;
   private busy = false;
 
   constructor(parent: HTMLElement, private readonly cb: StorePanelCallbacks) {
-    this.button = document.createElement('button');
-    this.button.id = 'store-open';
-    this.button.type = 'button';
-    setGameAttribute(this.button, 'aria-label', gameMessages.storeOpen);
-    this.button.innerHTML = EMBER;
-    parent.appendChild(this.button);
-
     this.overlay = document.createElement('div');
     this.overlay.id = 'store';
     this.overlay.innerHTML = `
       <div class="panel">
         <h2></h2>
         <p class="store-lead"></p>
-        <section class="store-product" data-product="personal">
-          <div class="store-product-head"><div><h3></h3><p></p></div><b>$2.99</b></div>
-          <div class="cosmetic-choices" data-choices="player"></div>
-          <p class="store-status"></p>
-          <button type="button" data-buy="${PERSONAL_CAMP_PACK}"></button>
+        <section class="cosmetic-preview">
+          <img alt="">
+          <div><h3></h3><p></p></div>
         </section>
-        <section class="store-product" data-product="clan">
-          <div class="store-product-head"><div><h3></h3><p></p></div><b>$4.99</b></div>
-          <div class="cosmetic-choices" data-choices="clan"></div>
-          <p class="store-status"></p>
-          <button type="button" data-buy="${CLAN_CAMP_PACK}"></button>
-        </section>
+        <div class="cosmetic-choices"></div>
+        <p class="store-ownership"></p>
+        <p class="store-status" aria-live="polite"></p>
+        <div class="acts">
+          <button type="button" data-act="primary"></button>
+          <button type="button" class="ghost" data-act="close"></button>
+        </div>
         <p class="store-sandbox"></p>
-        <div class="acts"><button type="button" class="ghost" data-act="close"></button></div>
       </div>`;
     parent.appendChild(this.overlay);
 
-    this.personalStatus = this.overlay.querySelector('[data-product="personal"] .store-status') as HTMLElement;
-    this.clanStatus = this.overlay.querySelector('[data-product="clan"] .store-status') as HTMLElement;
-    this.personalBuy = this.overlay.querySelector(`[data-buy="${PERSONAL_CAMP_PACK}"]`) as HTMLButtonElement;
-    this.clanBuy = this.overlay.querySelector(`[data-buy="${CLAN_CAMP_PACK}"]`) as HTMLButtonElement;
+    this.title = this.overlay.querySelector('h2') as HTMLElement;
+    this.lead = this.overlay.querySelector('.store-lead') as HTMLElement;
+    this.preview = this.overlay.querySelector('.cosmetic-preview img') as HTMLImageElement;
+    this.previewName = this.overlay.querySelector('.cosmetic-preview h3') as HTMLElement;
+    this.previewState = this.overlay.querySelector('.cosmetic-preview p') as HTMLElement;
+    this.choices = this.overlay.querySelector('.cosmetic-choices') as HTMLElement;
+    this.ownership = this.overlay.querySelector('.store-ownership') as HTMLElement;
+    this.status = this.overlay.querySelector('.store-status') as HTMLElement;
+    this.primary = this.overlay.querySelector('[data-act="primary"]') as HTMLButtonElement;
 
-    setGameText(this.overlay.querySelector('h2') as HTMLElement, gameMessages.storeTitle);
-    setGameText(this.overlay.querySelector('.store-lead') as HTMLElement, gameMessage(
-      'Знаки меняют только силуэт лагеря на глобальной карте.',
-      'Marks only change a camp’s silhouette on the global map.',
-    ));
-    setGameText(this.overlay.querySelector('[data-product="personal"] h3') as HTMLElement,
-      gameMessage('Знаки личного лагеря I', 'Personal Camp Marks I'));
-    setGameText(this.overlay.querySelector('[data-product="personal"] .store-product-head p') as HTMLElement,
-      gameMessage('Две иконки навсегда принадлежат аккаунту.', 'Two icons permanently owned by your account.'));
-    setGameText(this.overlay.querySelector('[data-product="clan"] h3') as HTMLElement,
-      gameMessage('Знаки клана I', 'Clan Camp Marks I'));
-    setGameText(this.overlay.querySelector('[data-product="clan"] .store-product-head p') as HTMLElement,
-      gameMessage('Покупка навсегда поступает в имущество текущего клана.',
-        'The purchase permanently becomes property of your current clan.'));
+    setGameText(this.overlay.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.storeClose);
     setGameText(this.overlay.querySelector('.store-sandbox') as HTMLElement,
       gameMessage('Stripe Sandbox · реальные деньги не списываются', 'Stripe Sandbox · no real money is charged'));
-    setGameText(this.overlay.querySelector('[data-act="close"]') as HTMLButtonElement, gameMessages.storeClose);
+    setGameAttribute(this.overlay, 'aria-label', gameMessage('Оформление лагеря', 'Camp appearance'));
 
-    this.addChoices('player', ['default', 'watchfire', 'horned_tent']);
-    this.addChoices('clan', ['default', 'banner_tower', 'council_totem']);
-
-    this.button.addEventListener('click', () => this.open());
     this.overlay.addEventListener('click', (event) => {
+      if (event.target === this.overlay) {
+        this.close();
+        return;
+      }
       const target = event.target instanceof Element ? event.target.closest('button') : null;
-      if (event.target === this.overlay) this.close();
       if (!(target instanceof HTMLButtonElement)) return;
       if (target.dataset.act === 'close') this.close();
-      else if (target.dataset.buy !== undefined) void this.checkout(target.dataset.buy);
-      else if (target.dataset.owner !== undefined && target.dataset.icon !== undefined) {
-        void this.equip(target.dataset.owner as 'player' | 'clan', target.dataset.icon);
+      else if (target.dataset.act === 'primary') void this.primaryAction();
+      else if (target.dataset.icon !== undefined) {
+        this.selected = target.dataset.icon as CosmeticIcon;
+        this.render();
       }
     });
 
@@ -122,90 +135,170 @@ export class StorePanel {
       params.delete('sku');
       const query = params.toString();
       history.replaceState(null, '', `${location.pathname}${query === '' ? '' : `?${query}`}${location.hash}`);
+      this.owner = returnedSku === CLAN_CAMP_PACK ? 'clan' : 'player';
+      this.selected = this.owner === 'clan' ? 'banner_tower' : 'watchfire';
+      this.newPack = returnedSku;
+      this.rebuildChoices();
       this.overlay.classList.add('on');
-      setGameText(this.personalStatus, gameMessages.storeProcessing);
-      setGameText(this.clanStatus, gameMessages.storeProcessing);
+      setGameText(this.status, gameMessages.storeProcessing);
       void this.waitForEntitlement(returnedSku);
     } else void this.refresh();
   }
 
-  private addChoices(owner: 'player' | 'clan', icons: readonly string[]): void {
-    const host = this.overlay.querySelector(`[data-choices="${owner}"]`) as HTMLElement;
-    for (const raw of icons) {
-      const icon = raw as PersonalCampIcon | ClanCampIcon;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'cosmetic-choice';
-      button.dataset.owner = owner;
-      button.dataset.icon = icon;
-      const image = document.createElement('img');
-      image.src = owner === 'player'
-        ? personalCampIconUrl(icon as PersonalCampIcon)
-        : clanCampIconUrl(icon as ClanCampIcon);
-      image.alt = '';
-      const label = document.createElement('span');
-      setGameText(label, owner === 'player'
-        ? PERSONAL_NAMES[icon as PersonalCampIcon]
-        : CLAN_NAMES[icon as ClanCampIcon]);
-      button.append(image, label);
-      host.appendChild(button);
-    }
-  }
-
-  async refresh(): Promise<void> {
-    const state = await cloudBillingStatus();
-    this.state = state;
-    if (state !== null) this.cb.onState(state);
-    this.render();
-  }
-
-  private open(): void {
+  /** Открыть ровно ту коллекцию, из карточки какого лагеря пришёл игрок. */
+  open(owner: CosmeticOwner): void {
+    this.owner = owner;
+    this.selected = owner === 'player'
+      ? this.state?.personal.equipped ?? 'default'
+      : this.state?.clan?.equipped ?? 'default';
+    this.newPack = null;
+    this.rebuildChoices();
     this.overlay.classList.add('on');
+    this.render();
     void this.refresh();
   }
 
   private close(): void {
     this.overlay.classList.remove('on');
+    this.newPack = null;
+  }
+
+  private rebuildChoices(): void {
+    this.choices.replaceChildren();
+    for (const icon of iconsOf(this.owner)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cosmetic-choice';
+      button.dataset.icon = icon;
+      const image = document.createElement('img');
+      image.src = iconUrl(this.owner, icon);
+      image.alt = '';
+      const copy = document.createElement('span');
+      const name = document.createElement('b');
+      setGameText(name, iconName(this.owner, icon));
+      const badge = document.createElement('i');
+      copy.append(name, badge);
+      button.append(image, copy);
+      this.choices.appendChild(button);
+    }
+  }
+
+  async refresh(): Promise<void> {
+    const hadState = this.state !== null;
+    const state = await cloudBillingStatus();
+    this.state = state;
+    if (state !== null) {
+      this.cb.onState(state);
+      if (!hadState && this.overlay.classList.contains('on') && this.newPack === null) {
+        this.selected = this.owner === 'player'
+          ? state.personal.equipped
+          : state.clan?.equipped ?? 'default';
+      }
+    }
+    this.render();
   }
 
   private render(): void {
     const state = this.state;
-    const signedIn = state !== null;
-    this.button.classList.toggle('owned', state?.personal.owned === true || state?.clan?.owned === true);
-
-    this.personalBuy.disabled = this.busy || !signedIn || state?.personal.owned === true;
-    setGameText(this.personalBuy, state?.personal.owned === true ? gameMessages.storeOwned : gameMessages.storeBuy);
-    setGameText(this.personalStatus, !signedIn ? gameMessages.storeSignIn
-      : state.personal.owned ? gameMessage('Набор принадлежит вам. Выберите активный знак.',
-        'You own this pack. Choose the active mark.')
-        : gameMessage('Личная покупка останется на вашем аккаунте.',
-          'A personal purchase remains on your account.'));
-
     const clan = state?.clan ?? null;
-    this.clanBuy.disabled = this.busy || !signedIn || clan === null || clan.owned;
-    setGameText(this.clanBuy, clan?.owned === true ? gameMessages.storeOwned : gameMessages.storeBuy);
-    setGameText(this.clanStatus, !signedIn ? gameMessages.storeSignIn
-      : clan === null ? gameMessage('Сначала создайте клан.', 'Create a clan first.')
-        : clan.owned ? gameMessage('Набор принадлежит клану «{clan}».', 'This pack belongs to clan “{clan}”.')
-          : gameMessage('Покупка станет имуществом клана «{clan}», а не игрока.',
-            'The purchase becomes property of clan “{clan}”, not the player.'),
+    const signedIn = state !== null;
+    const owns = this.owner === 'player' ? state?.personal.owned === true : clan?.owned === true;
+    const equipped: CosmeticIcon = this.owner === 'player'
+      ? state?.personal.equipped ?? 'default'
+      : clan?.equipped ?? 'default';
+    const available = this.selected === 'default' || owns;
+    const canEquip = this.owner === 'player'
+      || clan?.role === 'leader'
+      || clan?.role === 'officer';
+    const action = cosmeticCollectionAction({
+      signedIn,
+      clanExists: this.owner === 'player' || clan !== null,
+      available,
+      equipped: this.selected === equipped,
+      canEquip,
+    });
+
+    setGameText(this.title, this.owner === 'player'
+      ? gameMessage('Знаки лагеря', 'Camp marks')
+      : gameMessage('Знаки клана', 'Clan marks'));
+    setGameText(this.lead, this.owner === 'player'
+      ? gameMessage('Выберите знак, примерьте его и установите отдельным действием.',
+        'Choose a mark, preview it, then equip it with a separate action.')
+      : gameMessage('Общий знак виден на глобальной карте рядом с лагерем клана.',
+        'The shared mark appears beside the clan camp on the global map.'));
+
+    this.preview.src = iconUrl(this.owner, this.selected);
+    setGameText(this.previewName, iconName(this.owner, this.selected));
+    setGameText(this.previewState, action === 'equipped'
+      ? gameMessage('Используется сейчас', 'Currently equipped')
+      : available
+        ? gameMessage('Доступен в коллекции', 'Available in collection')
+        : gameMessage('Закрытый знак · предпросмотр', 'Locked mark · preview'));
+
+    setGameText(this.ownership, this.owner === 'player'
+      ? gameMessage('Полученные знаки навсегда остаются на вашем аккаунте.',
+        'Unlocked marks remain permanently on your account.')
+      : clan === null
+        ? gameMessage('Чтобы собирать общие знаки, сначала создайте клан.',
+          'Create a clan before collecting shared marks.')
+        : gameMessage('Все полученные здесь знаки принадлежат клану «{clan}», а не отдельному игроку.',
+          'Every mark unlocked here belongs to clan “{clan}”, not to an individual player.'),
     clan === null ? undefined : { clan: clan.name });
 
-    for (const button of this.overlay.querySelectorAll<HTMLButtonElement>('.cosmetic-choice')) {
-      const owner = button.dataset.owner;
-      const icon = button.dataset.icon ?? 'default';
-      const isDefault = icon === 'default';
-      const equipped = owner === 'player' ? state?.personal.equipped : clan?.equipped;
-      const owns = owner === 'player' ? state?.personal.owned === true : clan?.owned === true;
-      const canClanEquip = clan !== null && (clan.role === 'leader' || clan.role === 'officer');
-      button.disabled = this.busy || !signedIn || (!isDefault && !owns) || (owner === 'clan' && !canClanEquip);
-      button.classList.toggle('selected', equipped === icon);
-      button.setAttribute('aria-pressed', String(equipped === icon));
+    for (const button of this.choices.querySelectorAll<HTMLButtonElement>('.cosmetic-choice')) {
+      const icon = button.dataset.icon as CosmeticIcon;
+      const iconAvailable = icon === 'default' || owns;
+      const badge = button.querySelector('i') as HTMLElement;
+      button.disabled = this.busy;
+      button.classList.toggle('selected', icon === this.selected);
+      button.classList.toggle('equipped', icon === equipped);
+      button.classList.toggle('locked', !iconAvailable);
+      button.classList.toggle('new', this.newPack === packOf(this.owner) && icon !== 'default' && iconAvailable);
+      button.setAttribute('aria-pressed', String(icon === this.selected));
+      setGameText(badge, icon === equipped
+        ? gameMessage('Используется', 'Equipped')
+        : this.newPack === packOf(this.owner) && icon !== 'default' && iconAvailable
+          ? gameMessage('Новое', 'New')
+          : iconAvailable
+            ? gameMessage('Доступен', 'Available')
+            : gameMessage('Закрыт', 'Locked'));
     }
+
+    this.primary.dataset.action = action;
+    this.primary.disabled = this.busy || action === 'sign-in' || action === 'create-clan'
+      || action === 'equipped' || action === 'role';
+    setGameText(this.primary, action === 'sign-in' ? gameMessages.storeSignIn
+      : action === 'create-clan' ? gameMessage('Сначала создайте клан', 'Create a clan first')
+        : action === 'equipped' ? gameMessage('Используется', 'Equipped')
+          : action === 'role' ? gameMessage('Установить может глава или офицер', 'A leader or officer can equip it')
+            : action === 'obtain' ? this.owner === 'player'
+              ? gameMessage('Получить набор за $2.99', 'Unlock pack for $2.99')
+              : gameMessage('Передать набор клану за $4.99', 'Unlock pack for clan for $4.99')
+              : gameMessage('Установить', 'Equip'));
+
+    if (this.busy) setGameText(this.status, action === 'obtain'
+      ? gameMessages.storeOpening
+      : gameMessage('Устанавливаем выбранный знак…', 'Equipping the selected mark…'));
+    else if (this.newPack === packOf(this.owner) && owns) setGameText(this.status, gameMessage(
+      'Набор добавлен в коллекцию. Текущий знак не изменён — выберите и установите его сами.',
+      'The pack was added to the collection. Your current mark was not changed—choose and equip it yourself.',
+    ));
+    else setGameText(this.status, action === 'obtain'
+      ? gameMessage('Откроются оба закрытых знака набора. Их можно примерить до получения.',
+        'Both locked marks in the pack will unlock. You can preview them before purchase.')
+      : gameMessage('Нажатие по карточке меняет только предпросмотр.',
+        'Selecting a card only changes the preview.'));
   }
 
-  private async checkout(sku: string): Promise<void> {
-    if (this.busy || (sku !== PERSONAL_CAMP_PACK && sku !== CLAN_CAMP_PACK)) return;
+  private async primaryAction(): Promise<void> {
+    const action = this.primary.dataset.action;
+    if (action === 'obtain') await this.checkout();
+    else if (action === 'equip') await this.equip();
+  }
+
+  private async checkout(): Promise<void> {
+    if (this.busy) return;
+    const sku = packOf(this.owner);
     this.busy = true;
     this.render();
     const state = await cloudBillingCheckout(sku);
@@ -219,15 +312,16 @@ export class StorePanel {
     location.assign(state.url);
   }
 
-  private async equip(owner: 'player' | 'clan', icon: string): Promise<void> {
+  private async equip(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     this.render();
-    const state = await cloudBillingEquip(owner, icon as PersonalCampIcon | ClanCampIcon);
+    const state = await cloudBillingEquip(this.owner, this.selected);
     this.busy = false;
     if (state === null) play('deny');
     else {
       this.state = state;
+      this.newPack = null;
       this.cb.onState(state);
       play('build');
     }
@@ -244,6 +338,7 @@ export class StorePanel {
           : sku === CLAN_CAMP_PACK ? state.clan?.owned === true
             : state.personal.owned || state.clan?.owned === true;
         if (granted) {
+          this.busy = false;
           this.render();
           play('build');
           return;
@@ -251,7 +346,7 @@ export class StorePanel {
       }
       await new Promise((resolve) => setTimeout(resolve, 800));
     }
-    setGameText(this.personalStatus, gameMessages.storePending);
-    setGameText(this.clanStatus, gameMessages.storePending);
+    this.busy = false;
+    setGameText(this.status, gameMessages.storePending);
   }
 }

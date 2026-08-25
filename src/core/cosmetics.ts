@@ -48,3 +48,26 @@ export const personalCampIconUrl = (value: unknown): string =>
 
 export const clanCampIconUrl = (value: unknown): string =>
   CLAN_CAMP_ICON_URL[clanCampIcon(value)];
+
+export type CosmeticCollectionAction =
+  | 'sign-in'
+  | 'create-clan'
+  | 'equipped'
+  | 'obtain'
+  | 'equip'
+  | 'role';
+
+/** Чистая машина состояний кнопки коллекции — предпросмотр действий не совершает. */
+export function cosmeticCollectionAction(state: {
+  readonly signedIn: boolean;
+  readonly clanExists: boolean;
+  readonly available: boolean;
+  readonly equipped: boolean;
+  readonly canEquip: boolean;
+}): CosmeticCollectionAction {
+  if (!state.signedIn) return 'sign-in';
+  if (!state.clanExists) return 'create-clan';
+  if (!state.available) return 'obtain';
+  if (state.equipped) return 'equipped';
+  return state.canEquip ? 'equip' : 'role';
+}
