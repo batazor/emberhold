@@ -38,6 +38,7 @@ import {
 import { CLAN_BUILDING_ORDER, startingClanResources } from './clan';
 import type { ClanBuildingKind } from './clan';
 import { validSignposts } from './signposts';
+import { ROAD_STORY_STEPS, SUPPLY_ROUTES } from './roadStory';
 
 /**
  * §6: состояние — единый сериализуемый объект, версионированный, localStorage.
@@ -251,6 +252,8 @@ interface SaveV1 {
   minotaurQuestCycle?: number;
   minotaurRelics?: CampState['minotaurRelics'];
   minotaurQuests?: CampState['minotaurQuests'];
+  /** Первая глава после онбординга. Необязательна для старых лагерей. */
+  roadStory?: CampState['roadStory'];
 }
 
 export interface LoadResult {
@@ -388,6 +391,7 @@ export function save(
     ...(camp.minotaurQuestCycle !== undefined ? { minotaurQuestCycle: camp.minotaurQuestCycle } : {}),
     ...(camp.minotaurRelics !== undefined ? { minotaurRelics: { ...camp.minotaurRelics } } : {}),
     ...(camp.minotaurQuests !== undefined ? { minotaurQuests: camp.minotaurQuests } : {}),
+    ...(camp.roadStory !== undefined ? { roadStory: { ...camp.roadStory } } : {}),
     onb: onboarding,
     heroes: {
       active: roster.active,
@@ -898,6 +902,21 @@ export function load(): LoadResult {
         };
       }
       camp.minotaurQuests = quests;
+    }
+
+    const story = data.roadStory;
+    if (
+      story != null &&
+      typeof story === 'object' &&
+      ROAD_STORY_STEPS.includes(story.step)
+    ) {
+      if (story.step === 'done') {
+        if (story.route !== undefined && SUPPLY_ROUTES.includes(story.route)) {
+          camp.roadStory = { step: 'done', route: story.route };
+        }
+      } else {
+        camp.roadStory = { step: story.step };
+      }
     }
 
     for (const slot of GEAR_ORDER) {

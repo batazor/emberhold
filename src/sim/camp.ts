@@ -28,6 +28,7 @@ import type { OwnClan } from './clan';
 import type { FarmState } from './farm';
 import type { SignpostDecor } from './signposts';
 import { emptySignpostDecor } from './signposts';
+import type { RoadStory } from './roadStory';
 
 export type BuildingId =
   | 'hq'
@@ -491,6 +492,8 @@ export interface CampState {
     reputation?: number;
     completed: boolean;
   }>;
+  /** Первая сюжетная глава после ковки: перебитая поставка железа. */
+  roadStory?: RoadStory;
   /**
    * §14.2 — что в левой руке. Поле лагеря, а не шестой слот GearState:
    * уровень предмета куётся, а рука перекладывается — бесплатно, мгновенно

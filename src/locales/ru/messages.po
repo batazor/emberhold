@@ -879,6 +879,11 @@ msgstr "— Я {name}. Жду у огня попутчиков."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "— Я {name}. Железо забрали у развилки. Сказали: дорога теперь принадлежит минотавру."
+msgstr "— Я {name}. Железо забрали у развилки. Сказали: дорога теперь принадлежит минотавру."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "— Я {name}. Лес мой, топор мой."
 msgstr "— Я {name}. Лес мой, топор мой."
 
@@ -3341,6 +3346,11 @@ msgstr "{name} · ур. {level}"
 #: locales/game-messages.ts
 msgid "{name} · ур. {level} · ведёт"
 msgstr "{name} · ур. {level} · ведёт"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "{name} идёт в лагерь · железо забрали люди минотавра"
+msgstr "{name} идёт в лагерь · железо забрали люди минотавра"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -9453,6 +9463,16 @@ msgid "В лагере пока нет поселенцев"
 msgstr "В лагере пока нет поселенцев"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "В лагере понадобится место под крышей"
+msgstr "В лагере понадобится место под крышей"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "В лагере уже есть человек с таким именем"
+msgstr "В лагере уже есть человек с таким именем"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "В лагере, без ран. Единственное состояние, из которого можно выйти в вылазку."
 msgstr "В лагере, без ран. Единственное состояние, из которого можно выйти в вылазку."
@@ -15066,6 +15086,11 @@ msgid "Игрок расставляет лагерь как хочет, пер�
 msgstr "Игрок расставляет лагерь как хочет, перестановка бесплатна и мгновенна."
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Идём в лагерь"
+msgstr "Идём в лагерь"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "идёт без игры"
 msgstr "идёт без игры"
@@ -19062,6 +19087,11 @@ msgid "мясо ZXQPH0QXZ"
 msgstr "мясо {value0}"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "На боковой дороге видны брошенные ящики"
+msgstr "На боковой дороге видны брошенные ящики"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "на все тайлы."
 msgstr "на все тайлы."
@@ -21655,6 +21685,11 @@ msgid "оси: провиант · ставка · дорога"
 msgstr "оси: провиант · ставка · дорога"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Осмотрите лесную дорогу"
+msgstr "Осмотрите лесную дорогу"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Оснастка"
 msgstr "Оснастка"
@@ -22615,6 +22650,11 @@ msgstr "Первая стадия — временная конструкция,
 #: locales/game-messages.ts
 msgid "Первая цель поселения"
 msgstr "Первая цель поселения"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Первое железо обошлось лагерю дорого"
+msgstr "Первое железо обошлось лагерю дорого"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -24153,6 +24193,11 @@ msgid "поставить камень, передвинуть героя, пе�
 msgstr "поставить камень, передвинуть героя, передвинуть противника. Подсветка считается теми же"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Поставки возобновлены по торговому договору"
+msgstr "Поставки возобновлены по торговому договору"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Поставьте Мастерскую"
 msgstr "Поставьте Мастерскую"
@@ -25661,6 +25706,11 @@ msgid "Работа привязана к зданию"
 msgstr "Работа привязана к зданию"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Работа принята — обозам снова разрешено проходить"
+msgstr "Работа принята — обозам снова разрешено проходить"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Работает ли прорубание вообще"
 msgstr "Работает ли прорубание вообще"
@@ -26121,6 +26171,11 @@ msgid "рассвет"
 msgstr "рассвет"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Расспросите торговца о поставках железа"
+msgstr "Расспросите торговца о поставках железа"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Расстояние до соседа"
 msgstr "Расстояние до соседа"
@@ -26510,6 +26565,11 @@ msgstr "Решётка кладётся поверх местности"
 #: locales/legacy-messages.ts
 msgid "Решило дело не это. Карта —"
 msgstr "Решило дело не это. Карта —"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Решите вопрос с дорогой у минотавра"
+msgstr "Решите вопрос с дорогой у минотавра"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -29445,6 +29505,11 @@ msgid "Сторож"
 msgstr "Сторож"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Стража разбита — дорога снова открыта для обозов"
+msgstr "Стража разбита — дорога снова открыта для обозов"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Стража спешит ко двору!"
 msgstr "Стража спешит ко двору!"
@@ -30667,6 +30732,11 @@ msgstr "Торговец"
 #: locales/legacy-messages.ts
 msgid "Торговец в замке"
 msgstr "Торговец в замке"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Торговец: «Последний обоз с железом не пришёл»"
+msgstr "Торговец: «Последний обоз с железом не пришёл»"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts

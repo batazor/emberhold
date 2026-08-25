@@ -61,6 +61,8 @@ export interface MeetPanelCallbacks {
   /** Кадр без выбора: игрок просто идёт дальше по разговору. */
   onAdvance(): void;
   onInvite(): void;
+  /** Выживший у пропавшего обоза — отдельная глава, но та же панель места. */
+  onRoadInvite?(): void;
 }
 
 /** Почему лесника не нанять (`sim/woodsman.ts`): слова причины — в панели. */
@@ -225,6 +227,33 @@ export class MeetPanel {
       gameMessage('По рукам', 'Deal'),
       () => this.cb.onInvite(),
       gameMessage('Палатку и костёр заберёт с собой, место в лагере выберет сам', 'They will bring their tent and campfire and choose a place in camp'),
+    );
+  }
+
+  /**
+   * Выживший у обоза. Разговор намеренно один кадр: игрок уже умеет звать
+   * людей в лагерь, а здесь важна причина — дорогу перекрыли люди минотавра.
+   * Отдельная биография превратила бы находку в ещё одно знакомство вместо
+   * продолжения хозяйственной проблемы.
+   */
+  showRoadSurvivor(who: Settler): void {
+    this.root.style.display = 'flex';
+    this.buttons.replaceChildren();
+    this.field.style.display = 'none';
+    this.goods.style.display = 'none';
+    const face = `${who.look}/${who.seed}`;
+    if (this.face.dataset['who'] !== face) {
+      this.face.dataset['who'] = face;
+      this.face.innerHTML = avatarSvg(who.look, who.seed);
+    }
+    setGameText(this.line, gameMessage(
+      '— Я {name}. Железо забрали у развилки. Сказали: дорога теперь принадлежит минотавру.',
+      '— I’m {name}. They took the iron at the fork. Said the road belongs to the minotaur now.',
+    ), { name: who.name });
+    this.act(
+      gameMessage('Идём в лагерь', 'Come to camp'),
+      () => this.cb.onRoadInvite?.(),
+      gameMessage('В лагере понадобится место под крышей', 'They will need shelter at camp'),
     );
   }
 

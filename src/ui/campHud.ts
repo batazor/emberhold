@@ -314,6 +314,9 @@ export class CampHud {
   private taskDoes: 'tent' | 'clan' | 'chest' | 'shop' | 'world' | 'wood' | 'food' = 'tent';
   /** Разовая строка после оффлайн-вылазки: отчёт пришёл, дальше решение на карте. */
   private taskNudge: { kind: 'world'; text: string } | null = null;
+  /** Сохраняемая ведущая цель первой главы; в отличие от мягкого совета,
+   * открытие карты её не гасит. */
+  private storyTask: string | null = null;
 
   private readonly sheet: HTMLElement;
   private readonly sheetTitle: HTMLElement;
@@ -1131,6 +1134,10 @@ export class CampHud {
     // Голод стоит сразу за крышей и перед всем прочим: без пищи не работает
     // никто (§13.7), а сундук, клан и колчан ждут до вечера.
     if (need === 0 && this.syncFoodTask(camp)) return;
+    if (need === 0 && this.storyTask !== null) {
+      this.syncWorldTask(this.storyTask);
+      return;
+    }
     if (need === 0 && clanTaskOpen(camp)) {
       this.syncClanTask();
       return;
@@ -1730,6 +1737,17 @@ export class CampHud {
   /** Одноразовая мягкая задача после событий, пришедших не от прямого тапа. */
   suggestWorld(text: string): void {
     this.taskNudge = { kind: 'world', text };
+    if (this.last !== null) this.syncTask(this.last.camp);
+  }
+
+  /**
+   * Ведущая сюжетная цель. Она пользуется той же одной строкой лагеря, что
+   * хозяйственные задачи, но переживает открытие карты и перезапуск: источник
+   * правды — сохранённый шаг главы, сюда приезжает только видимый текст.
+   */
+  setStoryTask(text: string | null): void {
+    if (this.storyTask === text) return;
+    this.storyTask = text;
     if (this.last !== null) this.syncTask(this.last.camp);
   }
 

@@ -256,6 +256,15 @@ import type { CastleGuest, GuestMeet } from './sim/castleGuest';
 import { archerAt, dwellersAt, garrisonOf, patrolAt } from './sim/garrison';
 import { generateGraveSite, readEpitaph, stepGraveNpcs } from './sim/graveSite';
 import { generateTrailSite, type TrailSite } from './sim/trailSite';
+import {
+  caravanEncounter,
+  caravanSurvivor,
+  hearAboutCaravan,
+  rescueCaravaner,
+  settleSupply,
+  startRoadStory,
+} from './sim/roadStory';
+import type { SupplyRoute } from './sim/roadStory';
 import { DEAL_REASON, askOf, dealBlock, makeDeal, marketKey, pruneBought, stockOf, worthOf } from './sim/trade';
 import type { Stock } from './sim/trade';
 import { TradePanel } from './ui/tradePanel';
@@ -1786,6 +1795,7 @@ const meetPanel = new MeetPanel(app, {
   onAnswer: (answer) => meetOn?.onAnswer(answer),
   onAdvance: () => meetOn?.onAdvance(),
   onInvite: () => meetOn?.onInvite(),
+  onRoadInvite: () => inviteRoadSurvivor(),
 });
 
 /**
@@ -2435,6 +2445,19 @@ function forge(slot: GearSlot): boolean {
   // Раскадровка кончается здесь: игрок сковал первое, что обещала Мастерская.
   if (onboarding.step === 'craft') onboarding.set('done');
   campHud.notify(`${GEAR[slot].name} ур. ${level}`);
+  // Первая ковка не открывает пророчество и не делает героя особенным:
+  // она лишь показывает зависимость лагеря от дорогого привозного железа.
+  // С этого хозяйственного вопроса начинается первая глава.
+  // В старом сейве вещь уже могла быть выкована до появления этой главы.
+  // Поэтому «первая» здесь означает первую успешную ковку после того, как
+  // сюжетное поле стало доступно, а не только буквальный первый уровень вещи.
+  if (startRoadStory(camp)) {
+    campHud.notify(gameText(gameMessage(
+      'Первое железо обошлось лагерю дорого',
+      'The camp paid dearly for its first iron',
+    )));
+    syncRoadStoryTask();
+  }
   persist();
   return true;
 }
@@ -2508,6 +2531,27 @@ function traderStock(): Stock | null {
   return stockOf(supply, camp.bought ?? {}, castleNow.loc.seed, clock.now());
 }
 
+/** Одна ведущая строка первой главы; кнопка всегда ведёт на карту мира. */
+function syncRoadStoryTask(): void {
+  const step = camp.roadStory?.step;
+  const text = step === 'return-to-trader'
+    ? gameText(gameMessage('Расспросите торговца о поставках железа', 'Ask the trader about iron supplies'))
+    : step === 'find-caravan'
+      ? gameText(gameMessage('Осмотрите лесную дорогу', 'Search the forest road'))
+      : step === 'settle-supply'
+        ? gameText(gameMessage('Решите вопрос с дорогой у минотавра', 'Settle the road dispute with the minotaur'))
+        : null;
+  campHud.setStoryTask(text);
+}
+
+/** Закончить главу одним из трёх сыгранных, а не выбранных в меню исходов. */
+function finishRoadStory(route: SupplyRoute, line: string): void {
+  if (!settleSupply(camp, route)) return;
+  raid?.events.push(line);
+  syncRoadStoryTask();
+  persist();
+}
+
 const tradePanel = new TradePanel(app, {
   onDeal: (give, take) => {
     const stock = traderStock();
@@ -2569,6 +2613,10 @@ const minotaurPanel = new MinotaurPanel(app, {
     raid?.events.push(
       `${RESOURCE_NAME[deal.costKind]} −${deal.costAmount}, получено: ${tradeReward}`,
     );
+    finishRoadStory('trade', gameText(gameMessage(
+      'Поставки возобновлены по торговому договору',
+      'Supplies resumed under a trade agreement',
+    )));
     minotaurPanel.sync(camp);
     persist();
   },
@@ -2583,6 +2631,10 @@ const minotaurPanel = new MinotaurPanel(app, {
     } else if (completeMinotaurQuest(camp, seed)) {
       const bonus = Object.values(camp.minotaurRelics ?? {}).includes('golden-horn') ? 1.2 : 1;
       raid?.events.push(`Заказ выполнен: монеты +${Math.round(existing.reward * bonus)}, репутация +${existing.reputation ?? 1}`);
+      finishRoadStory('work', gameText(gameMessage(
+        'Работа принята — обозам снова разрешено проходить',
+        'The work is accepted — caravans may use the road again',
+      )));
       play('build');
     } else if (!existing.completed) {
       raid?.events.push('Для выполнения заказа ресурсов пока не хватает');
@@ -3900,6 +3952,65 @@ let readStone: string | null = null;
 
 /** Тропа, пока по ней идут: ручка отладочной сцены `?trail`. */
 let trailSite: TrailSite | null = null;
+/** Сюжетный обоз существует только на Тропе и только пока человека не позвали. */
+let roadSurvivorAt: Cell | null = null;
+let roadSurvivor: Settler | null = null;
+let roadSurvivorShown = false;
+
+/** Подход к выжившему открывает тот же нижний разговор, что другие встречи. */
+function syncRoadSurvivor(): void {
+  if (raid === null || roadSurvivorAt === null || roadSurvivor === null) return;
+  if (camp.roadStory?.step !== 'find-caravan') return;
+  const near = Math.hypot(
+    raid.hero.x - roadSurvivorAt.x,
+    raid.hero.z - roadSurvivorAt.z,
+  ) <= 2.5;
+  if (near && !roadSurvivorShown) {
+    roadSurvivorShown = true;
+    meetPanel.showRoadSurvivor(roadSurvivor);
+    setHint('');
+  } else if (!near && roadSurvivorShown) {
+    roadSurvivorShown = false;
+    meetPanel.hide();
+  }
+}
+
+/** Человек уходит в лагерь, а рассказ о нападении переводит цель к дороге. */
+function inviteRoadSurvivor(): void {
+  if (
+    camp.roadStory?.step !== 'find-caravan' ||
+    roadSurvivor === null ||
+    raid === null
+  ) return;
+  if (!admit(camp, {
+    name: roadSurvivor.name,
+    look: roadSurvivor.look,
+    seed: roadSurvivor.seed,
+    answer: 'строим',
+    rest: false,
+  })) {
+    play('deny');
+    raid.events.push(gameText(gameMessage(
+      'В лагере уже есть человек с таким именем',
+      'Someone with that name already lives in camp',
+    )));
+    return;
+  }
+  rescueCaravaner(camp);
+  syncFarmUi();
+  raid.events.push(gameText(gameMessage(
+    '{name} идёт в лагерь · железо забрали люди минотавра',
+    '{name} heads to camp · the minotaur’s people took the iron',
+  ), { name: roadSurvivor.name }));
+  play('build');
+  raidView?.callSettler(raid.hero.x, raid.hero.z);
+  roadSurvivorShown = false;
+  roadSurvivorAt = null;
+  roadSurvivor = null;
+  meetPanel.hide();
+  syncRoadStoryTask();
+  persist();
+}
 
 /**
  * §13.8 — куст места под пальцем: чем сцена отвечает на тап и по чему считает
@@ -4037,6 +4148,10 @@ function leaveWalkSites(): void {
   gatherLoad = [];
   readStone = null;
   trailSite = null;
+  roadSurvivorAt = null;
+  roadSurvivor = null;
+  if (roadSurvivorShown) meetPanel.hide();
+  roadSurvivorShown = false;
   tradePanel.setVisible(false);
   // Гость живёт при сцене замка: сцены нет — нет ни гостя, ни разговора.
   castleGuest = null;
@@ -4257,6 +4372,20 @@ function toTrail(node: number, seed: number): boolean {
     logging: true,
   });
   raidView = new RaidView(raid.loc, raid.loadout.cls, grassPerTile, 'trail', null, null, site, camp.gear.weapon, mateClasses(raid));
+  if (camp.roadStory?.step === 'find-caravan') {
+    const encounter = caravanEncounter(site);
+    roadSurvivorAt = encounter.survivor;
+    roadSurvivor = caravanSurvivor(seed, new Set(camp.residents.map((r) => r.name)));
+    // Разбросанные ящики — остаток обоза. Существующая модель хранилища
+    // говорит это без новой иконки или подписи поверх леса.
+    raidView.setChests(encounter.cargo);
+    raidView.putSettler(
+      roadSurvivor.look,
+      encounter.survivor.x,
+      encounter.survivor.z,
+      0,
+    );
+  }
   hud.setGrass(grassPerTile);
   rig.world.add(raidView.group);
   campView.group.visible = false;
@@ -4271,6 +4400,12 @@ function toTrail(node: number, seed: number): boolean {
   resultShown = false;
   ear.reset(raid);
   showScene('raid', 0);
+  if (camp.roadStory?.step === 'find-caravan') {
+    raid.events.push(gameText(gameMessage(
+      'На боковой дороге видны брошенные ящики',
+      'Abandoned crates are visible down a side road',
+    )));
+  }
   return true;
 }
 
@@ -4865,6 +5000,7 @@ function toCamp(): void {
   leaveWalkSites();
   if (camp.glade !== undefined) toGladeCamp();
   else toPadCamp();
+  syncRoadStoryTask();
 }
 
 /**
@@ -7203,6 +7339,14 @@ startLoop({
       if (castleNow !== null) {
         const near = atTrader(castleNow, raid.hero.x, raid.hero.z);
         if (!near) tradeLeft = false;
+        if (near && hearAboutCaravan(camp)) {
+          raid.events.push(gameText(gameMessage(
+            'Торговец: «Последний обоз с железом не пришёл»',
+            'Trader: “The last iron caravan never arrived”',
+          )));
+          syncRoadStoryTask();
+          persist();
+        }
         const show = near && !tradeLeft;
         if (show !== tradePanel.visible) tradePanel.setVisible(show);
         if (show) tradePanel.sync(camp, traderStock());
@@ -7211,6 +7355,7 @@ startLoop({
         // Пост лесника (§6.1.6.3) — тем же жестом и в том же кадре.
         syncWoodsmanTalk();
       }
+      if (trailSite !== null) syncRoadSurvivor();
       // Разговор открылся или закрылся — низ вылазки уступает или
       // возвращается. Спрашивается панель, а не открывший её кадр.
       syncTalking();
@@ -7231,6 +7376,10 @@ startLoop({
         if (enemy !== null && defendersDown && !(camp.minotaurVictories ?? []).includes(seed)) {
           (camp.minotaurVictories ??= []).push(seed);
           raid.events.push('Минотавр повержен — золотой сундук теперь можно открыть');
+          finishRoadStory('force', gameText(gameMessage(
+            'Стража разбита — дорога снова открыта для обозов',
+            'The guards are defeated — caravans can use the road again',
+          )));
           persist();
         }
         if (minotaurNow.goldenChest.opened && !(camp.minotaurClaims ?? []).includes(seed)) {

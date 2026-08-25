@@ -111,6 +111,21 @@ describe('Сохранение', () => {
     assert.equal(back.minotaurQuests?.['42']?.reputation, 2);
   });
 
+  test('исход истории дороги переживает перезапуск, а битый исход отбрасывается', () => {
+    const store = fakeStore();
+    const camp = createCamp();
+    camp.roadStory = { step: 'done', route: 'trade' };
+    save(camp, createRoster(), 0);
+    assert.deepEqual(load().camp.roadStory, { step: 'done', route: 'trade' });
+
+    const raw = JSON.parse(store.get('emberhold/save')!) as {
+      roadStory?: { step: string; route?: string };
+    };
+    raw.roadStory = { step: 'done', route: 'пророчество' };
+    store.set('emberhold/save', JSON.stringify(raw));
+    assert.equal(load().camp.roadStory, undefined, 'чужой исход прочитался как игровой');
+  });
+
   test('герой, записанный Солеваром, открывается Бандитом с опытом', () => {
     const store = fakeStore();
     store.set(
