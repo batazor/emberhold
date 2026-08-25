@@ -35355,6 +35355,66 @@ msgid "ящик ровно в клетку — единственный, кто 
 msgstr "A crate exactly the right square - the only one that arrived in scale"
 
 #. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Управление лагерем"
+msgstr "Camp management"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Охота"
+msgstr "Hunting"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Сон и еда идут автоматически"
+msgstr "Sleep and meals run automatically"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Приказы"
+msgstr "Orders"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Добыча идёт только в часы работы"
+msgstr "Gathering happens only during work hours"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Открыто · поручение на {time}"
+msgstr "Unlocked · {time} assignment"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Осталось поймать {count}"
+msgstr "Catch {count} more"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Свободные места"
+msgstr "Open positions"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Встречайте путников и приглашайте их к костру."
+msgstr "Meet travelers and invite them to the campfire."
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Сон {time}"
+msgstr "Sleep {time}"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Еда {time}"
+msgstr "Meals {time}"
+
+#. js-lingui-explicit-id
+#: ui/residentManager.ts
+msgid "Работа {time}"
+msgstr "Work {time}"
+
+#. js-lingui-explicit-id
 #: features/character/index.ts
 msgid "Параметры вылазки"
 msgstr "Raid loadout"

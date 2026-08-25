@@ -5926,6 +5926,152 @@ function syncWorkBars(): void {
 
 const canvas = rig.renderer.domElement;
 
+type GameCursor =
+  | 'pointer'
+  | 'move'
+  | 'attack'
+  | 'chop'
+  | 'mine'
+  | 'harvest'
+  | 'build'
+  | 'interact'
+  | 'blocked';
+
+/**
+ * Курсор меняется только при смене смысла. Pointermove приходит чаще кадра,
+ * и повторная запись в dataset на каждом событии заставляла бы браузер снова
+ * сопоставлять CSS, хотя картинка осталась той же.
+ */
+function setGameCursor(next: GameCursor): void {
+  if (canvas.dataset.cursor !== next) canvas.dataset.cursor = next;
+}
+
+setGameCursor('pointer');
+
+/** Какое действие совершит следующий щелчок в этой точке сцены. */
+function gameCursorAt(hit: { x: number; z: number }): GameCursor {
+  if (mode === 'title') return 'pointer';
+
+  if (mode === 'visit') return 'move';
+
+  if (mode === 'camp' && campLocation === 'farm') {
+    const plot = farmView.plotAt(hit);
+    if (plot === null) return 'move';
+    const phase = farmPlotPhase(camp, plot, clock.now());
+    return phase === 'empty' || phase === 'ready' ? 'harvest' : 'blocked';
+  }
+
+  if (mode === 'camp' && campLocation === 'clan' && inClanCamp) {
+    if (clanPlacing === null || raid === null) return 'move';
+    const cell = { x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) };
+    return clanBuildBlock(camp, clanPlacing, cell, raid.hero) === 'ok' ? 'build' : 'blocked';
+  }
+
+  if (mode === 'camp' && buildTool !== null) return 'build';
+  if (mode === 'camp' && placingSign !== null) return 'build';
+
+  if (inGladeCamp && raid !== null) {
+    const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+    const origin = campOrigin(camp);
+    if (placingTent || placingChest) {
+      const x = Math.round(hit.x) - origin.x;
+      const z = Math.round(hit.z) - origin.z;
+      const ok = placingTent ? tentFits(camp, x, z) : chestFits(camp, x, z);
+      return ok ? 'build' : 'blocked';
+    }
+    const resident = raidView === null ? null : raidView.residentNear(hit.x, hit.z);
+    if (resident !== null) return 'interact';
+    if (camp.chests.some((c) => origin.x + c.x === cell.x && origin.z + c.z === cell.z)) {
+      return 'interact';
+    }
+    for (const id of PITCH_ORDER) {
+      const p = camp.layout[id];
+      if (Math.hypot(cell.x - (origin.x + p.x + 0.5), cell.z - (origin.z + p.z + 0.5)) <= 1.9) {
+        return 'interact';
+      }
+    }
+    if (raid.logging && treeAt(raid.loc, cell)) {
+      return raid.bagTotal < raid.capacity ? 'chop' : 'blocked';
+    }
+    return 'move';
+  }
+
+  if (mode === 'camp') {
+    const local = campLocal(hit);
+    const cell = { x: Math.round(local.x), z: Math.round(local.z) };
+    if (placingTent || placingChest) {
+      const ok = placingTent
+        ? tentFits(camp, cell.x, cell.z)
+        : chestFits(camp, cell.x, cell.z);
+      return ok ? 'build' : 'blocked';
+    }
+    if (selected !== null) {
+      const x = Math.round(local.x - 0.5);
+      const z = Math.round(local.z - 0.5);
+      return buildingFits(camp, selected, x, z) ? 'build' : 'blocked';
+    }
+    const bush = bushAt(camp.bushes ?? [], cell);
+    const stone = stoneAt(camp.stones, cell);
+    if (bush !== null || stone !== null) {
+      const nav = campNav(camp);
+      const free = cell.x >= 0 && cell.z >= 0 && cell.x < nav.area && cell.z < nav.area
+        && nav.ground[idx(nav.area, cell.x, cell.z)] === 0 && campHero.level === 'земля';
+      if (bush !== null) return free && ripe(bush, clock.now()) ? 'harvest' : 'blocked';
+      if (stone !== null) return free ? 'mine' : 'blocked';
+    }
+    if (campView.residentAt(local.x, local.z) !== null) return 'interact';
+    if (camp.chests.some((c) => c.x === cell.x && c.z === cell.z)) return 'interact';
+    if (campView.buildingAt(local.x, local.z) !== null) return 'interact';
+    return 'move';
+  }
+
+  if (mode !== 'raid' || raid === null || raid.status !== 'running') return 'pointer';
+
+  const cell = { x: Math.round(hit.x), z: Math.round(hit.z) };
+  if (placing !== null) {
+    const site = { x: Math.round(hit.x - 0.5), z: Math.round(hit.z - 0.5) };
+    return pitchOk(site) ? 'build' : 'blocked';
+  }
+  if (tentUnderConstruction !== null) {
+    const center = { x: tentUnderConstruction.x + 0.5, z: tentUnderConstruction.z + 0.5 };
+    if (Math.hypot(hit.x - center.x, hit.z - center.z) <= 1.9) return 'build';
+  }
+
+  if (inBattle(raid)) {
+    if (raidView?.battleBusy() === true) return 'blocked';
+    const battle = raid.battle!;
+    const unit = current(battle);
+    if (unit === undefined || unit.side !== 'hero') return 'blocked';
+    const want = worldToHex(hit.x, hit.z);
+    const there = unitAt(battle, want);
+    if (there !== undefined && there.side !== 'hero') {
+      return targets(battle, raid.loc.size, raid.loc.blocked, unit).includes(there)
+        ? 'attack'
+        : 'blocked';
+    }
+    return moves(battle, raid.loc.size, raid.loc.blocked, unit).has(hexKey(want))
+      ? 'move'
+      : 'blocked';
+  }
+
+  if (raid.logging && treeAt(raid.loc, cell)) {
+    return raid.bagTotal < raid.capacity ? 'chop' : 'blocked';
+  }
+  const site = walkSite();
+  if (site !== null) {
+    const bush = bushAt(site.bushes, cell);
+    if (bush !== null) {
+      return worldBlock(site.seed, site.place, bush, site.locals, camp.picks ?? {}, clock.now()) === 'ok'
+        ? 'harvest'
+        : 'blocked';
+    }
+  }
+  if (stoneAt(raid.loc.stones, cell) !== null) {
+    return raid.bagTotal < raid.capacity ? 'mine' : 'blocked';
+  }
+  return 'move';
+}
+
 /**
  * Курсор как источник ветра. Один на игру, а не по одному на сцену: рука
  * у игрока одна, и порыв, посчитанный дважды, разошёлся бы силой между
@@ -6269,7 +6415,11 @@ canvas.addEventListener('pointermove', (e) => {
   // и есть та, на которую игрок смотрит дольше всего.
   const camera = mode === 'title' && titleView !== null ? titleView.camera : undefined;
   const hit = rig.screenToGround(e.clientX, e.clientY, camera);
-  if (hit === null) return;
+  if (hit === null) {
+    setGameCursor('pointer');
+    return;
+  }
+  setGameCursor(gameCursorAt(hit));
   // Мазок ведётся, пока палец прижат. Без нажатия мышь только показывает,
   // куда встанет клетка, — на телефоне этого шага просто не будет.
   if (mode === 'camp' && buildTool === 'стена') {
@@ -6322,8 +6472,14 @@ canvas.addEventListener('pointerup', (e) => {
   if (hit !== null) buildAt(hit, true);
 });
 
-canvas.addEventListener('pointerleave', () => wind.away());
-canvas.addEventListener('pointercancel', () => wind.away());
+canvas.addEventListener('pointerleave', () => {
+  wind.away();
+  setGameCursor('pointer');
+});
+canvas.addEventListener('pointercancel', () => {
+  wind.away();
+  setGameCursor('pointer');
+});
 
 function moveSelected(x: number, z: number): boolean {
   if (selected === null) return false;

@@ -18,8 +18,8 @@
   /* Тусклее `--dim`, но ещё не фон: полоса, которая есть, но ничего не значит. */
   --mute: #6f6a5c;
   --ground: #0b0a09;
-  --panel: rgba(14, 13, 11, 0.82);
-  --line: rgba(232, 226, 212, 0.14);
+  --panel: rgba(31, 26, 18, 0.92);
+  --line: rgba(200, 162, 74, 0.24);
   /* Стекло под диалогом. Гасит сцену только там, где экран приходит вместо
      игры, а не поверх неё, — см. `#return`. */
   --scrim: rgba(8, 7, 6, 0.86);
@@ -29,9 +29,9 @@
      Три плотности на всю игру, а не своя у каждой панели: подложка карточки,
      значок и нажатие. Все три — чернила с прозрачностью, поэтому панель
      остаётся одного семейства при любой сцене под ней. */
-  --fill: rgba(232, 226, 212, 0.035);
-  --fill-2: rgba(232, 226, 212, 0.1);
-  --press: rgba(232, 226, 212, 0.14);
+  --fill: rgba(200, 162, 74, 0.055);
+  --fill-2: rgba(200, 162, 74, 0.12);
+  --press: rgba(200, 162, 74, 0.18);
 
   /* ---------- состояния ----------
      `--good` и `--bad` совпадают со сценой (`PALETTE.siteOk`, `siteNo`)
@@ -47,12 +47,12 @@
   /* ---------- выбранная карточка ----------
      Заливка и обводка врозь: на светлой сцене заливку почти не видно,
      и выбор держится обводкой. Снос — та же пара в красном. */
-  --pick: #3c3320;
-  --pick-line: #a2842f;
+  --pick: #46371c;
+  --pick-line: #c09a3d;
   --raze: #3a2320;
   --raze-line: #b0574a;
   /* Плашка под портретом: темнее сцены, светлее листа. */
-  --portrait: rgba(30, 28, 24, 0.9);
+  --portrait: rgba(47, 39, 25, 0.94);
   --event-art-bg: #11100d;
   --event-art-fade-top: rgba(11, 10, 9, 0.02);
   --event-art-fade-bottom: rgba(11, 10, 9, 0.88);
@@ -82,6 +82,20 @@
   --r-chip: 6px;
   --r-bar: 3px;
   --r-pill: 999px;
+
+  /* ---------- игровые курсоры ----------
+     Не системные указатели, а тот же визуальный язык, что у HUD: ink,
+     ground и gold. Точка после URL — реальная рабочая часть инструмента,
+     поэтому топор касается дерева лезвием, а меч — остриём. */
+  --cursor-pointer: url('../assets/ui/cursors/pointer.png') 7 40, default;
+  --cursor-move: url('../assets/ui/cursors/move.png') 6 39, default;
+  --cursor-attack: url('../assets/ui/cursors/attack.png') 4 43, crosshair;
+  --cursor-chop: url('../assets/ui/cursors/chop.png') 14 43, crosshair;
+  --cursor-mine: url('../assets/ui/cursors/mine.png') 10 43, crosshair;
+  --cursor-harvest: url('../assets/ui/cursors/harvest.png') 4 43, crosshair;
+  --cursor-build: url('../assets/ui/cursors/build.png') 15 42, crosshair;
+  --cursor-interact: url('../assets/ui/cursors/interact.png') 7 40, pointer;
+  --cursor-blocked: url('../assets/ui/cursors/blocked.png') 13 39, not-allowed;
 }
 
 /* ---------- словарь панелей ----------
@@ -94,10 +108,18 @@
 .card {
   display: flex; flex-direction: column; gap: 4px;
   padding: 10px; border: 1px solid var(--line); border-radius: var(--r-card);
-  background: var(--fill);
+  background:
+    linear-gradient(145deg, rgba(200, 162, 74, 0.075), rgba(200, 162, 74, 0.025)),
+    rgba(24, 21, 16, 0.48);
+  box-shadow: inset 0 1px rgba(255, 241, 207, 0.035), 0 5px 14px rgba(0, 0, 0, 0.1);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 /** Выбрана. Обводка вдвое заметнее заливки, поэтому держится ею. */
-.card.on { background: var(--pick); border-color: var(--pick-line); }
+.card.on {
+  background: linear-gradient(145deg, rgba(200, 162, 74, 0.24), rgba(105, 77, 27, 0.25));
+  border-color: var(--pick-line); box-shadow: inset 0 1px rgba(255, 241, 207, 0.08);
+}
+button.card:hover { border-color: rgba(224, 188, 60, 0.52); transform: translateY(-1px); }
 
 /**
  * Строка «слева подпись, справа значение». Тринадцать панелей писали её
@@ -124,7 +146,7 @@
  * и обязана читаться на любом фоне. Стекло у неё то же, что у листа.
  */
 .chip {
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-chip);
+  background: rgba(35, 29, 19, 0.9); border: 1px solid var(--line); border-radius: var(--r-chip);
   padding: 2px 7px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
 }
 
@@ -209,22 +231,34 @@
 html, body {
   margin: 0; height: 100%; overflow: hidden; background: var(--ground); color: var(--ink);
   font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  cursor: var(--cursor-pointer);
 }
-canvas { display: block; touch-action: none; }
+canvas { display: block; touch-action: none; cursor: var(--cursor-move); }
+canvas[data-cursor='pointer'] { cursor: var(--cursor-pointer); }
+canvas[data-cursor='move'] { cursor: var(--cursor-move); }
+canvas[data-cursor='attack'] { cursor: var(--cursor-attack); }
+canvas[data-cursor='chop'] { cursor: var(--cursor-chop); }
+canvas[data-cursor='mine'] { cursor: var(--cursor-mine); }
+canvas[data-cursor='harvest'] { cursor: var(--cursor-harvest); }
+canvas[data-cursor='build'] { cursor: var(--cursor-build); }
+canvas[data-cursor='interact'] { cursor: var(--cursor-interact); }
+canvas[data-cursor='blocked'] { cursor: var(--cursor-blocked); }
 
 #hud {
   position: fixed; inset: 0; pointer-events: none; display: flex;
   flex-direction: column; justify-content: space-between;
   padding: calc(8px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
 }
-/* Рамка листа — набор dobo_ui Fantasy RPG UI (реестр: assets/LICENSES.md).
-   Девятидольная нарезка: углы картинки остаются углами при любом размере
-   листа. Без `fill`: середина картинки не рисуется, стекло листа прежнее,
-   и сцена под ним видна как раньше. */
+/* Большой лист использует тот же спокойный `ground / ink / gold`, что и
+   карточки. Тонкая CSS-рамка не тянет растровые углы на широких окнах и не
+   приносит в каждый экран отдельный синий акцент. */
 .panel {
-  background: var(--panel); border: 10px solid transparent; border-radius: 10px;
-  border-image: url('../assets/dobo-ui/Container3_default.png') 36 / 10px stretch;
-  padding: 8px 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(200, 162, 74, 0.08), transparent 38%),
+    linear-gradient(150deg, rgba(40, 33, 22, 0.96), rgba(22, 19, 14, 0.96));
+  border: 1px solid rgba(200, 162, 74, 0.34); border-radius: 12px;
+  padding: 14px 16px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.38), inset 0 1px rgba(255, 241, 207, 0.05);
 }
 .stats {
   display: grid; grid-template-columns: auto 1fr auto; gap: 5px 8px;
@@ -303,16 +337,18 @@ canvas { display: block; touch-action: none; }
 .night input { flex: 1; accent-color: var(--gold); }
 .ctl { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .tiers { margin-top: 2px; }
-/* Кнопка — из того же набора. `fill` рисует глянец середины поверх стекла;
-   отступы ужаты, потому что визуальное поле теперь даёт рамка. Нажатие —
-   осветлением картинки: заливка под `fill` не видна. */
+/* Обычная кнопка — вторичное действие: тёплая подложка и золотой край.
+   Главное действие остаётся отдельной `.cta`, опасное — `.cta.danger`. */
 button {
   pointer-events: auto; font: inherit; font-size: 12px; color: var(--ink);
-  background: var(--panel); border: 12px solid transparent; border-radius: 8px;
-  border-image: url('../assets/dobo-ui/PatternLongButton2_ultramarine.png') 52 fill / 12px stretch;
-  padding: 1px 3px; cursor: pointer; touch-action: manipulation;
+  min-height: 34px; padding: 7px 11px; cursor: var(--cursor-interact); touch-action: manipulation;
+  background: linear-gradient(180deg, rgba(91, 70, 32, 0.72), rgba(48, 39, 24, 0.78));
+  border: 1px solid rgba(200, 162, 74, 0.38); border-radius: 8px;
+  box-shadow: inset 0 1px rgba(255, 241, 207, 0.07), 0 3px 10px rgba(0, 0, 0, 0.16);
 }
-button:active { filter: brightness(1.25); }
+button:hover { border-color: rgba(224, 188, 60, 0.62); }
+button:active { filter: brightness(1.16); transform: translateY(1px); }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 #result { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
   background: var(--scrim-soft); backdrop-filter: blur(4px); padding: 20px; z-index: 5; }
@@ -717,7 +753,7 @@ button:active { filter: brightness(1.25); }
    под ней (`.map-note`), а не сама кнопка. */
 .cta:disabled {
   background: transparent; border-color: var(--line); color: var(--dim);
-  cursor: default;
+  cursor: var(--cursor-blocked);
 }
 /* Правило `#camp .map > button { padding: 11px }` отсюда убрано: оно было
    написано под прежнюю кнопку и по специфичности перебивало отступы `.cta`,
@@ -778,7 +814,7 @@ button:active { filter: brightness(1.25); }
   align-items: center; pointer-events: auto;
 }
 #camp .raid .lbl { grid-column: 1 / -1; }
-button[disabled] { opacity: 0.4; cursor: default; }
+button[disabled] { opacity: 0.4; cursor: var(--cursor-blocked); }
 
 /* ---------- летопись прогресса (§9) ---------- */
 /* Своей кнопки на экране у летописи нет: её открывает строка в настройках.
@@ -1871,10 +1907,10 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .battle-acts { display: flex; gap: 6px; }
 .battle-acts button {
   min-width: 76px; padding: 8px 10px; font-size: 13px;
-  border: 0; border-radius: 8px; cursor: pointer;
+  border: 0; border-radius: 8px; cursor: var(--cursor-interact);
   background: var(--press); color: var(--ink);
 }
-.battle-acts button:disabled { opacity: 0.35; cursor: default; }
+.battle-acts button:disabled { opacity: 0.35; cursor: var(--cursor-blocked); }
 .battle-hint { margin: 0; font-size: 11px; }
 
 /* ---------- страница персонажа (§14.2, §11.7) ---------- */
@@ -1897,34 +1933,116 @@ button[disabled] { opacity: 0.4; cursor: default; }
 /* ---------- управление жителями ---------- */
 #resident-manager {
   position: fixed; inset: 0; z-index: 80; display: none; align-items: center;
-  justify-content: center; padding: 14px; background: var(--scrim);
-  backdrop-filter: blur(5px); pointer-events: auto;
+  justify-content: center; padding: 14px; background: rgba(13, 11, 8, 0.72);
+  backdrop-filter: blur(3px); pointer-events: auto;
 }
 #resident-manager.on { display: flex; }
 .rm-page {
-  width: min(760px, 100%); max-height: 92vh; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  width: min(920px, 100%); max-height: 92dvh; overflow: hidden;
+  display: flex; flex-direction: column; gap: 12px; padding: 16px;
 }
-.rm-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
-.rm-head > span { display: flex; flex-direction: column; gap: 3px; }
-.rm-head b { font-size: 16px; }
-.rm-head small { color: var(--dim); }
-.rm-help { margin: 0; font-size: 11px; line-height: 1.4; }
-.rm-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rm-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-bottom: 11px; border-bottom: 1px solid var(--line);
+}
+.rm-head > span { display: flex; flex-direction: column; gap: 1px; }
+.rm-head > span > small { color: var(--gold); font-size: 9px; font-weight: 650; letter-spacing: 0.13em; text-transform: uppercase; }
+.rm-head b { color: #fff2d5; font-size: 20px; }
+#rm-close { min-width: 78px; }
+.rm-overview { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 8px; }
+.rm-overview > .card { min-height: 76px; padding: 9px 10px; }
+.rm-unlock {
+  display: grid; grid-template-columns: 36px 1fr auto; grid-template-rows: auto auto;
+  gap: 3px 9px; align-items: center;
+}
+.rm-summary-icon {
+  display: grid; place-items: center; width: 34px; height: 34px; grid-row: 1 / -1;
+  color: #d8bd72; background: rgba(200, 162, 74, 0.11);
+  border: 1px solid rgba(200, 162, 74, 0.28); border-radius: 50%;
+}
+.rm-icon {
+  width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round; flex: none;
+}
+.rm-unlock-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rm-unlock-copy small { color: #bcae8d; font-size: 9px; letter-spacing: 0.09em; text-transform: uppercase; }
+.rm-unlock-copy strong { color: #f3df9d; font-size: 18px; line-height: 1; font-variant-numeric: tabular-nums; }
+.rm-track { grid-column: 2 / 4; height: 5px; overflow: hidden; border-radius: 5px; background: rgba(232, 226, 212, 0.09); }
+.rm-track i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #a67f2b, #e2bc4b); }
+.rm-unlock > small { grid-column: 3; grid-row: 1; color: #aa9e84; font-size: 9px; text-align: right; }
+.rm-unlock.unlocked .rm-summary-icon { color: #d8efbd; border-color: rgba(127, 176, 105, 0.55); background: rgba(127, 176, 105, 0.13); }
+.rm-unlock.unlocked .rm-track i { background: var(--good); }
+.rm-rule { display: grid; grid-template-columns: 36px 1fr; gap: 9px; align-items: center; }
+.rm-rule > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.rm-rule b { color: #e9ddc2; font-size: 12px; }
+.rm-rule small { color: #a99d83; font-size: 9px; line-height: 1.25; }
+.rm-list {
+  min-height: 0; overflow-y: auto; display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+}
+.rm-empty {
+  position: relative; grid-column: 1 / -1; min-height: 300px; overflow: hidden;
+  padding: 0; isolation: isolate; justify-content: center;
+}
+.rm-empty > img { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.rm-empty::after {
+  content: ''; position: absolute; z-index: -1; inset: 0;
+  background: linear-gradient(90deg, rgba(17, 14, 10, 0.96) 0%, rgba(17, 14, 10, 0.86) 35%, rgba(17, 14, 10, 0.12) 72%);
+}
+.rm-empty-copy { width: min(48%, 390px); padding: 28px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.rm-empty-copy > small { color: var(--gold); font-size: 9px; font-weight: 650; letter-spacing: 0.13em; text-transform: uppercase; }
+.rm-empty-copy > b { max-width: 330px; color: #fff0cf; font-size: 23px; line-height: 1.08; }
+.rm-empty-copy > p { max-width: 330px; margin: 0; color: #bdb092; font-size: 11px; line-height: 1.4; }
+.rm-empty-roles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.rm-empty-roles > span {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px;
+  color: #d7c7a4; background: rgba(200, 162, 74, 0.09);
+  border: 1px solid rgba(200, 162, 74, 0.22); border-radius: var(--r-pill);
+}
+.rm-empty-roles small { font-size: 9px; white-space: nowrap; }
+.rm-empty-roles .rm-icon { width: 14px; height: 14px; color: #d8bd72; }
 .rm-person { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
 .rm-id { display: flex; align-items: center; gap: 9px; }
-.rm-id .face { width: 42px; height: 42px; flex: none; }
+.rm-id .face { width: 44px; height: 44px; flex: none; border: 1px solid rgba(200, 162, 74, 0.32); }
 .rm-id > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rm-schedule { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
-.rm-schedule select { max-width: 11em; font: inherit; padding: 5px; background: var(--fill); color: var(--ink); }
-.rm-timeline { min-height: 2.7em; line-height: 1.35; }
+.rm-schedule select {
+  max-width: 11em; font: inherit; padding: 5px 7px; color: var(--ink);
+  background: rgba(200, 162, 74, 0.08); border: 1px solid var(--line); border-radius: 6px;
+}
+.rm-timeline { display: flex; flex-direction: column; gap: 5px; }
+.rm-daybar { display: grid; grid-template-columns: repeat(24, 1fr); gap: 1px; height: 8px; }
+.rm-daybar i { background: rgba(232, 226, 212, 0.08); }
+.rm-daybar i:first-child { border-radius: 4px 0 0 4px; }
+.rm-daybar i:last-child { border-radius: 0 4px 4px 0; }
+.rm-daybar i.sleep { background: #665f75; }
+.rm-daybar i.meal { background: #c18a3e; }
+.rm-daybar i.work { background: var(--good); }
+.rm-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.rm-legend small { position: relative; padding-left: 8px; color: #9f947d; font-size: 8px; }
+.rm-legend small::before { content: ''; position: absolute; left: 0; top: 4px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.rm-legend .sleep { color: #9b92ad; }
+.rm-legend .meal { color: #d2a25c; }
+.rm-legend .work { color: #91bf7a; }
 .rm-jobs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
-.rm-jobs button, .rm-hunt, .rm-recall { font-size: 11px; padding: 8px 6px; }
+.rm-jobs button, .rm-hunt, .rm-recall {
+  display: flex; align-items: center; justify-content: flex-start; gap: 6px;
+  font-size: 10px; padding: 7px 8px; text-align: left;
+}
+.rm-jobs .rm-icon, .rm-hunt .rm-icon, .rm-recall .rm-icon { width: 15px; height: 15px; color: #d5bd78; }
 .rm-hunt { color: var(--ink); }
 .rm-recall { color: var(--warn); }
 @media (max-width: 620px) {
+  #resident-manager { padding: 7px; }
+  .rm-page { max-height: 96dvh; padding: 11px; }
+  .rm-overview { grid-template-columns: 1fr 1fr; }
+  .rm-unlock { grid-column: 1 / -1; }
   .rm-list { grid-template-columns: 1fr; }
-  .rm-page { max-height: 95vh; }
+  .rm-empty { min-height: 360px; }
+  .rm-empty > img { object-position: 68% center; }
+  .rm-empty::after { background: linear-gradient(180deg, rgba(17, 14, 10, 0.32), rgba(17, 14, 10, 0.95) 62%); }
+  .rm-empty-copy { width: 100%; margin-top: auto; padding: 18px; }
+  .rm-empty-copy > b { font-size: 19px; }
 }
 .ch-page {
   width: 100%; max-width: 920px; max-height: 96vh; overflow: hidden;
@@ -2037,8 +2155,8 @@ button[disabled] { opacity: 0.4; cursor: default; }
   grid-column: 2; grid-row: 1 / 4;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
-.ch-figure { width: 260px; max-width: 100%; height: 320px; touch-action: none; cursor: grab; }
-.ch-figure:active { cursor: grabbing; }
+.ch-figure { width: 260px; max-width: 100%; height: 320px; touch-action: none; cursor: var(--cursor-move); }
+.ch-figure:active { cursor: var(--cursor-move); }
 .ch-side { display: flex; flex-direction: column; gap: 7px; }
 .ch-side > .card {
   border-color: rgba(200, 162, 74, 0.22); background: rgba(232, 226, 212, 0.045);
@@ -2064,7 +2182,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
 .ch-item {
   background: transparent; border-radius: var(--r-chip); padding: 2px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  text-align: center; line-height: 1.2; cursor: grab; touch-action: none; user-select: none;
+  text-align: center; line-height: 1.2; cursor: var(--cursor-interact); touch-action: none; user-select: none;
   transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
 }
 .ch-item:hover { transform: translateY(-2px) scale(1.03); filter: brightness(1.16); }
@@ -2074,7 +2192,7 @@ button[disabled] { opacity: 0.4; cursor: default; }
   display: block; width: 34px; height: 34px; object-fit: contain;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45));
 }
-.ch-item:active { cursor: grabbing; }
+.ch-item:active { cursor: var(--cursor-move); }
 .ch-lift { opacity: 0.18; transform: scale(0.92) !important; }
 /* Лица в шапке: тот же веер, только строкой. Выбранное не тусклое —
    остальные приглушены, чтобы «на кого смотрю» читалось без подписи. */
