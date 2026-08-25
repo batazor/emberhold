@@ -22,10 +22,13 @@ import { gameMessages } from '../i18n/gameMessages';
 import {
   gameReferralLink,
   openPlatformCheckout,
+  platformCharge,
   platformKind,
   platformPrice,
   shareGameInvite,
 } from '../core/platform';
+import { track } from '../sim/telemetry';
+import type { OfferGate } from '../sim/telemetry';
 
 const VALUE_NAMES: Readonly<Record<string, ReturnType<typeof gameMessage>>> = {
   default: gameMessage('Обычная палатка', 'Standard tent'),
@@ -87,7 +90,17 @@ const availableValue = (
 const categoryBySku = (sku: string | null): CosmeticCategory | undefined =>
   COSMETIC_CATEGORIES.find((category) => category.sku === sku);
 
-export interface StorePanelCallbacks { onState(state: BillingState): void; }
+export interface StorePanelCallbacks {
+  onState(state: BillingState): void;
+  /**
+   * Уровень главного здания. §22.19 меряет первый платёж по игровому
+   * параметру, а магазин про лагерь не знает и знать не должен — поэтому
+   * число приносит зовущий, как и состояние оформления.
+   */
+  hq(): number;
+  /** Игровые часы (§9): событие датируется ими, а не моментом отправки. */
+  at(): number;
+}
 
 /** Contextual collection: selecting previews; only the primary button mutates. */
 export class StorePanel {
@@ -108,6 +121,19 @@ export class StorePanel {
   private selected: CosmeticValue = 'default';
   private newPack: string | null = null;
   private busy = false;
+  /**
+   * §22.19 — какие наборы уже показаны за это открытие витрины. `render`
+   * зовётся на каждый выбор карточки, и без этого набора один взгляд
+   * на магазин давал бы десяток `offer`, то есть знаменатель конверсии
+   * мерил бы клики по предпросмотру.
+   */
+  private offered = new Set<string>();
+  /**
+   * Спрашивали ли уже облако о правах. До первого ответа состояние равно
+   * `null` и у любого игрока читается как «не вошёл» — записать по нему
+   * гейт входа значило бы приписать его и вошедшим.
+   */
+  private stateKnown = false;
 
   constructor(parent: HTMLElement, private readonly cb: StorePanelCallbacks) {
     this.overlay = document.createElement('div');
@@ -175,6 +201,7 @@ export class StorePanel {
     if (!allowed.some((category) => category.kind === this.kind)) this.kind = allowed[0]!.kind;
     this.selected = equippedOf(this.state, this.kind);
     this.newPack = null;
+    this.offered.clear();
     this.rebuild();
     this.overlay.classList.add('on');
     this.render();
@@ -218,6 +245,7 @@ export class StorePanel {
   async refresh(): Promise<void> {
     const hadState = this.state !== null;
     const state = await cloudBillingStatus();
+    this.stateKnown = true;
     this.state = state;
     if (state !== null) {
       this.cb.onState(state);
@@ -245,6 +273,10 @@ export class StorePanel {
       canEquip,
     });
     const action: CosmeticCollectionAction | 'refer' = referralLocked ? 'refer' : collectionAction;
+    if (!hasPack) {
+      this.trackOffer(category.sku, action === 'sign-in' ? 'sign-in'
+        : action === 'create-clan' ? 'create-clan' : 'none');
+    }
     setGameText(this.title, this.owner === 'player'
       ? gameMessage('Оформление лагеря', 'Camp appearance') : gameMessage('Оформление клана', 'Clan appearance'));
     setGameText(this.lead, this.owner === 'player'
@@ -320,6 +352,20 @@ export class StorePanel {
         'Selecting a card only changes the preview.'));
   }
 
+  /**
+   * §22.19 — предложение показано. Пишется один раз на набор за открытие
+   * витрины и только на тот набор, которого у игрока нет: у купленного
+   * предложения нет, есть кнопка «Применить».
+   */
+  private trackOffer(sku: string, gate: OfferGate): void {
+    if (!this.stateKnown || this.offered.has(sku)) return;
+    this.offered.add(sku);
+    const category = categoryBySku(sku);
+    if (category === undefined) return;
+    const charge = platformCharge(category.amountMinor, category.stars);
+    track({ t: 'offer', at: this.cb.at(), sku, ...charge, where: 'store', gate, hq: this.cb.hq() });
+  }
+
   private async primaryAction(): Promise<void> {
     if (this.primary.dataset.action === 'obtain') await this.checkout();
     else if (this.primary.dataset.action === 'equip') await this.equip();
@@ -352,11 +398,15 @@ export class StorePanel {
   private async checkout(): Promise<void> {
     if (this.busy) return;
     this.busy = true; this.render();
-    const state = await cloudBillingCheckout(categoryOf(this.kind).sku);
+    const category = categoryOf(this.kind);
+    const charge = platformCharge(category.amountMinor, category.stars);
+    const state = await cloudBillingCheckout(category.sku);
     if (state?.url === undefined) {
+      track({ t: 'checkout', at: this.cb.at(), sku: category.sku, ...charge, result: 'failed' });
       this.busy = false; this.state = state; this.render(); play('deny'); return;
     }
     const result = await openPlatformCheckout(state.url);
+    track({ t: 'checkout', at: this.cb.at(), sku: category.sku, ...charge, result });
     if (result === 'redirected') return;
     if (result === 'paid' || result === 'pending') {
       this.newPack = categoryOf(this.kind).sku;
@@ -386,6 +436,10 @@ export class StorePanel {
       if (state !== null) {
         this.state = state; this.cb.onState(state);
         if (category !== undefined && owned(state, category.kind)) {
+          track({
+            t: 'purchase', at: this.cb.at(), sku: category.sku,
+            ...platformCharge(category.amountMinor, category.stars), hq: this.cb.hq(),
+          });
           this.busy = false; this.render(); play('build'); return;
         }
       }

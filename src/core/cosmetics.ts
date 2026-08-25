@@ -27,16 +27,22 @@ export interface CosmeticCategory {
   readonly owner: CosmeticOwner;
   readonly sku: string;
   readonly price: string;
+  /**
+   * Веб-цена в минорных единицах — то же число, что стоит в Stripe
+   * (`edge/stripe-webhook.ts`) и что уходит в телеметрию (§9). `price`
+   * рядом остаётся строкой, потому что он для глаз, а не для сложения.
+   */
+  readonly amountMinor: number;
   readonly stars: number;
   readonly values: readonly CosmeticValue[];
 }
 
 export const COSMETIC_CATEGORIES: readonly CosmeticCategory[] = [
-  { kind: 'personal-icon', owner: 'player', sku: PERSONAL_CAMP_PACK, price: '$2.99', stars: 150, values: PERSONAL_CAMP_ICONS },
-  { kind: 'fire', owner: 'player', sku: CAMPFIRE_PACK, price: '$1.99', stars: 100, values: CAMP_FIRE_STYLES },
-  { kind: 'decor', owner: 'player', sku: CAMP_DECOR_PACK, price: '$2.99', stars: 150, values: CAMP_DECOR_STYLES },
-  { kind: 'clan-icon', owner: 'clan', sku: CLAN_CAMP_PACK, price: '$4.99', stars: 250, values: CLAN_CAMP_ICONS },
-  { kind: 'heraldry', owner: 'clan', sku: CLAN_HERALDRY_PACK, price: '$3.99', stars: 200, values: CLAN_HERALDRY },
+  { kind: 'personal-icon', owner: 'player', sku: PERSONAL_CAMP_PACK, price: '$2.99', amountMinor: 299, stars: 150, values: PERSONAL_CAMP_ICONS },
+  { kind: 'fire', owner: 'player', sku: CAMPFIRE_PACK, price: '$1.99', amountMinor: 199, stars: 100, values: CAMP_FIRE_STYLES },
+  { kind: 'decor', owner: 'player', sku: CAMP_DECOR_PACK, price: '$2.99', amountMinor: 299, stars: 150, values: CAMP_DECOR_STYLES },
+  { kind: 'clan-icon', owner: 'clan', sku: CLAN_CAMP_PACK, price: '$4.99', amountMinor: 499, stars: 250, values: CLAN_CAMP_ICONS },
+  { kind: 'heraldry', owner: 'clan', sku: CLAN_HERALDRY_PACK, price: '$3.99', amountMinor: 399, stars: 200, values: CLAN_HERALDRY },
 ];
 
 export const categoriesOf = (owner: CosmeticOwner): readonly CosmeticCategory[] =>

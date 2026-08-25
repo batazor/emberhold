@@ -117,6 +117,19 @@ export function platformPrice(webPrice: string, stars: number): string {
   return platformKind() === 'telegram' ? `${stars} ⭐` : webPrice;
 }
 
+/**
+ * Чем платит игрок, в том виде, в каком это записывает телеметрия (§9):
+ * целое число минорных единиц и валюта рядом. У Telegram это звёзды —
+ * `XTR` по ISO 4217, и минорной единицы у них нет вовсе, поэтому звезда
+ * записывается единицей. Складывать `XTR` с `USD` нельзя, и ровно затем
+ * валюта названа рядом с числом, а не подразумевается.
+ */
+export function platformCharge(webMinor: number, stars: number): { priceMinor: number; currency: string } {
+  return platformKind() === 'telegram'
+    ? { priceMinor: stars, currency: 'XTR' }
+    : { priceMinor: webMinor, currency: 'USD' };
+}
+
 /** Telegram оставляет игрока в игре; веб передаёт управление Stripe. */
 export async function openPlatformCheckout(url: string): Promise<CheckoutResult> {
   const app = telegram();

@@ -2934,6 +2934,8 @@ storePanel = new StorePanel(app, {
     };
     applyBillingAppearance();
   },
+  hq: () => camp.levels.hq,
+  at: () => clock.now(),
 });
 const clanPanel = new ClanPanel(app, {
   onFound: (name) => {
