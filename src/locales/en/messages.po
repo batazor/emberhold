@@ -259,6 +259,31 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+#~ msgid "Доведите общий урожай до 70 пищи"
+#~ msgstr "Bring total farm production to 70 food"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Запас перед ненастьем"
+#~ msgstr "Stores before the storm"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Праздник урожая"
+#~ msgstr "Harvest festival"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "Хозяйство завершено · праздник открыт"
+#~ msgstr "Farm complete · festival unlocked"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+#~ msgid "{name} идёт в лагерь · железо забрали люди минотавра"
+#~ msgstr "{name} heads to camp · the minotaur’s people took the iron"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "—"
 msgstr "—"
 
@@ -3356,8 +3381,8 @@ msgstr "{name} · lvl {level} · leads party"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "{name} идёт в лагерь · железо забрали люди минотавра"
-msgstr "{name} heads to camp · the minotaur’s people took the iron"
+msgid "{name} идёт в лагерь · у повозки уцелел мешок зерна"
+msgstr "{name} heads to camp · a sack of grain survived by the wagon"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -10954,6 +10979,11 @@ msgstr "Choose the caretaker’s approach"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Выберите уклад хозяйства для {name}"
+msgstr "Choose how {name} will run the farm"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 #: locales/legacy-messages.ts
 msgid "Выберите, что строить. Пока карточка не выбрана, лагерь работает как обычно."
 msgstr "Choose what to build. Until a card is selected, the camp works as usual."
@@ -12593,6 +12623,11 @@ msgid "Для выполнения заказа ресурсов пока не �
 msgstr "Resources are not yet sufficient to complete the order"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Для обоза нужно {food} пищи на складе"
+msgstr "The convoy needs {food} food in storage"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Для посева нужна ZXQPH0QXZ пища"
 msgstr "Sowing requires {value0} food"
@@ -12891,11 +12926,6 @@ msgid "Добычи больше, и противников тоже"
 msgstr "More loot and more enemies"
 
 #. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Доведите общий урожай до 70 пищи"
-msgstr "Bring total farm production to 70 food"
-
-#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Догоняющая механика. Запасной не отстаёт навсегда, но и обогнать основного тренировкой нельзя."
 msgstr "Catch-up mechanic.\n"
@@ -12910,6 +12940,11 @@ msgstr "Wait for the farmhouse to be completed"
 #: locales/game-messages.ts
 msgid "Дождитесь помощи жителя со сбором"
 msgstr "Let a resident help with a harvest"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Дождитесь, когда {name} поможет со сбором"
+msgstr "Let {name} help with a harvest"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -14382,8 +14417,8 @@ msgstr "Trap"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
-msgid "Запас перед ненастьем"
-msgstr "Stores before the storm"
+msgid "Запас для дороги"
+msgstr "Stores for the road"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -19847,8 +19882,18 @@ msgstr "Iron deficiency and where to close it (§ 13.5, § 16.2). There are no b
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Найдите выжившего у пропавшего обоза"
+msgstr "Find the survivor by the missing convoy"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Найдите пропавший обоз на боковой дороге"
 msgstr "Find the missing caravan on a side road"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Найдите пропавший обоз на лесной дороге"
+msgstr "Find the missing convoy on the forest road"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -21307,6 +21352,11 @@ msgid "обоз"
 msgstr "carriage"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Обоз снабжён · первая поставка железа получена"
+msgstr "Convoy supplied · first iron shipment received"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Обойти все комнаты и вернуться стоит"
 msgstr "Go around all the rooms and come back"
@@ -22238,6 +22288,11 @@ msgstr "Open the alliance chest"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Откройте дорогу у минотавра"
+msgstr "Reopen the road past the minotaur"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Откроются оба закрытых знака набора. Их можно примерить до получения."
 msgstr "Both locked marks in the pack will unlock. You can preview them before purchase."
 
@@ -22626,6 +22681,11 @@ msgstr "hunter"
 #: locales/game-messages.ts
 msgid "Охрана"
 msgstr "Guards"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Охраняемый обоз ушёл с провиантом · железо +{iron}"
+msgstr "The guarded convoy left with provisions · iron +{iron}"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -23131,6 +23191,11 @@ msgstr "The first set of which the object is named"
 #: locales/legacy-messages.ts
 msgid "Первый набор, у которого предмет назван материалом, а не формой: «медь», «серебро», «железо» — это и есть имена моделей. Отсюда и вопрос страницы, который у леса и подземелья не возникал: различает ли палитра игры материалы, которые набор считает разными."
 msgstr "The first set, in which the object is called a material, not a form: \"copper\", \"silver\", \"iron\" - these are the names of models. Hence the question of the page, which the forest and the dungeon did not arise: does the palette of the game distinguish materials that the set considers different?"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Первый новый обоз"
+msgstr "The first new convoy"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -25047,11 +25112,6 @@ msgid "Правый щелчок ставит башню и листает её 
 msgstr "The right click puts the tower and flips its tiers."
 
 #. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Праздник урожая"
-msgstr "Harvest festival"
-
-#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Пран"
 msgstr "pran"
@@ -26159,6 +26219,11 @@ msgstr "worked as a courtyard dweller until the courtyard moved to its own model
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Работники минотавра приняли провиант · железо +{iron}"
+msgstr "The minotaur’s workers took the provisions · iron +{iron}"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.build.workers"
 msgstr "Construction workers"
 
@@ -26607,6 +26672,11 @@ msgstr "dawn"
 #: locales/game-messages.ts
 msgid "Расспросите торговца о поставках железа"
 msgstr "Ask the trader about iron supplies"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Расспросите торговца о пропавшем обозе"
+msgstr "Ask the trader about the missing convoy"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -28525,6 +28595,21 @@ msgid "скрыто фигурок из трёх"
 msgstr "Hidden figures from three"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Скуйте первую вещь и откройте дорогу"
+msgstr "Forge your first item and reopen the road"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Скуйте первую вещь и откройте дорогу для обозов"
+msgstr "Forge your first item and reopen the caravan road"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Скуйте первую вещь и разыщите пропавший обоз"
+msgstr "Forge your first item and find the missing convoy"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Слабая"
 msgstr "Weak."
@@ -28823,6 +28908,16 @@ msgid "снаружи"
 msgstr "outside"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Снарядите первый обоз на Ферме"
+msgstr "Supply the first convoy at the Farm"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Снарядить обоз · {food} пищи → {iron} железа"
+msgstr "Supply convoy · {food} food → {iron} iron"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "Снаряды"
 msgstr "Projectiles"
@@ -28874,6 +28969,11 @@ msgstr "Sign in to your account first."
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Сначала достройте дом фермера"
+msgstr "Finish the farmhouse first"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "game.clan.build.finishCurrent"
 msgstr "Finish the current construction first"
 
@@ -28890,8 +28990,18 @@ msgstr "Shelter is required first"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
+msgid "Сначала откройте дорогу для обозов"
+msgstr "Reopen the caravan road first"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
 msgid "Сначала поймайте {count} лис"
 msgstr "Catch {count} foxes first"
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Сначала соберите огородом 70 пищи"
+msgstr "First produce 70 food on the farm"
 
 #. js-lingui-explicit-id
 #: locales/game-messages.ts
@@ -28958,6 +29068,11 @@ msgstr "stripped"
 #: locales/legacy-messages.ts
 msgid "Собери всё"
 msgstr "Get it all together."
+
+#. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Соберите 70 пищи и снарядите первый обоз"
+msgstr "Produce 70 food and supply the first convoy"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts
@@ -31291,6 +31406,11 @@ msgid "торговые награды увеличены на 1"
 msgstr "Trade rewards increased by 1"
 
 #. js-lingui-explicit-id
+#: locales/game-messages.ts
+msgid "Торговый обоз ушёл с провиантом · железо +{iron}"
+msgstr "The trade convoy left with provisions · iron +{iron}"
+
+#. js-lingui-explicit-id
 #: locales/legacy-messages.ts
 msgid "тот же градиент от угля к латуни"
 msgstr "coal-to-brass"
@@ -33183,11 +33303,6 @@ msgstr "Walking won''t be useful at all."
 #: locales/legacy-messages.ts
 msgid "ходьбу"
 msgstr "walk"
-
-#. js-lingui-explicit-id
-#: locales/game-messages.ts
-msgid "Хозяйство завершено · праздник открыт"
-msgstr "Farm complete · festival unlocked"
 
 #. js-lingui-explicit-id
 #: locales/legacy-messages.ts

@@ -376,6 +376,7 @@ import {
   homeless,
   recallHunt,
   residentLook,
+  residentUuid,
   residentPhaseAt,
   residentState,
   roofs,
@@ -412,6 +413,7 @@ import { panelsFor, soundFor } from './features/scene';
 import type { Scene } from './features/scene';
 import { createRaidEar } from './features/raidAudio';
 import {
+  FARM_CONVOY_IRON,
   FARM_FOOD_GOAL,
   FARM_CROPS,
   FARM_DEFAULT_CROP,
@@ -430,6 +432,7 @@ import {
   plantFarmPlot,
   repeatReadyFarmPlots,
   selectFarmCrop,
+  supplyFarmConvoy,
   startFarmConstruction,
   startFarmOnboarding,
   syncFarmStory,
@@ -1208,6 +1211,23 @@ const farmCropPicker = new FarmCropPicker(app, {
     play('levelup');
     syncFarmUi();
     campHud.notify(gameText(gameMessage('Смотритель хозяйства выбран', 'Farm caretaker chosen')));
+    persist();
+  },
+  onConvoy: () => {
+    if (!supplyFarmConvoy(camp)) {
+      play('deny');
+      syncFarmUi();
+      return;
+    }
+    play('levelup');
+    const message = camp.roadStory?.route === 'work'
+      ? gameMessage('Работники минотавра приняли провиант · железо +{iron}', 'The minotaur’s workers took the provisions · iron +{iron}')
+      : camp.roadStory?.route === 'force'
+        ? gameMessage('Охраняемый обоз ушёл с провиантом · железо +{iron}', 'The guarded convoy left with provisions · iron +{iron}')
+        : gameMessage('Торговый обоз ушёл с провиантом · железо +{iron}', 'The trade convoy left with provisions · iron +{iron}');
+    syncFarmUi();
+    campHud.sync(camp, clock.now(), 0);
+    campHud.notify(gameText(message, { iron: FARM_CONVOY_IRON }));
     persist();
   },
 });
@@ -2591,7 +2611,11 @@ function syncRoadStoryTask(): void {
       ? gameText(gameMessage('Осмотрите лесную дорогу', 'Search the forest road'))
       : step === 'settle-supply'
         ? gameText(gameMessage('Решите вопрос с дорогой у минотавра', 'Settle the road dispute with the minotaur'))
-        : null;
+        : step === undefined && camp.farm?.unlocked === true && camp.farm.story.day >= 8
+          ? gameText(gameMessage('Скуйте первую вещь и откройте дорогу для обозов', 'Forge your first item and reopen the caravan road'))
+          : step === 'done' && camp.farm?.story.day === 15 && camp.roadStory?.convoySupplied !== true
+            ? gameText(gameMessage('Снарядите первый обоз на Ферме', 'Supply the first convoy at the Farm'))
+            : null;
   campHud.setStoryTask(text);
 }
 
@@ -3267,6 +3291,7 @@ function syncFarmUi(): void {
   farmCropPicker.sync(camp, now);
   farmBuildPanel.sync(camp, now);
   farmView.sync(camp.farm, now);
+  syncRoadStoryTask();
   if (advanced) {
     campHud.notify(gameText(gameMessage('Огород: открыт день {day} из 15', 'Farm: day {day} of 15 unlocked'), {
       day: camp.farm?.story.day ?? 1,
@@ -4048,13 +4073,14 @@ function inviteRoadSurvivor(): void {
     roadSurvivor === null ||
     raid === null
   ) return;
-  if (!admit(camp, {
+  const caravaner = {
     name: roadSurvivor.name,
     look: roadSurvivor.look,
     seed: roadSurvivor.seed,
-    answer: 'строим',
+    answer: 'кормим' as const,
     rest: false,
-  })) {
+  };
+  if (!admit(camp, caravaner)) {
     play('deny');
     raid.events.push(gameText(gameMessage(
       'В лагере уже есть человек с таким именем',
@@ -4062,11 +4088,16 @@ function inviteRoadSurvivor(): void {
     )));
     return;
   }
-  rescueCaravaner(camp);
+  const admitted = camp.residents.find((resident) =>
+    resident.name === caravaner.name && resident.seed === caravaner.seed
+  );
+  rescueCaravaner(camp, admitted === undefined
+    ? undefined
+    : { id: residentUuid(admitted), name: admitted.name });
   syncFarmUi();
   raid.events.push(gameText(gameMessage(
-    '{name} идёт в лагерь · железо забрали люди минотавра',
-    '{name} heads to camp · the minotaur’s people took the iron',
+    '{name} идёт в лагерь · у повозки уцелел мешок зерна',
+    '{name} heads to camp · a sack of grain survived by the wagon',
   ), { name: roadSurvivor.name }));
   play('build');
   raidView?.callSettler(raid.hero.x, raid.hero.z);
@@ -6565,6 +6596,16 @@ if (debugCamp !== null) {
         rest: false,
       });
       buildTent(camp);
+    }
+    if (returnAction) {
+      const helper = camp.residents.find((resident) => resident.answer === 'кормим');
+      camp.roadStory = {
+        step: 'done',
+        route: 'trade',
+        ...(helper === undefined
+          ? { caravanerName: 'Тихон' }
+          : { caravanerId: residentUuid(helper), caravanerName: helper.name }),
+      };
     }
   }
   if (

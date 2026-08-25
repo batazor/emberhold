@@ -217,6 +217,7 @@ interface SaveV1 {
       harvestedPlots?: number;
       harvestedFood?: number;
       assistedPlots?: number;
+      caravanAssisted?: boolean;
       batchUses?: number;
       caretaker?: string | null;
       structures?: Partial<Record<FarmStructureId, boolean>>;
@@ -299,6 +300,7 @@ function readFarmStory(
   story.harvestedPlots = savedCounter(value.harvestedPlots);
   story.harvestedFood = savedCounter(value.harvestedFood);
   story.assistedPlots = savedCounter(value.assistedPlots);
+  story.caravanAssisted = value.caravanAssisted === true;
   story.batchUses = savedCounter(value.batchUses);
   story.caretaker = value.caretaker === 'grower' || value.caretaker === 'steward'
     ? value.caretaker as FarmCaretaker
@@ -979,12 +981,27 @@ export function load(): LoadResult {
       typeof story === 'object' &&
       ROAD_STORY_STEPS.includes(story.step)
     ) {
+      const caravanerId = typeof story.caravanerId === 'string' && story.caravanerId.length <= 64
+        ? story.caravanerId
+        : undefined;
+      const caravanerName = typeof story.caravanerName === 'string' && story.caravanerName.length <= 80
+        ? story.caravanerName
+        : undefined;
+      const caravaner = {
+        ...(caravanerId === undefined ? {} : { caravanerId }),
+        ...(caravanerName === undefined ? {} : { caravanerName }),
+      };
       if (story.step === 'done') {
         if (story.route !== undefined && SUPPLY_ROUTES.includes(story.route)) {
-          camp.roadStory = { step: 'done', route: story.route };
+          camp.roadStory = {
+            step: 'done',
+            route: story.route,
+            ...caravaner,
+            ...(story.convoySupplied === true ? { convoySupplied: true } : {}),
+          };
         }
       } else {
-        camp.roadStory = { step: story.step };
+        camp.roadStory = { step: story.step, ...caravaner };
       }
     }
 
