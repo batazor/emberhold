@@ -6386,6 +6386,7 @@ if (debugTier !== null || debugNode !== null) {
  * `?test=character` — экран героя с опытом и свободным очком умения.
  * `?test=return` — насыщенный итог боя с опытом и новым уровнем.
  * `?test=cosmetics` — личный и клановый знаки на настоящей глобальной карте.
+ * `?test=road-trader|road-trail|road-minotaur` — три карточки первой главы.
  *
  * Сцены отладочные и живут только в `npm run dev`: в сборку они попадают,
  * но открыть их можно лишь адресом, которого в игре нет.
@@ -6491,6 +6492,19 @@ if (debugCamp !== null) {
       buildTent(camp);
     }
   }
+  if (
+    debugCamp === 'road-trader' ||
+    debugCamp === 'road-trail' ||
+    debugCamp === 'road-minotaur'
+  ) {
+    camp.roadStory = {
+      step: debugCamp === 'road-trader'
+        ? 'return-to-trader'
+        : debugCamp === 'road-trail'
+          ? 'find-caravan'
+          : 'settle-supply',
+    };
+  }
   if (debugCamp === 'staff') {
     camp.foxesCaught = 10;
     const staff = [
@@ -6506,6 +6520,11 @@ if (debugCamp !== null) {
   // Площадка напрямую, мимо маршрутизатора: второй лагерь существует
   // чисто для тестов, и сейв с поляной не должен уводить кадр отладки.
   toPadCamp();
+  if (
+    debugCamp === 'road-trader' ||
+    debugCamp === 'road-trail' ||
+    debugCamp === 'road-minotaur'
+  ) syncRoadStoryTask();
   if (debugCamp === 'character') {
     const hero = roster.heroes[0]!;
     hero.level = 2;
