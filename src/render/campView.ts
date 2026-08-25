@@ -25,6 +25,8 @@ import { LAMP_OF, lampGlowMaterial, lampLight, lampParts, propsMaterial, roadGeo
 import { roadPieces } from '../sim/roads';
 import { PALETTE } from './palette';
 import { DirectionalFade, fadeSide } from './directionalFade';
+import { CampDecorLayer, ClanHeraldryLayer } from './campCosmetics';
+import type { CampDecorStyle, CampFireStyle, ClanHeraldry } from '../core/cosmetics';
 
 /**
  * Сцена лагеря по camp.html: герой стоит у Жилья, стройка видна по площадке.
@@ -173,6 +175,11 @@ export class CampView {
   private buildingSpotMesh: THREE.Mesh | null = null;
   /** Свет костра. Один на лагерь: горит тот огонь, что стоит у кухни. */
   private readonly fire = new Fire();
+  private readonly cosmeticDecor = new CampDecorLayer();
+  private readonly cosmeticHeraldry = new ClanHeraldryLayer();
+  private fireStyle: CampFireStyle = 'standard';
+  private decorStyle: CampDecorStyle = 'none';
+  private heraldry: ClanHeraldry = 'plain';
   /** Костры гостей (`sim/castleGuest.ts`): меш и огонь каждому. */
   private readonly guestFires: { g: THREE.Group; fire: Fire }[] = [];
   private area = 6;
@@ -198,6 +205,7 @@ export class CampView {
     this.buildMeadow();
     this.buildHero();
     this.group.add(this.fire.group);
+    this.group.add(this.cosmeticDecor.group, this.cosmeticHeraldry.group);
     this.rebuildBuildings();
     this.buildStones();
     this.buildBushes(0);
@@ -592,6 +600,7 @@ export class CampView {
       g.position.set(f.x, 0, f.z);
       this.group.add(g);
       const fire = new Fire();
+      fire.setStyle(this.fireStyle);
       fire.set('kitchen', 1, f.x, f.z, BUILDING_SCALE * TENT_LOOK);
       this.group.add(fire.group);
       this.guestFires.push({ g, fire });
@@ -674,6 +683,27 @@ export class CampView {
     this.rebuildBuildings();
     this.rebuildHero();
     this.buildStones();
+    this.applyAppearance();
+  }
+
+  /** Paid appearance stays outside CampState so a local save cannot mint it. */
+  setAppearance(appearance: {
+    readonly fire: CampFireStyle;
+    readonly decor: CampDecorStyle;
+    readonly heraldry: ClanHeraldry;
+  }): void {
+    this.fireStyle = appearance.fire;
+    this.decorStyle = appearance.decor;
+    this.heraldry = appearance.heraldry;
+    this.applyAppearance();
+  }
+
+  private applyAppearance(): void {
+    this.fire.setStyle(this.fireStyle);
+    for (const guest of this.guestFires) guest.fire.setStyle(this.fireStyle);
+    this.cosmeticDecor.set(this.decorStyle, this.area);
+    const hq = this.camp.layout.hq;
+    this.cosmeticHeraldry.set(this.heraldry, hq.x + 2.15, hq.z - 0.45, -0.35);
   }
 
   /* ---------- валуны (§13.4) ---------- */
@@ -877,6 +907,7 @@ export class CampView {
 
     this.syncSite(now);
     this.syncFire(now, day);
+    this.cosmeticDecor.update(day);
   }
 
   /**
@@ -1268,6 +1299,8 @@ export class CampView {
     this.folk.length = 0;
     this.meadow?.dispose();
     this.fire.dispose();
+    this.cosmeticDecor.dispose();
+    this.cosmeticHeraldry.dispose();
     for (const f of this.guestFires) f.fire.dispose();
     this.meadow = null;
     this.wallFade.dispose();

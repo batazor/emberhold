@@ -3,6 +3,7 @@ import { C } from './blocking';
 import { FIRE_MID, fireOf } from './models';
 import type { FireSpot } from './models';
 import { PALETTE } from './palette';
+import { campFireStyle, type CampFireStyle } from '../core/cosmetics';
 
 /**
  * Огонь: пламя и его свет. Костёр под открытым небом, очаг под навесом.
@@ -41,6 +42,17 @@ const FIRE_RANGE = 6.5;
 
 /** Затухание. Мягче квадрата: у костра нет одной точки, из которой он светит. */
 const FIRE_DECAY = 1.3;
+
+const FIRE_STYLE: Readonly<Record<CampFireStyle, {
+  readonly hot: string;
+  readonly cool: string;
+  readonly ember: string;
+  readonly light: string | number;
+}>> = {
+  standard: { hot: C.lat, cool: C.plam, ember: C.zhar, light: PALETTE.torch },
+  ghostfire: { hot: '#f4ffff', cool: '#75d9d1', ember: '#315d5a', light: '#9ff5ed' },
+  witchfire: { hot: '#f2ddff', cool: '#a258e8', ember: '#4c216e', light: '#c37cff' },
+};
 
 /**
  * Языки пламени в единицах модели, размер 1. Числа те же, которыми пламя
@@ -161,6 +173,15 @@ export class Fire {
   constructor() {
     this.group.add(this.light, this.flame);
     this.clear();
+  }
+
+  /** Cosmetic fire changes colour only; size, range and intensity stay on the balance path above. */
+  setStyle(value: unknown): void {
+    const style = FIRE_STYLE[campFireStyle(value)];
+    (this.uniforms['uFireHot']!.value as THREE.Color).set(style.hot);
+    (this.uniforms['uFireCool']!.value as THREE.Color).set(style.cool);
+    (this.uniforms['uFireEmber']!.value as THREE.Color).set(style.ember);
+    this.light.color.set(style.light);
   }
 
   /**

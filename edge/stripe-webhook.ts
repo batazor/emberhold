@@ -20,6 +20,24 @@ const CATALOG = {
     amount: 499,
     currency: 'usd',
   },
+  campfire_rites_01: {
+    owner: 'player',
+    paymentLink: 'plink_1U8BaFIXdGzLW8KpwZJY1scS',
+    amount: 199,
+    currency: 'usd',
+  },
+  camp_decor_watch_01: {
+    owner: 'player',
+    paymentLink: 'plink_1U8BaGIXdGzLW8KppWvoQvGD',
+    amount: 299,
+    currency: 'usd',
+  },
+  clan_heraldry_01: {
+    owner: 'clan',
+    paymentLink: 'plink_1U8BaGIXdGzLW8KpO4EylxvY',
+    amount: 399,
+    currency: 'usd',
+  },
 } as const;
 
 const json = (body: unknown, status = 200): Response =>
