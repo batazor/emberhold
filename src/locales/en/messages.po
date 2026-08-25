@@ -35353,3 +35353,48 @@ msgstr "Barley: {time}, {seed} → {harvest} food, net +{net}"
 #: locales/legacy-messages.ts
 msgid "ящик ровно в клетку — единственный, кто пришёл в масштабе"
 msgstr "A crate exactly the right square - the only one that arrived in scale"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "Параметры вылазки"
+msgstr "Raid loadout"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "Показать кованое снаряжение"
+msgstr "Show forged gear"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "{points} очка свободно"
+msgstr "{points} points available"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "Очков нет"
+msgstr "No points"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "Навык"
+msgstr "Skill"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "Улучшить навык"
+msgstr "Upgrade skill"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "1 очко"
+msgstr "1 point"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "Кованое снаряжение"
+msgstr "Forged gear"
+
+#. js-lingui-explicit-id
+#: features/character/index.ts
+msgid "Улучшить {stat}"
+msgstr "Upgrade {stat}"
