@@ -16,7 +16,8 @@ export type DebugRoute =
   | 'town'
   | 'fan'
   | 'avatars'
-  | 'collection';
+  | 'collection'
+  | 'water';
 
 const DEBUG_SCENE_ROUTES: readonly (DebugRoute | 'tier' | 'node' | 'castle' | 'grave')[] = [
   'tier',
@@ -31,6 +32,7 @@ const DEBUG_SCENE_ROUTES: readonly (DebugRoute | 'tier' | 'node' | 'castle' | 'g
   'wheel',
   'fan',
   'avatars',
+  'water',
 ];
 
 export function debugHas(params: URLSearchParams, route: DebugRoute | 'tier' | 'node' | 'castle' | 'grave'): boolean {

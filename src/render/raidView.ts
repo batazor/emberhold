@@ -76,6 +76,7 @@ import { Grass, tileNoise } from './grass';
 import type { Pusher } from './grass';
 import { FluffyGrass } from './fluffyGrass';
 import { MATERIAL, PALETTE } from './palette';
+import { waterGeometry, waterMaterial, waterUniforms } from './water';
 import type { Bubble } from './bubbles';
 import { survivalTentGeometry } from './survival';
 import { DirectionalFade, fadeSide, type FadeSide } from './directionalFade';
@@ -451,6 +452,8 @@ export class RaidView {
   private readonly placed = new Map<BuildingId, THREE.Mesh>();
   /** Свет поставленного костра. Тот же, что потом горит в лагере. */
   private readonly fire = new Fire();
+  /** Секунды воды (`water.ts`): один счётчик на ров и ручей — одна погода. */
+  private readonly waterTime = waterUniforms();
   private readonly cosmeticDecor = new CampDecorLayer();
   private readonly cosmeticHeraldry = new ClanHeraldryLayer();
   private fireStyle: CampFireStyle = 'standard';
@@ -1182,16 +1185,11 @@ export class RaidView {
   private buildCastle(site: CastleSite): void {
     // Вода рва — клетки плана, а не текстура земли. Небольшой зазор между
     // квадратами оставляет читаемой форму внешнего пояса и не даёт им спорить
-    // глубиной с грунтом локации.
+    // глубиной с грунтом локации. Движется она шейдером (`water.ts`): волна
+    // считается в мире, и клетки складываются в одну поверхность.
     if (site.castle.moat.length > 0) {
-      const geometry = this.track(new THREE.PlaneGeometry(CASTLE_SCALE * 0.96, CASTLE_SCALE * 0.96));
-      geometry.rotateX(-Math.PI / 2);
-      const material = this.track(new THREE.MeshLambertMaterial({
-        color: MATERIAL['краска-синяя'],
-        transparent: true,
-        opacity: 0.82,
-        depthWrite: false,
-      }));
+      const geometry = this.track(waterGeometry(CASTLE_SCALE * 0.96, 6));
+      const material = this.track(waterMaterial(this.waterTime, 0.82));
       const water = new THREE.InstancedMesh(geometry, material, site.castle.moat.length);
       const at = new THREE.Object3D();
       site.castle.moat.forEach((spot, i) => {
@@ -1211,14 +1209,8 @@ export class RaidView {
     // берег может пройти вплотную к колесу водяной мельницы, не занимая
     // целый четырёхклеточный модуль.
     if (site.water.length > 0) {
-      const geometry = this.track(new THREE.PlaneGeometry(0.94, 0.94));
-      geometry.rotateX(-Math.PI / 2);
-      const material = this.track(new THREE.MeshLambertMaterial({
-        color: MATERIAL['краска-синяя'],
-        transparent: true,
-        opacity: 0.84,
-        depthWrite: false,
-      }));
+      const geometry = this.track(waterGeometry(0.94, 3));
+      const material = this.track(waterMaterial(this.waterTime, 0.84));
       const stream = new THREE.InstancedMesh(geometry, material, site.water.length);
       const at = new THREE.Object3D();
       site.water.forEach((cell, i) => {
@@ -3178,6 +3170,8 @@ export class RaidView {
     // что поляна — это поверхность, а вылазка — ночь под землёй.
     this.fire.update(time, day);
     for (const f of this.fires) f.fire.update(time, day);
+    // Вода живёт теми же миллисекундами сессии, что и пламя (`water.ts`).
+    this.waterTime['uWaterTime']!.value = time / 1000;
     this.cosmeticDecor.update(day, time);
     this.cosmeticHeraldry.update(time);
     // Фонари замка живут тем же днём: гаснут к полудню, горят к ночи.

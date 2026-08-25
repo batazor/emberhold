@@ -458,6 +458,10 @@ import type { WorkItem } from './render/workbar';
 import { startTempo, stepTempo, tempoBeat, tempoBoost, tempoSpotNow } from './sim/tempo';
 import type { TempoAim } from './sim/tempo';
 import { TempoRing } from './render/tempoRing';
+// Кадру `?water` хватает трёх кирпичей рендера: группа, плоскость и инстансы.
+import * as THREE from 'three';
+import { waterGeometry, waterMaterial, waterUniforms } from './render/water';
+import { PALETTE } from './render/palette';
 import type { Bubble } from './render/bubbles';
 import { DWELLER_SPEED } from './sim/garrison';
 import { ResidentCard } from './ui/residentCard';
@@ -7898,6 +7902,107 @@ if (debugTown !== null) {
     // Спецификации домов улицы: пролёт, глубина, этажи, материал — то,
     // чего не прочитать глазом, если дом загородил соседа.
     houses: () => town?.street.map((h) => ({ ...h.spec, x: +h.x.toFixed(1), z: +h.z.toFixed(1) })) ?? null,
+  };
+}
+
+/**
+ * `?water` — пруд и ручей шейдера воды (`render/water.ts`), `?water=СИД` —
+ * с назначенным сидом. Сцена заведена под один вопрос: читается ли вода
+ * водой — полосы, гребни и дыхание формы, — и отвечать на него в замке
+ * значило бы каждый раз идти к его рву мимо гарнизона и боёв. Ни героя,
+ * ни игры в кадре нет: вода приносит свою землю, как улица `?town`.
+ *
+ * Ручка `debug.water(seed)` пересобирает берега на месте; `debug.time(s)`
+ * двигает воду руками — скрытая панель превью замораживает rAF, и «стоит»
+ * от «движется» иначе не отличить (`debug/routes.ts` про это молчит, но
+ * колесо `?wheel` живёт с той же оговоркой). Смотреть при свете —
+ * `?water=СИД&night=0`: ночь кадра иначе решают часы лагеря.
+ */
+const debugWaterScene = debugGet(debugParams, 'water');
+if (debugWaterScene !== null) {
+  toPadCamp();
+  campView.group.visible = false;
+  const waterSceneTime = waterUniforms();
+  let pool: { group: THREE.Group; dispose: () => void } | null = null;
+  const showWater = (seed: number): number => {
+    if (pool !== null) {
+      rig.world.remove(pool.group);
+      pool.dispose();
+    }
+    const rng = mulberry32(seed ^ 0x77a7e5);
+    const group = new THREE.Group();
+    const disposables: { dispose: () => void }[] = [];
+    // Земля своя, как у улицы: ровный луг, на котором воду видно целиком.
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(44, 44).rotateX(-Math.PI / 2),
+      new THREE.MeshLambertMaterial({ color: PALETTE.grassBase }),
+    );
+    disposables.push(ground.geometry, ground.material);
+    group.add(ground);
+
+    // Пруд — эллипс с рваным берегом: порог дышит шумом от сида. Клетка
+    // без зазора: гладь обязана сложиться в одну поверхность — ровно то,
+    // что кадр и проверяет; зазор — свойство рва, а не воды.
+    const pond: { x: number; z: number }[] = [];
+    const rx = 5 + rng() * 3;
+    const rz = 4 + rng() * 3;
+    for (let z = -10; z <= 10; z++) {
+      for (let x = -10; x <= 10; x++) {
+        const edge = (x / rx) ** 2 + (z / rz) ** 2;
+        if (edge <= 1 + (rng() - 0.5) * 0.35) pond.push({ x, z });
+      }
+    }
+    // Ручей — блуждание от края луга к пруду, клетка игрового ручья (0,94).
+    // Сдвиг заполняет обе клетки своего ряда: диагональный шов — разрыв
+    // ленты. Последний отрезок идёт по прямой до берега: ручей, повисший
+    // посреди луга, читался бы багом, а не рекой.
+    const stream: { x: number; z: number }[] = [];
+    let sx = Math.round((rng() - 0.5) * 16);
+    const bank = -Math.round(rz);
+    for (let z = -21; z < bank; z++) {
+      stream.push({ x: sx, z });
+      if (rng() < 0.34) {
+        const next = sx + (rng() < 0.5 ? 1 : -1);
+        stream.push({ x: next, z });
+        sx = next;
+      }
+    }
+    for (; sx !== 0; sx += sx > 0 ? -1 : 1) stream.push({ x: sx, z: bank });
+    const pour = (cells: readonly { x: number; z: number }[], size: number, opacity: number): void => {
+      const geometry = waterGeometry(size, 3);
+      const material = waterMaterial(waterSceneTime, opacity);
+      disposables.push(geometry, material);
+      const mesh = new THREE.InstancedMesh(geometry, material, cells.length);
+      const at = new THREE.Object3D();
+      cells.forEach((cell, i) => {
+        at.position.set(cell.x, 0.03, cell.z);
+        at.updateMatrix();
+        mesh.setMatrixAt(i, at.matrix);
+      });
+      mesh.renderOrder = 1;
+      group.add(mesh);
+    };
+    pour(pond, 1, 0.82);
+    pour(stream, 0.94, 0.84);
+    rig.world.add(group);
+    rig.lookAt(0, -4, true);
+    rig.setZoom(30, true);
+    pool = { group, dispose: () => disposables.forEach((d) => d.dispose()) };
+    return seed;
+  };
+  const firstWater = Number(debugWaterScene);
+  showWater(debugWaterScene === '' || !Number.isFinite(firstWater) ? 1 : firstWater);
+  // Времени кадра хватает интервала: rAF тут ничего не двигает, вода — весь кадр.
+  setInterval(() => {
+    waterSceneTime['uWaterTime']!.value = performance.now() / 1000;
+  }, 16);
+  (window as unknown as { debug: unknown }).debug = {
+    rig,
+    water: (seed: number) => showWater(seed),
+    time: (s: number) => {
+      waterSceneTime['uWaterTime']!.value = s;
+      return s;
+    },
   };
 }
 
